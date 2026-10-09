@@ -495,16 +495,15 @@ private slots:
         QCOMPARE(m.data(ix(m, 1, C::ByteOrder), Qt::ToolTipRole).toString(), QString());
     }
 
-    void typeChangeTo32BitClearsWritable()
+    void typeChangeTo32BitKeepsWritable()
     {
         TagTableModel m;
         QAbstractItemModelTester tester(&m);
         m.setTags({makeTag(1, "w", Area::HoldingRegister, 10, true)}, 2);
         QSignalSpy edited(&m, &TagTableModel::tagsEdited);
         QVERIFY(m.setData(ix(m, 0, C::Type), "float32"));
-        QVERIFY(!m.tagAt(0).writable);
-        QVERIFY(!m.tagAt(0).isWritable());
-        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QVERIFY(m.tagAt(0).isWritable());
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Checked));
         QCOMPARE(edited.size(), 1);
     }
 
@@ -535,22 +534,22 @@ private slots:
         QCOMPARE(m.tagAt(0).address, quint16(65535));
     }
 
-    void writableIsReadOnlyFor32Bit()
+    void writableFor32BitHolding()
     {
         TagTableModel m;
         QAbstractItemModelTester tester(&m);
-        Tag t = makeTag(1, "f", Area::HoldingRegister, 0, true);
+        Tag t = makeTag(1, "f", Area::HoldingRegister, 6638, true);
         t.type = ValueType::Float32;
         m.setTags({t}, 2);
-        QVERIFY(!(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsEnabled));
-        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::ToolTipRole).toString(),
-                 QString("32-bit tags are read-only"));
-        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
-        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
-        QVERIFY(!m.tagAt(0).isWritable());
-        QVERIFY(!m.setData(ix(m, 0, C::Value), 1.0));
-        QVERIFY(!(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable));
+        QVERIFY(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsEnabled);
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Checked));
+        QVERIFY(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable);
+        QSignalSpy writes(&m, &TagTableModel::writeRequested);
+        QVERIFY(m.setData(ix(m, 0, C::Value), 50.5));
+        QCOMPARE(writes.size(), 1);
+        QCOMPARE(writes.at(0).at(1).toDouble(), 50.5);
         QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable));
     }
 
     void raw32AndFloatFormatting()

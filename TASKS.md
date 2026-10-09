@@ -161,20 +161,13 @@ setpoints); writable floats HR 6591-7149 (alarm trips, setpoints, PID, constants
 _Last updated: 2026-10-09. Update this section whenever a task is merged._
 
 **Merged into `main` and pushed** (all 14 ctest targets pass): T01, T02, T10–T18, T20–T22, T30–T34,
-T40–T44, T50–T52, T53a (polish fixes), T60, T61, T62, T70, T71, plus the 32-bit contracts and an
-MIT LICENSE. T64 is covered by T71's tests.
+T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit contracts and an MIT
+LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
+table (orchestrator fix after merging T63).
 
-**In progress when this was written**
-- **T63** (Haiku) in worktree `..\modbus-control-wt\t63`, branch `task/t63`: tag table Byte order
-  column, Type combo with int32/uint32/float32, Raw as 0x%08X for 32-bit, float display 'g' 7,
-  demo tags "Float sine" IR20 float32 ABCD, "Float sine (CDAB)" IR22 float32 CDAB, "Int32 saw"
-  IR24 int32 ABCD, `examples/demo.mbproj`, USER_GUIDE/README docs. NOTE: it was written against
-  the older contract where 32-bit tags were read-only — after merging, T72 must make them
-  writable in the UI. If a new session finds `task/t63` without a "T63:" commit, check
-  `git -C ..\modbus-control-wt\t63 status`; either finish it there or redo it.
-
+**In progress:** nothing.
 **Remaining, in order**
-1. Merge T63 (review the diff, build, ctest, push).
+1. ~~Merge T63~~ (done).
 2. Orchestrator contract for **1-based register numbering** (user-requested):
    - `Project::addressBase` (0 or 1, default 0), JSON top-level key `"addressBase"`; tag
      addresses in files stay zero-based protocol addresses.
@@ -186,10 +179,9 @@ MIT LICENSE. T64 is covered by T71's tests.
    - WriteController texts use the model's base ("HR 6639-6640" for protocol 6638).
    - AppController: wire the action, apply/save with the project, mark modified on toggle.
    - PollWorker status messages stay in protocol addresses (documented limitation).
-3. **T72 final UI** (Haiku, or Sonnet if it grows): implement item 2; make 32-bit holding tags
-   writable in TagTableModel (Writable checkbox enabled, Value editable for any isWritable tag);
-   ConnectionBar "FC06 only" checkbox bound to `singleRegisterWrites` (see ConnectionBar.h);
-   ProjectIO `addressBase` + tests; tests for all of it; USER_GUIDE: 32-bit writes, FC06-only
+3. **T72 final UI** (Haiku, or Sonnet if it grows): implement item 2; ConnectionBar "FC06 only" checkbox bound to `singleRegisterWrites` (see ConnectionBar.h);
+   ProjectIO `addressBase` + tests; tests for all of it; README Quick start still lists the old
+   8 demo tags (now 11); USER_GUIDE still says 32-bit tags are read-only — fix both; USER_GUIDE: 32-bit writes, FC06-only
    option, 1-based numbering, and a "Connecting to an ABB CM50" section with a few example tags
    (Loop 1 PV IR 5009 float32 ABCD read-only; Loop 1 Local Setpoint 1 HR 6639 float32 writable;
    Totalizer 1 batch total IR 4001 uint32), noting "Reverse IEEE Data" = CDAB and to enable

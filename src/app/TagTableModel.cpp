@@ -132,8 +132,6 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case Writable:
         if (role == Qt::CheckStateRole)
             return t.isWritable() ? Qt::Checked : Qt::Unchecked;
-        if (role == Qt::ToolTipRole && is32)
-            return tr("32-bit tags are read-only");
         break;
     case Plot:
         if (role == Qt::CheckStateRole)
@@ -190,7 +188,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             return false;
         const bool on = value.toInt() == Qt::Checked;
         if (col == Writable) {
-            if (on && (t.area == mb::Area::InputRegister || registerCount(t.type) == 2))
+            if (on && t.area == mb::Area::InputRegister)
                 return false;
             t.writable = on;
         } else {
@@ -245,10 +243,6 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         probe.type = nt;
         if (!probe.fitsAddressSpace()) return false;
         t.type = nt;
-        if (registerCount(nt) == 2 && t.writable) {
-            t.writable = false;
-            writableCleared = true;
-        }
         rowChanged = true; // Raw, Value, ByteOrder and Writable all depend on the type
         break;
     }
@@ -314,7 +308,7 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     switch (index.column()) {
     case Writable:
         f |= Qt::ItemIsUserCheckable;
-        if (t.area == mb::Area::InputRegister || registerCount(t.type) == 2)
+        if (t.area == mb::Area::InputRegister)
             f &= ~Qt::ItemFlags(Qt::ItemIsEnabled);
         break;
     case Plot:

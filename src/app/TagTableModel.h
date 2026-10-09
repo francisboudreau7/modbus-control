@@ -16,12 +16,11 @@ namespace mb {
 /// - Area: DisplayRole/EditRole "Holding" | "Input" (see toString(Area)).
 /// - Address: int 0..65535. A 32-bit tag must end at or below 65535 (address <= 65534).
 /// - Type: DisplayRole/EditRole "int16" | "uint16" | "int32" | "uint32" | "float32".
-///   Changing it to a 32-bit type clears Writable; it is rejected if the tag would not fit.
+///   Changing the type is rejected if the tag would not fit the address space.
 /// - ByteOrder: DisplayRole/EditRole "ABCD" | "CDAB" | "BADC" | "DCBA". For 16-bit tags the
 ///   display is an em dash, the cell is not editable and ToolTipRole explains why.
 /// - Gain (!= 0), Offset: double.
-/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers and
-///   for 32-bit tags, which are read-only for now).
+/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers).
 /// - Color: DisplayRole "#RRGGBB", DecorationRole QColor, EditRole "#RRGGBB".
 /// - Raw: read-only, "0x%04X (%u)" for 16-bit tags, "0x%08X" for 32-bit tags, or empty.
 ///   Quality: read-only text, ForegroundRole colour (Good green, Unknown grey, others red);
