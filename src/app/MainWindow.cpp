@@ -21,26 +21,6 @@
 
 namespace mb {
 
-namespace {
-
-// Local equivalent of toString(ConnectionState); PollWorker.cpp is not implemented yet.
-QString connectionStateText(ConnectionState state)
-{
-    switch (state) {
-    case ConnectionState::Disconnected:
-        return MainWindow::tr("Disconnected");
-    case ConnectionState::Connecting:
-        return MainWindow::tr("Connecting");
-    case ConnectionState::Connected:
-        return MainWindow::tr("Connected");
-    case ConnectionState::Reconnecting:
-        return MainWindow::tr("Reconnecting");
-    }
-    return QString();
-}
-
-} // namespace
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_connectionBar(new ConnectionBar(this))
@@ -135,7 +115,7 @@ const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {
-    QString text = connectionStateText(state);
+    QString text = toString(state);
     if (!detail.isEmpty())
         text += QStringLiteral(" — ") + detail;
     m_connectionLabel->setText(text);

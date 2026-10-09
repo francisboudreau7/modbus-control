@@ -18,17 +18,6 @@ namespace {
 const QString kHostPattern = QStringLiteral(
     R"(^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$|^localhost$)");
 
-QString stateName(ConnectionState state)
-{
-    switch (state) {
-    case ConnectionState::Disconnected: return QStringLiteral("Disconnected");
-    case ConnectionState::Connecting:   return QStringLiteral("Connecting");
-    case ConnectionState::Connected:    return QStringLiteral("Connected");
-    case ConnectionState::Reconnecting: return QStringLiteral("Reconnecting");
-    }
-    return QString();
-}
-
 QString stateColor(ConnectionState state)
 {
     switch (state) {
@@ -152,7 +141,7 @@ void ConnectionBar::setState(ConnectionState state, const QString &detail)
     m_period->setEnabled(editable);
 
     m_led->setStyleSheet(QStringLiteral("border-radius:6px; background:%1;").arg(stateColor(state)));
-    m_led->setToolTip(detail.isEmpty() ? stateName(state) : detail);
+    m_led->setToolTip(detail.isEmpty() ? toString(state) : detail);
 
     updateButton();
 }
