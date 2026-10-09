@@ -1,8 +1,11 @@
 ﻿#include "TagTableModel.h"
+#include "TagTableWidget.h"
 
 #include <QAbstractItemModelTester>
 #include <QBrush>
 #include <QColor>
+#include <QComboBox>
+#include <QTableView>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -648,6 +651,29 @@ private slots:
         QVERIFY(m.headerData(C::Type, Qt::Horizontal, Qt::ToolTipRole).toString().contains("two consecutive registers"));
         QVERIFY(m.headerData(C::ByteOrder, Qt::Horizontal, Qt::ToolTipRole).toString().contains("ABCD"));
         QCOMPARE(m.headerData(C::ByteOrder, Qt::Horizontal).toString(), QString("Byte order"));
+    }
+
+    // Regression: a pick in the Type combo must be applied and the editor closed right away;
+    // an open editor showed the new value over the cell's old one.
+    void comboPickCommitsAndClosesEditor()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a", Area::InputRegister, 3)}, 2);
+        mb::TagTableWidget w(&m);
+        w.resize(900, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        const QModelIndex type = m.index(0, C::Type);
+        w.view()->setCurrentIndex(type);
+        w.view()->edit(type);
+        auto *combo = w.view()->findChild<QComboBox *>();
+        QVERIFY(combo);
+        combo->hidePopup();
+        combo->setCurrentIndex(combo->findText("uint32"));
+        emit combo->activated(combo->currentIndex());
+        QTRY_COMPARE(m.data(type).toString(), QString("uint32"));
+        // The closed editor is deleted later; no combo editor may remain.
+        QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
     }
 };
 

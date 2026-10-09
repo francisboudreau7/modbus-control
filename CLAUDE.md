@@ -22,7 +22,8 @@ Task list, orchestration rules and **current status / what's left**: [TASKS.md](
 ```
 cmd /c 'set VCPKG_ROOT=C:\Users\franc\source\vcpkg&& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul && cmake --preset msvc-debug && cmake --build --preset msvc-debug && ctest --preset msvc-debug'
 ```
-Outputs land in `build/<preset>/bin`. `ctest -E tst_integration` skips the slow integration
+Keep the `&&` chain (or check the exit code): a gate that runs ctest after a failed build tests
+stale binaries and reports a false pass. Outputs land in `build/<preset>/bin`. `ctest -E tst_integration` skips the slow integration
 suite (~15 s, starts `modbus_test_server`). Installer: `installer\build_installer.ps1`.
 
 ## Conventions

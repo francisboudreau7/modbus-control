@@ -15,6 +15,7 @@
 #include <QSpinBox>
 #include <QStyledItemDelegate>
 #include <QTableView>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -36,6 +37,14 @@ public:
         c->addItems(m_items);
         c->setFrame(false);
         c->setAutoFillBackground(true); // frameless editors are transparent in the Windows 11 style
+        // Apply a pick immediately and close the editor: while it stays open the cell keeps
+        // painting its old value under the editor's new one.
+        auto *self = const_cast<ComboDelegate *>(this);
+        connect(c, &QComboBox::activated, self, [self, c] {
+            emit self->commitData(c);
+            emit self->closeEditor(c);
+        });
+        QTimer::singleShot(0, c, &QComboBox::showPopup);
         return c;
     }
     void setEditorData(QWidget *editor, const QModelIndex &index) const override
