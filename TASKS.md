@@ -1,4 +1,4 @@
-﻿# Modbus Control — Task Breakdown & Sub-agent Orchestration
+# Modbus Control — Task Breakdown & Sub-agent Orchestration
 
 Companion to [PLAN.md](PLAN.md). Implementation has **not** started.
 
