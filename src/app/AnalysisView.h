@@ -8,6 +8,7 @@
 
 #include <optional>
 
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QListWidget;
@@ -34,7 +35,8 @@ class TrendPlot;
 ///     s, 0..3600, special value text "Off" at 0);
 ///   * "Setpoints" group: list of percentages ("63.2 %") with a spin box (0..100, 2 decimals)
 ///     and Add / Remove buttons; the list stays sorted ascending without duplicates, at most
-///     20 entries;
+///     20 entries; a check box "Show time and value on plot labels" (objectName
+///     "detailedLabelsCheck", AnalysisSettings::detailedLabels);
 ///   * "Model" group: spin boxes "From %" (a) and "To %" (b) (0..99.99; an edit that breaks
 ///     a < b is reverted), and ΔCO: a combo "Typed value" + every project tag ("name
 ///     [unit]", item data = TagId) and a value spin box enabled for "Typed value";
@@ -45,8 +47,11 @@ class TrendPlot;
 ///     error text spanning the value cells; a missing value shows "—".
 ///   Numbers use 6 significant digits.
 /// - Plot markers: for every found setpoint a QwtPlotMarker at (time, target) with an
-///   XCross symbol (size 11) in the tag colour and the label "<percent> %" (e.g. "63.2 %")
-///   above right. Markers are plot items, so the image export includes them.
+///   XCross symbol (size 11) in the tag colour and the label "<percent> %" (e.g. "63.2 %"),
+///   or with detailedLabels also "t = <time, 3 decimals> s" and "y = <target> <unit>", above
+///   right. The label has dark text in an opaque box with a border in the tag colour, so it
+///   stays readable where it overlaps a curve. Markers are plot items, so the image export
+///   includes them.
 ///
 /// Recomputes (analyzeStep for every analyzed tag, in tag order) when the cursors, settings
 /// or tags change, and in refresh() when new rows arrived while the previous last row was
@@ -122,6 +127,7 @@ private:
     QDoubleSpinBox *m_windowSpin = nullptr;
     QDoubleSpinBox *m_smoothingSpin = nullptr;
     QListWidget *m_percentList = nullptr;
+    QCheckBox *m_detailedLabelsCheck = nullptr;
     QDoubleSpinBox *m_percentSpin = nullptr;
     QPushButton *m_addPercentButton = nullptr;
     QPushButton *m_removePercentButton = nullptr;

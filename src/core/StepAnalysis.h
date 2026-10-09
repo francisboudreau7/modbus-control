@@ -37,6 +37,9 @@ struct AnalysisSettings {
     TagId deltaCoTagId = 0;
     /// ΔCO typed by the user (in the CO's units) when deltaCoTagId == 0. 0 = unknown (no K).
     double manualDeltaCo = 0.0;
+    /// Plot labels of the setpoint markers: false = "63.2 %"; true = three lines
+    /// "63.2 %", "t = 14.360 s", "y = 22.64 degC" (target value and tag unit).
+    bool detailedLabels = false;
 
     friend bool operator==(const AnalysisSettings &, const AnalysisSettings &) = default;
 };

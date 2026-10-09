@@ -27,7 +27,8 @@ inline constexpr int kProjectFormatVersion = 1;
 ///               "unit": "", "color": "#RRGGBB", "plotted": true, "writable": false,
 ///               "analyzed": false }, ... ],
 ///   "analysis": { "percents": [0, 63.2], "reference": "cursor"|"mean", "referenceWindowS": 1,
-///                 "smoothingS": 0, "modelPercents": [0, 63.2], "deltaCoTag": 0, "deltaCo": 0 }
+///                 "smoothingS": 0, "modelPercents": [0, 63.2], "deltaCoTag": 0, "deltaCo": 0,
+///                 "detailedLabels": false }
 /// }
 ///
 /// "byteOrder" only matters for the 32-bit types (2 registers); it is written for every tag.
@@ -45,7 +46,7 @@ inline constexpr int kProjectFormatVersion = 1;
 /// (CursorValue) or "mean" (WindowMean); referenceWindowS in (0, 3600]; smoothingS in
 /// [0, 3600]; modelPercents = array of exactly 2 numbers a < b, both in [0, 100);
 /// deltaCoTag integer >= 0 (may name a tag that no longer exists); deltaCo any finite
-/// number. Anything else is rejected.
+/// number; detailedLabels boolean. Anything else is rejected.
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;

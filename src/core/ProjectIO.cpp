@@ -341,6 +341,8 @@ bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error
 
     if (!readDouble(obj, QStringLiteral("deltaCo"), prefix, out.manualDeltaCo, error))
         return false;
+    if (!readBool(obj, QStringLiteral("detailedLabels"), prefix, out.detailedLabels, error))
+        return false;
     return true;
 }
 
@@ -391,6 +393,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("modelPercents"), QJsonArray{a.modelPercentA, a.modelPercentB}},
         {QStringLiteral("deltaCoTag"), static_cast<qint64>(a.deltaCoTagId)},
         {QStringLiteral("deltaCo"), a.manualDeltaCo},
+        {QStringLiteral("detailedLabels"), a.detailedLabels},
     };
 
     const QJsonObject root{

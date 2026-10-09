@@ -10,6 +10,7 @@
 #include <qwt_text.h>
 
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -184,6 +185,15 @@ void AnalysisView::buildUi()
     spGrid->addWidget(m_percentSpin, 0, 1);
     spGrid->addWidget(m_addPercentButton, 1, 1);
     spGrid->addWidget(m_removePercentButton, 2, 1);
+    m_detailedLabelsCheck = new QCheckBox(tr("Show time and value on plot labels"), spBox);
+    m_detailedLabelsCheck->setObjectName(QStringLiteral("detailedLabelsCheck"));
+    spGrid->addWidget(m_detailedLabelsCheck, 3, 0, 1, 2);
+    connect(m_detailedLabelsCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_settings.detailedLabels = on;
+        userChangedSettings();
+    });
     col->addWidget(spBox);
     connect(m_addPercentButton, &QPushButton::clicked, this, [this] { onAddPercent(); });
     connect(m_removePercentButton, &QPushButton::clicked, this, [this] { onRemovePercent(); });
@@ -310,6 +320,8 @@ void AnalysisView::syncControlsFromSettings()
         const QSignalBlocker b5(m_modelToSpin);
         const QSignalBlocker b6(m_deltaCoCombo);
         const QSignalBlocker b7(m_deltaCoSpin);
+        const QSignalBlocker b8(m_detailedLabelsCheck);
+        m_detailedLabelsCheck->setChecked(m_settings.detailedLabels);
         m_referenceCombo->setCurrentIndex(m_settings.reference == ReferenceMode::WindowMean ? 1 : 0);
         m_windowSpin->setValue(m_settings.referenceWindowS);
         m_smoothingSpin->setValue(m_settings.smoothingS);
@@ -461,8 +473,20 @@ void AnalysisView::rebuildMarkers()
             marker->setValue(sp.time, sp.target);
             marker->setSymbol(new QwtSymbol(QwtSymbol::XCross, QBrush(), QPen(color, 2),
                                             QSize(11, 11)));
-            QwtText label(fmtPercent(sp.percent));
-            label.setColor(color);
+            QString text = fmtPercent(sp.percent);
+            if (m_settings.detailedLabels) {
+                text += QStringLiteral("\nt = ") + QString::number(sp.time, 'f', 3)
+                        + QStringLiteral(" s\ny = ") + fmtNum(sp.target);
+                if (tag && !tag->unit.isEmpty())
+                    text += u' ' + tag->unit;
+            }
+            // Dark text in an opaque box with a tag-coloured border: readable over any curve.
+            QwtText label(text);
+            label.setColor(QColor(0x20, 0x20, 0x20));
+            label.setBackgroundBrush(QColor(255, 255, 255, 235));
+            label.setBorderPen(QPen(color, 1));
+            label.setBorderRadius(3);
+            label.setRenderFlags(Qt::AlignLeft | Qt::AlignVCenter);
             marker->setLabel(label);
             marker->setLabelAlignment(Qt::AlignRight | Qt::AlignTop);
             marker->attach(m_plot->plot());

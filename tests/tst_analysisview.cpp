@@ -10,10 +10,13 @@
 #include <qwt_plot_curve.h>
 #include <qwt_plot_item.h>
 #include <qwt_plot_marker.h>
+#include <qwt_text.h>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QListWidget>
+#include <QPen>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTableWidget>
@@ -111,7 +114,77 @@ private slots:
     void deltaCoSelectionKept();
     void onlyAnalyzedTags();
     void refreshRecompute();
+    void detailedLabels();
 };
+
+/// Labels of the setpoint markers, in plot item order.
+static QStringList markerLabels(AnalysisView &v)
+{
+    QStringList out;
+    const QwtPlotItemList items = v.trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotMarker);
+    for (QwtPlotItem *item : items) {
+        auto *m = static_cast<QwtPlotMarker *>(item);
+        if (m->symbol())
+            out << m->label().text();
+    }
+    return out;
+}
+
+void TstAnalysisView::detailedLabels()
+{
+    Recorder rec;
+    appendRows(rec, 0, 600);
+    AnalysisView v;
+    v.setRecorder(&rec);
+    v.setTags(standardTags());
+    v.setCursors(9.0, 40.0);
+
+    QStringList labels = markerLabels(v);
+    QCOMPARE(labels.size(), 2);
+    QVERIFY(labels.contains(QStringLiteral("63.2 %")));
+
+    // Readable over curves: opaque box, dark text, border in the tag colour.
+    const QwtPlotItemList items = v.trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotMarker);
+    for (QwtPlotItem *item : items) {
+        auto *m = static_cast<QwtPlotMarker *>(item);
+        if (!m->symbol())
+            continue; // the C1/C2 cursor lines
+        const QwtText l = m->label();
+        QVERIFY(l.backgroundBrush().style() != Qt::NoBrush);
+        QVERIFY(l.backgroundBrush().color().alpha() >= 200);
+        QCOMPARE(l.borderPen().color(), QColor(QStringLiteral("#0000ff")));
+        QVERIFY(l.color().lightness() < 80);
+    }
+
+    QSignalSpy changed(&v, &AnalysisView::settingsChanged);
+    auto *check = child<QCheckBox>(v, "detailedLabelsCheck");
+    QVERIFY(check);
+    check->setChecked(true);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(v.settings().detailedLabels);
+
+    labels = markerLabels(v);
+    QCOMPARE(labels.size(), 2);
+    QString detailed;
+    for (const QString &l : labels)
+        if (l.startsWith(QStringLiteral("63.2 %")))
+            detailed = l;
+    // 63.2 % of 50 -> ~60 is ~56.31 degC, reached at about 11.5 + 4 = 15.5 s.
+    const QStringList lines = detailed.split(u'\n');
+    QCOMPARE(lines.size(), 3);
+    QVERIFY2(lines.at(1).startsWith(QStringLiteral("t = 15.")), qPrintable(lines.at(1)));
+    QVERIFY(lines.at(1).endsWith(QStringLiteral(" s")));
+    QVERIFY2(lines.at(2).startsWith(QStringLiteral("y = 56.3")), qPrintable(lines.at(2)));
+    QVERIFY(lines.at(2).endsWith(QStringLiteral(" degC")));
+
+    // setSettings updates the check box without emitting settingsChanged.
+    AnalysisSettings s = v.settings();
+    s.detailedLabels = false;
+    v.setSettings(s);
+    QVERIFY(!check->isChecked());
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(markerLabels(v).contains(QStringLiteral("63.2 %")));
+}
 
 void TstAnalysisView::fopdtResults()
 {

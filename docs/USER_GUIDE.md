@@ -371,6 +371,11 @@ computed shows "—". Numbers use 6 significant digits.
 Each found setpoint is also marked on the plot with a cross at its time and target level, in the
 tag's colour and labelled, for example, "63.2 %".
 
+The label is drawn in a white box with a border in the tag's colour, so it stays readable where
+it crosses a curve. Tick **Show time and value on plot labels** (under Setpoints) to add two lines
+to each label: the time (`t = 15.512 s`) and the target value with its unit (`y = 56.32 degC`).
+This option is saved in the project.
+
 ### Model
 
 The model uses two setpoints, **From %** (a) and **To %** (b). They must be below 100, with a < b.

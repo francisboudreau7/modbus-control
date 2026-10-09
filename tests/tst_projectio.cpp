@@ -669,6 +669,7 @@ void TstProjectIO::analyzedAndAnalysisRoundTrip()
     original.analysis.modelPercentB = 90.0;
     original.analysis.deltaCoTagId = 2;
     original.analysis.manualDeltaCo = -1.5;
+    original.analysis.detailedLabels = true;
 
     const QByteArray data = projectToJson(original);
     QString error;
