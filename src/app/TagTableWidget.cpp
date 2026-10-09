@@ -35,6 +35,7 @@ public:
         auto *c = new QComboBox(parent);
         c->addItems(m_items);
         c->setFrame(false);
+        c->setAutoFillBackground(true); // frameless editors are transparent in the Windows 11 style
         return c;
     }
     void setEditorData(QWidget *editor, const QModelIndex &index) const override
@@ -66,6 +67,7 @@ public:
         auto *s = new QSpinBox(parent);
         s->setRange(base, 65535 + base);
         s->setFrame(false);
+        s->setAutoFillBackground(true);
         return s;
     }
     void setEditorData(QWidget *editor, const QModelIndex &index) const override

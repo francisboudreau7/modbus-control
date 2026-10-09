@@ -187,7 +187,7 @@ table (orchestrator fix after merging T63).
    (Loop 1 PV IR 5009 float32 ABCD read-only; Loop 1 Local Setpoint 1 HR 6639 float32 writable;
    Totalizer 1 batch total IR 4001 uint32), noting "Reverse IEEE Data" = CDAB and to enable
    "FC06 only" if FC16 writes are rejected; add `examples/cm50.mbproj`.
-4. **Final review (T53)**: run `/code-review` (or a review agent) over the whole repo; fix
+4. ~~**Final review (T53)**~~ (done: 7 findings fixed in 4a0fd36): run `/code-review` (or a review agent) over the whole repo; fix
    high-severity findings; rerun `ctest --repeat until-fail:3`.
 5. **Acceptance (T54)**: user runs the app against the test server (see README Quick start) and
    checks write/cursors/exports; Claude verifies by offscreen tests only (no desktop input).
