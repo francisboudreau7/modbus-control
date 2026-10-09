@@ -17,6 +17,8 @@ Task list, orchestration rules and **current status / what's left**: [TASKS.md](
   prepend `C:\Program Files\Git\cmd` to PATH or use full paths. Remote: `origin` =
   https://github.com/francisboudreau7/modbus-control (private). Push `main` after each merge.
 - Inno Setup 6: `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`.
+- `python3` is the Windows Store stub and hangs forever; use `python` (works) or the Edit tool.
+  Tell sub-agents this in their prompts.
 
 ## Build and test (PowerShell 5.1 — no `&&` in PowerShell itself)
 ```
