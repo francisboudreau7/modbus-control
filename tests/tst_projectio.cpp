@@ -122,6 +122,10 @@ private slots:
     void analysisBoundariesAccepted();
     void analysisRejected_data();
     void analysisRejected();
+    void axisQuickAndAnalysisFlagsRoundTrip();
+    void quickWrittenOnlyWhenSet();
+    void quickNullMeansNoValue();
+    void v12KeysDefaultWhenMissing();
 };
 
 void TstProjectIO::roundTrip()
@@ -352,6 +356,18 @@ void TstProjectIO::invalidInputRejected_data()
     QTest::newRow("addressBase string")
         << json(R"({"format":"modbus-control-project","version":1,"addressBase":"1"})")
         << QStringLiteral("addressBase");
+    QTest::newRow("axis up")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"axis":"up"}]})")
+        << QStringLiteral("axis");
+    QTest::newRow("axis upper case")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"axis":"Right"}]})")
+        << QStringLiteral("axis");
+    QTest::newRow("quickA string")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"quickA":"x"}]})")
+        << QStringLiteral("quickA");
+    QTest::newRow("quickB boolean")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"quickB":true}]})")
+        << QStringLiteral("quickB");
 }
 
 void TstProjectIO::invalidInputRejected()
@@ -787,6 +803,10 @@ void TstProjectIO::analysisRejected_data()
         << head + R"({"deltaCo":"1.5"}})" << QStringLiteral("analysis.deltaCo");
     QTest::newRow("analysis not an object")
         << head + R"([]})" << QStringLiteral("\"analysis\" must be an object");
+    QTest::newRow("showModel yes")
+        << head + R"({"showModel":"yes"}})" << QStringLiteral("analysis.showModel");
+    QTest::newRow("guideLines 1")
+        << head + R"({"guideLines":1}})" << QStringLiteral("analysis.guideLines");
 }
 
 void TstProjectIO::analysisRejected()
@@ -797,6 +817,89 @@ void TstProjectIO::analysisRejected()
     const auto project = projectFromJson(text, &error);
     QVERIFY(!project.has_value());
     QVERIFY2(error.contains(fragment), qPrintable(error));
+}
+
+void TstProjectIO::axisQuickAndAnalysisFlagsRoundTrip()
+{
+    Project p = sampleProject();
+    p.tags[0].axis = YAxis::Right;
+    p.tags[0].quickA = 12.5;
+    p.tags[0].quickB = -0.25;
+    p.tags[1].axis = YAxis::Right; // input register, no quick values
+    p.analysis.showModel = true;
+    p.analysis.guideLines = false;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QVERIFY(loaded->tags[0].axis == YAxis::Right);
+    QVERIFY(loaded->tags[1].axis == YAxis::Right);
+    QCOMPARE(*loaded->tags[0].quickA, 12.5);
+    QCOMPARE(*loaded->tags[0].quickB, -0.25);
+    QVERIFY(!loaded->tags[1].quickA.has_value());
+    QVERIFY(loaded->analysis.showModel);
+    QVERIFY(!loaded->analysis.guideLines);
+
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(p)).object();
+    const QJsonObject analysis = root.value(QStringLiteral("analysis")).toObject();
+    QCOMPARE(analysis.value(QStringLiteral("showModel")).toBool(), true);
+    QCOMPARE(analysis.value(QStringLiteral("guideLines")).toBool(), false);
+}
+
+void TstProjectIO::quickWrittenOnlyWhenSet()
+{
+    Project p;
+    Tag onlyB;
+    onlyB.id = 1;
+    onlyB.quickB = 3.0;
+    Tag none;
+    none.id = 2;
+    p.tags = {onlyB, none};
+    p.nextTagId = 3;
+
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    const QJsonObject first = tags.at(0).toObject();
+    QVERIFY(!first.contains(QStringLiteral("quickA")));
+    QCOMPARE(first.value(QStringLiteral("quickB")).toDouble(), 3.0);
+    QCOMPARE(first.value(QStringLiteral("axis")).toString(), QStringLiteral("left"));
+
+    const QJsonObject second = tags.at(1).toObject();
+    QVERIFY(!second.contains(QStringLiteral("quickA")));
+    QVERIFY(!second.contains(QStringLiteral("quickB")));
+    QCOMPARE(second.value(QStringLiteral("axis")).toString(), QStringLiteral("left"));
+}
+
+void TstProjectIO::quickNullMeansNoValue()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"quickA":null,"quickB":4}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(!project->tags.at(0).quickA.has_value());
+    QCOMPARE(*project->tags.at(0).quickB, 4.0);
+}
+
+void TstProjectIO::v12KeysDefaultWhenMissing()
+{
+    // A v1.1-style file: none of the v1.2 keys are present.
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"name":"old","analyzed":true}],
+        "analysis":{"percents":[0,63.2]}
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    const Tag &tag = project->tags.at(0);
+    QVERIFY(tag.axis == YAxis::Left);
+    QVERIFY(!tag.quickA.has_value());
+    QVERIFY(!tag.quickB.has_value());
+    QVERIFY(!project->analysis.showModel);
+    QVERIFY(project->analysis.guideLines);
+    QCOMPARE(project->analysis, AnalysisSettings{});
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

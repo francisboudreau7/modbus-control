@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <optional>
 
 namespace mb {
 
@@ -144,6 +145,18 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (role == Qt::CheckStateRole)
             return t.analyzed ? Qt::Checked : Qt::Unchecked;
         break;
+    case Axis:
+        if (disp || edit) return toString(t.axis);
+        break;
+    case QuickA:
+    case QuickB: {
+        const std::optional<double> &quick = index.column() == QuickA ? t.quickA : t.quickB;
+        if (role == Qt::ToolTipRole && !t.isWritable())
+            return tr("Quick writes need a writable holding register");
+        if (disp) return quick ? QString::number(*quick, 'g', 6) : QString();
+        if (edit) return quick ? QVariant(*quick) : QVariant();
+        break;
+    }
     case Color:
         if (disp || edit) return t.color;
         if (role == Qt::DecorationRole) return QColor(t.color);
@@ -190,6 +203,12 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     Tag &t = m_tags[index.row()];
     const int col = index.column();
 
+    // Quick A/B editability depends on isWritable(); refresh both cells when it may change.
+    const auto emitQuickChanged = [this](int row) {
+        emit dataChanged(this->index(row, QuickA), this->index(row, QuickB),
+                         {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
+    };
+
     if (col == Writable || col == Plot || col == Analyze) {
         if (role != Qt::CheckStateRole)
             return false;
@@ -204,6 +223,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             t.analyzed = on;
         }
         emit dataChanged(index, index, {Qt::CheckStateRole});
+        if (col == Writable)
+            emitQuickChanged(index.row());
         emit tagsEdited();
         return true;
     }
@@ -277,6 +298,29 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     case Unit:
         t.unit = value.toString();
         break;
+    case Axis: {
+        const QString s = value.toString().trimmed();
+        if (s.compare(toString(YAxis::Left), Qt::CaseInsensitive) == 0)
+            t.axis = YAxis::Left;
+        else if (s.compare(toString(YAxis::Right), Qt::CaseInsensitive) == 0)
+            t.axis = YAxis::Right;
+        else
+            return false;
+        break;
+    }
+    case QuickA:
+    case QuickB: {
+        if (!t.isWritable()) return false;
+        std::optional<double> &quick = col == QuickA ? t.quickA : t.quickB;
+        if (value.toString().trimmed().isEmpty()) {
+            quick.reset();
+        } else {
+            double q = 0.0;
+            if (!parseDouble(value, q)) return false;
+            quick = q;
+        }
+        break;
+    }
     case Color: {
         const QString s = value.metaType().id() == QMetaType::QColor
                               ? value.value<QColor>().name()
@@ -304,6 +348,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     if (writableCleared) {
         const QModelIndex i = this->index(index.row(), Writable);
         emit dataChanged(i, i, {Qt::CheckStateRole});
+        emitQuickChanged(index.row());
     }
     emit tagsEdited();
     return true;
@@ -333,6 +378,8 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     case Quality:
         break;
     case Value:
+    case QuickA:
+    case QuickB:
         if (t.isWritable())
             f |= Qt::ItemIsEditable;
         break;
@@ -361,6 +408,8 @@ QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) con
                       "use two consecutive registers.");
         if (role == Qt::ToolTipRole && section == Analyze)
             return tr("Show this tag in the Analysis tab");
+        if (role == Qt::ToolTipRole && (section == QuickA || section == QuickB))
+            return tr("Preset value for the Quick write dock");
         if (role == Qt::ToolTipRole && section == ByteOrder)
             return tr("Byte order of 32-bit values. A is the most significant byte. ABCD is big "
                       "endian: register n holds A B and register n+1 holds C D. Only used by "

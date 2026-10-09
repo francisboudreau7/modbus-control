@@ -10,6 +10,7 @@
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
@@ -95,6 +96,33 @@ public:
     }
 };
 
+/// Quick A/B cells: a text editor, so an empty entry can clear the value (a spin box cannot
+/// show "no value"). The model parses the text and refuses anything that is not a number.
+class QuickDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
+    {
+        auto *e = new QLineEdit(parent);
+        e->setFrame(false);
+        e->setAutoFillBackground(true);
+        return e;
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        static_cast<QLineEdit *>(editor)->setText(index.data(Qt::EditRole).toString());
+    }
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        model->setData(index, static_cast<QLineEdit *>(editor)->text(), Qt::EditRole);
+    }
+    void updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option, const QModelIndex &) const override
+    {
+        editor->setGeometry(option.rect);
+    }
+};
+
 /// Colour cells open a QColorDialog on double-click or when editing is triggered.
 class ColorDelegate : public QStyledItemDelegate
 {
@@ -158,7 +186,10 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     m_view->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed
                             | QAbstractItemView::SelectedClicked);
 
-    const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 80, 70, 60, 60, 60, 70, 50, 60, 80, 100, 90, 90};
+    // Column order: Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot,
+    // Analyze, Axis, Color, Raw, Value, QuickA, QuickB, Quality.
+    const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 80, 70, 60, 60, 60, 70, 50,
+                                                    60, 60, 100, 90, 90, 70, 70, 90};
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnWidth(c, widths[c]);
 
@@ -176,8 +207,13 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         new ComboDelegate({toString(ByteOrder::ABCD), toString(ByteOrder::CDAB),
                            toString(ByteOrder::BADC), toString(ByteOrder::DCBA)},
                           this));
+    m_view->setItemDelegateForColumn(
+        TagTableModel::Axis,
+        new ComboDelegate({toString(YAxis::Left), toString(YAxis::Right)}, this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::QuickA, new QuickDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::QuickB, new QuickDelegate(this));
 
     auto *addBtn = new QPushButton(tr("Add"), this);
     auto *dupBtn = new QPushButton(tr("Duplicate"), this);

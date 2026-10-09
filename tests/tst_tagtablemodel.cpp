@@ -697,6 +697,143 @@ private slots:
         QCOMPARE(edited.size(), 2);
     }
 
+    void axisColumn()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a"), makeTag(2, "b", Area::InputRegister, 1)}, 3);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QCOMPARE(m.headerData(C::Axis, Qt::Horizontal).toString(), QString("Axis"));
+        QCOMPARE(m.data(ix(m, 0, C::Axis)).toString(), QString("Left"));
+        QCOMPARE(m.data(ix(m, 0, C::Axis), Qt::EditRole).toString(), QString("Left"));
+        // Any tag, input registers included.
+        QVERIFY(m.flags(ix(m, 0, C::Axis)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 1, C::Axis)) & Qt::ItemIsEditable);
+
+        QVERIFY(m.setData(ix(m, 0, C::Axis), "right"));
+        QVERIFY(m.tagAt(0).axis == YAxis::Right);
+        QCOMPARE(m.data(ix(m, 0, C::Axis)).toString(), QString("Right"));
+        QCOMPARE(edited.size(), 1);
+
+        QVERIFY(m.setData(ix(m, 1, C::Axis), "RIGHT"));
+        QVERIFY(m.tagAt(1).axis == YAxis::Right);
+        QCOMPARE(edited.size(), 2);
+
+        QVERIFY(m.setData(ix(m, 0, C::Axis), "Left"));
+        QVERIFY(m.tagAt(0).axis == YAxis::Left);
+        QCOMPARE(edited.size(), 3);
+
+        QVERIFY(!m.setData(ix(m, 0, C::Axis), "up"));
+        QVERIFY(!m.setData(ix(m, 0, C::Axis), ""));
+        QVERIFY(m.tagAt(0).axis == YAxis::Left);
+        QCOMPARE(edited.size(), 3);
+    }
+
+    void quickColumns()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = makeTag(1, "w", Area::HoldingRegister, 0, true);
+        w.quickA = 1234.5678;
+        w.quickB = 0.5;
+        Tag ro = makeTag(2, "ro", Area::HoldingRegister, 1, false);
+        Tag in = makeTag(3, "in", Area::InputRegister, 2, false);
+        m.setTags({w, ro, in}, 4);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QCOMPARE(m.headerData(C::QuickA, Qt::Horizontal).toString(), QString("Quick A"));
+        QCOMPARE(m.headerData(C::QuickB, Qt::Horizontal).toString(), QString("Quick B"));
+        QCOMPARE(m.headerData(C::QuickA, Qt::Horizontal, Qt::ToolTipRole).toString(),
+                 QString("Preset value for the Quick write dock"));
+
+        // Display: 6 significant digits; edit: the full double; no value: empty.
+        QCOMPARE(m.data(ix(m, 0, C::QuickA)).toString(), QString("1234.57"));
+        QCOMPARE(m.data(ix(m, 0, C::QuickA), Qt::EditRole).toDouble(), 1234.5678);
+        QCOMPARE(m.data(ix(m, 0, C::QuickB)).toString(), QString("0.5"));
+        QVERIFY(m.data(ix(m, 1, C::QuickA)).toString().isEmpty());
+        QVERIFY(!m.data(ix(m, 1, C::QuickA), Qt::EditRole).isValid());
+
+        // Editable only for writable holding tags; the other cells explain why.
+        QVERIFY(m.flags(ix(m, 0, C::QuickA)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::QuickB)) & Qt::ItemIsEditable);
+        QVERIFY(!(m.flags(ix(m, 1, C::QuickA)) & Qt::ItemIsEditable));
+        QVERIFY(!(m.flags(ix(m, 2, C::QuickB)) & Qt::ItemIsEditable));
+        QCOMPARE(m.data(ix(m, 1, C::QuickA), Qt::ToolTipRole).toString(),
+                 QString("Quick writes need a writable holding register"));
+        QCOMPARE(m.data(ix(m, 2, C::QuickB), Qt::ToolTipRole).toString(),
+                 QString("Quick writes need a writable holding register"));
+        QVERIFY(m.data(ix(m, 0, C::QuickA), Qt::ToolTipRole).toString().isEmpty());
+        QVERIFY(!m.setData(ix(m, 1, C::QuickA), 1.0));
+        QVERIFY(!m.setData(ix(m, 2, C::QuickB), 1.0));
+        QCOMPARE(edited.size(), 0);
+
+        // Set from a number and from a numeric string (surrounding blanks allowed).
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), 10.25));
+        QVERIFY(m.tagAt(0).quickA.has_value());
+        QCOMPARE(*m.tagAt(0).quickA, 10.25);
+        QVERIFY(m.setData(ix(m, 0, C::QuickB), " 2.5 "));
+        QCOMPARE(*m.tagAt(0).quickB, 2.5);
+        QCOMPARE(edited.size(), 2);
+
+        // Clear with an empty or blank string.
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), ""));
+        QVERIFY(!m.tagAt(0).quickA.has_value());
+        QVERIFY(m.data(ix(m, 0, C::QuickA)).toString().isEmpty());
+        QVERIFY(m.setData(ix(m, 0, C::QuickB), "  "));
+        QVERIFY(!m.tagAt(0).quickB.has_value());
+        QCOMPARE(edited.size(), 4);
+
+        // Rejected: text, NaN and infinity leave the value and the signal alone.
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), 3.0));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), "abc"));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), std::numeric_limits<double>::quiet_NaN()));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), std::numeric_limits<double>::infinity()));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), "NaN"));
+        QCOMPARE(*m.tagAt(0).quickA, 3.0);
+        QCOMPARE(edited.size(), 5);
+    }
+
+    void quickCellsRefreshWithWritable()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = makeTag(1, "w", Area::HoldingRegister, 0, true);
+        w.quickA = 5.0;
+        m.setTags({w}, 2);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+
+        // True when some dataChanged covers row 0 from QuickA through QuickB.
+        auto coversQuick = [&changed] {
+            for (const auto &args : changed) {
+                const auto tl = args.at(0).value<QModelIndex>();
+                const auto br = args.at(1).value<QModelIndex>();
+                if (tl.row() == 0 && br.row() == 0 && tl.column() <= int(C::QuickA)
+                    && br.column() >= int(C::QuickB))
+                    return true;
+            }
+            return false;
+        };
+
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(coversQuick());
+        QVERIFY(!(m.flags(ix(m, 0, C::QuickA)) & Qt::ItemIsEditable));
+        // The value stays stored; it is just not writable any more.
+        QCOMPARE(m.data(ix(m, 0, C::QuickA)).toString(), QString("5"));
+
+        changed.clear();
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(coversQuick());
+        QVERIFY(m.flags(ix(m, 0, C::QuickA)) & Qt::ItemIsEditable);
+
+        // Moving the writable tag to an input register clears Writable and refreshes Quick.
+        changed.clear();
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(coversQuick());
+        QVERIFY(!(m.flags(ix(m, 0, C::QuickB)) & Qt::ItemIsEditable));
+    }
+
     // Regression: a pick in the Type combo must be applied and the editor closed right away;
     // an open editor showed the new value over the cell's old one.
     void comboPickCommitsAndClosesEditor()

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace mb {
 namespace {
@@ -86,9 +87,49 @@ bool readBool(const QJsonObject &obj, const QString &key, const QString &prefix,
     return true;
 }
 
+// Optional finite number. A missing key or null means "no value" (empty optional).
+bool readOptionalNumber(const QJsonObject &obj, const QString &key, const QString &prefix,
+                        std::optional<double> &out, QString *error)
+{
+    const QJsonValue value = obj.value(key);
+    if (value.isUndefined() || value.isNull()) {
+        out.reset();
+        return true;
+    }
+    if (!value.isDouble() || !std::isfinite(value.toDouble())) {
+        setError(error, QStringLiteral("\"%1%2\" must be a number").arg(prefix, key));
+        return false;
+    }
+    out = value.toDouble();
+    return true;
+}
+
 QString areaName(Area area)
 {
     return area == Area::InputRegister ? QStringLiteral("input") : QStringLiteral("holding");
+}
+
+QString axisName(YAxis axis)
+{
+    return axis == YAxis::Right ? QStringLiteral("right") : QStringLiteral("left");
+}
+
+bool readAxis(const QJsonObject &obj, const QString &prefix, YAxis &out, QString *error)
+{
+    const QString key = QStringLiteral("axis");
+    if (!obj.contains(key))
+        return true;
+    const QString text = obj.value(key).toString();
+    if (text == QStringLiteral("left")) {
+        out = YAxis::Left;
+    } else if (text == QStringLiteral("right")) {
+        out = YAxis::Right;
+    } else {
+        setError(error, QStringLiteral("\"%1axis\" has unknown value \"%2\" (expected \"left\" or \"right\")")
+                            .arg(prefix, text));
+        return false;
+    }
+    return true;
 }
 
 QString valueTypeName(ValueType type)
@@ -233,7 +274,10 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         || !readString(obj, QStringLiteral("color"), prefix, tag.color, error)
         || !readBool(obj, QStringLiteral("plotted"), prefix, tag.plotted, error)
         || !readBool(obj, QStringLiteral("writable"), prefix, tag.writable, error)
-        || !readBool(obj, QStringLiteral("analyzed"), prefix, tag.analyzed, error)) {
+        || !readBool(obj, QStringLiteral("analyzed"), prefix, tag.analyzed, error)
+        || !readAxis(obj, prefix, tag.axis, error)
+        || !readOptionalNumber(obj, QStringLiteral("quickA"), prefix, tag.quickA, error)
+        || !readOptionalNumber(obj, QStringLiteral("quickB"), prefix, tag.quickB, error)) {
         return false;
     }
     tag.address = static_cast<quint16>(address);
@@ -343,6 +387,10 @@ bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error
         return false;
     if (!readBool(obj, QStringLiteral("detailedLabels"), prefix, out.detailedLabels, error))
         return false;
+    if (!readBool(obj, QStringLiteral("showModel"), prefix, out.showModel, error))
+        return false;
+    if (!readBool(obj, QStringLiteral("guideLines"), prefix, out.guideLines, error))
+        return false;
     return true;
 }
 
@@ -362,7 +410,7 @@ QByteArray projectToJson(const Project &project)
 
     QJsonArray tags;
     for (const Tag &tag : project.tags) {
-        const QJsonObject obj{
+        QJsonObject obj{
             {QStringLiteral("id"), static_cast<qint64>(tag.id)},
             {QStringLiteral("name"), tag.name},
             {QStringLiteral("area"), areaName(tag.area)},
@@ -376,7 +424,13 @@ QByteArray projectToJson(const Project &project)
             {QStringLiteral("plotted"), tag.plotted},
             {QStringLiteral("writable"), tag.writable},
             {QStringLiteral("analyzed"), tag.analyzed},
+            {QStringLiteral("axis"), axisName(tag.axis)},
         };
+        // Quick values are written only when set.
+        if (tag.quickA)
+            obj.insert(QStringLiteral("quickA"), *tag.quickA);
+        if (tag.quickB)
+            obj.insert(QStringLiteral("quickB"), *tag.quickB);
         tags.append(obj);
     }
 
@@ -394,6 +448,8 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("deltaCoTag"), static_cast<qint64>(a.deltaCoTagId)},
         {QStringLiteral("deltaCo"), a.manualDeltaCo},
         {QStringLiteral("detailedLabels"), a.detailedLabels},
+        {QStringLiteral("showModel"), a.showModel},
+        {QStringLiteral("guideLines"), a.guideLines},
     };
 
     const QJsonObject root{
