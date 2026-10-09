@@ -17,7 +17,8 @@ inline constexpr int kProjectFormatVersion = 1;
 ///
 /// {
 ///   "format": "modbus-control-project", "version": 1,
-///   "connection": { "host": "...", "port": 502, "unitId": 1, "timeoutMs": 1000, "pollPeriodMs": 500 },
+///   "connection": { "host": "...", "port": 502, "unitId": 1, "timeoutMs": 1000, "pollPeriodMs": 500,
+///                   "singleRegisterWrites": false },
 ///   "nextTagId": 4,
 ///   "tags": [ { "id": 1, "name": "...", "area": "holding"|"input", "address": 0,
 ///               "type": "int16"|"uint16"|"int32"|"uint32"|"float32",

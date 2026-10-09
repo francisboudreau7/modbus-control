@@ -52,7 +52,9 @@ public slots:
     /// Starts a new time base: t restarts at 0 and timeBaseReset() is emitted.
     void resetTimeBase();
     /// Queues a write of consecutive holding registers starting at `address`;
-    /// 1 value -> FC06, more -> FC16. Answered by writeFinished(requestId, ...).
+    /// 1 value -> FC06, more -> FC16, or one FC06 per register (ascending addresses, stop
+    /// at the first failure) when ConnectionSettings::singleRegisterWrites is set.
+    /// Answered by exactly one writeFinished(requestId, ...).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
 
 signals:

@@ -62,13 +62,9 @@ struct Tag {
     QString unit;
     QString color = QStringLiteral("#1f77b4"); ///< "#RRGGBB"
     bool plotted = true;
-    bool writable = false; ///< only meaningful for 16-bit Area::HoldingRegister tags
+    bool writable = false; ///< only meaningful for Area::HoldingRegister tags
 
-    /// 32-bit tags are read-only for now.
-    bool isWritable() const
-    {
-        return writable && area == Area::HoldingRegister && registerCount(type) == 1;
-    }
+    bool isWritable() const { return writable && area == Area::HoldingRegister; }
     /// Last register used by the tag; a 2-register tag at address 65535 does not fit.
     bool fitsAddressSpace() const { return int(address) + registerCount(type) <= 65536; }
     friend bool operator==(const Tag &, const Tag &) = default;
