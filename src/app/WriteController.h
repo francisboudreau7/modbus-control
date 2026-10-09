@@ -11,6 +11,7 @@
 #include <optional>
 
 class QWidget;
+class TstQuickWrite; // test access to the prompt hooks
 
 namespace mb {
 
@@ -65,7 +66,18 @@ signals:
     void message(const QString &text);
 
 private:
+    friend class ::TstQuickWrite;
+
+    /// Answer of the quick-write confirmation dialog.
+    struct QuickAnswer {
+        bool confirmed = false;
+        bool dontAskAgain = false;
+    };
+    /// Shared by requestWrite (quick = false) and requestQuickWrite (quick = true).
+    void writeValue(TagId id, double scaledValue, bool quick);
+
     // Prompts are replaceable (tests); defaults are the real dialogs.
+    std::function<QuickAnswer(const QString &question)> m_quickConfirmPrompt;
     std::function<bool(const QString &question)> m_confirm;
     std::function<std::optional<QList<double>>(const QList<Tag> &, const QList<double> &current)> m_askValues;
     std::function<void(const QString &)> m_warn;

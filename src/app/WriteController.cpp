@@ -3,6 +3,7 @@
 #include "TagCodec.h"
 #include "TagTableModel.h"
 
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleValidator>
@@ -107,6 +108,15 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
                                      QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
                == QMessageBox::Yes;
     };
+    m_quickConfirmPrompt = [this](const QString &question) {
+        QMessageBox box(QMessageBox::Question, tr("Confirm write"), question,
+                        QMessageBox::Yes | QMessageBox::No, m_dialogParent);
+        box.setDefaultButton(QMessageBox::No);
+        QCheckBox dontAsk(tr("Don't ask again this session"));
+        box.setCheckBox(&dontAsk);
+        const bool yes = box.exec() == QMessageBox::Yes;
+        return QuickAnswer{yes, yes && dontAsk.isChecked()};
+    };
     m_warn = [this](const QString &text) {
         QMessageBox::warning(m_dialogParent, tr("Write"), text);
     };
@@ -123,6 +133,11 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
 }
 
 void WriteController::requestWrite(TagId id, double scaledValue)
+{
+    writeValue(id, scaledValue, false);
+}
+
+void WriteController::writeValue(TagId id, double scaledValue, bool quick)
 {
     if (!m_connected) {
         emit message(tr("Not connected — cannot write."));
@@ -148,10 +163,20 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     const QString typeInfo = registerCount(tag.type) == 2
         ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
         : QString();
-    if (!m_confirm(tr("Write %1%2 (raw %3) to %4 '%5'%6?")
-                       .arg(valueText(scaledValue), unit, rawText(tag, *raw), registerRange(tag, base),
-                            tag.name, typeInfo)))
+    const QString question = tr("Write %1%2 (raw %3) to %4 '%5'%6?")
+                                 .arg(valueText(scaledValue), unit, rawText(tag, *raw),
+                                      registerRange(tag, base), tag.name, typeInfo);
+    if (quick) {
+        if (m_quickConfirm) {
+            const QuickAnswer answer = m_quickConfirmPrompt(question);
+            if (!answer.confirmed)
+                return;
+            if (answer.dontAskAgain)
+                setQuickConfirm(false);
+        }
+    } else if (!m_confirm(question)) {
         return;
+    }
 
     // The connection may have dropped while the dialog was open.
     if (!m_connected) {
@@ -306,10 +331,9 @@ void WriteController::setConnected(bool connected)
         m_pending.clear();
 }
 
-// Stubs created by T100; implemented by T107.
 void WriteController::requestQuickWrite(mb::TagId id, double scaledValue)
 {
-    requestWrite(id, scaledValue);
+    writeValue(id, scaledValue, true);
 }
 
 void WriteController::setQuickConfirm(bool on)
