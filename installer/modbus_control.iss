@@ -51,7 +51,7 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 ; Everything CMake installed (bin\, share\, licenses\).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Sample project, documentation and readme from the repository.
-Source: "{#RepoDir}\examples\demo.mbproj"; DestDir: "{app}\examples"; Flags: ignoreversion
+Source: "{#RepoDir}\examples\*.mbproj"; DestDir: "{app}\examples"; Flags: ignoreversion
 Source: "{#RepoDir}\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RepoDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 

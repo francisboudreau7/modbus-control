@@ -51,7 +51,7 @@ Default folder: `{autopf}\Modbus Control`. For a per-user install this is
 bin\                       modbus_control.exe, modbus_test_server.exe, DLLs, Qt plugins
 share\modbus-control\      server.example.json
 licenses\                  third-party license texts
-examples\demo.mbproj       demo project
+examples\*.mbproj         demo project and ABB CM50 example
 docs\                      USER_GUIDE.md, TEST_SERVER.md
 README.md
 unins000.exe               uninstaller

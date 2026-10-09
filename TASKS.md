@@ -165,7 +165,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** nothing. T72 merged (fbccf8c): 1-based numbering, FC06-only checkbox, CM50 guide and `examples/cm50.mbproj`.
+**In progress:** nothing. Version bumped to 1.0.0 (e3e6582); tag-table editors made opaque (user-reported overlap bug, awaiting user confirmation in the real app); installer `outinstallerModbusControl-1.0.0-setup.exe` built and install-tested (ships both example projects). Waiting for the user to confirm the fix and approve publishing the release.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
