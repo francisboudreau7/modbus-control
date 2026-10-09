@@ -138,6 +138,10 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (role == Qt::CheckStateRole)
             return t.plotted ? Qt::Checked : Qt::Unchecked;
         break;
+    case Analyze:
+        if (role == Qt::CheckStateRole)
+            return t.analyzed ? Qt::Checked : Qt::Unchecked;
+        break;
     case Color:
         if (disp || edit) return t.color;
         if (role == Qt::DecorationRole) return QColor(t.color);
@@ -184,7 +188,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     Tag &t = m_tags[index.row()];
     const int col = index.column();
 
-    if (col == Writable || col == Plot) {
+    if (col == Writable || col == Plot || col == Analyze) {
         if (role != Qt::CheckStateRole)
             return false;
         const bool on = value.toInt() == Qt::Checked;
@@ -192,8 +196,10 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             if (on && t.area == mb::Area::InputRegister)
                 return false;
             t.writable = on;
-        } else {
+        } else if (col == Plot) {
             t.plotted = on;
+        } else {
+            t.analyzed = on;
         }
         emit dataChanged(index, index, {Qt::CheckStateRole});
         emit tagsEdited();
@@ -314,6 +320,7 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
             f &= ~Qt::ItemFlags(Qt::ItemIsEnabled);
         break;
     case Plot:
+    case Analyze:
         f |= Qt::ItemIsUserCheckable;
         break;
     case ByteOrder:
@@ -350,6 +357,8 @@ QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) con
         if (role == Qt::ToolTipRole && section == Type)
             return tr("Value type. int16 and uint16 use one register. int32, uint32 and float32 "
                       "use two consecutive registers.");
+        if (role == Qt::ToolTipRole && section == Analyze)
+            return tr("Show this tag in the Analysis tab");
         if (role == Qt::ToolTipRole && section == ByteOrder)
             return tr("Byte order of 32-bit values. A is the most significant byte. ABCD is big "
                       "endian: register n holds A B and register n+1 holds C D. Only used by "

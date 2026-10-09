@@ -116,6 +116,12 @@ private slots:
     void addressBaseDefaultsToZero();
     void addressBaseAlwaysWritten();
     void exampleProjectsLoad();
+    void analyzedAndAnalysisRoundTrip();
+    void analysisDefaultsWhenMissing();
+    void analysisAlwaysWritten();
+    void analysisBoundariesAccepted();
+    void analysisRejected_data();
+    void analysisRejected();
 };
 
 void TstProjectIO::roundTrip()
@@ -647,6 +653,149 @@ void TstProjectIO::exampleProjectsLoad()
     QCOMPARE(cm50->tags.at(0).name, QStringLiteral("Loop 1 Process Variable"));
     QCOMPARE(int(cm50->tags.at(0).address) + cm50->addressBase, 5009);
     QCOMPARE(int(cm50->tags.at(0).address), 5008);
+}
+
+void TstProjectIO::analyzedAndAnalysisRoundTrip()
+{
+    Project original = sampleProject();
+    original.tags[0].analyzed = true;
+    original.tags[1].analyzed = false;
+    original.tags[3].analyzed = true;
+    original.analysis.percents = {0.0, 10.0, 63.2, 100.0};
+    original.analysis.reference = ReferenceMode::WindowMean;
+    original.analysis.referenceWindowS = 2.5;
+    original.analysis.smoothingS = 3.0;
+    original.analysis.modelPercentA = 10.0;
+    original.analysis.modelPercentB = 90.0;
+    original.analysis.deltaCoTagId = 2;
+    original.analysis.manualDeltaCo = -1.5;
+
+    const QByteArray data = projectToJson(original);
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(data, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, original);
+    QVERIFY(loaded->tags[0].analyzed);
+    QVERIFY(!loaded->tags[1].analyzed);
+    QVERIFY(loaded->tags[3].analyzed);
+
+    // The cursor reference and the typed-ΔCO default also survive a round trip.
+    Project cursorMode = sampleProject();
+    cursorMode.analysis.deltaCoTagId = 0;
+    const auto again = projectFromJson(projectToJson(cursorMode), &error);
+    QVERIFY2(again.has_value(), qPrintable(error));
+    QCOMPARE(again->analysis.reference, ReferenceMode::CursorValue);
+    QCOMPARE(*again, cursorMode);
+}
+
+void TstProjectIO::analysisDefaultsWhenMissing()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"analyzed":true},{"id":2}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->analysis, AnalysisSettings{});
+    QVERIFY(project->tags.at(0).analyzed);
+    QVERIFY(!project->tags.at(1).analyzed);
+}
+
+void TstProjectIO::analysisAlwaysWritten()
+{
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(Project{})).object();
+    QVERIFY(root.value(QStringLiteral("analysis")).isObject());
+    const QJsonObject analysis = root.value(QStringLiteral("analysis")).toObject();
+    for (const char *key : {"percents", "reference", "referenceWindowS", "smoothingS",
+                            "modelPercents", "deltaCoTag", "deltaCo"})
+        QVERIFY2(analysis.contains(QString::fromLatin1(key)), key);
+    QCOMPARE(analysis.value(QStringLiteral("reference")).toString(), QStringLiteral("cursor"));
+    QCOMPARE(analysis.value(QStringLiteral("percents")).toArray().size(), qsizetype(2));
+    QCOMPARE(analysis.value(QStringLiteral("modelPercents")).toArray().size(), qsizetype(2));
+
+    Project withTag;
+    Tag t;
+    t.id = 1;
+    withTag.tags.append(t);
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(withTag)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    const QJsonObject tag = tags.at(0).toObject();
+    QVERIFY(tag.contains(QStringLiteral("analyzed")));
+    QCOMPARE(tag.value(QStringLiteral("analyzed")).toBool(), false);
+}
+
+void TstProjectIO::analysisBoundariesAccepted()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "analysis":{
+            "percents":[0,100,0,100,0,100,0,100,0,100,0,100,0,100,0,100,0,100,0,100],
+            "reference":"mean","referenceWindowS":3600,"smoothingS":0,
+            "modelPercents":[0,99.9],"deltaCoTag":2147483647,"deltaCo":-0.25
+        }
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->analysis.percents.size(), qsizetype(20));
+    QCOMPARE(project->analysis.reference, ReferenceMode::WindowMean);
+    QCOMPARE(project->analysis.referenceWindowS, 3600.0);
+    QCOMPARE(project->analysis.smoothingS, 0.0);
+    QCOMPARE(project->analysis.modelPercentA, 0.0);
+    QCOMPARE(project->analysis.modelPercentB, 99.9);
+    QCOMPARE(project->analysis.deltaCoTagId, TagId(2147483647));
+    QCOMPARE(project->analysis.manualDeltaCo, -0.25);
+
+    const auto empty = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"analysis":{"percents":[],"smoothingS":3600}
+    })"), &error);
+    QVERIFY2(empty.has_value(), qPrintable(error));
+    QVERIFY(empty->analysis.percents.isEmpty());
+    QCOMPARE(empty->analysis.smoothingS, 3600.0);
+}
+
+void TstProjectIO::analysisRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("fragment");
+
+    const QByteArray head = R"({"format":"modbus-control-project","version":1,"analysis":)";
+    QTest::newRow("percents 101")
+        << head + R"({"percents":[101]}})" << QStringLiteral("analysis.percents");
+    QTest::newRow("21 percents")
+        << head + R"({"percents":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}})"
+        << QStringLiteral("analysis.percents");
+    QTest::newRow("percents not an array")
+        << head + R"({"percents":5}})" << QStringLiteral("analysis.percents");
+    QTest::newRow("reference foo")
+        << head + R"({"reference":"foo"}})" << QStringLiteral("analysis.reference");
+    QTest::newRow("referenceWindowS 0")
+        << head + R"({"referenceWindowS":0}})" << QStringLiteral("analysis.referenceWindowS");
+    QTest::newRow("referenceWindowS above 3600")
+        << head + R"({"referenceWindowS":3600.5}})" << QStringLiteral("analysis.referenceWindowS");
+    QTest::newRow("smoothingS -1")
+        << head + R"({"smoothingS":-1}})" << QStringLiteral("analysis.smoothingS");
+    QTest::newRow("modelPercents a > b")
+        << head + R"({"modelPercents":[63.2,0]}})" << QStringLiteral("analysis.modelPercents");
+    QTest::newRow("modelPercents three entries")
+        << head + R"({"modelPercents":[0,50,60]}})" << QStringLiteral("analysis.modelPercents");
+    QTest::newRow("modelPercents b = 100")
+        << head + R"({"modelPercents":[0,100]}})" << QStringLiteral("analysis.modelPercents");
+    QTest::newRow("deltaCoTag -1")
+        << head + R"({"deltaCoTag":-1}})" << QStringLiteral("analysis.deltaCoTag");
+    QTest::newRow("deltaCo as string")
+        << head + R"({"deltaCo":"1.5"}})" << QStringLiteral("analysis.deltaCo");
+    QTest::newRow("analysis not an object")
+        << head + R"([]})" << QStringLiteral("\"analysis\" must be an object");
+}
+
+void TstProjectIO::analysisRejected()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, fragment);
+    QString error;
+    const auto project = projectFromJson(text, &error);
+    QVERIFY(!project.has_value());
+    QVERIFY2(error.contains(fragment), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)
