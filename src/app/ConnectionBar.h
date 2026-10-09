@@ -47,6 +47,8 @@ signals:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    void updateButton();
+
     ConnectionState m_state = ConnectionState::Disconnected;
     QLabel *m_led = nullptr;
     QLineEdit *m_host = nullptr;
