@@ -7,6 +7,9 @@
 #include <QList>
 #include <QObject>
 
+#include <functional>
+#include <optional>
+
 class QWidget;
 
 namespace mb {
@@ -45,7 +48,11 @@ signals:
     void message(const QString &text);
 
 private:
-    // Implementation-defined; the task may change the private section freely.
+    // Prompts are replaceable (tests); defaults are the real dialogs.
+    std::function<bool(const QString &question)> m_confirm;
+    std::function<std::optional<QList<double>>(const QList<Tag> &, const QList<double> &current)> m_askValues;
+    std::function<void(const QString &)> m_warn;
+
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
     bool m_connected = false;
