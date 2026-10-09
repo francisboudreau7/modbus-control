@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
+#include <QWidget>
 
 class QwtPlot;
 class QwtPlotMarker;
@@ -20,6 +22,7 @@ class PlotCursors : public QObject
     Q_OBJECT
 public:
     explicit PlotCursors(QwtPlot *plot); ///< parent = plot
+    ~PlotCursors() override;
 
     bool hasC1() const;
     bool hasC2() const;
@@ -44,12 +47,26 @@ signals:
     /// The user placed or dragged a cursor (the trend pauses auto-scroll on this).
     void interacted();
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 private:
-    // Implementation-defined; the task may change the private section freely.
+    void setMarker(int which, double t);
+    int markerAt(double px) const;
+    void updateHoverCursor(bool near);
+
     QwtPlot *m_plot = nullptr;
+    QPointer<QWidget> m_canvas;
     QwtPlotMarker *m_c1 = nullptr;
     QwtPlotMarker *m_c2 = nullptr;
+    bool m_has1 = false;
+    bool m_has2 = false;
+    bool m_visible = true;
     bool m_placing = false;
+    int m_placeStep = 0;
+    int m_drag = 0; ///< 0 none, 1 = C1, 2 = C2
+    bool m_swallowRelease = false;
+    bool m_cursorShown = false;
 };
 
 } // namespace mb
