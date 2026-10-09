@@ -125,3 +125,14 @@ Wave 1 ordering: T10, T11, T14, T15, T16 and T17 run in parallel with T12. T18 s
 
 The critical path is T01 → T02 → T15/T20 → T21 → T34 → T40 → T41 → T43/T44 → T51/T54, which
 puts most of the risk in Sonnet's tasks.
+
+### Wave 6 — 32-bit encodings (added on request)
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| — | Contracts: `ValueType` Int32/UInt32/Float32, `ByteOrder`, `registerCount`, `Tag::byteOrder`; `combineRegisters`/`decodeValue(quint32)`; `TagSample.raw` 32-bit; server `RegisterFormat`/`WordOrder`/`encodeRegisters` | O | — | core + server headers, TagCodec.cpp | Builds |
+| T60 | Codec tests for all byte orders; project file `type`/`byteOrder` keys | H | contracts | tests, ProjectIO.cpp | Tests pass |
+| T61 | Planner never splits 2-register tags; poller decodes them | S | contracts | BlockPlanner.cpp, PollWorker.cpp, tests | Tests pass incl. integration |
+| T62 | Test server publishes int32/float32 in any byte order; defaults IR20–25 | H | contracts | server/*.cpp, tests, docs | Tests pass |
+| T63 | Tag table Byte order column, new types, demo tags, docs | H | contracts | TagTableModel/Widget, AppController, docs | Tests pass |
+| T64 | Integration test: float32 ABCD/CDAB and int32 read from the server match the expected signal | S | T61, T62 | tests/tst_integration.cpp | Passes 10x |

@@ -15,7 +15,7 @@ cursors, can export the graph as an image or the data as CSV, and ships with a t
 | Modbus library | libmodbus (GitHub source, built through vcpkg), linked dynamically (LGPL 2.1) |
 | Transport | Modbus TCP only |
 | Devices | One server at a time (IP, port, unit ID) |
-| Data | Holding registers (FC03 read, FC06/FC16 write) and input registers (FC04), int16/uint16 with gain/offset scaling |
+| Data | Holding registers (FC03 read, FC06/FC16 write) and input registers (FC04), int16/uint16, plus read-only int32/uint32/float32 over 2 registers with per-tag byte order (ABCD, CDAB, BADC, DCBA), all with gain/offset scaling |
 | Graph | Live time trend, polling every 100 ms or slower, up to about 1 h of history in memory |
 | Cursors | Two vertical cursors with t1, t2, Δt, 1/Δt and, per series, Y@C1, Y@C2, ΔY |
 | Exports | PNG (plus SVG/PDF) of the plot; CSV of recorded data |
