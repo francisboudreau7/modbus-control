@@ -75,9 +75,26 @@ private slots:
                            "Lag [degC],63.2,22.64,22.6,14.5,4.5\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,,,\r\n");
         QCOMPARE(run({validLag()}, headers), expected);
+    }
+
+    void fitColumnsPresent()
+    {
+        const QHash<TagId, QString> headers{{1, QStringLiteral("Lag [degC]")}};
+        StepResult r = validLag();
+        r.fitRms = 0.12;
+        r.fitRmsPercent = 0.6;
+        const QString expected =
+            QStringLiteral("tag,percent,target,measured,time_s,time_from_c1_s\r\n"
+                           "Lag [degC],0,10,10.02,12.25,2.25\r\n"
+                           "Lag [degC],63.2,22.64,22.6,14.5,4.5\r\n"
+                           "\r\n"
+                           "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,0.12,0.6,\r\n");
+        QCOMPARE(run({r}, headers), expected);
     }
 
     void notFoundSetpoint()
@@ -90,8 +107,8 @@ private slots:
                            "Lag [degC],50,20,,,\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,,,\r\n");
         QCOMPARE(run({r}, headers), expected);
     }
 
@@ -109,8 +126,8 @@ private slots:
             QStringLiteral("tag,percent,target,measured,time_s,time_from_c1_s\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "Lag [degC],10,30,,,,,,,,,No data at C1\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "Lag [degC],10,30,,,,,,,,,,,No data at C1\r\n");
         QCOMPARE(run({r}, headers), expected);
     }
 
@@ -122,8 +139,8 @@ private slots:
                            "Tag 7,63.2,22.64,22.6,14.5,4.5\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "Tag 7,10,30,10,30,20,10,10,2,2.35,2.01,\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "Tag 7,10,30,10,30,20,10,10,2,2.35,2.01,,,\r\n");
         QCOMPARE(run({validLag(7)}, {}), expected);
     }
 
@@ -139,8 +156,8 @@ private slots:
                            "\"Flow, \"\"A\"\"\",0,10,10,12.5,2.5\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "\"Flow, \"\"A\"\"\",10,30,10,30,20,,10,,2.35,2.01,\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "\"Flow, \"\"A\"\"\",10,30,10,30,20,,10,,2.35,2.01,,,\r\n");
         QCOMPARE(run({r}, headers), expected);
     }
 
@@ -156,8 +173,8 @@ private slots:
                            "Lag [degC];0;10;10;12.5;2.5\r\n"
                            "\r\n"
                            "tag;c1_s;c2_s;y0;y100;delta_pv;delta_co;step_time_s;gain_k;"
-                           "dead_time_l_s;time_constant_t_s;note\r\n"
-                           "Lag [degC];10;30;10;30;20;;10;;2.35;2.01;\r\n");
+                           "dead_time_l_s;time_constant_t_s;fit_rms;fit_rms_percent;note\r\n"
+                           "Lag [degC];10;30;10;30;20;;10;;2.35;2.01;;;\r\n");
         QCOMPARE(run({r}, headers, u';'), expected);
     }
 
@@ -167,7 +184,7 @@ private slots:
             QStringLiteral("tag,percent,target,measured,time_s,time_from_c1_s\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n");
         QCOMPARE(run({}, {}), expected);
     }
 
@@ -189,8 +206,8 @@ private slots:
                            "x,0.1,-2.5,1e-07,0.1,0\r\n"
                            "\r\n"
                            "tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,"
-                           "dead_time_l_s,time_constant_t_s,note\r\n"
-                           "x,0.1,1e-07,-2.5,0.1,2.6,,0.1,,,,\r\n");
+                           "dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note\r\n"
+                           "x,0.1,1e-07,-2.5,0.1,2.6,,0.1,,,,,,\r\n");
         QCOMPARE(run({r}, headers), expected);
     }
 

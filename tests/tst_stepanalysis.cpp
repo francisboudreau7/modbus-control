@@ -720,6 +720,87 @@ private slots:
         QVERIFY(r.valid);
         QVERIFY(!r.deadTime.has_value());
         QVERIFY(!r.timeConstant.has_value());
+        QVERIFY(!r.fitRms.has_value());
+        QVERIFY(!r.fitRmsPercent.has_value());
+    }
+
+    // ---- fopdtModelValue ----------------------------------------------------------------
+    void model_valueOnHandBuiltResult()
+    {
+        StepResult r;
+        r.valid = true;
+        r.y0 = 10.0;
+        r.deltaPv = 20.0;
+        r.stepTime = 10.0;
+        r.deadTime = 1.5;
+        r.timeConstant = 4.0;
+        // Before and at stepTime + L the model sits at y0.
+        QCOMPARE(fopdtModelValue(r, 5.0), 10.0);
+        QCOMPARE(fopdtModelValue(r, 10.0), 10.0);
+        QCOMPARE(fopdtModelValue(r, 11.5), 10.0);
+        // One time constant after stepTime + L: 63.2 % of the change.
+        QVERIFY(near(fopdtModelValue(r, 11.5 + 4.0), 10.0 + 20.0 * (1.0 - std::exp(-1.0)), 1e-9));
+        QVERIFY(near(fopdtModelValue(r, 11.5 + 4.0), 22.6424, 1e-4));
+        // Far after the step it settles at y100.
+        QVERIFY(near(fopdtModelValue(r, 200.0), 30.0, 1e-9));
+        // Falling step.
+        r.y0 = 30.0;
+        r.deltaPv = -20.0;
+        QVERIFY(near(fopdtModelValue(r, 11.5 + 4.0), 30.0 - 20.0 * (1.0 - std::exp(-1.0)), 1e-9));
+        QVERIFY(near(fopdtModelValue(r, 200.0), 10.0, 1e-9));
+    }
+
+    void model_nanWithoutModel()
+    {
+        StepResult r;
+        r.valid = true;
+        r.y0 = 10.0;
+        r.deltaPv = 20.0;
+        r.stepTime = 10.0;
+        r.deadTime = 1.5;
+        r.timeConstant = 4.0;
+        QVERIFY(!std::isnan(fopdtModelValue(r, 15.0)));
+
+        StepResult invalid = r;
+        invalid.valid = false;
+        QVERIFY(std::isnan(fopdtModelValue(invalid, 15.0)));
+
+        StepResult noDead = r;
+        noDead.deadTime.reset();
+        QVERIFY(std::isnan(fopdtModelValue(noDead, 15.0)));
+
+        StepResult noTau = r;
+        noTau.timeConstant.reset();
+        QVERIFY(std::isnan(fopdtModelValue(noTau, 15.0)));
+    }
+
+    void analyze_fitRmsCleanAndNoisy()
+    {
+        // Clean data: the model reproduces the response almost exactly.
+        const Recorder clean = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const StepResult c = analyzeStep(clean, kPv, 9.0, 60.0, s);
+        QVERIFY(c.valid);
+        QVERIFY(c.fitRms.has_value());
+        QVERIFY(c.fitRmsPercent.has_value());
+        QVERIFY2(*c.fitRms < 0.01 * std::abs(c.deltaPv), qPrintable(QString::number(*c.fitRms)));
+        QVERIFY(near(*c.fitRmsPercent, *c.fitRms / std::abs(c.deltaPv) * 100.0, 1e-9));
+
+        // Noisy data (sigma 0.2): the residual is about the noise standard deviation.
+        const Recorder noisy = makeProcess(60.0, 1, 0.2, 12345);
+        AnalysisSettings n;
+        n.reference = ReferenceMode::WindowMean;
+        n.referenceWindowS = 1.0;
+        n.smoothingS = 1.0;
+        n.modelPercentA = 10.0;
+        n.modelPercentB = 63.2;
+        n.deltaCoTagId = kCo;
+        const StepResult nr = analyzeStep(noisy, kPv, 9.0, 60.0, n);
+        QVERIFY2(nr.valid, qPrintable(nr.error));
+        QVERIFY(nr.fitRms.has_value());
+        QVERIFY2(near(*nr.fitRms, 0.2, 0.2 * 0.3), qPrintable(QString::number(*nr.fitRms)));
+        QVERIFY(near(*nr.fitRmsPercent, *nr.fitRms / std::abs(nr.deltaPv) * 100.0, 1e-9));
     }
 };
 

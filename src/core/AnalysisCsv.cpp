@@ -103,14 +103,15 @@ bool exportAnalysisCsv(QIODevice &out, const QList<StepResult> &results,
                      QStringLiteral("y0"), QStringLiteral("y100"), QStringLiteral("delta_pv"),
                      QStringLiteral("delta_co"), QStringLiteral("step_time_s"),
                      QStringLiteral("gain_k"), QStringLiteral("dead_time_l_s"),
-                     QStringLiteral("time_constant_t_s"), QStringLiteral("note")},
+                     QStringLiteral("time_constant_t_s"), QStringLiteral("fit_rms"),
+                     QStringLiteral("fit_rms_percent"), QStringLiteral("note")},
                     delimiter);
     for (const StepResult &result : results) {
         const QString tag = tagName(tagHeaders, result.tagId);
         const QString t1 = formatValue(result.t1);
         const QString t2 = formatValue(result.t2);
         if (!result.valid) {
-            text += joinRow({tag, t1, t2, {}, {}, {}, {}, {}, {}, {}, {}, result.error},
+            text += joinRow({tag, t1, t2, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, result.error},
                             delimiter);
             continue;
         }
@@ -118,6 +119,7 @@ bool exportAnalysisCsv(QIODevice &out, const QList<StepResult> &results,
                          formatValue(result.deltaPv), formatOptional(result.deltaCo),
                          formatValue(result.stepTime), formatOptional(result.gain),
                          formatOptional(result.deadTime), formatOptional(result.timeConstant),
+                         formatOptional(result.fitRms), formatOptional(result.fitRmsPercent),
                          QString()},
                         delimiter);
     }
