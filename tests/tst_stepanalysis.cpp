@@ -681,6 +681,35 @@ private slots:
         QVERIFY(near(in2->delta, 10.0, 1e-12));
     }
 
+    // Regression: with "Value at cursor" the 0 % level is the sample at or before C1. When
+    // every later baseline sample sits slightly above it (noise, drift), 0 % must still be
+    // found — at that sample — instead of "not found".
+    void analyze_zeroPercentWhenBaselineStaysAboveCursorSample()
+    {
+        Recorder rec;
+        rec.append(batch(0.0, {good(kPv, 0.0)}));
+        for (int i = 1; i <= 5; ++i)
+            rec.append(batch(i / 10.0, {good(kPv, 0.2)}));
+        for (int i = 6; i <= 40; ++i)
+            rec.append(batch(i / 10.0, {good(kPv, 10.0)}));
+
+        AnalysisSettings s;
+        s.percents = {0.0};
+        StepResult r = analyzeStep(rec, kPv, 0.05, 4.0, s);
+        QVERIFY(r.valid);
+        QCOMPARE(r.y0, 0.0);
+        QVERIFY(r.setpoints.at(0).found);
+        QCOMPARE(r.setpoints.at(0).time, 0.0);
+
+        // Mean before cursor: the window before C1 is searched too.
+        s.reference = ReferenceMode::WindowMean;
+        s.referenceWindowS = 0.3;
+        r = analyzeStep(rec, kPv, 0.25, 4.0, s); // y0 = mean(0, 0.2, 0.2) ≈ 0.133
+        QVERIFY(r.valid);
+        QVERIFY(r.setpoints.at(0).found);
+        QVERIFY(r.setpoints.at(0).time <= 0.1 + 1e-9);
+    }
+
     void analyze_modelNeedsValidPercents()
     {
         const Recorder rec = makeProcess(60.0);

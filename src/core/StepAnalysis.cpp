@@ -27,6 +27,17 @@ Series extractRows(const Recorder &recorder, TagId tag, double t1, double t2)
     return s;
 }
 
+/// Start of the rows searched for crossings: the samples that define the 0 % level are
+/// included, so the 0 % point always has a sample at or before it (the one at C1 for
+/// CursorValue, the mean window [t1 - W, t1] for WindowMean).
+double searchStart(const Recorder &recorder, double t1, const AnalysisSettings &settings)
+{
+    if (settings.reference == ReferenceMode::WindowMean)
+        return t1 - settings.referenceWindowS;
+    const qsizetype row = recorder.rowAtOrBefore(t1);
+    return row >= 0 ? std::min(t1, recorder.timeAt(row)) : t1;
+}
+
 /// Series without its NaN samples.
 Series dropNaN(const QList<double> &times, const QList<double> &values)
 {
@@ -209,7 +220,7 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
     if (!y0 || !y100 || *y0 == *y100) {
         return std::nullopt;
     }
-    const Series rows = extractRows(recorder, coTag, t1, t2);
+    const Series rows = extractRows(recorder, coTag, searchStart(recorder, t1, settings), t2);
     const auto crossing = findCrossingTime(rows.t, rows.v, *y0, *y100, 50.0);
     if (!crossing) {
         return std::nullopt;
@@ -256,7 +267,7 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     r.y100 = *y100;
     r.deltaPv = r.y100 - r.y0;
 
-    const Series rows = extractRows(recorder, pvTag, t1, t2);
+    const Series rows = extractRows(recorder, pvTag, searchStart(recorder, t1, settings), t2);
     const Series raw = dropNaN(rows.t, rows.v);
     const QList<double> smooth = smoothValues(rows.t, rows.v, settings.smoothingS);
 

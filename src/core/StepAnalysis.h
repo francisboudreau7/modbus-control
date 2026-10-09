@@ -110,8 +110,11 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
                                           double t2, const AnalysisSettings &settings);
 
 /// Full analysis of `pvTag` between the cursors t1 and t2 (any order):
-/// - y0/y100 from referenceLevel() at t1/t2; the rows of [t1, t2] are smoothed with
-///   settings.smoothingS, then findCrossingTime() runs for every percent.
+/// - y0/y100 from referenceLevel() at t1/t2. The searched rows start at the samples that
+///   define y0 (CursorValue: the row at or before t1; WindowMean: t1 - W) and end at t2, so
+///   0 % is always found (at worst at the C1 sample, possibly slightly before t1). They are
+///   smoothed with settings.smoothingS, then findCrossingTime() runs for every percent.
+///   analyzeStepInput() searches the same way.
 /// - ΔCO: analyzeStepInput() when settings.deltaCoTagId != 0 and != pvTag (if that gives
 ///   nullopt there is no ΔCO; it does not fall back to manualDeltaCo); when deltaCoTagId == 0,
 ///   manualDeltaCo if nonzero. stepTime as documented in StepResult.
