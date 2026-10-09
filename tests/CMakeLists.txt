@@ -43,6 +43,7 @@ foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage)
   mc_add_qtest(${name} LIBS mbui)
   set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
     "QT_QPA_PLATFORM=set:offscreen"
+    "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts"
     "QT_PLUGIN_PATH=set:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}")
 endforeach()
 
