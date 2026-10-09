@@ -155,6 +155,7 @@ void AppController::wireConnection()
     connect(bar, &ConnectionBar::settingsEdited, this, [this] { setModified(true); });
 
     connect(m_worker, &PollWorker::stateChanged, this, [this](ConnectionState state, const QString &detail) {
+        m_state = state;
         m_window->connectionBar()->setState(state, detail);
         m_window->setConnectionStatus(state, detail);
         m_writes->setConnected(state == ConnectionState::Connected);
@@ -273,8 +274,18 @@ Project AppController::currentProject() const
     return p;
 }
 
+void AppController::disconnectForProjectChange()
+{
+    if (m_state == ConnectionState::Disconnected)
+        return;
+    // Same path as the Disconnect button.
+    QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);
+    m_window->showStatusMessage(QStringLiteral("Disconnected to load project"));
+}
+
 void AppController::applyProject(const Project &project)
 {
+    disconnectForProjectChange();
     m_window->connectionBar()->setSettings(project.connection);
     m_window->tagModel()->setTags(project.tags, project.nextTagId);
     pushTags();
@@ -318,6 +329,7 @@ void AppController::newProject()
 {
     if (!maybeSave())
         return;
+    disconnectForProjectChange();
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags({}, 1);
     pushTags();
