@@ -1,4 +1,4 @@
-# Modbus Control — Task Breakdown & Sub-agent Orchestration
+﻿# Modbus Control — Task Breakdown & Sub-agent Orchestration
 
 Companion to [PLAN.md](PLAN.md). Implementation has **not** started.
 
@@ -199,7 +199,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** Wave 9 (v1.2): T100 contracts merged; T101–T105, T107 running in parallel. **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
+**In progress:** Wave 9 (v1.2): T100–T105, T107 merged; T106 (Analysis view) next, then T108 (wiring), T109 (docs). **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
