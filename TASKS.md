@@ -27,8 +27,16 @@ Otherwise assign **Sonnet**.
 ## 2. Execution mechanics
 - **Git:** T01 runs `git init`. Every wave ends with a commit by the orchestrator.
 - **Parallel work:** tasks in the same wave run in parallel only if their file sets don't overlap.
-  Each runs as a background `Agent` with `isolation: "worktree"`. The orchestrator merges the
-  worktrees one by one and rebuilds after each merge.
+  The orchestrator creates one git worktree per task
+  (`..\modbus-control-wt\tNN`, branch `task/tNN`) and launches a background `Agent` confined to
+  it. The agent commits on its branch; the orchestrator merges branches one by one into `main`
+  and rebuilds after each merge. (The built-in `isolation: "worktree"` option could not be used
+  because the harness process does not see the newly installed git.)
+- **No CMake conflicts:** T02 pre-created every planned `.cpp` and test file as a stub and
+  registered them in CMake, so tasks normally edit only their own source and test files.
+- **Server code:** the server logic is a static library `mbsim` (`server/`) linked by both
+  `modbus_test_server` and the server unit tests. "Ramp" from PLAN.md is implemented as
+  `SignalKind::Triangle`.
 - **Sequential work:** dependent tasks run after their prerequisites merge.
 - **Prompt template** (filled in by the orchestrator for each task):
   1. Goal (1–2 sentences) and a link to the relevant PLAN.md section
