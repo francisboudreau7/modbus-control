@@ -119,6 +119,10 @@ TagTableWidget *MainWindow::tagTable() const { return m_tagTable; }
 TrendPlot *MainWindow::trendPlot() const { return m_trendPlot; }
 CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
+// Stubs created by T90; T96 builds the tab widget.
+AnalysisView *MainWindow::analysisView() const { return m_analysisView; }
+bool MainWindow::isAnalysisTabActive() const { return false; }
+void MainWindow::setAnalysisTabActive(bool) {}
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {

@@ -20,7 +20,9 @@ namespace mb {
 /// - ByteOrder: DisplayRole/EditRole "ABCD" | "CDAB" | "BADC" | "DCBA". For 16-bit tags the
 ///   display is an em dash, the cell is not editable and ToolTipRole explains why.
 /// - Gain (!= 0), Offset: double.
-/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers).
+/// - Writable, Plot, Analyze: CheckStateRole only (Writable is disabled for input registers).
+///   Analyze toggles Tag::analyzed (any tag, any area); like Plot it emits tagsEdited().
+///   ToolTipRole on its header: "Show this tag in the Analysis tab".
 /// - Color: DisplayRole "#RRGGBB", DecorationRole QColor, EditRole "#RRGGBB".
 /// - Raw: read-only, "0x%04X (%u)" for 16-bit tags, "0x%08X" for 32-bit tags, or empty.
 ///   Quality: read-only text, ForegroundRole colour (Good green, Unknown grey, others red);
@@ -34,7 +36,8 @@ class TagTableModel : public QAbstractTableModel
     Q_OBJECT
 public:
     enum Column {
-        Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Color, Raw, Value,
+        Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Analyze, Color, Raw,
+        Value,
         Quality, ColumnCount
     };
 

@@ -33,13 +33,15 @@ mc_add_qtest(tst_blockplanner LIBS mbcore)
 mc_add_qtest(tst_recorder LIBS mbcore)
 mc_add_qtest(tst_projectio LIBS mbcore)
 mc_add_qtest(tst_csvexporter LIBS mbcore)
+mc_add_qtest(tst_stepanalysis LIBS mbcore)
+mc_add_qtest(tst_analysiscsv LIBS mbcore)
 
 # Test server unit tests
 mc_add_qtest(tst_signalgen LIBS mbsim)
 mc_add_qtest(tst_serverconfig LIBS mbsim)
 
 # UI tests run on the offscreen platform plugin from the Qt install.
-foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage)
+foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage tst_analysisview)
   mc_add_qtest(${name} LIBS mbui)
   set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
     "QT_QPA_PLATFORM=set:offscreen"

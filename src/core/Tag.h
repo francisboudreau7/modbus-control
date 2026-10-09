@@ -63,6 +63,7 @@ struct Tag {
     QString color = QStringLiteral("#1f77b4"); ///< "#RRGGBB"
     bool plotted = true;
     bool writable = false; ///< only meaningful for Area::HoldingRegister tags
+    bool analyzed = false; ///< shown and analysed in the Analysis tab
 
     bool isWritable() const { return writable && area == Area::HoldingRegister; }
     /// Last register used by the tag; a 2-register tag at address 65535 does not fit.

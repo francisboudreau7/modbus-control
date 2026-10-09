@@ -14,7 +14,7 @@ enum class SignalKind : quint8 {
     Square,   ///< offset + amplitude for the first half of each period, offset - amplitude for the second
     Counter,  ///< starts at offset, +1 per tick, wraps 65535 -> 0 (raw uint16; amplitude/period ignored)
     Noise,    ///< offset + uniform random in [-amplitude, +amplitude], deterministic for a given seed
-    Lag,      ///< first-order lag following `input`: y += (in - y) * (1 - exp(-dt / tau)); y starts at offset
+    Lag,      ///< first-order lag following `input` delayed by deadTimeS: y += (in(t - deadTimeS) - y) * (1 - exp(-dt / tau)); y starts at offset
 };
 
 struct SignalParams {
@@ -24,6 +24,10 @@ struct SignalParams {
     double periodS = 5.0;      ///< > 0
     double tauS = 2.0;         ///< Lag time constant, > 0
     quint16 sourceAddress = 0; ///< Lag: holding register providing `input` (int16)
+    /// Lag: dead time in seconds, [0, 60]. The generator keeps the (t, input) history of
+    /// the last deadTimeS seconds; before t >= deadTimeS the delayed input is the first one
+    /// seen. 0 = no delay (the previous behaviour).
+    double deadTimeS = 0.0;
 };
 
 /// Produces one raw register value per simulation tick. All kinds except Counter
