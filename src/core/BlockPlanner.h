@@ -22,7 +22,8 @@ struct PlannerOptions {
     /// Two tags in the same area are merged into one block when the number of unused
     /// registers between them is <= maxGap.
     int maxGap = 8;
-    /// Protocol limit for FC03/FC04.
+    /// Protocol limit for FC03/FC04. A block holding a 2-register tag may use 2 registers
+    /// even if maxCount is 1, so no tag is ever dropped.
     int maxCount = 125;
 };
 
