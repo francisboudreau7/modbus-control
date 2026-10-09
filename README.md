@@ -12,7 +12,8 @@ simulates signals and can inject delays and dropped connections.
 
 - Modbus TCP client for one server at a time (IPv4 address or `localhost`, unit id, timeout, poll period)
 - Holding registers (FC03 read, FC06/FC16 write) and input registers (FC04 read)
-- `int16` and `uint16` values with gain and offset scaling
+- 16-bit (`int16`, `uint16`) and 32-bit (`int32`, `uint32`, `float32`) decoding with gain and offset
+  scaling; 32-bit values use two registers with a selectable byte order (ABCD, CDAB, BADC, DCBA)
 - Tag table with per-tag colour, plot and writable flags, raw and scaled values, and quality
 - Writes with a confirmation step, single register or a group of consecutive registers
 - Live trend with 60 s, 5 min, 30 min and All windows, zoom, pan, pause and fit-Y
