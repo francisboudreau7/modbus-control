@@ -38,6 +38,10 @@ struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;
     TagId nextTagId = 1;
+    /// 0 or 1: how register numbers are shown and entered in the UI (1 = numbers as printed
+    /// in device manuals such as the ABB CM50's). Tag addresses are always stored zero-based.
+    /// JSON top-level key "addressBase" (optional, default 0; other values are rejected).
+    int addressBase = 0;
 
     friend bool operator==(const Project &, const Project &) = default;
 };

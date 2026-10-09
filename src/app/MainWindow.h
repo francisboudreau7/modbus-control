@@ -23,7 +23,7 @@ class TrendPlot;
 /// - Bottom dock "Tags": TagTableWidget (over tagModel()).
 /// - Right dock "Cursors": CursorPanel.
 /// - Menus: File (New, Open..., Save, Save As..., Quit), Export (Graph image...,
-///   Data (CSV)...), View (dock toggles), Help (About).
+///   Data (CSV)...), View (dock toggles), Options (Use 1-based register numbers), Help (About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
 /// Window geometry and dock state are saved/restored with QSettings.
 class MainWindow : public QMainWindow
@@ -38,6 +38,8 @@ public:
         QAction *quit = nullptr;
         QAction *exportImage = nullptr;
         QAction *exportCsv = nullptr;
+        /// Options menu, checkable: "Use 1-based register numbers".
+        QAction *oneBasedAddresses = nullptr;
         QAction *about = nullptr;
     };
 

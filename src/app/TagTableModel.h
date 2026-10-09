@@ -70,6 +70,13 @@ public:
     /// Sets the Quality tooltip text of one tag (e.g. last write/read error).
     void setStatusText(TagId id, const QString &text);
 
+    /// 0 (default) or 1. The Address column shows and accepts tag.address + base (edit range
+    /// base..65535+base, a 32-bit tag at most 65534+base); its header reads "Address" for 0
+    /// and "Register" for 1, with a tooltip explaining the numbering. Changing the base emits
+    /// headerDataChanged + dataChanged for the column, not tagsEdited (tags are unchanged).
+    void setAddressBase(int base);
+    int addressBase() const;
+
 signals:
     /// Any configuration change: add, remove, duplicate, setData on a config column.
     /// Not emitted for live values or setTags().
@@ -89,6 +96,7 @@ private:
     QList<Tag> m_tags;
     QHash<TagId, Live> m_live;
     TagId m_nextId = 1;
+    int m_addressBase = 0;
 };
 
 } // namespace mb

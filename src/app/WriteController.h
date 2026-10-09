@@ -17,6 +17,7 @@ namespace mb {
 class TagTableModel;
 
 /// Turns user write requests into PollWorker writes and reports the results.
+/// Register numbers in all texts use TagTableModel::addressBase() (protocol address + base).
 ///
 /// requestWrite: if not connected -> message and stop. Encodes the value with
 /// encodeRegisters() (1 register for 16-bit types, 2 for 32-bit types); out of range ->

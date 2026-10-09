@@ -471,4 +471,15 @@ void TagTableModel::setStatusText(TagId id, const QString &text)
     emit dataChanged(i, i, {Qt::ToolTipRole});
 }
 
+void TagTableModel::setAddressBase(int base)
+{
+    // Stub: display offset implemented by T72.
+    m_addressBase = base == 1 ? 1 : 0;
+}
+
+int TagTableModel::addressBase() const
+{
+    return m_addressBase;
+}
+
 } // namespace mb
