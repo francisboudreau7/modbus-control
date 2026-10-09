@@ -9,6 +9,9 @@
 
 using namespace mb;
 
+Q_DECLARE_METATYPE(ValueType)
+Q_DECLARE_METATYPE(ByteOrder)
+
 namespace {
 
 Project sampleProject()
@@ -97,6 +100,12 @@ private slots:
     void loadMissingFileFailsWithPath();
     void loadCorruptFileFailsWithPath();
     void unicodeNamesSurvive();
+    void roundTripAllTypesAndByteOrders_data();
+    void roundTripAllTypesAndByteOrders();
+    void byteOrderDefaultsToAbcd();
+    void addressSpaceLimit_data();
+    void addressSpaceLimit();
+    void unitIdRange();
 };
 
 void TstProjectIO::roundTrip()
@@ -131,6 +140,11 @@ void TstProjectIO::writesSchemaKeys()
     QCOMPARE(pressure.value(QStringLiteral("type")).toString(), QStringLiteral("uint16"));
     QCOMPARE(pressure.value(QStringLiteral("plotted")).toBool(), true);
     QCOMPARE(tags.at(0).toObject().value(QStringLiteral("area")).toString(), QStringLiteral("holding"));
+
+    // byteOrder is written for every tag, including 16-bit ones.
+    for (qsizetype i = 0; i < tags.size(); ++i)
+        QVERIFY(tags.at(i).toObject().contains(QStringLiteral("byteOrder")));
+    QCOMPARE(tags.at(0).toObject().value(QStringLiteral("byteOrder")).toString(), QStringLiteral("ABCD"));
 }
 
 void TstProjectIO::minimalJsonUsesDefaults()
@@ -246,8 +260,26 @@ void TstProjectIO::invalidInputRejected_data()
         << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"area":"coil"}]})")
         << QStringLiteral("area");
     QTest::newRow("unknown type")
-        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float32"}]})")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float64"}]})")
         << QStringLiteral("type");
+    QTest::newRow("unknown byteOrder")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"int32","byteOrder":"XYZW"}]})")
+        << QStringLiteral("byteOrder");
+    QTest::newRow("byteOrder lower case")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float32","byteOrder":"cdab"}]})")
+        << QStringLiteral("byteOrder");
+    QTest::newRow("byteOrder not a string")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float32","byteOrder":1}]})")
+        << QStringLiteral("byteOrder");
+    QTest::newRow("unitId 248")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"unitId":248}})")
+        << QStringLiteral("unitId");
+    QTest::newRow("unitId 255")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"unitId":255}})")
+        << QStringLiteral("unitId");
+    QTest::newRow("unitId negative")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"unitId":-1}})")
+        << QStringLiteral("unitId");
     QTest::newRow("duplicate tag id")
         << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1},{"id":1}]})")
         << QStringLiteral("Duplicate");
@@ -380,6 +412,114 @@ void TstProjectIO::unicodeNamesSurvive()
     QVERIFY2(loaded.has_value(), qPrintable(error));
     QCOMPARE(loaded->tags.first().name, QStringLiteral("Temp\u00e9rature \u00b0C"));
     QCOMPARE(*loaded, p);
+}
+
+void TstProjectIO::roundTripAllTypesAndByteOrders_data()
+{
+    QTest::addColumn<ValueType>("type");
+    QTest::addColumn<ByteOrder>("order");
+
+    const ValueType types[] = {ValueType::Int16, ValueType::UInt16, ValueType::Int32, ValueType::UInt32,
+                               ValueType::Float32};
+    const ByteOrder orders[] = {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA};
+    for (const ValueType type : types) {
+        for (const ByteOrder order : orders)
+            QTest::addRow("%s %s", qPrintable(toString(type)), qPrintable(toString(order))) << type << order;
+    }
+}
+
+void TstProjectIO::roundTripAllTypesAndByteOrders()
+{
+    QFETCH(ValueType, type);
+    QFETCH(ByteOrder, order);
+
+    Project p;
+    Tag tag;
+    tag.id = 4;
+    tag.name = QStringLiteral("Tag");
+    tag.area = Area::InputRegister;
+    tag.address = 1000;
+    tag.type = type;
+    tag.byteOrder = order;
+    tag.gain = 0.25;
+    tag.offset = -3.5;
+    tag.plotted = false;
+    p.tags.append(tag);
+    p.nextTagId = 5;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QCOMPARE(static_cast<int>(loaded->tags.first().type), static_cast<int>(type));
+    QCOMPARE(static_cast<int>(loaded->tags.first().byteOrder), static_cast<int>(order));
+}
+
+void TstProjectIO::byteOrderDefaultsToAbcd()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"type":"float32"}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(static_cast<int>(project->tags.first().type), static_cast<int>(ValueType::Float32));
+    QCOMPARE(static_cast<int>(project->tags.first().byteOrder), static_cast<int>(ByteOrder::ABCD));
+}
+
+void TstProjectIO::addressSpaceLimit_data()
+{
+    QTest::addColumn<QString>("type");
+    QTest::addColumn<int>("address");
+    QTest::addColumn<bool>("accepted");
+
+    QTest::newRow("int16 at 65535") << QStringLiteral("int16") << 65535 << true;
+    QTest::newRow("uint16 at 65535") << QStringLiteral("uint16") << 65535 << true;
+    QTest::newRow("int32 at 65534") << QStringLiteral("int32") << 65534 << true;
+    QTest::newRow("uint32 at 65534") << QStringLiteral("uint32") << 65534 << true;
+    QTest::newRow("float32 at 65534") << QStringLiteral("float32") << 65534 << true;
+    QTest::newRow("int32 at 65535") << QStringLiteral("int32") << 65535 << false;
+    QTest::newRow("uint32 at 65535") << QStringLiteral("uint32") << 65535 << false;
+    QTest::newRow("float32 at 65535") << QStringLiteral("float32") << 65535 << false;
+}
+
+void TstProjectIO::addressSpaceLimit()
+{
+    QFETCH(QString, type);
+    QFETCH(int, address);
+    QFETCH(bool, accepted);
+
+    const QString text = QStringLiteral(
+                             "{\"format\":\"modbus-control-project\",\"version\":1,"
+                             "\"tags\":[{\"id\":1,\"type\":\"%1\",\"address\":%2}]}")
+                             .arg(type)
+                             .arg(address);
+    QString error;
+    const std::optional<Project> project = projectFromJson(text.toUtf8(), &error);
+    if (accepted) {
+        QVERIFY2(project.has_value(), qPrintable(error));
+        QCOMPARE(project->tags.first().address, quint16(address));
+    } else {
+        QVERIFY(!project.has_value());
+        QVERIFY2(error.contains(QStringLiteral("address")),
+                 qPrintable(QStringLiteral("error was: %1").arg(error)));
+    }
+}
+
+void TstProjectIO::unitIdRange()
+{
+    QString error;
+    const auto low = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"connection":{"unitId":0}
+    })"), &error);
+    QVERIFY2(low.has_value(), qPrintable(error));
+    QCOMPARE(low->connection.unitId, 0);
+
+    const auto high = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"connection":{"unitId":247}
+    })"), &error);
+    QVERIFY2(high.has_value(), qPrintable(error));
+    QCOMPARE(high->connection.unitId, 247);
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

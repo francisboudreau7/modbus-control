@@ -93,7 +93,34 @@ QString areaName(Area area)
 
 QString valueTypeName(ValueType type)
 {
-    return type == ValueType::UInt16 ? QStringLiteral("uint16") : QStringLiteral("int16");
+    return toString(type);
+}
+
+QString byteOrderName(ByteOrder order)
+{
+    return toString(order);
+}
+
+bool readByteOrder(const QJsonObject &obj, const QString &prefix, ByteOrder &out, QString *error)
+{
+    const QString key = QStringLiteral("byteOrder");
+    if (!obj.contains(key))
+        return true;
+    const QString text = obj.value(key).toString();
+    if (text == QStringLiteral("ABCD")) {
+        out = ByteOrder::ABCD;
+    } else if (text == QStringLiteral("CDAB")) {
+        out = ByteOrder::CDAB;
+    } else if (text == QStringLiteral("BADC")) {
+        out = ByteOrder::BADC;
+    } else if (text == QStringLiteral("DCBA")) {
+        out = ByteOrder::DCBA;
+    } else {
+        setError(error, QStringLiteral("\"%1byteOrder\" has unknown value \"%2\" (expected \"ABCD\", \"CDAB\", \"BADC\" or \"DCBA\")")
+                            .arg(prefix, text));
+        return false;
+    }
+    return true;
 }
 
 bool readArea(const QJsonObject &obj, const QString &prefix, Area &out, QString *error)
@@ -124,8 +151,14 @@ bool readValueType(const QJsonObject &obj, const QString &prefix, ValueType &out
         out = ValueType::Int16;
     } else if (text == QStringLiteral("uint16")) {
         out = ValueType::UInt16;
+    } else if (text == QStringLiteral("int32")) {
+        out = ValueType::Int32;
+    } else if (text == QStringLiteral("uint32")) {
+        out = ValueType::UInt32;
+    } else if (text == QStringLiteral("float32")) {
+        out = ValueType::Float32;
     } else {
-        setError(error, QStringLiteral("\"%1type\" has unknown value \"%2\" (expected \"int16\" or \"uint16\")")
+        setError(error, QStringLiteral("\"%1type\" has unknown value \"%2\" (expected \"int16\", \"uint16\", \"int32\", \"uint32\" or \"float32\")")
                             .arg(prefix, text));
         return false;
     }
@@ -154,7 +187,7 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
     constexpr qint64 kMaxMs = 60000;
     if (!readString(obj, QStringLiteral("host"), prefix, conn.host, error)
         || !readInt(obj, QStringLiteral("port"), prefix, 1, 65535, port, error)
-        || !readInt(obj, QStringLiteral("unitId"), prefix, 0, 255, unitId, error)
+        || !readInt(obj, QStringLiteral("unitId"), prefix, 0, 247, unitId, error)
         || !readInt(obj, QStringLiteral("timeoutMs"), prefix, kMinMs, kMaxMs, timeoutMs, error)
         || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, kMinMs, kMaxMs, pollPeriodMs, error)) {
         return false;
@@ -192,6 +225,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         || !readArea(obj, prefix, tag.area, error)
         || !readInt(obj, QStringLiteral("address"), prefix, 0, 65535, address, error)
         || !readValueType(obj, prefix, tag.type, error)
+        || !readByteOrder(obj, prefix, tag.byteOrder, error)
         || !readDouble(obj, QStringLiteral("gain"), prefix, tag.gain, error)
         || !readDouble(obj, QStringLiteral("offset"), prefix, tag.offset, error)
         || !readString(obj, QStringLiteral("unit"), prefix, tag.unit, error)
@@ -201,6 +235,15 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         return false;
     }
     tag.address = static_cast<quint16>(address);
+    if (!tag.fitsAddressSpace()) {
+        setError(error, QStringLiteral("\"%1address\" is %2, too high for a \"%3\" tag: it uses %4 registers, "
+                                       "so the last one would be past 65535")
+                            .arg(prefix)
+                            .arg(address)
+                            .arg(valueTypeName(tag.type))
+                            .arg(registerCount(tag.type)));
+        return false;
+    }
     return true;
 }
 
@@ -225,6 +268,7 @@ QByteArray projectToJson(const Project &project)
             {QStringLiteral("area"), areaName(tag.area)},
             {QStringLiteral("address"), static_cast<qint64>(tag.address)},
             {QStringLiteral("type"), valueTypeName(tag.type)},
+            {QStringLiteral("byteOrder"), byteOrderName(tag.byteOrder)},
             {QStringLiteral("gain"), tag.gain},
             {QStringLiteral("offset"), tag.offset},
             {QStringLiteral("unit"), tag.unit},
