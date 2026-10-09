@@ -10,6 +10,8 @@
 #include <QSpinBox>
 #include <QValidator>
 
+#include <algorithm>
+
 namespace mb {
 
 namespace {
@@ -56,7 +58,8 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
         spin->setRange(min, max);
         if (!suffix.isEmpty())
             spin->setSuffix(suffix);
-        spin->setFixedWidth(width);
+        // The style's arrow buttons need room too: never go below the size hint.
+        spin->setFixedWidth(std::max(width, spin->sizeHint().width()));
         layout->addWidget(spin);
         return spin;
     };

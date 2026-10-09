@@ -106,7 +106,9 @@ CursorPanel::CursorPanel(QWidget *parent) : QWidget(parent)
     });
     m_table->verticalHeader()->setVisible(false);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(kColTag, QHeaderView::Stretch);
+    m_table->setMinimumWidth(320);
 
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(m_header);

@@ -115,10 +115,9 @@ const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {
-    QString text = toString(state);
-    if (!detail.isEmpty())
-        text += QStringLiteral(" — ") + detail;
-    m_connectionLabel->setText(text);
+    // The worker's details already read as a sentence ("Connected to ..."), so they replace
+    // the bare state name instead of being appended to it.
+    m_connectionLabel->setText(detail.isEmpty() ? toString(state) : detail);
 }
 
 void MainWindow::showStatusMessage(const QString &text, int timeoutMs)
