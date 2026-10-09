@@ -1,4 +1,4 @@
-#include "ProjectIO.h"
+﻿#include "ProjectIO.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -285,6 +285,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("format"), QStringLiteral("modbus-control-project")},
         {QStringLiteral("version"), static_cast<qint64>(kProjectFormatVersion)},
         {QStringLiteral("connection"), connection},
+        {QStringLiteral("addressBase"), project.addressBase == 1 ? 1 : 0},
         {QStringLiteral("nextTagId"), static_cast<qint64>(project.nextTagId)},
         {QStringLiteral("tags"), tags},
     };
@@ -334,6 +335,14 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
     Project project;
     if (!readConnection(root, project.connection, error))
         return std::nullopt;
+
+    qint64 base = 0;
+    if (!readInt(root, QStringLiteral("addressBase"), QString(), 0, 1, base, error)) {
+        if (error)
+            *error = QStringLiteral("\"addressBase\" must be 0 or 1");
+        return std::nullopt;
+    }
+    project.addressBase = static_cast<int>(base);
 
     qint64 storedNextId = 1;
     if (!readInt(root, QStringLiteral("nextTagId"), QString(), 1, kMaxTagId, storedNextId, error))

@@ -40,8 +40,8 @@ simulates signals and can inject delays and dropped connections.
    build\msvc-debug\bin\modbus_control.exe examples\demo.mbproj
    ```
 
-   The application starts with the demo tags (Sine, Triangle, Counter, Square, Noise, Sawtooth,
-   Lag and Setpoint) and the connection 127.0.0.1:1502, unit 1, with a 200 ms period.
+   The application starts with the 11 demo tags (Sine, Triangle, Counter, Square, Noise, Sawtooth,
+   Lag, Setpoint, Float sine, Float sine (CDAB) and Int32 saw) and the connection 127.0.0.1:1502, unit 1, with a 200 ms period.
 
 4. Click **Connect**. The values update in the table and the trend starts to draw. Edit the
    **Value** cell of **Setpoint** (HR 100) to write a value. The **Lag** signal follows it.
@@ -105,7 +105,7 @@ src/app/                                        modbus_control.exe: window, tag 
 server/                                         modbus_test_server.exe and the mbsim library
 tests/                                          QtTest programs (unit, UI and integration)
 docs/                                           USER_GUIDE.md, TEST_SERVER.md
-examples/                                       demo.mbproj
+examples/                                       demo.mbproj, cm50.mbproj (ABB CM50 starting point)
 PLAN.md, TASKS.md                               design notes and task breakdown
 ```
 

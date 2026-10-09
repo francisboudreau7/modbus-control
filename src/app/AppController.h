@@ -54,6 +54,7 @@ private:
     void openDialog();
     bool loadFrom(const QString &path);
     void applyProject(const Project &project);
+    void setAddressBase(int base); ///< Updates the Options action and the model without marking modified.
     void disconnectForProjectChange();
     Project currentProject() const;
     void exportImage();

@@ -1,4 +1,4 @@
-#include "WriteController.h"
+﻿#include "WriteController.h"
 
 #include "TagCodec.h"
 #include "TagTableModel.h"
@@ -35,11 +35,11 @@ QString rawText(const Tag &tag, const QList<quint16> &regs)
                                         : QString::number(raw);
 }
 
-QString registerRange(const Tag &tag)
+QString registerRange(const Tag &tag, int base)
 {
     const int n = registerCount(tag.type);
-    return n == 2 ? QStringLiteral("HR %1-%2").arg(tag.address).arg(tag.address + 1)
-                  : QStringLiteral("HR %1").arg(tag.address);
+    return n == 2 ? QStringLiteral("HR %1-%2").arg(tag.address + base).arg(tag.address + 1 + base)
+                  : QStringLiteral("HR %1").arg(tag.address + base);
 }
 
 QString valueText(double v)
@@ -47,16 +47,16 @@ QString valueText(double v)
     return QString::number(v, 'g', 6);
 }
 
-QString tagLabel(const Tag &tag)
+QString tagLabel(const Tag &tag, int base)
 {
-    return QStringLiteral("%1 (HR %2)").arg(tag.name).arg(tag.address);
+    return QStringLiteral("%1 (HR %2)").arg(tag.name).arg(tag.address + base);
 }
 
 /// One line edit per tag; values are parsed with the C locale.
 class ValuesDialog : public QDialog
 {
 public:
-    ValuesDialog(const QList<Tag> &tags, const QList<double> &current, QWidget *parent)
+    ValuesDialog(const QList<Tag> &tags, const QList<double> &current, int base, QWidget *parent)
         : QDialog(parent)
     {
         setWindowTitle(QObject::tr("Write registers"));
@@ -69,7 +69,7 @@ public:
             edit->setValidator(validator);
             const QString unit = tags.at(i).unit.isEmpty() ? QString()
                                                            : QStringLiteral(" [%1]").arg(tags.at(i).unit);
-            form->addRow(tagLabel(tags.at(i)) + unit, edit);
+            form->addRow(tagLabel(tags.at(i), base) + unit, edit);
             m_edits.append(edit);
         }
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -110,7 +110,7 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
     };
     m_askValues = [this](const QList<Tag> &tags,
                          const QList<double> &current) -> std::optional<QList<double>> {
-        ValuesDialog dlg(tags, current, m_dialogParent);
+        ValuesDialog dlg(tags, current, m_model->addressBase(), m_dialogParent);
         while (dlg.exec() == QDialog::Accepted) {
             if (auto v = dlg.values())
                 return v;
@@ -130,6 +130,7 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     if (row < 0)
         return;
     const Tag tag = m_model->tagAt(row);
+    const int base = m_model->addressBase();
     if (!tag.isWritable())
         return;
 
@@ -146,7 +147,7 @@ void WriteController::requestWrite(TagId id, double scaledValue)
         ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
         : QString();
     if (!m_confirm(tr("Write %1%2 (raw %3) to %4 '%5'%6?")
-                       .arg(valueText(scaledValue), unit, rawText(tag, *raw), registerRange(tag),
+                       .arg(valueText(scaledValue), unit, rawText(tag, *raw), registerRange(tag, base),
                             tag.name, typeInfo)))
         return;
 
@@ -157,7 +158,7 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     }
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, {id});
-    emit message(tr("Writing %1 to %2 '%3' ...").arg(valueText(scaledValue), registerRange(tag), tag.name));
+    emit message(tr("Writing %1 to %2 '%3' ...").arg(valueText(scaledValue), registerRange(tag, base), tag.name));
     emit writeRegisters(reqId, tag.address, *raw);
 }
 
@@ -168,6 +169,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         return;
     }
 
+    const int base = m_model->addressBase();
     QList<Tag> tags;
     for (int row : rows) {
         if (row < 0 || row >= m_model->rowCount())
@@ -196,16 +198,16 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         const int expected = prev.address + registerCount(prev.type);
         if (next.address < expected) {
             m_warn(tr("'%1' (%2) overlaps '%3' (%4).")
-                       .arg(next.name, registerRange(next), prev.name, registerRange(prev)));
+                       .arg(next.name, registerRange(next, base), prev.name, registerRange(prev, base)));
             return;
         }
         if (next.address != expected) {
             m_warn(tr("The selected registers are not consecutive: '%1' (%2) should start at HR %3 "
                       "to follow '%4' (%5), but starts at HR %6.")
-                       .arg(next.name, registerRange(next))
-                       .arg(expected)
-                       .arg(prev.name, registerRange(prev))
-                       .arg(next.address));
+                       .arg(next.name, registerRange(next, base))
+                       .arg(expected + base)
+                       .arg(prev.name, registerRange(prev, base))
+                       .arg(next.address + base));
             return;
         }
     }
@@ -251,7 +253,9 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
 
     const quint16 first = tags.first().address;
     const int last = tags.last().address + registerCount(tags.last().type) - 1;
-    if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(totalRegisters).arg(first).arg(last)))
+    const int shownFirst = first + base;
+    const int shownLast = last + base;
+    if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(totalRegisters).arg(shownFirst).arg(shownLast)))
         return;
 
     if (!m_connected) {
@@ -263,7 +267,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         ids.append(tag.id);
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, ids);
-    emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(first).arg(last));
+    emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
     emit writeRegisters(reqId, first, raws);
 }
 
