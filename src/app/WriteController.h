@@ -27,7 +27,7 @@ class TagTableModel;
 /// dialog with one value field per tag (prefilled with the current value), encodes all,
 /// confirms, and emits one writeRegisters with all values (FC16).
 ///
-/// onWriteFinished: success -> message "Write OK: ..."; failure -> warning message and
+/// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
 /// TagTableModel::setStatusText() on the affected tags.
 class WriteController : public QObject
 {
