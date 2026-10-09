@@ -165,10 +165,11 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** T72 (Sonnet) in worktree `..\modbus-control-wt\t72`, branch `task/t72` — items 2 and 3 below (the 1-based numbering contract is already on main, commit 546a027, with a stub in TagTableModel.cpp). If a new session finds no "T72:" commit on that branch, check `git -C ..\modbus-control-wt\t72 status` and finish or redo it.
+**In progress:** nothing. T72 merged (fbccf8c): 1-based numbering, FC06-only checkbox, CM50 guide and `examples/cm50.mbproj`.
+
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
-2. Orchestrator contract for **1-based register numbering** (user-requested):
+2. ~~Orchestrator contract for **1-based register numbering**~~ (done) (user-requested):
    - `Project::addressBase` (0 or 1, default 0), JSON top-level key `"addressBase"`; tag
      addresses in files stay zero-based protocol addresses.
    - `TagTableModel::setAddressBase(int)` / `addressBase()`: Address column shows and accepts
@@ -179,7 +180,7 @@ table (orchestrator fix after merging T63).
    - WriteController texts use the model's base ("HR 6639-6640" for protocol 6638).
    - AppController: wire the action, apply/save with the project, mark modified on toggle.
    - PollWorker status messages stay in protocol addresses (documented limitation).
-3. **T72 final UI** (Haiku, or Sonnet if it grows): implement item 2; ConnectionBar "FC06 only" checkbox bound to `singleRegisterWrites` (see ConnectionBar.h);
+3. ~~**T72 final UI**~~ (done) (Haiku, or Sonnet if it grows): implement item 2; ConnectionBar "FC06 only" checkbox bound to `singleRegisterWrites` (see ConnectionBar.h);
    ProjectIO `addressBase` + tests; tests for all of it; README Quick start still lists the old
    8 demo tags (now 11); USER_GUIDE still says 32-bit tags are read-only — fix both; USER_GUIDE: 32-bit writes, FC06-only
    option, 1-based numbering, and a "Connecting to an ABB CM50" section with a few example tags
