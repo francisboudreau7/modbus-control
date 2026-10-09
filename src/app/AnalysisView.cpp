@@ -1,37 +1,646 @@
 #include "AnalysisView.h"
 
+#include "PlotCursors.h"
+#include "Recorder.h"
 #include "TrendPlot.h"
 
-#include <QHBoxLayout>
+#include <qwt_plot.h>
+#include <qwt_plot_marker.h>
+#include <qwt_symbol.h>
+#include <qwt_text.h>
 
-// Stub created by T90; implemented by T95.
+#include <QAbstractItemView>
+#include <QColor>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QGridLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QListWidget>
+#include <QLocale>
+#include <QPen>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QSignalBlocker>
+#include <QSplitter>
+#include <QStringList>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
+
+#include <algorithm>
+#include <cmath>
 
 namespace mb {
+
+namespace {
+
+const QString kDash = QStringLiteral(u"—");   // em dash: missing value
+const QString kDelta = QStringLiteral(u"Δ");  // capital delta
+const QString kMinus = QStringLiteral(u"−");  // minus sign
+
+constexpr int kMaxPercents = 20;
+
+QString fmtNum(double v)
+{
+    return std::isfinite(v) ? QString::number(v, 'g', 6) : kDash;
+}
+
+QString fmtNum(std::optional<double> v)
+{
+    return v ? fmtNum(*v) : kDash;
+}
+
+QString fmtSeconds(double t)
+{
+    return QString::number(t, 'f', 3) + QStringLiteral(" s");
+}
+
+QString fmtPlain(double p)
+{
+    return QLocale::c().toString(p, 'g', 6);
+}
+
+QString fmtPercent(double p)
+{
+    return fmtPlain(p) + QStringLiteral(" %");
+}
+
+QString tagLabel(const Tag &tag)
+{
+    return tag.unit.isEmpty() ? tag.name
+                              : tag.name + QStringLiteral(" [") + tag.unit + QStringLiteral("]");
+}
+
+QTableWidgetItem *makeItem(const QString &text, bool alignRight)
+{
+    auto *item = new QTableWidgetItem(text);
+    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+    if (alignRight)
+        item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    return item;
+}
+
+QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, double value,
+                         QWidget *parent)
+{
+    auto *spin = new QDoubleSpinBox(parent);
+    spin->setObjectName(QLatin1String(name));
+    spin->setDecimals(decimals);
+    spin->setRange(lo, hi);
+    spin->setValue(value);
+    spin->setKeyboardTracking(false);
+    return spin;
+}
+
+} // namespace
 
 AnalysisView::AnalysisView(QWidget *parent)
     : QWidget(parent)
     , m_plot(new TrendPlot(this))
 {
-    auto *layout = new QHBoxLayout(this);
-    layout->addWidget(m_plot);
+    buildUi();
+    syncControlsFromSettings();
+    recompute();
+
+    connect(m_plot->cursors(), &PlotCursors::cursorsChanged, this, [this] {
+        if (!m_settingCursors)
+            recompute();
+    });
 }
 
-AnalysisView::~AnalysisView() = default;
+AnalysisView::~AnalysisView()
+{
+    clearMarkers();
+}
+
+void AnalysisView::buildUi()
+{
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->addWidget(m_plot);
+
+    auto *panel = new QWidget;
+    auto *col = new QVBoxLayout(panel);
+
+    // Buttons
+    auto *buttons = new QHBoxLayout;
+    m_copyCursorsButton = new QPushButton(tr("Copy cursors from Trend"), panel);
+    m_copyCursorsButton->setObjectName(QStringLiteral("copyCursorsButton"));
+    m_exportButton = new QPushButton(tr("Export results (CSV)..."), panel);
+    m_exportButton->setObjectName(QStringLiteral("exportResultsButton"));
+    m_exportButton->setEnabled(false);
+    buttons->addWidget(m_copyCursorsButton);
+    buttons->addWidget(m_exportButton);
+    col->addLayout(buttons);
+    connect(m_copyCursorsButton, &QPushButton::clicked, this, &AnalysisView::copyCursorsRequested);
+    connect(m_exportButton, &QPushButton::clicked, this, &AnalysisView::exportResultsRequested);
+
+    // References
+    auto *refBox = new QGroupBox(tr("References"), panel);
+    auto *refGrid = new QGridLayout(refBox);
+    m_referenceCombo = new QComboBox(refBox);
+    m_referenceCombo->setObjectName(QStringLiteral("referenceCombo"));
+    m_referenceCombo->addItem(tr("Value at cursor"), static_cast<int>(ReferenceMode::CursorValue));
+    m_referenceCombo->addItem(tr("Mean before cursor"), static_cast<int>(ReferenceMode::WindowMean));
+    m_referenceCombo->setToolTip(
+        tr("Value at cursor: the recorded value at each cursor.\n"
+           "Mean before cursor: the mean of the W seconds ending at each cursor."));
+    m_windowSpin = makeSpin("windowSpin", 0.1, 3600.0, 1, 1.0, refBox);
+    m_windowSpin->setSuffix(tr(" s"));
+    m_windowSpin->setToolTip(tr("Window W of the mean before each cursor."));
+    m_smoothingSpin = makeSpin("smoothingSpin", 0.0, 3600.0, 2, 0.0, refBox);
+    m_smoothingSpin->setSuffix(tr(" s"));
+    m_smoothingSpin->setSpecialValueText(tr("Off"));
+    m_smoothingSpin->setToolTip(
+        tr("Centred moving average of width S applied before finding the setpoint times.\n"
+           "Smoothing makes the 0 % point early by up to S/2 (and L biased low); when "
+           "smoothing is used, choose a model \"From %\" above 0 (e.g. 10)."));
+    refGrid->addWidget(new QLabel(tr("Reference"), refBox), 0, 0);
+    refGrid->addWidget(m_referenceCombo, 0, 1);
+    refGrid->addWidget(new QLabel(tr("Window"), refBox), 1, 0);
+    refGrid->addWidget(m_windowSpin, 1, 1);
+    refGrid->addWidget(new QLabel(tr("Smoothing"), refBox), 2, 0);
+    refGrid->addWidget(m_smoothingSpin, 2, 1);
+    col->addWidget(refBox);
+    connect(m_referenceCombo, &QComboBox::currentIndexChanged, this, [this] { onReferenceChanged(); });
+    connect(m_windowSpin, &QDoubleSpinBox::valueChanged, this, [this] { onReferenceChanged(); });
+    connect(m_smoothingSpin, &QDoubleSpinBox::valueChanged, this, [this] { onReferenceChanged(); });
+
+    // Setpoints
+    auto *spBox = new QGroupBox(tr("Setpoints"), panel);
+    auto *spGrid = new QGridLayout(spBox);
+    m_percentList = new QListWidget(spBox);
+    m_percentList->setObjectName(QStringLiteral("percentList"));
+    m_percentList->setMaximumHeight(110);
+    m_percentSpin = makeSpin("percentSpin", 0.0, 100.0, 2, 28.3, spBox);
+    m_percentSpin->setSuffix(QStringLiteral(" %"));
+    m_addPercentButton = new QPushButton(tr("Add"), spBox);
+    m_addPercentButton->setObjectName(QStringLiteral("addPercentButton"));
+    m_removePercentButton = new QPushButton(tr("Remove"), spBox);
+    m_removePercentButton->setObjectName(QStringLiteral("removePercentButton"));
+    spGrid->addWidget(m_percentList, 0, 0, 3, 1);
+    spGrid->addWidget(m_percentSpin, 0, 1);
+    spGrid->addWidget(m_addPercentButton, 1, 1);
+    spGrid->addWidget(m_removePercentButton, 2, 1);
+    col->addWidget(spBox);
+    connect(m_addPercentButton, &QPushButton::clicked, this, [this] { onAddPercent(); });
+    connect(m_removePercentButton, &QPushButton::clicked, this, [this] { onRemovePercent(); });
+
+    // Model
+    auto *modelBox = new QGroupBox(tr("Model"), panel);
+    auto *mGrid = new QGridLayout(modelBox);
+    m_modelFromSpin = makeSpin("modelFromSpin", 0.0, 99.99, 2, 0.0, modelBox);
+    m_modelFromSpin->setSuffix(QStringLiteral(" %"));
+    m_modelToSpin = makeSpin("modelToSpin", 0.0, 99.99, 2, 63.2, modelBox);
+    m_modelToSpin->setSuffix(QStringLiteral(" %"));
+    m_deltaCoCombo = new QComboBox(modelBox);
+    m_deltaCoCombo->setObjectName(QStringLiteral("deltaCoCombo"));
+    m_deltaCoCombo->addItem(tr("Typed value"), 0u);
+    m_deltaCoSpin = makeSpin("deltaCoSpin", -1e9, 1e9, 4, 0.0, modelBox);
+    m_deltaCoSpin->setToolTip(tr("Change of the controller output (0 = unknown, no gain K)."));
+    mGrid->addWidget(new QLabel(tr("From %"), modelBox), 0, 0);
+    mGrid->addWidget(m_modelFromSpin, 0, 1);
+    mGrid->addWidget(new QLabel(tr("To %"), modelBox), 1, 0);
+    mGrid->addWidget(m_modelToSpin, 1, 1);
+    mGrid->addWidget(new QLabel(kDelta + QStringLiteral("CO"), modelBox), 2, 0);
+    mGrid->addWidget(m_deltaCoCombo, 2, 1);
+    mGrid->addWidget(m_deltaCoSpin, 3, 1);
+    col->addWidget(modelBox);
+    connect(m_modelFromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
+    connect(m_modelToSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
+    connect(m_deltaCoCombo, &QComboBox::currentIndexChanged, this, [this] { onDeltaCoChanged(); });
+    connect(m_deltaCoSpin, &QDoubleSpinBox::valueChanged, this, [this] { onDeltaCoChanged(); });
+
+    // Tables
+    m_setpointTable = new QTableWidget(0, 6, panel);
+    m_setpointTable->setObjectName(QStringLiteral("setpointTable"));
+    m_setpointTable->setHorizontalHeaderLabels(QStringList{
+        tr("Tag"), QStringLiteral("%"), tr("Target"), tr("Measured"), tr("Time (s)"),
+        QStringLiteral("t ") + kMinus + QStringLiteral(" C1 (s)")});
+    m_setpointTable->verticalHeader()->setVisible(false);
+    m_setpointTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_setpointTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_setpointTable->setMinimumHeight(140);
+
+    m_modelTable = new QTableWidget(0, 8, panel);
+    m_modelTable->setObjectName(QStringLiteral("modelTable"));
+    m_modelTable->setHorizontalHeaderLabels(QStringList{
+        tr("Tag"), QStringLiteral("y0"), QStringLiteral("y100"), kDelta + QStringLiteral("PV"),
+        kDelta + QStringLiteral("CO"), QStringLiteral("K"), QStringLiteral("L (s)"),
+        QStringLiteral("T (s)")});
+    m_modelTable->verticalHeader()->setVisible(false);
+    m_modelTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_modelTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_modelTable->setMinimumHeight(100);
+
+    col->addWidget(new QLabel(tr("Setpoints"), panel));
+    col->addWidget(m_setpointTable);
+    col->addWidget(new QLabel(tr("Model"), panel));
+    col->addWidget(m_modelTable);
+    col->addStretch(1);
+
+    auto *scroll = new QScrollArea(splitter);
+    scroll->setWidgetResizable(true);
+    scroll->setWidget(panel);
+    scroll->setMinimumWidth(380);
+    splitter->addWidget(scroll);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 2);
+
+    auto *layout = new QHBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(splitter);
+}
+
+const Tag *AnalysisView::tagById(TagId id) const
+{
+    for (const Tag &t : m_tags) {
+        if (t.id == id)
+            return &t;
+    }
+    return nullptr;
+}
 
 void AnalysisView::setRecorder(const Recorder *recorder)
 {
     m_recorder = recorder;
     m_plot->setRecorder(recorder);
+    recompute();
 }
 
-void AnalysisView::setTags(const QList<Tag> &tags) { m_tags = tags; }
-void AnalysisView::setSettings(const AnalysisSettings &settings) { m_settings = settings; }
-AnalysisSettings AnalysisView::settings() const { return m_settings; }
-TrendPlot *AnalysisView::trendPlot() const { return m_plot; }
-QList<StepResult> AnalysisView::results() const { return m_results; }
-QString AnalysisView::readoutText() const { return {}; }
-void AnalysisView::refresh() { m_plot->refresh(); }
-void AnalysisView::resetData() { m_plot->resetData(); }
-void AnalysisView::setCursors(std::optional<double>, std::optional<double>) {}
+void AnalysisView::setTags(const QList<Tag> &tags)
+{
+    m_tags = tags;
+
+    QList<Tag> plotTags = tags;
+    for (Tag &t : plotTags)
+        t.plotted = t.analyzed;
+    m_plot->setTags(plotTags);
+
+    // dCO combo: "Typed value" + every tag; keep the selection when it still exists.
+    const TagId wanted = m_settings.deltaCoTagId;
+    bool found = false;
+    {
+        const QSignalBlocker blocker(m_deltaCoCombo);
+        while (m_deltaCoCombo->count() > 1)
+            m_deltaCoCombo->removeItem(1);
+        for (const Tag &t : tags)
+            m_deltaCoCombo->addItem(tagLabel(t), t.id);
+        const int idx = wanted != 0 ? m_deltaCoCombo->findData(wanted) : -1;
+        found = idx >= 0;
+        m_deltaCoCombo->setCurrentIndex(found ? idx : 0);
+    }
+    if (!found)
+        m_settings.deltaCoTagId = 0;
+    m_deltaCoSpin->setEnabled(m_deltaCoCombo->currentIndex() == 0);
+    recompute();
+}
+
+void AnalysisView::syncControlsFromSettings()
+{
+    const bool was = m_updating;
+    m_updating = true;
+    {
+        const QSignalBlocker b1(m_referenceCombo);
+        const QSignalBlocker b2(m_windowSpin);
+        const QSignalBlocker b3(m_smoothingSpin);
+        const QSignalBlocker b4(m_modelFromSpin);
+        const QSignalBlocker b5(m_modelToSpin);
+        const QSignalBlocker b6(m_deltaCoCombo);
+        const QSignalBlocker b7(m_deltaCoSpin);
+        m_referenceCombo->setCurrentIndex(m_settings.reference == ReferenceMode::WindowMean ? 1 : 0);
+        m_windowSpin->setValue(m_settings.referenceWindowS);
+        m_smoothingSpin->setValue(m_settings.smoothingS);
+        m_modelFromSpin->setValue(m_settings.modelPercentA);
+        m_modelToSpin->setValue(m_settings.modelPercentB);
+        const int idx = m_settings.deltaCoTagId != 0
+                            ? m_deltaCoCombo->findData(m_settings.deltaCoTagId) : -1;
+        m_deltaCoCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+        m_deltaCoSpin->setValue(m_settings.manualDeltaCo);
+    }
+    m_windowSpin->setEnabled(m_settings.reference == ReferenceMode::WindowMean);
+    m_deltaCoSpin->setEnabled(m_deltaCoCombo->currentIndex() == 0);
+    m_prevFrom = m_modelFromSpin->value();
+    m_prevTo = m_modelToSpin->value();
+    rebuildPercentList();
+    m_updating = was;
+}
+
+void AnalysisView::rebuildPercentList()
+{
+    const QSignalBlocker blocker(m_percentList);
+    m_percentList->clear();
+    for (double p : std::as_const(m_settings.percents)) {
+        auto *item = new QListWidgetItem(fmtPercent(p), m_percentList);
+        item->setData(Qt::UserRole, p);
+    }
+}
+
+void AnalysisView::setSettings(const AnalysisSettings &settings)
+{
+    m_settings = settings;
+    if (m_settings.percents.size() > kMaxPercents)
+        m_settings.percents = m_settings.percents.mid(0, kMaxPercents);
+    syncControlsFromSettings();
+    recompute();
+}
+
+AnalysisSettings AnalysisView::settings() const
+{
+    return m_settings;
+}
+
+TrendPlot *AnalysisView::trendPlot() const
+{
+    return m_plot;
+}
+
+QList<StepResult> AnalysisView::results() const
+{
+    return m_results;
+}
+
+void AnalysisView::userChangedSettings()
+{
+    recompute();
+    emit settingsChanged();
+}
+
+void AnalysisView::onReferenceChanged()
+{
+    if (m_updating)
+        return;
+    m_settings.reference = m_referenceCombo->currentData().toInt() == 1
+                               ? ReferenceMode::WindowMean : ReferenceMode::CursorValue;
+    m_settings.referenceWindowS = m_windowSpin->value();
+    m_settings.smoothingS = m_smoothingSpin->value();
+    m_windowSpin->setEnabled(m_settings.reference == ReferenceMode::WindowMean);
+    userChangedSettings();
+}
+
+void AnalysisView::onModelPercentChanged()
+{
+    if (m_updating)
+        return;
+    const double a = m_modelFromSpin->value();
+    const double b = m_modelToSpin->value();
+    if (!(a < b)) {
+        const QSignalBlocker b1(m_modelFromSpin);
+        const QSignalBlocker b2(m_modelToSpin);
+        m_modelFromSpin->setValue(m_prevFrom);
+        m_modelToSpin->setValue(m_prevTo);
+        return;
+    }
+    m_prevFrom = a;
+    m_prevTo = b;
+    m_settings.modelPercentA = a;
+    m_settings.modelPercentB = b;
+    userChangedSettings();
+}
+
+void AnalysisView::onDeltaCoChanged()
+{
+    if (m_updating)
+        return;
+    m_settings.deltaCoTagId = m_deltaCoCombo->currentData().toUInt();
+    m_settings.manualDeltaCo = m_deltaCoSpin->value();
+    m_deltaCoSpin->setEnabled(m_deltaCoCombo->currentIndex() == 0);
+    userChangedSettings();
+}
+
+void AnalysisView::onAddPercent()
+{
+    if (m_updating || m_settings.percents.size() >= kMaxPercents)
+        return;
+    const double p = std::round(m_percentSpin->value() * 100.0) / 100.0;
+    for (double q : std::as_const(m_settings.percents)) {
+        if (std::abs(q - p) < 1e-9)
+            return;
+    }
+    m_settings.percents.append(p);
+    std::sort(m_settings.percents.begin(), m_settings.percents.end());
+    rebuildPercentList();
+    userChangedSettings();
+}
+
+void AnalysisView::onRemovePercent()
+{
+    if (m_updating)
+        return;
+    const int row = m_percentList->currentRow();
+    if (row < 0 || row >= m_settings.percents.size())
+        return;
+    m_settings.percents.removeAt(row);
+    rebuildPercentList();
+    userChangedSettings();
+}
+
+void AnalysisView::clearMarkers()
+{
+    for (QwtPlotMarker *m : std::as_const(m_markers)) {
+        m->detach();
+        delete m;
+    }
+    m_markers.clear();
+}
+
+void AnalysisView::rebuildMarkers()
+{
+    clearMarkers();
+    for (const StepResult &r : std::as_const(m_results)) {
+        if (!r.valid)
+            continue;
+        const Tag *tag = tagById(r.tagId);
+        const QColor color = tag ? QColor(tag->color) : QColor(Qt::black);
+        for (const SetpointResult &sp : r.setpoints) {
+            if (!sp.found)
+                continue;
+            auto *marker = new QwtPlotMarker;
+            marker->setValue(sp.time, sp.target);
+            marker->setSymbol(new QwtSymbol(QwtSymbol::XCross, QBrush(), QPen(color, 2),
+                                            QSize(11, 11)));
+            QwtText label(fmtPercent(sp.percent));
+            label.setColor(color);
+            marker->setLabel(label);
+            marker->setLabelAlignment(Qt::AlignRight | Qt::AlignTop);
+            marker->attach(m_plot->plot());
+            m_markers.append(marker);
+        }
+    }
+}
+
+void AnalysisView::rebuildTables()
+{
+    m_setpointTable->setRowCount(0);
+    m_modelTable->clearSpans();
+    m_modelTable->setRowCount(0);
+
+    const double c1 = m_plot->cursors()->hasC1() ? m_plot->cursors()->c1() : kNaN;
+    int spRow = 0;
+    int mRow = 0;
+    for (const StepResult &r : std::as_const(m_results)) {
+        const Tag *tag = tagById(r.tagId);
+        const QString label = tag ? tagLabel(*tag) : QString::number(r.tagId);
+        const QColor color = tag ? QColor(tag->color) : QColor();
+
+        // Model table row
+        m_modelTable->insertRow(mRow);
+        auto *tagItem = makeItem(label, false);
+        if (color.isValid())
+            tagItem->setData(Qt::DecorationRole, color);
+        m_modelTable->setItem(mRow, 0, tagItem);
+        if (!r.valid) {
+            m_modelTable->setItem(mRow, 1, makeItem(r.error, false));
+            m_modelTable->setSpan(mRow, 1, 1, 7);
+        } else {
+            const QString texts[7] = {fmtNum(r.y0), fmtNum(r.y100), fmtNum(r.deltaPv),
+                                      fmtNum(r.deltaCo), fmtNum(r.gain), fmtNum(r.deadTime),
+                                      fmtNum(r.timeConstant)};
+            for (int c = 0; c < 7; ++c)
+                m_modelTable->setItem(mRow, c + 1, makeItem(texts[c], true));
+        }
+        ++mRow;
+
+        // Setpoint rows
+        if (!r.valid)
+            continue;
+        for (const SetpointResult &sp : r.setpoints) {
+            m_setpointTable->insertRow(spRow);
+            auto *ti = makeItem(label, false);
+            if (color.isValid())
+                ti->setData(Qt::DecorationRole, color);
+            m_setpointTable->setItem(spRow, 0, ti);
+            const QString texts[5] = {
+                fmtPlain(sp.percent),
+                fmtNum(sp.target),
+                sp.found ? fmtNum(sp.measured) : kDash,
+                sp.found ? fmtNum(sp.time) : kDash,
+                sp.found ? fmtNum(sp.time - c1) : kDash,
+            };
+            for (int c = 0; c < 5; ++c)
+                m_setpointTable->setItem(spRow, c + 1, makeItem(texts[c], true));
+            ++spRow;
+        }
+    }
+}
+
+void AnalysisView::rememberDataState()
+{
+    if (m_recorder && m_recorder->size() > 0) {
+        m_lastSize = m_recorder->size();
+        m_lastTime = m_recorder->timeAt(m_lastSize - 1);
+    } else {
+        m_lastSize = 0;
+        m_lastTime = 0.0;
+    }
+}
+
+void AnalysisView::recompute()
+{
+    m_results.clear();
+    const PlotCursors *cur = m_plot->cursors();
+    if (m_recorder && cur->hasC1() && cur->hasC2()) {
+        for (const Tag &t : std::as_const(m_tags)) {
+            if (t.analyzed)
+                m_results.append(analyzeStep(*m_recorder, t.id, cur->c1(), cur->c2(), m_settings));
+        }
+    }
+    rememberDataState();
+    rebuildTables();
+    rebuildMarkers();
+    m_plot->plot()->replot();
+
+    const bool anyValid = std::any_of(m_results.cbegin(), m_results.cend(),
+                                      [](const StepResult &r) { return r.valid; });
+    m_exportButton->setEnabled(anyValid);
+    emit resultsChanged();
+}
+
+QString AnalysisView::readoutText() const
+{
+    const PlotCursors *cur = m_plot->cursors();
+    if (!cur->hasC1() || !cur->hasC2())
+        return {};
+
+    QStringList lines{QStringLiteral("C1 = ") + fmtSeconds(cur->c1())
+                      + QStringLiteral(", C2 = ") + fmtSeconds(cur->c2())};
+    for (const StepResult &r : m_results) {
+        const Tag *tag = tagById(r.tagId);
+        const QString name = tag ? tagLabel(*tag) : QString::number(r.tagId);
+        if (!r.valid) {
+            lines << name + QStringLiteral(": ") + r.error;
+            continue;
+        }
+        QStringList sps;
+        for (const SetpointResult &sp : r.setpoints) {
+            sps << fmtPercent(sp.percent)
+                       + (sp.found ? QStringLiteral(" at ") + fmtSeconds(sp.time)
+                                   : QStringLiteral(" not found"));
+        }
+        QString line = name + QStringLiteral(": ") + sps.join(QStringLiteral(", "));
+        QStringList model;
+        if (r.gain)
+            model << QStringLiteral("K = ") + fmtNum(*r.gain);
+        if (r.deadTime)
+            model << QStringLiteral("L = ") + fmtNum(*r.deadTime) + QStringLiteral(" s");
+        if (r.timeConstant)
+            model << QStringLiteral("T = ") + fmtNum(*r.timeConstant) + QStringLiteral(" s");
+        if (!model.isEmpty())
+            line += QStringLiteral("; ") + model.join(QStringLiteral(", "));
+        lines << line;
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+void AnalysisView::refresh()
+{
+    m_plot->refresh();
+    if (!m_recorder)
+        return;
+
+    const qsizetype size = m_recorder->size();
+    const double last = size > 0 ? m_recorder->timeAt(size - 1) : 0.0;
+    const bool reset = size < m_lastSize || (size > 0 && m_lastSize > 0 && last < m_lastTime);
+    const bool grew = size > m_lastSize || (size > 0 && last > m_lastTime);
+    if (reset) {
+        recompute();
+        return;
+    }
+    if (!grew)
+        return;
+
+    const PlotCursors *cur = m_plot->cursors();
+    if (!cur->hasC1() || !cur->hasC2()) {
+        rememberDataState();
+        return;
+    }
+    const double limit = std::max(cur->c1(), cur->c2()) + m_settings.smoothingS / 2.0;
+    if (m_lastSize == 0 || m_lastTime < limit)
+        recompute();
+    else
+        rememberDataState();
+}
+
+void AnalysisView::resetData()
+{
+    m_plot->resetData();
+    recompute();
+}
+
+void AnalysisView::setCursors(std::optional<double> t1, std::optional<double> t2)
+{
+    PlotCursors *cur = m_plot->cursors();
+    m_settingCursors = true;
+    if (!t1 || !t2)
+        cur->clear();
+    if (t1)
+        cur->setC1(*t1);
+    if (t2)
+        cur->setC2(*t2);
+    m_settingCursors = false;
+    recompute();
+}
 
 } // namespace mb
