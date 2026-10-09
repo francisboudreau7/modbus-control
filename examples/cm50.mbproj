@@ -1,0 +1,100 @@
+{
+  "format": "modbus-control-project",
+  "version": 1,
+  "connection": {
+    "host": "192.168.1.50",
+    "port": 502,
+    "unitId": 1,
+    "timeoutMs": 1000,
+    "pollPeriodMs": 500,
+    "singleRegisterWrites": false
+  },
+  "addressBase": 1,
+  "nextTagId": 7,
+  "tags": [
+    {
+      "id": 1,
+      "name": "Loop 1 Process Variable",
+      "area": "input",
+      "address": 5008,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "°C",
+      "color": "#1f77b4",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 2,
+      "name": "Loop 1 Control Output",
+      "area": "input",
+      "address": 5012,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "%",
+      "color": "#2ca02c",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 3,
+      "name": "Loop 1 Local Setpoint 1",
+      "area": "holding",
+      "address": 6638,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "°C",
+      "color": "#ff7f0e",
+      "plotted": true,
+      "writable": true
+    },
+    {
+      "id": 4,
+      "name": "Alarm 1 Trip",
+      "area": "holding",
+      "address": 6590,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#d62728",
+      "plotted": false,
+      "writable": true
+    },
+    {
+      "id": 5,
+      "name": "Totalizer 1 Batch Total",
+      "area": "input",
+      "address": 4000,
+      "type": "uint32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#9467bd",
+      "plotted": false,
+      "writable": false
+    },
+    {
+      "id": 6,
+      "name": "Instrument Type",
+      "area": "input",
+      "address": 2,
+      "type": "uint16",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#7f7f7f",
+      "plotted": false,
+      "writable": false
+    }
+  ]
+}

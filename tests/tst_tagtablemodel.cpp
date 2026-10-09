@@ -580,6 +580,68 @@ private slots:
         QVERIFY(m.data(ix(m, 0, C::Value)).toString().isEmpty());
     }
 
+    void addressBaseDisplayAndEdit()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        QCOMPARE(m.addressBase(), 0);
+        Tag f = makeTag(2, "f", Area::HoldingRegister, 6638);
+        f.type = ValueType::Float32;
+        m.setTags({makeTag(1, "a", Area::InputRegister, 5008), f}, 3);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy headerChanged(&m, &QAbstractItemModel::headerDataChanged);
+
+        QCOMPARE(m.headerData(C::Address, Qt::Horizontal).toString(), QString("Address"));
+        m.setAddressBase(1);
+        QCOMPARE(m.addressBase(), 1);
+        QCOMPARE(edited.size(), 0);
+        QVERIFY(headerChanged.size() >= 1);
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(changed.at(0).at(0).toModelIndex(), ix(m, 0, C::Address));
+        QCOMPARE(changed.at(0).at(1).toModelIndex(), ix(m, 1, C::Address));
+
+        QCOMPARE(m.headerData(C::Address, Qt::Horizontal).toString(), QString("Register"));
+        QVERIFY(!m.headerData(C::Address, Qt::Horizontal, Qt::ToolTipRole).toString().isEmpty());
+        QCOMPARE(m.data(ix(m, 0, C::Address)).toInt(), 5009);
+        QCOMPARE(m.data(ix(m, 0, C::Address), Qt::EditRole).toInt(), 5009);
+        QCOMPARE(m.data(ix(m, 1, C::Address)).toInt(), 6639);
+        QCOMPARE(m.tagAt(0).address, quint16(5008)); // stored zero-based
+
+        // Edit: the shown number is stored minus 1; 16-bit range 1..65536.
+        QVERIFY(m.setData(ix(m, 0, C::Address), 5010));
+        QCOMPARE(m.tagAt(0).address, quint16(5009));
+        QVERIFY(m.setData(ix(m, 0, C::Address), 65536));
+        QCOMPARE(m.tagAt(0).address, quint16(65535));
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 65537));
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 0));
+        QVERIFY(m.setData(ix(m, 0, C::Address), 1));
+        QCOMPARE(m.tagAt(0).address, quint16(0));
+
+        // 32-bit: 1..65535.
+        QVERIFY(m.setData(ix(m, 1, C::Address), 65535));
+        QCOMPARE(m.tagAt(1).address, quint16(65534));
+        QVERIFY(!m.setData(ix(m, 1, C::Address), 65536));
+        QCOMPARE(m.tagAt(1).address, quint16(65534));
+        QVERIFY(!m.setData(ix(m, 1, C::Address), 0));
+        QVERIFY(m.setData(ix(m, 1, C::Address), 1));
+        QCOMPARE(m.tagAt(1).address, quint16(0));
+
+        // Back to base 0.
+        m.setAddressBase(0);
+        QCOMPARE(m.headerData(C::Address, Qt::Horizontal).toString(), QString("Address"));
+        QCOMPARE(m.data(ix(m, 0, C::Address)).toInt(), 0);
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 65536));
+    }
+
+    void addressBaseSameValueEmitsNothing()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a")}, 2);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        m.setAddressBase(0);
+        QCOMPARE(changed.size(), 0);
+    }
     void headerTooltips()
     {
         TagTableModel m;

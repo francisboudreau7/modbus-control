@@ -1,7 +1,9 @@
-#include "ProjectIO.h"
+﻿#include "ProjectIO.h"
 
 #include <QtTest>
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -109,6 +111,11 @@ private slots:
     void singleRegisterWritesRoundTrip_data();
     void singleRegisterWritesRoundTrip();
     void singleRegisterWritesDefaultsToFalse();
+    void addressBaseRoundTrip_data();
+    void addressBaseRoundTrip();
+    void addressBaseDefaultsToZero();
+    void addressBaseAlwaysWritten();
+    void exampleProjectsLoad();
 };
 
 void TstProjectIO::roundTrip()
@@ -330,6 +337,15 @@ void TstProjectIO::invalidInputRejected_data()
     QTest::newRow("singleRegisterWrites string")
         << json(R"({"format":"modbus-control-project","version":1,"connection":{"singleRegisterWrites":"true"}})")
         << QStringLiteral("singleRegisterWrites");
+    QTest::newRow("addressBase 2")
+        << json(R"({"format":"modbus-control-project","version":1,"addressBase":2})")
+        << QStringLiteral("addressBase");
+    QTest::newRow("addressBase negative")
+        << json(R"({"format":"modbus-control-project","version":1,"addressBase":-1})")
+        << QStringLiteral("addressBase");
+    QTest::newRow("addressBase string")
+        << json(R"({"format":"modbus-control-project","version":1,"addressBase":"1"})")
+        << QStringLiteral("addressBase");
 }
 
 void TstProjectIO::invalidInputRejected()
@@ -568,6 +584,69 @@ void TstProjectIO::singleRegisterWritesDefaultsToFalse()
     })"), &error);
     QVERIFY2(project.has_value(), qPrintable(error));
     QCOMPARE(project->connection.singleRegisterWrites, false);
+}
+
+void TstProjectIO::addressBaseRoundTrip_data()
+{
+    QTest::addColumn<int>("base");
+    QTest::newRow("0") << 0;
+    QTest::newRow("1") << 1;
+}
+
+void TstProjectIO::addressBaseRoundTrip()
+{
+    QFETCH(int, base);
+    Project p;
+    p.addressBase = base;
+    p.nextTagId = 1;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(loaded->addressBase, base);
+    QCOMPARE(*loaded, p);
+}
+
+void TstProjectIO::addressBaseDefaultsToZero()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->addressBase, 0);
+}
+
+void TstProjectIO::addressBaseAlwaysWritten()
+{
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(Project{})).object();
+    QVERIFY(root.contains(QStringLiteral("addressBase")));
+    QCOMPARE(root.value(QStringLiteral("addressBase")).toInt(-1), 0);
+}
+
+void TstProjectIO::exampleProjectsLoad()
+{
+    // Find the repository root by walking up from the test executable.
+    QDir dir(QCoreApplication::applicationDirPath());
+    while (!dir.exists(QStringLiteral("examples/demo.mbproj"))) {
+        QVERIFY2(dir.cdUp(), "could not locate examples/demo.mbproj above the test executable");
+    }
+
+    QString error;
+    const auto demo = loadProject(dir.filePath(QStringLiteral("examples/demo.mbproj")), &error);
+    QVERIFY2(demo.has_value(), qPrintable(error));
+    QCOMPARE(demo->addressBase, 0);
+    QCOMPARE(demo->tags.size(), 11);
+
+    const auto cm50 = loadProject(dir.filePath(QStringLiteral("examples/cm50.mbproj")), &error);
+    QVERIFY2(cm50.has_value(), qPrintable(error));
+    QCOMPARE(cm50->addressBase, 1);
+    QCOMPARE(cm50->connection.host, QStringLiteral("192.168.1.50"));
+    QCOMPARE(cm50->connection.port, quint16(502));
+    QCOMPARE(cm50->connection.singleRegisterWrites, false);
+    QCOMPARE(cm50->tags.size(), 6);
+    // Register 5009 (as printed in the manual) is protocol address 5008.
+    QCOMPARE(cm50->tags.at(0).name, QStringLiteral("Loop 1 Process Variable"));
+    QCOMPARE(int(cm50->tags.at(0).address) + cm50->addressBase, 5009);
+    QCOMPARE(int(cm50->tags.at(0).address), 5008);
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

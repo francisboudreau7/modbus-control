@@ -5,12 +5,12 @@ This guide describes the application as built from this repository. For building
 
 ## Window layout
 
-- **Connection bar** (top): host, port, unit, timeout and period fields, a status LED, and the
-  Connect / Disconnect button.
+- **Connection bar** (top): host, port, unit, timeout and period fields, the **FC06 only**
+  checkbox, a status LED, and the Connect / Disconnect button.
 - **Trend** (centre): the live graph with its controls above it.
 - **Tags** (bottom dock): the tag table with Add, Duplicate, Remove and Write selected buttons.
 - **Cursors** (right dock): cursor times and the readout table.
-- **Menus**: File, Export, View and Help.
+- **Menus**: File, Export, View, Options and Help.
 - **Status bar**: short messages (left) and the connection state (right).
 
 Docks can be closed and reopened from the View menu. Window size and dock layout are remembered.
@@ -27,6 +27,7 @@ to stop. While connecting or connected, the fields are read-only.
 | Unit | 0..247 | Modbus unit id. |
 | Timeout | 100..60000 ms | How long to wait for each response. |
 | Period | 100..60000 ms | Time from one poll cycle to the next. A cycle that takes longer than the period starts the next one at once. |
+| FC06 only | on / off | Off by default. When on, a value that spans several registers (a 32-bit tag, or Write selected) is written as one FC06 request per register instead of one FC16 request. See Writing values. |
 
 The last values you connected with are remembered and used the next time the application starts.
 
@@ -54,13 +55,13 @@ Each row is one register value that the application reads. Columns:
 |---|---|
 | Name | Name shown in the table, trend legend and cursor panel. Cannot be empty. |
 | Area | `Holding` (FC03 read, FC06/FC16 write) or `Input` (FC04 read). |
-| Address | Zero-based Modbus address, 0..65535. HR 100 is address 100. |
+| Address | Zero-based Modbus address, 0..65535 (HR 100 is address 100). With Options > Use 1-based register numbers the column is headed **Register** and shows and accepts the number as printed in device manuals (1..65536; 1..65535 for 32-bit tags). See 1-based register numbers. |
 | Type | `int16` (signed) or `uint16` (unsigned), one register. `int32` (signed), `uint32` (unsigned) and `float32` (IEEE-754 single precision), two consecutive registers. See 32-bit values. |
 | Byte order | `ABCD`, `CDAB`, `BADC` or `DCBA`: how the two registers of a 32-bit value are arranged. Shows `—` for 16-bit types, where it has no effect. See 32-bit values. |
 | Gain | Multiplier applied to the raw value. Cannot be 0. |
 | Offset | Added after the gain. |
 | Unit | Shown after the name in the legend and the CSV header. Optional. |
-| Writable | Allows writes from the Value column. 16-bit holding registers only. The box is disabled for input registers and for 32-bit types (they are read-only for now). Changing Area to Input, or Type to a 32-bit type, clears it. |
+| Writable | Allows writes from the Value column. Holding registers only, of any type. The box is disabled for input registers, and changing Area to Input clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
 | Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
@@ -104,8 +105,21 @@ around), the byte order is usually wrong. Try `CDAB` first, then the others.
 The Raw column shows the 32-bit value after the byte order has been applied, as ABCD. If the byte
 order matches the server, Raw shows the value the server meant, and Value is the scaled result.
 
-32-bit tags are read-only for now. The Writable box is disabled and writes from the Value column are
-not possible. Their Raw and Value cells are updated by polling like any other tag.
+32-bit holding tags can be written like 16-bit ones (see Writing values). Their Raw and Value cells
+are updated by polling like any other tag.
+
+### 1-based register numbers
+
+Modbus itself addresses registers from 0, but many device manuals number them from 1 (the first
+holding register is "40001" or "register 1"). Tick **Options > Use 1-based register numbers** to
+type and read numbers as the manual prints them. The Address column header changes to **Register**,
+and its cells, the write confirmations ("Write ... to HR 6639-6640") and the Write selected dialog
+all use the 1-based numbers. Nothing else changes: tags are stored with zero-based protocol
+addresses, so register 5009 is stored and sent as address 5008.
+
+The setting is saved in the project file (`addressBase`) and restored when the project is opened.
+Toggling it marks the project as modified. File > New returns to 0-based numbering. Status
+messages about failed reads still show protocol (zero-based) addresses.
 
 ### Editing the table
 
@@ -122,8 +136,8 @@ Tag edits mark the project as modified. Live values do not.
 
 ## Writing values
 
-Writes go to the server between poll cycles. Only the following tags can be written:
-16-bit holding registers with **Writable** ticked. 32-bit tags are read-only.
+Writes go to the server between poll cycles. Only holding-register tags with **Writable** ticked
+can be written, of any type (16-bit or 32-bit).
 
 ### One register
 
@@ -135,7 +149,17 @@ Writes go to the server between poll cycles. Only the following tags can be writ
 
 The value is converted to a raw integer with the inverse of gain and offset, and rounded to the
 nearest integer. If the raw value is outside the type's range (-32768..32767 for `int16`,
-0..65535 for `uint16`), a warning is shown and nothing is sent. The write uses FC06.
+0..65535 for `uint16`; the finite `float32` range, and the `int32` and `uint32` ranges, for 32-bit
+types), a warning is shown and nothing is sent. A 16-bit write uses FC06.
+
+For a 32-bit tag the value is encoded into two registers using the tag's byte order, and the
+confirmation names the registers, type and byte order, for example "Write 50 (raw 0x42480000) to
+HR 6639-6640 'Local Setpoint 1' [float32, ABCD]?". By default both registers are sent in one FC16
+(Write Multiple Registers) request, so the controller never sees half a value. If the **FC06 only**
+box in the connection bar is ticked, the app sends one FC06 (Write Single Register) request per
+register instead, in ascending address order, and stops at the first failure. In that case a failed
+write can leave the first register changed and the second unchanged. Use the option only for devices
+that do not accept FC16.
 
 The status bar shows "Writing ...", then "Write OK: <name>" or "Write failed: <reason>". A failure
 also sets the reason as the tooltip of the tag's Quality cell. The Value column keeps showing the
@@ -148,7 +172,9 @@ polled value, so it changes only when the next read returns the new value.
    addresses and no duplicates. At most 123 registers can be written at once.
 3. Edit the value for each register. Each field starts with the current value. Use `.` as the
    decimal separator.
-4. Confirm "Write N registers HR a..b?". The whole group is sent in one FC16 request.
+4. Confirm "Write N registers HR a..b?". The whole group is sent in one FC16 request, or as one
+   FC06 request per register (ascending, stopping at the first failure) when **FC06 only** is ticked.
+   16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.
 
 ## Trend
 
@@ -240,8 +266,8 @@ header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted wh
 
 ## Projects
 
-Projects are saved as `.mbproj` files. A project holds the connection settings and the tag list,
-including tag colours. Recorded data, cursors and the trend window are not saved.
+Projects are saved as `.mbproj` files. A project holds the connection settings (including FC06 only), the register numbering
+(1-based or not) and the tag list, including tag colours. Recorded data, cursors and the trend window are not saved.
 
 | Menu item | Shortcut | Action |
 |---|---|---|
@@ -264,6 +290,53 @@ build\msvc-debug\bin\modbus_control.exe examples\demo.mbproj
 
 [`examples/demo.mbproj`](../examples/demo.mbproj) matches the demo tags and connects to the test
 server on 127.0.0.1:1502, unit 1, with a 200 ms period.
+[`examples/cm50.mbproj`](../examples/cm50.mbproj) is a starting point for an ABB CM50 (see the next
+section).
+
+## Connecting to an ABB ControlMaster CM50
+
+The facts below come from the ABB manual IM/CM/C-EN Rev. I. Check them against your controller's
+firmware and configuration.
+
+**Setup on the controller**
+
+- Modbus TCP needs the controller's Ethernet option.
+- The port is fixed at 502. Enter 502 in the Port field.
+- The controller accepts at most 3 simultaneous connections, so close other Modbus clients if
+  Connect fails.
+- The controller can restrict clients by IP address (client IP authorization). If it does, add this
+  PC's address.
+- **Unit** is the controller's Device Address (1..247).
+
+**Register numbers.** The manual's register tables use 1-based register numbers. Tick **Options >
+Use 1-based register numbers** and type the numbers as printed (for example 5009 for the Loop 1
+process variable). The app sends address 5008.
+
+**Floating-point values** are IEEE-754 single precision, high word first: byte order `ABCD`. If the
+controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDAB`.
+
+**Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single) only. If
+writing a 32-bit value fails with a Modbus exception, tick **FC06 only** in the connection bar
+before connecting; each 32-bit write is then sent as two FC06 requests.
+
+**Example tags** (register numbers as printed, with the 1-based option on):
+
+| Name | Area | Register | Type | Notes |
+|---|---|---|---|---|
+| Loop 1 Process Variable | Input | 5009 | float32, `ABCD` | Read-only. |
+| Loop 1 Control Output | Input | 5013 | float32, `ABCD` | Read-only. |
+| Loop 1 Local Setpoint 1 | Holding | 6639 | float32, `ABCD` | Writable. |
+| Alarm 1 Trip | Holding | 6591 | float32, `ABCD` | Writable. |
+| Totalizer 1 Batch Total | Input | 4001 | uint32, `ABCD` | The manual does not state the signedness; try `int32` if the value looks wrong. |
+| Instrument Type | Input | 3 | uint16 | Read-only. |
+
+`examples/cm50.mbproj` contains these tags, with the 1-based option on, host 192.168.1.50, port 502,
+unit 1, a 500 ms period and FC06 only off. Open it with File > Open, or give its path on the
+command line, then change the host and unit to match your controller. Setpoint and trip values are
+written with confirmation, but check them against the controller's own limits first.
+
+**Not supported by this app:** coils and discrete inputs (alarm states, auto/manual mode) and
+Modbus RTU (serial). Use the controller's front panel or another tool for those.
 
 ## Recording
 
@@ -279,6 +352,6 @@ server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 - One server at a time.
 - Modbus TCP only. No serial (RTU) connections.
 - Holding and input registers only, with `int16` and `uint16` (one register) or `int32`,
-  `uint32` and `float32` (two registers) types. 32-bit tags are read-only. There are no coils.
+  `uint32` and `float32` (two registers) types. There are no coils or discrete inputs.
 - Some TCP servers ignore the unit id. It is still sent with each request.
 - The history is in memory only, and the project file does not store it.

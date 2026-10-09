@@ -110,7 +110,7 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (disp || edit) return toString(t.area);
         break;
     case Address:
-        if (disp || edit) return int(t.address);
+        if (disp || edit) return int(t.address) + m_addressBase;
         break;
     case Type:
         if (disp || edit) return toString(t.type);
@@ -228,7 +228,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     }
     case Address: {
         bool ok = false;
-        const int a = value.toInt(&ok);
+        const int shown = value.toInt(&ok);
+        const int a = shown - m_addressBase;
         if (!ok || a < 0 || a > 65535) return false;
         Tag probe = t;
         probe.address = quint16(a);
@@ -335,6 +336,14 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
 QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) const
 {
     if (o == Qt::Horizontal && section >= 0 && section < ColumnCount) {
+        if (section == Address && role == Qt::DisplayRole && m_addressBase == 1)
+            return tr("Register");
+        if (section == Address && role == Qt::ToolTipRole) {
+            return m_addressBase == 1
+                       ? tr("Register number as printed in device manuals (1-based). The protocol "
+                            "address is this number minus 1.")
+                       : tr("Zero-based protocol address of the first register.");
+        }
         if (role == Qt::DisplayRole)
             return tr(kHeaders[section]);
         if (role == Qt::ToolTipRole && section == Type)
@@ -473,8 +482,13 @@ void TagTableModel::setStatusText(TagId id, const QString &text)
 
 void TagTableModel::setAddressBase(int base)
 {
-    // Stub: display offset implemented by T72.
-    m_addressBase = base == 1 ? 1 : 0;
+    const int b = base == 1 ? 1 : 0;
+    if (b == m_addressBase)
+        return;
+    m_addressBase = b;
+    emit headerDataChanged(Qt::Horizontal, Address, Address);
+    if (!m_tags.isEmpty())
+        emit dataChanged(index(0, Address), index(m_tags.size() - 1, Address));
 }
 
 int TagTableModel::addressBase() const

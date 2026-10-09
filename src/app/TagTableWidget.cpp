@@ -59,10 +59,12 @@ class AddressDelegate : public QStyledItemDelegate
 {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
-    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &index) const override
     {
+        const auto *tm = qobject_cast<const TagTableModel *>(index.model());
+        const int base = tm ? tm->addressBase() : 0;
         auto *s = new QSpinBox(parent);
-        s->setRange(0, 65535);
+        s->setRange(base, 65535 + base);
         s->setFrame(false);
         return s;
     }

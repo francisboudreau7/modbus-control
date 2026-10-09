@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+﻿#include "MainWindow.h"
 
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
@@ -81,6 +81,13 @@ MainWindow::MainWindow(QWidget *parent)
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->addAction(tagsDock->toggleViewAction());
     viewMenu->addAction(cursorsDock->toggleViewAction());
+
+    // Options menu
+    auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
+    m_actions.oneBasedAddresses = optionsMenu->addAction(tr("Use &1-based register numbers"));
+    m_actions.oneBasedAddresses->setCheckable(true);
+    m_actions.oneBasedAddresses->setToolTip(
+        tr("Show and enter register numbers as printed in device manuals (first register = 1)"));
 
     // Help menu
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));

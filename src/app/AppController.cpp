@@ -1,4 +1,4 @@
-#include "AppController.h"
+﻿#include "AppController.h"
 
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QThread>
 #include <QTimer>
 
@@ -249,6 +250,10 @@ void AppController::wireActions()
     connect(a.saveProjectAs, &QAction::triggered, this, [this] { saveAs(); });
     connect(a.exportImage, &QAction::triggered, this, [this] { exportImage(); });
     connect(a.exportCsv, &QAction::triggered, this, [this] { exportCsv(); });
+    connect(a.oneBasedAddresses, &QAction::toggled, this, [this](bool on) {
+        m_window->tagModel()->setAddressBase(on ? 1 : 0);
+        setModified(true);
+    });
 }
 
 void AppController::pushTags()
@@ -291,6 +296,7 @@ Project AppController::currentProject() const
     p.connection = m_window->connectionBar()->settings();
     p.tags = m_window->tagModel()->tags();
     p.nextTagId = m_window->tagModel()->nextTagId();
+    p.addressBase = m_window->tagModel()->addressBase();
     return p;
 }
 
@@ -308,7 +314,17 @@ void AppController::applyProject(const Project &project)
     disconnectForProjectChange();
     m_window->connectionBar()->setSettings(project.connection);
     m_window->tagModel()->setTags(project.tags, project.nextTagId);
+    setAddressBase(project.addressBase);
     pushTags();
+}
+
+void AppController::setAddressBase(int base)
+{
+    // Loading a project must not mark it modified: update the action without its toggled slot.
+    QAction *action = m_window->actions().oneBasedAddresses;
+    const QSignalBlocker blocker(action);
+    action->setChecked(base == 1);
+    m_window->tagModel()->setAddressBase(base);
 }
 
 bool AppController::saveTo(const QString &path)
@@ -352,6 +368,7 @@ void AppController::newProject()
     disconnectForProjectChange();
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags({}, 1);
+    setAddressBase(0);
     pushTags();
     m_projectPath.clear();
     setModified(false);

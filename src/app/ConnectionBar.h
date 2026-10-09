@@ -1,10 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include "ModbusConnection.h"
 #include "PollWorker.h"
 
 #include <QWidget>
 
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -58,6 +59,7 @@ private:
     QSpinBox *m_unit = nullptr;
     QSpinBox *m_timeout = nullptr;
     QSpinBox *m_period = nullptr;
+    QCheckBox *m_singleWrites = nullptr;
     QPushButton *m_button = nullptr;
 };
 
