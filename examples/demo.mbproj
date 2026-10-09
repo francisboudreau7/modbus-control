@@ -1,0 +1,118 @@
+{
+  "format": "modbus-control-project",
+  "version": 1,
+  "connection": {
+    "host": "127.0.0.1",
+    "port": 1502,
+    "unitId": 1,
+    "timeoutMs": 1000,
+    "pollPeriodMs": 200
+  },
+  "nextTagId": 9,
+  "tags": [
+    {
+      "id": 1,
+      "name": "Sine",
+      "area": "input",
+      "address": 0,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#1f77b4",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 2,
+      "name": "Triangle",
+      "area": "input",
+      "address": 1,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#ff7f0e",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 3,
+      "name": "Counter",
+      "area": "input",
+      "address": 2,
+      "type": "uint16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#7f7f7f",
+      "plotted": false,
+      "writable": false
+    },
+    {
+      "id": 4,
+      "name": "Square",
+      "area": "input",
+      "address": 3,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#2ca02c",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 5,
+      "name": "Noise",
+      "area": "input",
+      "address": 4,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#d62728",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 6,
+      "name": "Sawtooth",
+      "area": "input",
+      "address": 5,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#9467bd",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 7,
+      "name": "Lag",
+      "area": "input",
+      "address": 10,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#8c564b",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 8,
+      "name": "Setpoint",
+      "area": "holding",
+      "address": 100,
+      "type": "int16",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "color": "#e377c2",
+      "plotted": true,
+      "writable": true
+    }
+  ]
+}
