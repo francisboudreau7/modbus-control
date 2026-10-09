@@ -1,12 +1,418 @@
+﻿#include "TagTableModel.h"
+
+#include <QAbstractItemModelTester>
+#include <QBrush>
+#include <QColor>
+#include <QSignalSpy>
 #include <QtTest>
 
-// Stub: implemented by its task (see TASKS.md).
+#include <limits>
+
+using namespace mb;
+using C = TagTableModel;
+
+namespace {
+
+Tag makeTag(TagId id, const QString &name, Area area = Area::HoldingRegister, quint16 addr = 0,
+            bool writable = false)
+{
+    Tag t;
+    t.id = id;
+    t.name = name;
+    t.area = area;
+    t.address = addr;
+    t.writable = writable;
+    return t;
+}
+
+} // namespace
+
 class TstTagTableModel : public QObject
 {
     Q_OBJECT
+private:
+    static QModelIndex ix(const TagTableModel &m, int r, int c) { return m.index(r, c); }
+
 private slots:
-    void notImplemented() { QSKIP("not implemented yet"); }
+    void roundTripAndNextId()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy reset(&m, &QAbstractItemModel::modelReset);
+        const QList<Tag> tags{makeTag(3, "a"), makeTag(7, "b", Area::InputRegister, 5)};
+        m.setTags(tags, 2);
+        QVERIFY(m.tags() == tags);
+        QCOMPARE(m.nextTagId(), TagId(8));
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(m.columnCount(), int(C::ColumnCount));
+        QCOMPARE(reset.size(), 1);
+        QCOMPARE(edited.size(), 0);
+        m.setTags(tags, 50);
+        QCOMPARE(m.nextTagId(), TagId(50));
+        QCOMPARE(m.rowOf(7), 1);
+        QCOMPARE(m.rowOf(99), -1);
+        QCOMPARE(m.tagAt(0).name, QString("a"));
+    }
+
+    void headers()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        for (int c = 0; c < C::ColumnCount; ++c)
+            QVERIFY(!m.headerData(c, Qt::Horizontal).toString().isEmpty());
+        QCOMPARE(m.headerData(C::Name, Qt::Horizontal).toString(), QString("Name"));
+    }
+
+    void dataAllColumns()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag t = makeTag(1, "Temp", Area::HoldingRegister, 100, true);
+        t.type = ValueType::UInt16;
+        t.gain = 0.1;
+        t.offset = -2.5;
+        t.unit = "C";
+        t.color = "#112233";
+        t.plotted = false;
+        m.setTags({t}, 2);
+
+        QCOMPARE(m.data(ix(m, 0, C::Name)).toString(), QString("Temp"));
+        QCOMPARE(m.data(ix(m, 0, C::Name), Qt::EditRole).toString(), QString("Temp"));
+        QCOMPARE(m.data(ix(m, 0, C::Area)).toString(), QString("Holding"));
+        QCOMPARE(m.data(ix(m, 0, C::Address)).toInt(), 100);
+        QCOMPARE(m.data(ix(m, 0, C::Type)).toString(), QString("uint16"));
+        QCOMPARE(m.data(ix(m, 0, C::Gain)).toDouble(), 0.1);
+        QCOMPARE(m.data(ix(m, 0, C::Offset), Qt::EditRole).toDouble(), -2.5);
+        QCOMPARE(m.data(ix(m, 0, C::Unit)).toString(), QString("C"));
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Checked));
+        QCOMPARE(m.data(ix(m, 0, C::Plot), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QCOMPARE(m.data(ix(m, 0, C::Color)).toString(), QString("#112233"));
+        QCOMPARE(m.data(ix(m, 0, C::Color), Qt::EditRole).toString(), QString("#112233"));
+        QCOMPARE(m.data(ix(m, 0, C::Color), Qt::DecorationRole).value<QColor>(), QColor("#112233"));
+        QVERIFY(m.data(ix(m, 0, C::Raw)).toString().isEmpty());
+        QVERIFY(m.data(ix(m, 0, C::Value)).toString().isEmpty());
+        QCOMPARE(m.data(ix(m, 0, C::Quality)).toString(), QString("Unknown"));
+        QVERIFY(!m.data(QModelIndex()).isValid());
+
+        SampleBatch b;
+        b.samples << TagSample{1, 0x00AB, 17.123456789, Quality::Good};
+        m.updateSamples(b);
+        QCOMPARE(m.data(ix(m, 0, C::Raw)).toString(), QString("0x00AB (171)"));
+        QCOMPARE(m.data(ix(m, 0, C::Value)).toString(), QString("17.1235"));
+        QCOMPARE(m.data(ix(m, 0, C::Quality)).toString(), QString("Good"));
+    }
+
+    void flagsTest()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "h", Area::HoldingRegister, 0, true),
+                   makeTag(2, "h2", Area::HoldingRegister, 1, false),
+                   makeTag(3, "i", Area::InputRegister, 2, false)},
+                  4);
+        for (int r = 0; r < 3; ++r)
+            for (int c : {C::Name, C::Area, C::Address, C::Type, C::Gain, C::Offset, C::Unit, C::Color})
+                QVERIFY(m.flags(ix(m, r, c)) & Qt::ItemIsEditable);
+        for (int r = 0; r < 3; ++r) {
+            QVERIFY(m.flags(ix(m, r, C::Plot)) & Qt::ItemIsUserCheckable);
+            QVERIFY(!(m.flags(ix(m, r, C::Raw)) & Qt::ItemIsEditable));
+            QVERIFY(!(m.flags(ix(m, r, C::Quality)) & Qt::ItemIsEditable));
+        }
+        QVERIFY(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsUserCheckable);
+        QVERIFY(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsEnabled);
+        QVERIFY(m.flags(ix(m, 1, C::Writable)) & Qt::ItemIsUserCheckable);
+        QVERIFY(!(m.flags(ix(m, 2, C::Writable)) & Qt::ItemIsEnabled));
+        QVERIFY(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable);
+        QVERIFY(!(m.flags(ix(m, 1, C::Value)) & Qt::ItemIsEditable));
+        QVERIFY(!(m.flags(ix(m, 2, C::Value)) & Qt::ItemIsEditable));
+    }
+
+    void editConfigColumns()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a")}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        int n = 0;
+        auto ok = [&](int c, const QVariant &v, int role = Qt::EditRole) {
+            QVERIFY(m.setData(ix(m, 0, c), v, role));
+            QCOMPARE(edited.size(), ++n);
+        };
+        auto bad = [&](int c, const QVariant &v, int role = Qt::EditRole) {
+            QVERIFY(!m.setData(ix(m, 0, c), v, role));
+            QCOMPARE(edited.size(), n);
+        };
+
+        ok(C::Name, "renamed");
+        QCOMPARE(m.tagAt(0).name, QString("renamed"));
+        bad(C::Name, "");
+        bad(C::Name, "   ");
+        QCOMPARE(m.tagAt(0).name, QString("renamed"));
+
+        ok(C::Area, "Input");
+        QVERIFY(m.tagAt(0).area == Area::InputRegister);
+        bad(C::Area, "bogus");
+        ok(C::Area, "Holding");
+
+        ok(C::Address, 65535);
+        QCOMPARE(m.tagAt(0).address, quint16(65535));
+        ok(C::Address, 0);
+        bad(C::Address, 65536);
+        bad(C::Address, -1);
+        bad(C::Address, "abc");
+
+        ok(C::Type, "uint16");
+        QVERIFY(m.tagAt(0).type == ValueType::UInt16);
+        bad(C::Type, "float");
+
+        ok(C::Gain, 0.5);
+        QCOMPARE(m.tagAt(0).gain, 0.5);
+        ok(C::Gain, "2.5");
+        QCOMPARE(m.tagAt(0).gain, 2.5);
+        bad(C::Gain, 0.0);
+        bad(C::Gain, "x");
+        bad(C::Gain, std::numeric_limits<double>::infinity());
+        bad(C::Gain, std::numeric_limits<double>::quiet_NaN());
+        QCOMPARE(m.tagAt(0).gain, 2.5);
+
+        ok(C::Offset, -3.25);
+        QCOMPARE(m.tagAt(0).offset, -3.25);
+        bad(C::Offset, "nope");
+        bad(C::Offset, std::numeric_limits<double>::infinity());
+
+        ok(C::Unit, "bar");
+        QCOMPARE(m.tagAt(0).unit, QString("bar"));
+
+        ok(C::Color, "#FF8800");
+        QCOMPARE(m.tagAt(0).color, QString("#ff8800"));
+        ok(C::Color, QColor(1, 2, 3));
+        QCOMPARE(m.tagAt(0).color, QString("#010203"));
+        bad(C::Color, "red");
+        bad(C::Color, "#12345");
+        bad(C::Color, "#GGGGGG");
+        bad(C::Color, "");
+
+        ok(C::Plot, Qt::Unchecked, Qt::CheckStateRole);
+        QVERIFY(!m.tagAt(0).plotted);
+        ok(C::Writable, Qt::Checked, Qt::CheckStateRole);
+        QVERIFY(m.tagAt(0).writable);
+
+        // Read-only columns and wrong roles.
+        bad(C::Raw, 5);
+        bad(C::Quality, "Good");
+        bad(C::Name, "x", Qt::CheckStateRole);
+        bad(C::Plot, Qt::Checked, Qt::EditRole);
+    }
+
+    void areaChangeClearsWritable()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 0, true)}, 2);
+        QVERIFY(m.tagAt(0).writable);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(!m.tagAt(0).writable);
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QCOMPARE(edited.size(), 1);
+        // Cannot make an input tag writable.
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!m.tagAt(0).writable);
+        QCOMPARE(edited.size(), 1);
+    }
+
+    void valueEditEmitsWriteRequest()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(5, "w", Area::HoldingRegister, 0, true),
+                   makeTag(6, "ro", Area::HoldingRegister, 1, false),
+                   makeTag(7, "in", Area::InputRegister, 2, false)},
+                  8);
+        QSignalSpy wr(&m, &TagTableModel::writeRequested);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QVERIFY(m.setData(ix(m, 0, C::Value), 12.5));
+        QCOMPARE(wr.size(), 1);
+        QCOMPARE(wr.at(0).at(0).value<TagId>(), TagId(5));
+        QCOMPARE(wr.at(0).at(1).toDouble(), 12.5);
+        QVERIFY(m.setData(ix(m, 0, C::Value), "3.5"));
+        QCOMPARE(wr.at(1).at(1).toDouble(), 3.5);
+        QVERIFY(!m.setData(ix(m, 0, C::Value), "abc"));
+        QCOMPARE(wr.size(), 2);
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+        QVERIFY(m.data(ix(m, 0, C::Value)).toString().isEmpty());
+        QVERIFY(m.tagAt(0) == makeTag(5, "w", Area::HoldingRegister, 0, true));
+
+        QVERIFY(!m.setData(ix(m, 1, C::Value), 1.0));
+        QVERIFY(!m.setData(ix(m, 2, C::Value), 1.0));
+        QCOMPARE(wr.size(), 2);
+    }
+
+    void addDuplicateRemove()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy reset(&m, &QAbstractItemModel::modelReset);
+
+        int r = m.addTag();
+        QCOMPARE(r, 0);
+        QCOMPARE(m.tagAt(0).id, TagId(1));
+        QCOMPARE(m.tagAt(0).name, QString("Tag 1"));
+        QCOMPARE(m.nextTagId(), TagId(2));
+        QCOMPARE(edited.size(), 1);
+
+        // Convenience: continue after last tag.
+        m.setData(ix(m, 0, C::Area), "Input");
+        m.setData(ix(m, 0, C::Address), 10);
+        r = m.addTag();
+        QCOMPARE(r, 1);
+        QVERIFY(m.tagAt(1).area == Area::InputRegister);
+        QCOMPARE(m.tagAt(1).address, quint16(11));
+        QCOMPARE(m.tagAt(1).name, QString("Tag 2"));
+
+        m.setData(ix(m, 1, C::Address), 65535);
+        r = m.addTag();
+        QCOMPARE(m.tagAt(r).address, quint16(65535));
+
+        // Explicit prototype is kept.
+        Tag proto = makeTag(0, "mine", Area::HoldingRegister, 42, true);
+        r = m.addTag(proto);
+        QCOMPARE(m.tagAt(r).name, QString("mine"));
+        QCOMPARE(m.tagAt(r).address, quint16(42));
+        QVERIFY(m.tagAt(r).writable);
+        QCOMPARE(m.tagAt(r).id, TagId(4));
+
+        edited.clear();
+        const int d = m.duplicateTag(r);
+        QCOMPARE(d, m.rowCount() - 1);
+        QCOMPARE(m.tagAt(d).name, QString("mine (copy)"));
+        QCOMPARE(m.tagAt(d).id, TagId(5));
+        QCOMPARE(m.tagAt(d).address, quint16(42));
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(m.duplicateTag(99), -1);
+        QCOMPARE(m.nextTagId(), TagId(6));
+
+        // Remove with live data.
+        SampleBatch b;
+        b.samples << TagSample{4, 1, 1.0, Quality::Good};
+        m.updateSamples(b);
+        edited.clear();
+        QVERIFY(m.removeRows(r, 1));
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(m.rowOf(4), -1);
+        QVERIFY(!m.removeRows(100, 1));
+        QVERIFY(!m.removeRows(0, 0));
+        QVERIFY(m.removeRows(0, 2));
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(edited.size(), 2);
+        QCOMPARE(reset.size(), 0);
+        // Ids are never reused.
+        m.addTag();
+        QCOMPARE(m.tags().last().id, TagId(6));
+    }
+
+    void updateSamplesSignals()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        QList<Tag> tags;
+        for (int i = 0; i < 5; ++i)
+            tags << makeTag(TagId(10 + i), QString("t%1").arg(i), Area::HoldingRegister, quint16(i));
+        m.setTags(tags, 20);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy reset(&m, &QAbstractItemModel::modelReset);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        SampleBatch b;
+        b.samples << TagSample{11, 1, 2.0, Quality::Good} << TagSample{12, 2, 3.0, Quality::Timeout}
+                  << TagSample{14, 3, 4.0, Quality::Good} << TagSample{999, 0, 0, Quality::Good};
+        m.updateSamples(b);
+        QCOMPARE(reset.size(), 0);
+        QCOMPARE(edited.size(), 0);
+        QVERIFY(changed.size() >= 1);
+        QSet<int> rows;
+        for (const auto &args : changed) {
+            const auto tl = args.at(0).value<QModelIndex>();
+            const auto br = args.at(1).value<QModelIndex>();
+            QCOMPARE(tl.column(), int(C::Raw));
+            QCOMPARE(br.column(), int(C::Quality));
+            for (int r = tl.row(); r <= br.row(); ++r)
+                rows.insert(r);
+        }
+        QCOMPARE(rows, (QSet<int>{1, 2, 4}));
+        // Row 0 and 3 untouched.
+        QCOMPARE(m.data(ix(m, 0, C::Quality)).toString(), QString("Unknown"));
+        QCOMPARE(m.data(ix(m, 2, C::Quality)).toString(), QString("Timeout"));
+        QVERIFY(m.data(ix(m, 2, C::Value)).toString().isEmpty());
+        QVERIFY(m.data(ix(m, 2, C::Raw)).toString().isEmpty());
+
+        // Empty / unknown-only batches emit nothing.
+        changed.clear();
+        m.updateSamples(SampleBatch{});
+        SampleBatch unk;
+        unk.samples << TagSample{999, 0, 0, Quality::Good};
+        m.updateSamples(unk);
+        QCOMPARE(changed.size(), 0);
+    }
+
+    void qualityColoursAndTooltips()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a")}, 2);
+        auto fg = [&] { return m.data(ix(m, 0, C::Quality), Qt::ForegroundRole).value<QBrush>().color(); };
+        const QColor grey = fg();
+        QCOMPARE(grey.red(), grey.green());
+        QCOMPARE(grey.green(), grey.blue());
+
+        SampleBatch b;
+        b.samples << TagSample{1, 1, 1, Quality::Good};
+        m.updateSamples(b);
+        const QColor green = fg();
+        QVERIFY(green.green() > green.red() && green.green() > green.blue());
+
+        for (Quality q : {Quality::Timeout, Quality::Exception, Quality::Disconnected, Quality::Error}) {
+            b.samples[0].quality = q;
+            m.updateSamples(b);
+            const QColor red = fg();
+            QVERIFY(red.red() > red.green() && red.red() > red.blue());
+            QCOMPARE(m.data(ix(m, 0, C::Quality)).toString(), toString(q));
+        }
+
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        m.setStatusText(1, "Illegal data address");
+        QCOMPARE(m.data(ix(m, 0, C::Quality), Qt::ToolTipRole).toString(), QString("Illegal data address"));
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(changed.at(0).at(0).value<QModelIndex>(), ix(m, 0, C::Quality));
+        m.setStatusText(12345, "ignored");
+        QCOMPARE(changed.size(), 1);
+    }
+
+    void clearLive()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a"), makeTag(2, "b")}, 3);
+        SampleBatch b;
+        b.samples << TagSample{1, 1, 1, Quality::Good} << TagSample{2, 2, 2, Quality::Good};
+        m.updateSamples(b);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy reset(&m, &QAbstractItemModel::modelReset);
+        m.clearLiveValues();
+        QCOMPARE(reset.size(), 0);
+        QVERIFY(changed.size() >= 1);
+        for (int r = 0; r < 2; ++r) {
+            QVERIFY(m.data(ix(m, r, C::Raw)).toString().isEmpty());
+            QVERIFY(m.data(ix(m, r, C::Value)).toString().isEmpty());
+            QCOMPARE(m.data(ix(m, r, C::Quality)).toString(), QString("Unknown"));
+        }
+    }
 };
 
 QTEST_MAIN(TstTagTableModel)
 #include "tst_tagtablemodel.moc"
+
