@@ -189,7 +189,8 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
         || !readInt(obj, QStringLiteral("port"), prefix, 1, 65535, port, error)
         || !readInt(obj, QStringLiteral("unitId"), prefix, 0, 247, unitId, error)
         || !readInt(obj, QStringLiteral("timeoutMs"), prefix, kMinMs, kMaxMs, timeoutMs, error)
-        || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, kMinMs, kMaxMs, pollPeriodMs, error)) {
+        || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, kMinMs, kMaxMs, pollPeriodMs, error)
+        || !readBool(obj, QStringLiteral("singleRegisterWrites"), prefix, conn.singleRegisterWrites, error)) {
         return false;
     }
     conn.port = static_cast<quint16>(port);
@@ -258,6 +259,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("unitId"), static_cast<qint64>(c.unitId)},
         {QStringLiteral("timeoutMs"), static_cast<qint64>(c.timeoutMs)},
         {QStringLiteral("pollPeriodMs"), static_cast<qint64>(c.pollPeriodMs)},
+        {QStringLiteral("singleRegisterWrites"), c.singleRegisterWrites},
     };
 
     QJsonArray tags;

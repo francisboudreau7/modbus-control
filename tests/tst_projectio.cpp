@@ -106,6 +106,9 @@ private slots:
     void addressSpaceLimit_data();
     void addressSpaceLimit();
     void unitIdRange();
+    void singleRegisterWritesRoundTrip_data();
+    void singleRegisterWritesRoundTrip();
+    void singleRegisterWritesDefaultsToFalse();
 };
 
 void TstProjectIO::roundTrip()
@@ -132,6 +135,8 @@ void TstProjectIO::writesSchemaKeys()
     QCOMPARE(conn.value(QStringLiteral("unitId")).toInt(), 7);
     QCOMPARE(conn.value(QStringLiteral("timeoutMs")).toInt(), 2500);
     QCOMPARE(conn.value(QStringLiteral("pollPeriodMs")).toInt(), 200);
+    QVERIFY(conn.value(QStringLiteral("singleRegisterWrites")).isBool());
+    QCOMPARE(conn.value(QStringLiteral("singleRegisterWrites")).toBool(), false);
 
     const QJsonArray tags = root.value(QStringLiteral("tags")).toArray();
     QCOMPARE(tags.size(), qsizetype(4));
@@ -319,6 +324,12 @@ void TstProjectIO::invalidInputRejected_data()
     QTest::newRow("period above 60000")
         << json(R"({"format":"modbus-control-project","version":1,"connection":{"pollPeriodMs":60001}})")
         << QStringLiteral("pollPeriodMs");
+    QTest::newRow("singleRegisterWrites number")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"singleRegisterWrites":1}})")
+        << QStringLiteral("singleRegisterWrites");
+    QTest::newRow("singleRegisterWrites string")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"singleRegisterWrites":"true"}})")
+        << QStringLiteral("singleRegisterWrites");
 }
 
 void TstProjectIO::invalidInputRejected()
@@ -520,6 +531,43 @@ void TstProjectIO::unitIdRange()
     })"), &error);
     QVERIFY2(high.has_value(), qPrintable(error));
     QCOMPARE(high->connection.unitId, 247);
+}
+
+void TstProjectIO::singleRegisterWritesRoundTrip_data()
+{
+    QTest::addColumn<bool>("value");
+
+    QTest::newRow("true") << true;
+    QTest::newRow("false") << false;
+}
+
+void TstProjectIO::singleRegisterWritesRoundTrip()
+{
+    QFETCH(bool, value);
+
+    Project p;
+    p.connection.singleRegisterWrites = value;
+    p.nextTagId = 1;
+
+    const QByteArray data = projectToJson(p);
+    const QJsonObject conn = QJsonDocument::fromJson(data).object().value(QStringLiteral("connection")).toObject();
+    QCOMPARE(conn.value(QStringLiteral("singleRegisterWrites")).toBool(), value);
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(data, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(loaded->connection.singleRegisterWrites, value);
+    QCOMPARE(*loaded, p);
+}
+
+void TstProjectIO::singleRegisterWritesDefaultsToFalse()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"connection":{"port":502}
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->connection.singleRegisterWrites, false);
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)
