@@ -47,5 +47,5 @@ add_dependencies(tst_integration modbus_test_server)
 add_test(NAME app_smoke COMMAND modbus_control --smoke)
 add_test(NAME server_version COMMAND modbus_test_server --version)
 set_tests_properties(app_smoke server_version PROPERTIES
-  ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+  ENVIRONMENT_MODIFICATION "${MC_TEST_PATH}"
   TIMEOUT 60)
