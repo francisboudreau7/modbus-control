@@ -4,11 +4,17 @@ function(mc_add_qtest name)
   add_executable(${name} ${name}.cpp)
   target_link_libraries(${name} PRIVATE Qt6::Test mc_warnings ${ARG_LIBS})
   add_test(NAME ${name} COMMAND ${name})
-  # Qt DLLs are deployed next to the executables; make sure test processes find them.
   set_tests_properties(${name} PROPERTIES
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+    ENVIRONMENT_MODIFICATION "${MC_TEST_PATH}"
     TIMEOUT 120)
 endfunction()
+
+# Test processes find our DLLs in bin/ and Qt's DLLs in the Qt install, even when only a
+# single test target was built (windeployqt has not run).
+set(MC_TEST_PATH
+  "PATH=path_list_prepend:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}"
+  "PATH=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<$<CONFIG:Debug>:debug/>bin"
+  "PATH=path_list_prepend:${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
 mc_add_qtest(tst_smoke LIBS mbcore)
 # Qt6Test is not pulled in by the app's deployment, so deploy it for the test binaries.
