@@ -19,16 +19,18 @@ struct SignalBinding {
 ///
 /// server.json (every key optional; missing keys keep the defaults below):
 /// {
-///   "host": "0.0.0.0", "port": 1502, "unitId": 1,
+///   "host": "127.0.0.1", "port": 1502, "unitId": 1,
 ///   "holdingCount": 200, "inputCount": 64, "tickMs": 50,
 ///   "delayMs": 0, "dropPercent": 0, "verbose": false,
 ///   "signals": [ { "input": 0, "kind": "sine"|"triangle"|"sawtooth"|"square"|"counter"|
 ///                  "noise"|"lag"|"constant", "amplitude": 1000, "offset": 0,
 ///                  "periodS": 5, "tauS": 2, "source": 100 }, ... ]
 /// }
+/// "host" defaults to loopback because the server has no authentication; use "0.0.0.0" to
+/// accept remote clients.
 /// If "signals" is present it replaces the default bindings entirely.
 struct ServerConfig {
-    QString host = QStringLiteral("0.0.0.0");
+    QString host = QStringLiteral("127.0.0.1");
     quint16 port = 1502;
     int unitId = 1;
     int holdingCount = 200; ///< HR 0..holdingCount-1, all read/write, initially 0

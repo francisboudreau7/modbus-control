@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     const QCommandLineOption helpOption({QStringLiteral("h"), QStringLiteral("help")}, QStringLiteral("Show this help."));
     const QCommandLineOption versionOption(QStringLiteral("version"), QStringLiteral("Show version."));
     const QCommandLineOption configOption(QStringLiteral("config"), QStringLiteral("JSON configuration file."), QStringLiteral("file"));
-    const QCommandLineOption hostOption(QStringLiteral("host"), QStringLiteral("Address to listen on (default 0.0.0.0)."), QStringLiteral("address"));
+    const QCommandLineOption hostOption(QStringLiteral("host"), QStringLiteral("Address to listen on (default 127.0.0.1; use --host 0.0.0.0 to accept remote clients)."), QStringLiteral("address"));
     const QCommandLineOption portOption(QStringLiteral("port"), QStringLiteral("TCP port, 0 = let the OS choose (default 1502)."), QStringLiteral("port"));
     const QCommandLineOption unitOption(QStringLiteral("unit"), QStringLiteral("Modbus unit id (default 1)."), QStringLiteral("id"));
     const QCommandLineOption tickOption(QStringLiteral("tick"), QStringLiteral("Simulation tick period in ms (default 50)."), QStringLiteral("ms"));

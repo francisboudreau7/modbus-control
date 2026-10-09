@@ -78,7 +78,7 @@ private slots:
 void TstServerConfig::defaultsMatchSpec()
 {
     const ServerConfig cfg = ServerConfig::defaults();
-    QCOMPARE(cfg.host, QStringLiteral("0.0.0.0"));
+    QCOMPARE(cfg.host, QStringLiteral("127.0.0.1"));
     QCOMPARE(cfg.port, quint16(1502));
     QCOMPARE(cfg.unitId, 1);
     QCOMPARE(cfg.holdingCount, 200);
