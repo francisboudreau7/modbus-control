@@ -1,0 +1,56 @@
+#pragma once
+
+#include "ModbusConnection.h"
+#include "Tag.h"
+
+#include <QHash>
+#include <QList>
+#include <QObject>
+
+class QWidget;
+
+namespace mb {
+
+class TagTableModel;
+
+/// Turns user write requests into PollWorker writes and reports the results.
+///
+/// requestWrite: if not connected -> message and stop. Encodes the value with
+/// encodeValue(); out of range -> warning box. Otherwise asks for confirmation
+/// ("Write 12.5 °C (raw 125) to HR 100 'Setpoint'?") and emits writeRegisters (FC06).
+///
+/// requestWriteSelection: rows must all be writable holding registers with consecutive,
+/// distinct addresses (sorted by address); otherwise explain why in a warning box. Shows a
+/// dialog with one value field per tag (prefilled with the current value), encodes all,
+/// confirms, and emits one writeRegisters with all values (FC16).
+///
+/// onWriteFinished: success -> message "Write OK: ..."; failure -> warning message and
+/// TagTableModel::setStatusText() on the affected tags.
+class WriteController : public QObject
+{
+    Q_OBJECT
+public:
+    WriteController(TagTableModel *model, QWidget *dialogParent, QObject *parent = nullptr);
+
+public slots:
+    void requestWrite(mb::TagId id, double scaledValue);
+    void requestWriteSelection(const QList<int> &rows);
+    void onWriteFinished(quint64 requestId, const mb::ModbusResult &result);
+    void setConnected(bool connected);
+
+signals:
+    /// Connect to PollWorker::writeRegisters (queued).
+    void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
+    /// Status bar text.
+    void message(const QString &text);
+
+private:
+    // Implementation-defined; the task may change the private section freely.
+    TagTableModel *m_model = nullptr;
+    QWidget *m_dialogParent = nullptr;
+    bool m_connected = false;
+    quint64 m_nextRequest = 1;
+    QHash<quint64, QList<TagId>> m_pending;
+};
+
+} // namespace mb

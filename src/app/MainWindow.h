@@ -1,0 +1,77 @@
+#pragma once
+
+#include "PollWorker.h"
+
+#include <QMainWindow>
+
+#include <functional>
+
+class QAction;
+class QLabel;
+
+namespace mb {
+
+class ConnectionBar;
+class CursorPanel;
+class TagTableModel;
+class TagTableWidget;
+class TrendPlot;
+
+/// Main window layout (no application logic; AppController wires the actions):
+/// - Toolbar "Connection": ConnectionBar.
+/// - Central widget: TrendPlot.
+/// - Bottom dock "Tags": TagTableWidget (over tagModel()).
+/// - Right dock "Cursors": CursorPanel.
+/// - Menus: File (New, Open..., Save, Save As..., Quit), Export (Graph image...,
+///   Data (CSV)...), View (dock toggles), Help (About).
+/// - Status bar: transient messages on the left, permanent connection label on the right.
+/// Window geometry and dock state are saved/restored with QSettings.
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+public:
+    struct Actions {
+        QAction *newProject = nullptr;
+        QAction *openProject = nullptr;
+        QAction *saveProject = nullptr;
+        QAction *saveProjectAs = nullptr;
+        QAction *quit = nullptr;
+        QAction *exportImage = nullptr;
+        QAction *exportCsv = nullptr;
+        QAction *about = nullptr;
+    };
+
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
+
+    ConnectionBar *connectionBar() const;
+    TagTableModel *tagModel() const;
+    TagTableWidget *tagTable() const;
+    TrendPlot *trendPlot() const;
+    CursorPanel *cursorPanel() const;
+    const Actions &actions() const;
+
+    /// Permanent status bar label, e.g. "Connected to 127.0.0.1:1502 (unit 1)".
+    void setConnectionStatus(mb::ConnectionState state, const QString &detail);
+    void showStatusMessage(const QString &text, int timeoutMs = 5000);
+    /// Window title: "<name>[*] — Modbus Control" (uses QWidget::setWindowModified).
+    void setDocumentTitle(const QString &name, bool modified);
+    /// Called from closeEvent; returning false cancels the close (unsaved changes).
+    void setCloseHandler(std::function<bool()> handler);
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
+private:
+    // Implementation-defined; the task may change the private section freely.
+    ConnectionBar *m_connectionBar = nullptr;
+    TagTableModel *m_tagModel = nullptr;
+    TagTableWidget *m_tagTable = nullptr;
+    TrendPlot *m_trendPlot = nullptr;
+    CursorPanel *m_cursorPanel = nullptr;
+    QLabel *m_connectionLabel = nullptr;
+    Actions m_actions;
+    std::function<bool()> m_closeHandler;
+};
+
+} // namespace mb

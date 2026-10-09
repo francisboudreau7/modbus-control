@@ -1,16 +1,18 @@
+#include "AppController.h"
+#include "MainWindow.h"
+#include "MetaTypes.h"
 #include "Version.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
-#include <QMainWindow>
-
-#include <qwt_plot.h>
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    QApplication::setOrganizationName(QStringLiteral("ModbusControl"));
     QApplication::setApplicationName(QStringLiteral("Modbus Control"));
     QApplication::setApplicationVersion(mb::versionString());
+    mb::registerMetaTypes();
 
     QCommandLineParser parser;
     parser.addHelpOption();
@@ -18,22 +20,18 @@ int main(int argc, char *argv[])
     QCommandLineOption smokeOption(QStringLiteral("smoke"),
                                    QStringLiteral("Construct the main window, process events once and exit."));
     parser.addOption(smokeOption);
+    parser.addPositionalArgument(QStringLiteral("project"), QStringLiteral("Project file (.mbproj) to open."), QStringLiteral("[project]"));
     parser.process(app);
 
-    QMainWindow window;
-    window.setWindowTitle(QStringLiteral("Modbus Control"));
-    auto *plot = new QwtPlot(&window);
-    plot->setAxisTitle(QwtPlot::xBottom, QStringLiteral("Time (s)"));
-    plot->setAxisTitle(QwtPlot::yLeft, QStringLiteral("Value"));
-    window.setCentralWidget(plot);
-    window.resize(1000, 600);
+    mb::MainWindow window;
+    mb::AppController controller(&window);
+    if (!parser.positionalArguments().isEmpty())
+        controller.openProject(parser.positionalArguments().constFirst());
 
+    window.show();
     if (parser.isSet(smokeOption)) {
-        window.show();
         QApplication::processEvents();
         return 0;
     }
-
-    window.show();
     return app.exec();
 }

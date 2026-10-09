@@ -1,5 +1,23 @@
+# UI classes as a library so widget/model tests can link them.
+add_library(mbui STATIC
+  MainWindow.h MainWindow.cpp
+  AppController.h AppController.cpp
+  ConnectionBar.h ConnectionBar.cpp
+  TagTableModel.h TagTableModel.cpp
+  TagTableWidget.h TagTableWidget.cpp
+  WriteController.h WriteController.cpp
+  TrendPlot.h TrendPlot.cpp
+  PlotCursors.h PlotCursors.cpp
+  CursorPanel.h CursorPanel.cpp
+  ExportImageDialog.h ExportImageDialog.cpp
+  ExportCsvDialog.h ExportCsvDialog.cpp
+)
+target_include_directories(mbui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qwt::Qwt
+                           PRIVATE mc_warnings)
+
 add_executable(modbus_control WIN32 main.cpp)
-target_link_libraries(modbus_control PRIVATE mbcore Qt6::Widgets Qwt::Qwt mc_warnings)
+target_link_libraries(modbus_control PRIVATE mbui mc_warnings)
 
 # Make the exe runnable in place: deploy Qt DLLs and plugins next to it.
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_ROOT}/bin" "${Qt6_DIR}/../../../bin")

@@ -38,6 +38,14 @@ mc_add_qtest(tst_csvexporter LIBS mbcore)
 mc_add_qtest(tst_signalgen LIBS mbsim)
 mc_add_qtest(tst_serverconfig LIBS mbsim)
 
+# UI tests run on the offscreen platform plugin from the Qt install.
+foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage)
+  mc_add_qtest(${name} LIBS mbui)
+  set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
+    "QT_QPA_PLATFORM=set:offscreen"
+    "QT_PLUGIN_PATH=set:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}")
+endforeach()
+
 # Integration: starts modbus_test_server and talks to it through mbcore.
 mc_add_qtest(tst_integration LIBS mbcore)
 target_compile_definitions(tst_integration PRIVATE
