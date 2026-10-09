@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.25)
+
+# vcpkg toolchain: honour VCPKG_ROOT, fall back to the default checkout location.
+if(NOT CMAKE_TOOLCHAIN_FILE)
+  if(DEFINED ENV{VCPKG_ROOT})
+    set(_vcpkg_root "$ENV{VCPKG_ROOT}")
+  else()
+    set(_vcpkg_root "C:/Users/franc/source/vcpkg")
+  endif()
+  set(CMAKE_TOOLCHAIN_FILE "${_vcpkg_root}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "")
+endif()
+
+project(ModbusControl VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Qt is a prebuilt install, not a vcpkg package. Override with -DQT_ROOT=... or the QT_ROOT env var.
+if(NOT QT_ROOT AND DEFINED ENV{QT_ROOT})
+  set(QT_ROOT "$ENV{QT_ROOT}")
+endif()
+if(QT_ROOT)
+  list(PREPEND CMAKE_PREFIX_PATH "${QT_ROOT}")
+endif()
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Svg Concurrent Network Test)
+qt_standard_project_setup()
+
+find_package(libmodbus CONFIG REQUIRED)
+
+# All executables and DLLs land in one directory so they can be run in place.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+# Warning/conformance flags for our own targets (not third-party code such as Qwt).
+add_library(mc_warnings INTERFACE)
+if(MSVC)
+  target_compile_options(mc_warnings INTERFACE /W4 /permissive- /utf-8)
+endif()
+
+include(cmake/Qwt.cmake)
+
+enable_testing()
+add_subdirectory(src/core)
+add_subdirectory(src/app)
+add_subdirectory(server)
+add_subdirectory(tests)

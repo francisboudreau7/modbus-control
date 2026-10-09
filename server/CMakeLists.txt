@@ -1,0 +1,2 @@
+add_executable(modbus_test_server main.cpp)
+target_link_libraries(modbus_test_server PRIVATE modbus mc_warnings)
