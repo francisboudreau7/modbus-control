@@ -1,5 +1,6 @@
 ﻿#include "MainWindow.h"
 
+#include "AnalysisView.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "TagTableModel.h"
@@ -17,6 +18,7 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QToolBar>
 
 namespace mb {
@@ -28,9 +30,16 @@ MainWindow::MainWindow(QWidget *parent)
     , m_tagTable(new TagTableWidget(m_tagModel, this))
     , m_trendPlot(new TrendPlot(this))
     , m_cursorPanel(new CursorPanel(this))
+    , m_analysisView(new AnalysisView(this))
     , m_connectionLabel(new QLabel(this))
 {
-    setCentralWidget(m_trendPlot);
+    auto *tabs = new QTabWidget(this);
+    tabs->setObjectName(QStringLiteral("centralTabs"));
+    tabs->addTab(m_trendPlot, tr("Trend"));
+    tabs->addTab(m_analysisView, tr("Analysis"));
+    setCentralWidget(tabs);
+    connect(tabs, &QTabWidget::currentChanged, this,
+            [this](int index) { emit analysisTabActiveChanged(index == 1); });
     resize(1200, 800);
 
     // Toolbar
@@ -76,6 +85,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.exportImage->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     m_actions.exportCsv = exportMenu->addAction(tr("&Data (CSV)..."));
     m_actions.exportCsv->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    m_actions.exportAnalysisCsv = exportMenu->addAction(tr("Analysis &results (CSV)..."));
+    m_actions.exportAnalysisCsv->setEnabled(false);
 
     // View menu
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
@@ -110,6 +121,7 @@ MainWindow::MainWindow(QWidget *parent)
     QSettings settings;
     restoreGeometry(settings.value(QStringLiteral("mainWindow/geometry")).toByteArray());
     restoreState(settings.value(QStringLiteral("mainWindow/state")).toByteArray());
+    tabs->setCurrentIndex(settings.value(QStringLiteral("mainWindow/tab"), 0).toInt() == 1 ? 1 : 0);
 }
 
 MainWindow::~MainWindow() = default;
@@ -119,10 +131,20 @@ TagTableWidget *MainWindow::tagTable() const { return m_tagTable; }
 TrendPlot *MainWindow::trendPlot() const { return m_trendPlot; }
 CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
-// Stubs created by T90; T96 builds the tab widget.
 AnalysisView *MainWindow::analysisView() const { return m_analysisView; }
-bool MainWindow::isAnalysisTabActive() const { return false; }
-void MainWindow::setAnalysisTabActive(bool) {}
+
+bool MainWindow::isAnalysisTabActive() const
+{
+    const auto *tabs = findChild<QTabWidget *>(QStringLiteral("centralTabs"));
+    return tabs && tabs->currentWidget() == m_analysisView;
+}
+
+void MainWindow::setAnalysisTabActive(bool active)
+{
+    if (auto *tabs = findChild<QTabWidget *>(QStringLiteral("centralTabs")))
+        tabs->setCurrentWidget(active ? static_cast<QWidget *>(m_analysisView)
+                                      : static_cast<QWidget *>(m_trendPlot));
+}
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {
@@ -153,6 +175,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     QSettings settings;
     settings.setValue(QStringLiteral("mainWindow/geometry"), saveGeometry());
     settings.setValue(QStringLiteral("mainWindow/state"), saveState());
+    settings.setValue(QStringLiteral("mainWindow/tab"), isAnalysisTabActive() ? 1 : 0);
     event->accept();
 }
 

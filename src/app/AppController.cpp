@@ -1,5 +1,7 @@
 ﻿#include "AppController.h"
 
+#include "AnalysisCsv.h"
+#include "AnalysisView.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "ExportCsvDialog.h"
@@ -18,7 +20,11 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QDir>
+#include <QHash>
+#include <QSaveFile>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSignalBlocker>
 #include <QThread>
 #include <QTimer>
@@ -120,6 +126,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_window->trendPlot()->setRecorder(&m_recorder);
     m_window->cursorPanel()->setRecorder(&m_recorder);
+    m_window->analysisView()->setRecorder(&m_recorder);
 
     m_writes = new WriteController(m_window->tagModel(), m_window, this);
 
@@ -151,6 +158,7 @@ AppController::~AppController()
     // The widgets may outlive the recorder; do not leave them a dangling pointer.
     m_window->trendPlot()->setRecorder(nullptr);
     m_window->cursorPanel()->setRecorder(nullptr);
+    m_window->analysisView()->setRecorder(nullptr);
 }
 
 void AppController::wireConnection()
@@ -188,6 +196,7 @@ void AppController::wireData()
         m_recorder.clear();
         m_recorder.setStartTime(wall);
         m_window->trendPlot()->resetData();
+        m_window->analysisView()->resetData();
         m_window->cursorPanel()->refresh();
         m_newData = false;
     });
@@ -196,6 +205,7 @@ void AppController::wireData()
             return;
         m_newData = false;
         m_window->trendPlot()->refresh();
+        m_window->analysisView()->refresh();
         m_window->cursorPanel()->refresh();
     });
 
@@ -221,6 +231,30 @@ void AppController::wireData()
         if (cursors->hasC2())
             c2 = cursors->c2();
         m_window->cursorPanel()->setCursors(c1, c2);
+    });
+
+    AnalysisView *analysis = m_window->analysisView();
+    connect(analysis, &AnalysisView::settingsChanged, this, [this] { setModified(true); });
+    connect(analysis, &AnalysisView::copyCursorsRequested, this, [this] {
+        const PlotCursors *tc = m_window->trendPlot()->cursors();
+        if (!tc->hasC1() && !tc->hasC2()) {
+            m_window->showStatusMessage(QStringLiteral("Place cursors on the Trend first"));
+            return;
+        }
+        std::optional<double> c1;
+        std::optional<double> c2;
+        if (tc->hasC1())
+            c1 = tc->c1();
+        if (tc->hasC2())
+            c2 = tc->c2();
+        m_window->analysisView()->setCursors(c1, c2);
+    });
+    connect(analysis, &AnalysisView::exportResultsRequested, this, [this] { exportAnalysisResults(); });
+    connect(analysis, &AnalysisView::resultsChanged, this, [this] {
+        bool any = false;
+        for (const StepResult &r : m_window->analysisView()->results())
+            any = any || r.valid;
+        m_window->actions().exportAnalysisCsv->setEnabled(any);
     });
 }
 
@@ -253,6 +287,7 @@ void AppController::wireActions()
     connect(a.saveProjectAs, &QAction::triggered, this, [this] { saveAs(); });
     connect(a.exportImage, &QAction::triggered, this, [this] { exportImage(); });
     connect(a.exportCsv, &QAction::triggered, this, [this] { exportCsv(); });
+    connect(a.exportAnalysisCsv, &QAction::triggered, this, [this] { exportAnalysisResults(); });
     connect(a.oneBasedAddresses, &QAction::toggled, this, [this](bool on) {
         m_window->tagModel()->setAddressBase(on ? 1 : 0);
         QMetaObject::invokeMethod(m_worker, [w = m_worker, on] { w->setAddressBase(on ? 1 : 0); },
@@ -267,6 +302,7 @@ void AppController::pushTags()
     QMetaObject::invokeMethod(m_worker, [w = m_worker, tags] { w->setTags(tags); }, Qt::QueuedConnection);
     m_window->trendPlot()->setTags(tags);
     m_window->cursorPanel()->setTags(tags);
+    m_window->analysisView()->setTags(tags);
 }
 
 void AppController::setModified(bool modified)
@@ -302,6 +338,7 @@ Project AppController::currentProject() const
     p.tags = m_window->tagModel()->tags();
     p.nextTagId = m_window->tagModel()->nextTagId();
     p.addressBase = m_window->tagModel()->addressBase();
+    p.analysis = m_window->analysisView()->settings();
     return p;
 }
 
@@ -321,6 +358,7 @@ void AppController::applyProject(const Project &project)
     m_window->tagModel()->setTags(project.tags, project.nextTagId);
     setAddressBase(project.addressBase);
     pushTags();
+    m_window->analysisView()->setSettings(project.analysis);
 }
 
 void AppController::setAddressBase(int base)
@@ -377,6 +415,7 @@ void AppController::newProject()
     m_window->tagModel()->setTags({}, 1);
     setAddressBase(0);
     pushTags();
+    m_window->analysisView()->setSettings(AnalysisSettings{});
     m_projectPath.clear();
     setModified(false);
 }
@@ -415,6 +454,13 @@ bool AppController::openProject(const QString &path)
 
 void AppController::exportImage()
 {
+    if (m_window->isAnalysisTabActive()) {
+        AnalysisView *view = m_window->analysisView();
+        ExportImageDialog dialog(view->trendPlot()->plot(), view->trendPlot()->cursors(),
+                                 view->readoutText(), m_window);
+        dialog.exec();
+        return;
+    }
     TrendPlot *trend = m_window->trendPlot();
     ExportImageDialog dialog(trend->plot(), trend->cursors(), m_window->cursorPanel()->readoutText(), m_window);
     dialog.exec();
@@ -428,6 +474,53 @@ void AppController::exportCsv()
         range = std::make_pair(qMin(cursors->c1(), cursors->c2()), qMax(cursors->c1(), cursors->c2()));
     ExportCsvDialog dialog(m_recorder, m_window->tagModel()->tags(), range, m_window);
     dialog.exec();
+}
+
+void AppController::exportAnalysisResults()
+{
+    const QList<StepResult> results = m_window->analysisView()->results();
+    bool any = false;
+    for (const StepResult &r : results)
+        any = any || r.valid;
+    if (!any)
+        return;
+
+    QSettings settings;
+    QString dir = settings.value(QStringLiteral("export/csvDir")).toString();
+    if (dir.isEmpty() || !QFileInfo(dir).isDir())
+        dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString path = QFileDialog::getSaveFileName(
+        m_window, QStringLiteral("Export analysis results"),
+        QDir(dir).filePath(QStringLiteral("analysis.csv")),
+        QStringLiteral("CSV files (*.csv);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    settings.setValue(QStringLiteral("export/csvDir"), QFileInfo(path).absolutePath());
+
+    QHash<TagId, QString> headers;
+    for (const Tag &t : m_window->tagModel()->tags())
+        headers.insert(t.id, t.unit.isEmpty() ? t.name : QStringLiteral("%1 [%2]").arg(t.name, t.unit));
+
+    QString error;
+    bool ok = false;
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        error = file.errorString();
+    } else if (!exportAnalysisCsv(file, results, headers, u',', &error)) {
+        file.cancelWriting();
+    } else if (!file.commit()) {
+        error = file.errorString();
+    } else {
+        ok = true;
+    }
+    if (ok) {
+        m_window->showStatusMessage(QStringLiteral("Analysis results exported to %1").arg(path));
+        return;
+    }
+    if (error.isEmpty())
+        error = QStringLiteral("Unknown error");
+    QMessageBox::warning(m_window, QStringLiteral("Export analysis results"),
+                         QStringLiteral("Could not write \"%1\":\n%2").arg(path, error));
 }
 
 } // namespace mb

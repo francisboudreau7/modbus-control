@@ -25,6 +25,11 @@ class WriteController;
 /// - cursorsChanged -> CursorPanel::setCursors.
 /// - File actions: New/Open/Save/Save As with "unsaved changes" prompts; last directory
 ///   and the last connection settings (used for New) are kept in QSettings.
+/// - Analysis tab: AnalysisView gets the Recorder, the tags, the 10 Hz refresh and the data
+///   reset like the Trend; its settings are saved/loaded with the project (and mark it
+///   modified); "Copy cursors from Trend" copies the Trend's cursors; the results export
+///   (button and Export menu action, enabled while a valid result exists) writes
+///   exportAnalysisCsv(); the image export uses the Analysis plot while its tab is active.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
 class AppController : public QObject
 {
@@ -59,6 +64,7 @@ private:
     Project currentProject() const;
     void exportImage();
     void exportCsv();
+    void exportAnalysisResults();
 
     MainWindow *m_window = nullptr;
     QThread *m_thread = nullptr;
