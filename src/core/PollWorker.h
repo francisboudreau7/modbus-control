@@ -51,6 +51,9 @@ public slots:
     void setTags(const QList<mb::Tag> &tags);
     /// Starts a new time base: t restarts at 0 and timeBaseReset() is emitted.
     void resetTimeBase();
+    /// 0 or 1: register numbers in messages are shown as protocol address + base, matching
+    /// the UI's register numbering. Does not affect what is read or written.
+    void setAddressBase(int base);
     /// Queues a write of consecutive holding registers starting at `address`;
     /// 1 value -> FC06, more -> FC16, or one FC06 per register (ascending addresses, stop
     /// at the first failure) when ConnectionSettings::singleRegisterWrites is set.
@@ -103,6 +106,7 @@ private:
     QList<PendingWrite> m_writes;
     bool m_writePassQueued = false;
     int m_backoffStep = 0;
+    int m_addressBase = 0;
     QString m_lastBlockMessage;
     QElapsedTimer m_lastBlockMessageTime;
 };

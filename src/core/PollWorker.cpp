@@ -109,6 +109,11 @@ void PollWorker::resetTimeBase()
     emit timeBaseReset(wall);
 }
 
+void PollWorker::setAddressBase(int base)
+{
+    m_addressBase = base == 1 ? 1 : 0;
+}
+
 void PollWorker::setTags(const QList<Tag> &tags)
 {
     m_tags = tags;
@@ -171,9 +176,10 @@ void PollWorker::enterReconnecting(const QString &reason)
     closeConnection();
     const int ms = nextBackoffMs();
     const QString detail = QStringLiteral("%1 (retry in %2 s)").arg(reason).arg(ms / 1000.0);
+    // Fail queued writes before the state change: listeners drop pending requests on it.
+    failAllWrites(notConnectedResult());
     setState(ConnectionState::Reconnecting, detail);
     emit message(QStringLiteral("Connection to %1 failed: %2").arg(endpoint(), detail));
-    failAllWrites(notConnectedResult());
     m_reconnectTimer->start(ms);
     // Gap batches: one all-Disconnected batch per poll period.
     m_timer->start(periodMs());
@@ -235,14 +241,22 @@ void PollWorker::serveWrites()
                 const quint16 reg = static_cast<quint16>(w.address + i);
                 r = m_conn->writeSingle(reg, w.values.at(i));
                 if (!r.ok()) {
-                    r.message = QStringLiteral("Write of register %1 failed: %2").arg(reg).arg(r.message);
+                    const QString partial = i > 0
+                        ? QStringLiteral(" (registers %1..%2 were already written: value partially applied)")
+                              .arg(w.address + m_addressBase)
+                              .arg(reg - 1 + m_addressBase)
+                        : QString();
+                    r.message = QStringLiteral("Write of register %1 failed%2: %3")
+                                    .arg(reg + m_addressBase)
+                                    .arg(partial, r.message);
                     break;
                 }
             }
         } else
             r = m_conn->writeMultiple(w.address, w.values);
 
-        if (r.error == ModbusError::Timeout)
+        // Discard anything left in the socket so a late reply is not read as the next answer.
+        if (!r.ok() && r.error != ModbusError::Exception)
             m_conn->flush();
         emit writeFinished(w.id, r);
         if (r.error == ModbusError::ConnectionLost) {
@@ -362,10 +376,11 @@ void PollWorker::pollCycle(double t)
         }
         emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
                              .arg(areaShort(block.area))
-                             .arg(block.start)
-                             .arg(block.start + block.count - 1)
+                             .arg(block.start + m_addressBase)
+                             .arg(block.start + block.count - 1 + m_addressBase)
                              .arg(r.message));
-        if (r.error == ModbusError::Timeout)
+        // Discard anything left in the socket so a late reply is not read as the next answer.
+        if (r.error != ModbusError::Exception)
             m_conn->flush();
         if (r.error == ModbusError::ConnectionLost) {
             lost = true;

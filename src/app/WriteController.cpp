@@ -65,7 +65,9 @@ public:
         validator->setLocale(QLocale::c());
         validator->setNotation(QDoubleValidator::StandardNotation);
         for (qsizetype i = 0; i < tags.size(); ++i) {
-            auto *edit = new QLineEdit(valueText(i < current.size() ? current.at(i) : 0.0), this);
+            // Shortest round-trip form, so an untouched field writes back exactly the same value.
+            const double v = i < current.size() ? current.at(i) : 0.0;
+            auto *edit = new QLineEdit(QString::number(v, 'g', QLocale::FloatingPointShortest), this);
             edit->setValidator(validator);
             const QString unit = tags.at(i).unit.isEmpty() ? QString()
                                                            : QStringLiteral(" [%1]").arg(tags.at(i).unit);
@@ -222,11 +224,10 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         double v = decodeValue(tag, 0);
         const int row = m_model->rowOf(tag.id);
         if (row >= 0) {
-            const QVariant text = m_model->data(m_model->index(row, TagTableModel::Value));
-            bool ok = false;
-            const double parsed = text.toString().toDouble(&ok);
-            if (ok)
-                v = parsed;
+            // EditRole carries the full-precision value; the display text is rounded.
+            const QVariant live = m_model->data(m_model->index(row, TagTableModel::Value), Qt::EditRole);
+            if (live.isValid())
+                v = live.toDouble();
         }
         current.append(v);
     }

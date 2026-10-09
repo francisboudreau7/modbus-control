@@ -51,6 +51,8 @@ ConnectionSettings lastConnection()
     s.unitId = q.value(QStringLiteral("connection/lastUnit"), d.unitId).toInt();
     s.timeoutMs = q.value(QStringLiteral("connection/lastTimeout"), d.timeoutMs).toInt();
     s.pollPeriodMs = q.value(QStringLiteral("connection/lastPeriod"), d.pollPeriodMs).toInt();
+    s.singleRegisterWrites =
+        q.value(QStringLiteral("connection/lastSingleRegisterWrites"), d.singleRegisterWrites).toBool();
     return s;
 }
 
@@ -62,6 +64,7 @@ void storeLastConnection(const ConnectionSettings &s)
     q.setValue(QStringLiteral("connection/lastUnit"), s.unitId);
     q.setValue(QStringLiteral("connection/lastTimeout"), s.timeoutMs);
     q.setValue(QStringLiteral("connection/lastPeriod"), s.pollPeriodMs);
+    q.setValue(QStringLiteral("connection/lastSingleRegisterWrites"), s.singleRegisterWrites);
 }
 
 Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType type,
@@ -118,7 +121,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     m_window->trendPlot()->setRecorder(&m_recorder);
     m_window->cursorPanel()->setRecorder(&m_recorder);
 
-    m_writes = new WriteController(m_window->tagModel(), m_window);
+    m_writes = new WriteController(m_window->tagModel(), m_window, this);
 
     wireConnection();
     wireData();
@@ -252,6 +255,8 @@ void AppController::wireActions()
     connect(a.exportCsv, &QAction::triggered, this, [this] { exportCsv(); });
     connect(a.oneBasedAddresses, &QAction::toggled, this, [this](bool on) {
         m_window->tagModel()->setAddressBase(on ? 1 : 0);
+        QMetaObject::invokeMethod(m_worker, [w = m_worker, on] { w->setAddressBase(on ? 1 : 0); },
+                                  Qt::QueuedConnection);
         setModified(true);
     });
 }
@@ -325,6 +330,8 @@ void AppController::setAddressBase(int base)
     const QSignalBlocker blocker(action);
     action->setChecked(base == 1);
     m_window->tagModel()->setAddressBase(base);
+    QMetaObject::invokeMethod(m_worker, [w = m_worker, base] { w->setAddressBase(base); },
+                              Qt::QueuedConnection);
 }
 
 bool AppController::saveTo(const QString &path)
