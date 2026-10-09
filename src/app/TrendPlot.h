@@ -5,6 +5,8 @@
 #include <QList>
 #include <QWidget>
 
+#include <qwt_axis_id.h>
+
 class QComboBox;
 class QPushButton;
 class QToolButton;
@@ -74,6 +76,7 @@ private:
     struct CurveEntry;
     bool pull(); ///< appends new recorder rows to the curves; true if anything changed
     void fitY(double x1, double x2);
+    void fitAxis(QwtAxisId axis, double x1, double x2);
     void adaptPens();  ///< thinner pens when very many points are visible (speed)
     bool m_thinPens = false;
     void applyAxes(); ///< running: x window + y fit
