@@ -147,6 +147,7 @@ private:
     double m_prevTo = 63.2;
     qsizetype m_lastSize = 0;
     double m_lastTime = 0.0;
+    quint64 m_lastEvicted = 0; ///< Recorder::evictedCount() at the last recompute
 };
 
 } // namespace mb

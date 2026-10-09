@@ -115,7 +115,72 @@ private slots:
     void onlyAnalyzedTags();
     void refreshRecompute();
     void detailedLabels();
+    void staleDeltaCoTagMeansTypedValue();
+    void loadedPercentsNormalised();
+    void editingOneControlKeepsOthers();
+    void evictionRecomputes();
 };
+
+void TstAnalysisView::staleDeltaCoTagMeansTypedValue()
+{
+    Recorder rec;
+    appendRows(rec, 0, 600);
+    AnalysisView v;
+    v.setRecorder(&rec);
+    v.setTags(standardTags());
+    AnalysisSettings s;
+    s.deltaCoTagId = 99; // not in the project
+    s.manualDeltaCo = 10.0;
+    v.setSettings(s);
+    QCOMPARE(v.settings().deltaCoTagId, TagId(0));
+    v.setCursors(9.0, 40.0);
+    QCOMPARE(v.results().size(), 1);
+    QVERIFY(v.results().at(0).gain.has_value()); // the typed ΔCO is used
+}
+
+void TstAnalysisView::loadedPercentsNormalised()
+{
+    AnalysisView v;
+    v.setTags(standardTags());
+    AnalysisSettings s;
+    s.percents = {63.2, 0.0, 63.2, 28.3, 150.0};
+    v.setSettings(s);
+    QCOMPARE(v.settings().percents, (QList<double>{0.0, 28.3, 63.2}));
+    QCOMPARE(child<QListWidget>(v, "percentList")->count(), 3);
+}
+
+void TstAnalysisView::editingOneControlKeepsOthers()
+{
+    AnalysisView v;
+    v.setTags(standardTags());
+    AnalysisSettings s;
+    s.referenceWindowS = 0.25; // the spin box shows it rounded
+    s.smoothingS = 0.125;
+    v.setSettings(s);
+    child<QComboBox>(v, "referenceCombo")->setCurrentIndex(1);
+    QCOMPARE(v.settings().reference, ReferenceMode::WindowMean);
+    QCOMPARE(v.settings().referenceWindowS, 0.25);
+    QCOMPARE(v.settings().smoothingS, 0.125);
+}
+
+void TstAnalysisView::evictionRecomputes()
+{
+    Recorder rec(400); // 40 s at 0.1 s
+    appendRows(rec, 0, 399);
+    AnalysisView v;
+    v.setRecorder(&rec);
+    v.setTags(standardTags());
+    v.setCursors(9.0, 30.0);
+    QCOMPARE(v.results().size(), 1);
+    QVERIFY(v.results().at(0).valid);
+
+    // Full ring: new rows evict the data around C1, so the result must change.
+    appendRows(rec, 400, 499);
+    QSignalSpy changed(&v, &AnalysisView::resultsChanged);
+    v.refresh();
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(!v.results().at(0).valid);
+}
 
 /// Labels of the setpoint markers, in plot item order.
 static QStringList markerLabels(AnalysisView &v)

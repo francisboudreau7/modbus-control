@@ -165,9 +165,21 @@ void AnalysisView::buildUi()
     refGrid->addWidget(new QLabel(tr("Smoothing"), refBox), 2, 0);
     refGrid->addWidget(m_smoothingSpin, 2, 1);
     col->addWidget(refBox);
+    // Each control updates only its own field, so a loaded value the spin box displays
+    // rounded is not rewritten when another control changes.
     connect(m_referenceCombo, &QComboBox::currentIndexChanged, this, [this] { onReferenceChanged(); });
-    connect(m_windowSpin, &QDoubleSpinBox::valueChanged, this, [this] { onReferenceChanged(); });
-    connect(m_smoothingSpin, &QDoubleSpinBox::valueChanged, this, [this] { onReferenceChanged(); });
+    connect(m_windowSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        if (m_updating)
+            return;
+        m_settings.referenceWindowS = v;
+        userChangedSettings();
+    });
+    connect(m_smoothingSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        if (m_updating)
+            return;
+        m_settings.smoothingS = v;
+        userChangedSettings();
+    });
 
     // Setpoints
     auto *spBox = new QGroupBox(tr("Setpoints"), panel);
@@ -330,6 +342,10 @@ void AnalysisView::syncControlsFromSettings()
         const int idx = m_settings.deltaCoTagId != 0
                             ? m_deltaCoCombo->findData(m_settings.deltaCoTagId) : -1;
         m_deltaCoCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+        // A ΔCO tag that is not in the project (e.g. deleted before the file was saved)
+        // means "Typed value", as the combo shows; otherwise the typed value is ignored.
+        if (idx < 0 && !m_tags.isEmpty())
+            m_settings.deltaCoTagId = 0;
         m_deltaCoSpin->setValue(m_settings.manualDeltaCo);
     }
     m_windowSpin->setEnabled(m_settings.reference == ReferenceMode::WindowMean);
@@ -353,8 +369,18 @@ void AnalysisView::rebuildPercentList()
 void AnalysisView::setSettings(const AnalysisSettings &settings)
 {
     m_settings = settings;
-    if (m_settings.percents.size() > kMaxPercents)
-        m_settings.percents = m_settings.percents.mid(0, kMaxPercents);
+    // Keep the list invariant (sorted, no duplicates, 0..100, at most 20) even for a
+    // hand-edited project file.
+    QList<double> percents;
+    for (double p : std::as_const(m_settings.percents)) {
+        if (p >= 0.0 && p <= 100.0)
+            percents.append(p);
+    }
+    std::sort(percents.begin(), percents.end());
+    percents.erase(std::unique(percents.begin(), percents.end(),
+                               [](double a, double b) { return std::abs(a - b) < 1e-9; }),
+                   percents.end());
+    m_settings.percents = percents.mid(0, kMaxPercents);
     syncControlsFromSettings();
     recompute();
 }
@@ -386,8 +412,6 @@ void AnalysisView::onReferenceChanged()
         return;
     m_settings.reference = m_referenceCombo->currentData().toInt() == 1
                                ? ReferenceMode::WindowMean : ReferenceMode::CursorValue;
-    m_settings.referenceWindowS = m_windowSpin->value();
-    m_settings.smoothingS = m_smoothingSpin->value();
     m_windowSpin->setEnabled(m_settings.reference == ReferenceMode::WindowMean);
     userChangedSettings();
 }
@@ -554,6 +578,7 @@ void AnalysisView::rememberDataState()
     if (m_recorder && m_recorder->size() > 0) {
         m_lastSize = m_recorder->size();
         m_lastTime = m_recorder->timeAt(m_lastSize - 1);
+        m_lastEvicted = m_recorder->evictedCount();
     } else {
         m_lastSize = 0;
         m_lastTime = 0.0;
@@ -640,7 +665,11 @@ void AnalysisView::refresh()
         return;
     }
     const double limit = std::max(cur->c1(), cur->c2()) + m_settings.smoothingS / 2.0;
-    if (m_lastSize == 0 || m_lastTime < limit)
+    // Once the recording is full, old rows are evicted; results that used them must update.
+    const bool lostData = m_recorder->evictedCount() != m_lastEvicted
+                          && std::min(cur->c1(), cur->c2()) - m_settings.referenceWindowS
+                                 - m_settings.smoothingS / 2.0 < m_recorder->timeAt(0);
+    if (m_lastSize == 0 || m_lastTime < limit || lostData)
         recompute();
     else
         rememberDataState();
