@@ -23,7 +23,7 @@ class Recorder;
 ///
 /// Plot: x = seconds since the time base, y = scaled value; one QwtPlotCurve per plotted
 /// tag (tag colour, legend title "name [unit]"); NaN samples break the line. Mouse wheel
-/// zooms, right/middle-drag pans; zooming or panning pauses auto-scroll. While running,
+/// zooms, right-drag pans; zooming or panning pauses auto-scroll. While running,
 /// the x axis shows [tLast - window, tLast] (or everything for All) and y auto-scales.
 /// Curves are fed incrementally from the Recorder (Recorder::evictedCount() maps rows to
 /// absolute sample numbers) and decimated so 20 tags x 36 000 points stay smooth.

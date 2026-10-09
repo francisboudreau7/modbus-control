@@ -120,7 +120,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_window->setCloseHandler([this] { return maybeSave(); });
 
-    // First run: demo project, not modified.
+    // Every start: last connection settings and the demo tags, as an unmodified Untitled project.
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags(demoTags(), 9);
     pushTags();
