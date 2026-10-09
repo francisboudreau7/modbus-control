@@ -156,6 +156,22 @@ setpoints); writable floats HR 6591-7149 (alarm trips, setpoints, PID, constants
 | T72 | Final UI: see "Remaining work" below | H/S | T63, contracts for 1-based numbering | app + docs | Tests pass |
 | T80 | Release v1.0.0 on GitHub with the installer | O | everything | CMakeLists version, gh release | User confirmed, release visible |
 
+### Wave 8 — Analysis mode (v1.1, added on request; design in PLAN.md "Analysis mode")
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| T90 | Contracts + stubs: `Tag::analyzed`; `StepAnalysis.h` (AnalysisSettings, SetpointResult, StepResult, referenceLevel/smooth/findCrossing/analyzeStep); `Project::analysis`; `AnalysisCsv.h`; `AnalysisView.h`; MainWindow tabs + actions; TagTableModel `Analyze` column; `SignalParams::deadTimeS`; CMake + empty test files | O | — | headers, stub .cpp, CMake | Builds, existing tests pass |
+| T91 | Step-analysis numerics: references (cursor / W-second mean), centred moving average, 50 %-anchored crossing search with interpolation, FOPDT K/L/T, falling steps, NaN gaps; `tst_stepanalysis` with synthetic noisy FOPDT data | S | T90 | StepAnalysis.cpp, tests/tst_stepanalysis.cpp | L, T within 2 % on clean data, 5 % with noise; edge cases return `found=false` / errors |
+| T92 | `Analyze` checkbox column in TagTableModel; ProjectIO `"analyzed"` per tag and the `"analysis"` object (ranges validated) + tests | H | T90 | TagTableModel.cpp, ProjectIO.cpp, tst_tagtablemodel, tst_projectio | Tests pass |
+| T93 | Results CSV writer `exportAnalysisCsv` + tests | H | T90 | AnalysisCsv.cpp, tests/tst_analysiscsv.cpp | Tests pass |
+| T94 | Test server: dead time for the `lag` signal (`deadTimeS`, JSON key, default IR 10 = 1 s), `--list` output, docs + tests | H | T90 | server/SignalGen.cpp, ServerConfig.cpp, main.cpp, tst_signalgen, tst_serverconfig, docs/TEST_SERVER.md | Tests pass |
+| T95 | `AnalysisView` widget: plot of analyzed tags with own cursors, "Copy cursors from Trend", settings panel (reference mode, W, S, % list, model a/b, ΔCO tag or value), setpoint table, model table, plot markers, live recompute, `readoutText()`; offscreen tests | S | T91 | AnalysisView.cpp, tests/tst_analysisview.cpp | Tests pass |
+| T96 | Wiring: MainWindow Trend/Analysis tabs; AppController feeds the view (recorder, tags, 10 Hz refresh, settings ↔ project, modified flag), image export of the visible tab, "Export results (CSV)…"; integration test: HR 100 step → IR 10 gives L ≈ 1 s, T ≈ 2 s | S | T92–T95 | MainWindow.cpp, AppController.cpp, tst_integration.cpp | All tests pass, integration 3x stable |
+| T97 | Docs and examples: USER_GUIDE "Analysis mode" (Ziegler–Nichols walk-through on the test server), README, demo.mbproj with IR 10 analyzed and HR 100 as ΔCO tag | H | T96 | docs, README.md, examples/demo.mbproj | Reviewed |
+| T98 | Review, version 1.1.0, installer; GitHub release only after the user confirms | O | all | CMakeLists etc. | User confirmed |
+
+Parallel groups: T91, T92, T93, T94 run together after T90; T95 after T91; T96 after T92–T95; T97 after T96.
+
 ## Status and remaining work
 
 _Last updated: 2026-10-09. Update this section whenever a task is merged._
@@ -165,7 +181,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** nothing. **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
+**In progress:** Wave 8 (Analysis mode) — plan written, T90 contracts next. **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).

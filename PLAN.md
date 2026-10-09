@@ -108,3 +108,23 @@ Qt Graphs and QCustomPlot are GPL. The parts of Qwt used here:
 - Windows Firewall prompts the first time the server listens. Port 1502 avoids clashing with real devices on 502.
 - Later additions (32-bit/float types, byte order, RTU) mainly affect `Tag` decoding and
   `ModbusConnection`; the architecture stays the same.
+
+## Analysis mode (added on request, v1.1)
+
+Purpose: school lab step tests. Students find the 0 % and 63.2 % points of a step response so
+they can use the Ziegler–Nichols open-loop method. They place two cursors around the response
+and ask for any percentages between them.
+
+| Topic | Choice |
+|---|---|
+| Location | Main window becomes a tab widget: **Trend** and **Analysis**. The Analysis tab has its own plot (with its own C1/C2 cursors and a "Copy cursors from Trend" button) showing only the tags ticked **Analyze**, plus a side panel with settings and results. |
+| Tag selection | New tag-table checkbox column **Analyze** (`Tag::analyzed`, JSON `"analyzed"`, default false). |
+| 0 % / 100 % references | Per the analysis settings, either the value at C1 / C2 or the mean of the samples in the W seconds ending at each cursor (`[c1-W, c1]`, `[c2-W, c2]`). W is set in the view. |
+| Setpoints | Editable list of percentages (default 0 and 63.2). Target = y0 + p/100·(y100 − y0). Rising and falling steps both work. |
+| Crossing time | Optional centred moving-average smoothing of width S seconds (0 = off) before searching. Anchor = first time the (smoothed) signal reaches 50 %. For p < 50 the search goes **backwards** from the anchor to the last sample still before the target; for p ≥ 50 it goes **forwards** to the first sample at or past it. The time is interpolated linearly between the two samples. This makes 0 % = "the moment the response leaves the baseline" even when the baseline is noisy. |
+| Shown per setpoint | Tag, %, target value, measured (raw recorded) value at the crossing time, time (s), time since C1 (s). Markers (tag colour, label "63.2 %") are drawn on the Analysis plot at (t, target). |
+| Model | First-order plus dead time from two chosen setpoints a, b (default 0 % and 63.2 %): T = (t_b − t_a) / (ln(1−a) − ln(1−b)), L = t_a − T·(−ln(1−a)) − t_step. ΔPV = y100 − y0. ΔCO is either the change of a chosen controller-output tag between the cursors (then t_step = that tag's 50 % crossing) or a value typed in (then t_step = C1). K = ΔPV / ΔCO. No tuning table (students compute Ziegler–Nichols themselves). |
+| Updates | Live: recomputed when cursors, settings, tags or data in the cursor range change. |
+| Persistence | Analysis settings saved in `.mbproj` (top-level `"analysis"` object, optional). Cursor positions are not saved. |
+| Export | "Export results (CSV)…" in the Analysis tab and the Export menu. The graph image export uses the visible tab's plot; on the Analysis tab the setpoint markers are included and the readout is the results summary. |
+| Test server | The `lag` signal gets an optional dead time (`deadTimeS`, default 1 s on IR 10), so a step on HR 100 gives a textbook first-order-plus-dead-time response. |
