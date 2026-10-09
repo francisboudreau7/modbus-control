@@ -70,6 +70,27 @@ const char *kindName(mbsim::SignalKind kind)
     return "?";
 }
 
+const char *formatName(mbsim::RegisterFormat format)
+{
+    switch (format) {
+    case mbsim::RegisterFormat::Int16: return "int16";
+    case mbsim::RegisterFormat::Int32: return "int32";
+    case mbsim::RegisterFormat::Float32: return "float32";
+    }
+    return "?";
+}
+
+const char *orderName(mbsim::WordOrder order)
+{
+    switch (order) {
+    case mbsim::WordOrder::ABCD: return "ABCD";
+    case mbsim::WordOrder::CDAB: return "CDAB";
+    case mbsim::WordOrder::BADC: return "BADC";
+    case mbsim::WordOrder::DCBA: return "DCBA";
+    }
+    return "?";
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -177,7 +198,16 @@ int main(int argc, char *argv[])
     std::printf("unit %d, holding registers 0..%d (read/write), input registers 0..%d, tick %d ms\n", config.unitId,
                 config.holdingCount - 1, config.inputCount - 1, config.tickMs);
     for (const mbsim::SignalBinding &binding : std::as_const(config.signalBindings)) {
-        std::printf("  IR%u: %s", binding.inputAddress, kindName(binding.params.kind));
+        const int registers = mbsim::registerCount(binding.format);
+        if (registers == 2) {
+            std::printf("  IR%u-%u: ", binding.inputAddress, binding.inputAddress + 1);
+        } else {
+            std::printf("  IR%u: ", binding.inputAddress);
+        }
+        std::printf("%s", kindName(binding.params.kind));
+        if (binding.format != mbsim::RegisterFormat::Int16) {
+            std::printf(" (%s %s)", formatName(binding.format), orderName(binding.byteOrder));
+        }
         if (binding.params.kind == mbsim::SignalKind::Lag) {
             std::printf(" following HR%u (tau %g s)", binding.params.sourceAddress, binding.params.tauS);
         }

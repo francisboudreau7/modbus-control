@@ -17,6 +17,9 @@ QList<SignalBinding> defaultBindings()
         {4, {SignalKind::Noise, 100.0, 0.0, 5.0, 2.0, 0}},
         {5, {SignalKind::Sawtooth, 1000.0, 0.0, 8.0, 2.0, 0}},
         {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100}},
+        {20, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::ABCD},
+        {22, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::CDAB},
+        {24, {SignalKind::Sawtooth, 100000.0, 0.0, 8.0, 2.0, 0}, RegisterFormat::Int32, WordOrder::ABCD},
     };
 }
 
@@ -29,6 +32,8 @@ void compareBinding(const SignalBinding &actual, const SignalBinding &expected)
     QCOMPARE(actual.params.periodS, expected.params.periodS);
     QCOMPARE(actual.params.tauS, expected.params.tauS);
     QCOMPARE(actual.params.sourceAddress, expected.params.sourceAddress);
+    QCOMPARE(static_cast<int>(actual.format), static_cast<int>(expected.format));
+    QCOMPARE(static_cast<int>(actual.byteOrder), static_cast<int>(expected.byteOrder));
 }
 
 void compareBindings(const QList<SignalBinding> &actual, const QList<SignalBinding> &expected)
@@ -65,6 +70,8 @@ private slots:
     void signalsEmptyArrayRemovesAll();
     void signalPerKeyDefaults();
     void lagBindingKeys();
+    void formatAndByteOrder_data();
+    void formatAndByteOrder();
     void signalKindStrings_data();
     void signalKindStrings();
     void acceptsBoundaryValues_data();
@@ -88,12 +95,27 @@ void TstServerConfig::defaultsMatchSpec()
     QCOMPARE(cfg.dropPercent, 0.0);
     QVERIFY(!cfg.verbose);
     compareBindings(cfg.signalBindings, defaultBindings());
-    QCOMPARE(cfg.signalBindings.size(), 7);
+    QCOMPARE(cfg.signalBindings.size(), 10);
 
-    const SignalBinding &lag = cfg.signalBindings.constLast();
+    const SignalBinding &lag = cfg.signalBindings.at(6);
     QCOMPARE(lag.inputAddress, quint16(10));
     QCOMPARE(lag.params.sourceAddress, quint16(100));
     QCOMPARE(lag.params.tauS, 2.0);
+    QCOMPARE(static_cast<int>(lag.format), static_cast<int>(RegisterFormat::Int16));
+
+    // The 32-bit defaults: IR20-21 float32 ABCD, IR22-23 float32 CDAB, IR24-25 int32 ABCD.
+    const SignalBinding &ir20 = cfg.signalBindings.at(7);
+    QCOMPARE(ir20.inputAddress, quint16(20));
+    QCOMPARE(static_cast<int>(ir20.format), static_cast<int>(RegisterFormat::Float32));
+    QCOMPARE(static_cast<int>(ir20.byteOrder), static_cast<int>(WordOrder::ABCD));
+    const SignalBinding &ir22 = cfg.signalBindings.at(8);
+    QCOMPARE(ir22.inputAddress, quint16(22));
+    QCOMPARE(static_cast<int>(ir22.format), static_cast<int>(RegisterFormat::Float32));
+    QCOMPARE(static_cast<int>(ir22.byteOrder), static_cast<int>(WordOrder::CDAB));
+    const SignalBinding &ir24 = cfg.signalBindings.at(9);
+    QCOMPARE(ir24.inputAddress, quint16(24));
+    QCOMPARE(static_cast<int>(ir24.format), static_cast<int>(RegisterFormat::Int32));
+    QCOMPARE(static_cast<int>(ir24.byteOrder), static_cast<int>(WordOrder::ABCD));
 }
 
 void TstServerConfig::emptyObjectGivesDefaults()
@@ -166,6 +188,44 @@ void TstServerConfig::lagBindingKeys()
                     {{12, {SignalKind::Lag, 1000.0, 7.0, 5.0, 3.5, 42}}});
 }
 
+void TstServerConfig::formatAndByteOrder_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::addColumn<int>("format");
+    QTest::addColumn<int>("order");
+    const int int16 = static_cast<int>(RegisterFormat::Int16);
+    const int int32 = static_cast<int>(RegisterFormat::Int32);
+    const int float32 = static_cast<int>(RegisterFormat::Float32);
+    const int abcd = static_cast<int>(WordOrder::ABCD);
+    const int cdab = static_cast<int>(WordOrder::CDAB);
+    const int badc = static_cast<int>(WordOrder::BADC);
+    const int dcba = static_cast<int>(WordOrder::DCBA);
+    QTest::newRow("defaults") << QByteArray(R"({"signals":[{"input":4,"kind":"sine"}]})") << int16 << abcd;
+    QTest::newRow("int16 CDAB") << QByteArray(R"({"signals":[{"input":4,"kind":"sine","format":"int16","byteOrder":"CDAB"}]})")
+                                << int16 << cdab;
+    QTest::newRow("int32 BADC") << QByteArray(R"({"signals":[{"input":4,"kind":"sine","format":"int32","byteOrder":"BADC"}]})")
+                                << int32 << badc;
+    QTest::newRow("float32 DCBA") << QByteArray(R"({"signals":[{"input":4,"kind":"sine","format":"float32","byteOrder":"DCBA"}]})")
+                                  << float32 << dcba;
+    QTest::newRow("float32 default order") << QByteArray(R"({"signals":[{"input":4,"kind":"sine","format":"float32"}]})")
+                                           << float32 << abcd;
+    QTest::newRow("byteOrder without format") << QByteArray(R"({"signals":[{"input":4,"kind":"counter","byteOrder":"DCBA"}]})")
+                                              << int16 << dcba;
+}
+
+void TstServerConfig::formatAndByteOrder()
+{
+    QFETCH(QByteArray, json);
+    QFETCH(int, format);
+    QFETCH(int, order);
+    QString error;
+    const auto cfg = parseServerConfig(json, &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->signalBindings.size(), 1);
+    QCOMPARE(static_cast<int>(cfg->signalBindings.at(0).format), format);
+    QCOMPARE(static_cast<int>(cfg->signalBindings.at(0).byteOrder), order);
+}
+
 void TstServerConfig::signalKindStrings_data()
 {
     QTest::addColumn<QString>("kindName");
@@ -210,6 +270,10 @@ void TstServerConfig::acceptsBoundaryValues_data()
     QTest::newRow("lag source at holdingCount-1")
         << QByteArray(R"({"holdingCount":51,"signals":[{"input":10,"kind":"lag","source":50}]})");
     QTest::newRow("small period") << QByteArray(R"({"signals":[{"kind":"sine","periodS":0.001}]})");
+    QTest::newRow("float32 ending at inputCount-1")
+        << QByteArray(R"({"inputCount":8,"signals":[{"input":6,"kind":"sine","format":"float32"}]})");
+    QTest::newRow("int32 ending at inputCount-1")
+        << QByteArray(R"({"inputCount":8,"signals":[{"input":6,"kind":"counter","format":"int32","byteOrder":"DCBA"}]})");
 }
 
 void TstServerConfig::acceptsBoundaryValues()
@@ -225,6 +289,25 @@ void TstServerConfig::rejects_data()
     QTest::addColumn<QByteArray>("json");
     QTest::addColumn<QString>("key");
     QTest::newRow("invalid JSON") << QByteArray("{") << QStringLiteral("Invalid JSON");
+    QTest::newRow("unknown format") << QByteArray(R"({"signals":[{"kind":"sine","format":"int64"}]})")
+                                    << QStringLiteral("format");
+    QTest::newRow("format is case-sensitive") << QByteArray(R"({"signals":[{"kind":"sine","format":"Float32"}]})")
+                                              << QStringLiteral("format");
+    QTest::newRow("format not a string") << QByteArray(R"({"signals":[{"kind":"sine","format":32}]})")
+                                         << QStringLiteral("format");
+    QTest::newRow("unknown byteOrder") << QByteArray(R"({"signals":[{"kind":"sine","format":"int32","byteOrder":"ABC"}]})")
+                                       << QStringLiteral("byteOrder");
+    QTest::newRow("byteOrder is case-sensitive") << QByteArray(R"({"signals":[{"kind":"sine","byteOrder":"abcd"}]})")
+                                                 << QStringLiteral("byteOrder");
+    QTest::newRow("float32 at inputCount-1")
+        << QByteArray(R"({"inputCount":8,"signals":[{"input":7,"kind":"sine","format":"float32"}]})")
+        << QStringLiteral("signals[0].input");
+    QTest::newRow("int32 at inputCount-1")
+        << QByteArray(R"({"inputCount":8,"signals":[{"input":7,"kind":"counter","format":"int32","byteOrder":"CDAB"}]})")
+        << QStringLiteral("signals[0].input");
+    QTest::newRow("float32 past 65535")
+        << QByteArray(R"({"signals":[{"input":65535,"kind":"sine","format":"float32"}]})")
+        << QStringLiteral("signals[0].input");
     QTest::newRow("top-level array") << QByteArray("[]") << QStringLiteral("object");
     QTest::newRow("port as string") << QByteArray(R"({"port":"1502"})") << QStringLiteral("port");
     QTest::newRow("port 0") << QByteArray(R"({"port":0})") << QStringLiteral("port");
