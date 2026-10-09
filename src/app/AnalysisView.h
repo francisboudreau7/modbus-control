@@ -8,6 +8,13 @@
 
 #include <optional>
 
+class QComboBox;
+class QDoubleSpinBox;
+class QListWidget;
+class QPushButton;
+class QTableWidget;
+class QwtPlotMarker;
+
 namespace mb {
 
 class Recorder;
@@ -88,12 +95,51 @@ signals:
     void resultsChanged();
 
 private:
-    // Implementation-defined; the task may change the private section freely.
+    void buildUi();
+    void recompute();
+    void rebuildTables();
+    void rebuildMarkers();
+    void clearMarkers();
+    void rebuildPercentList();
+    void syncControlsFromSettings();
+    void rememberDataState();
+    void onReferenceChanged();
+    void onModelPercentChanged();
+    void onDeltaCoChanged();
+    void onAddPercent();
+    void onRemovePercent();
+    void userChangedSettings();
+    const Tag *tagById(TagId id) const;
+
     TrendPlot *m_plot = nullptr;
     const Recorder *m_recorder = nullptr;
     QList<Tag> m_tags;
     AnalysisSettings m_settings;
     QList<StepResult> m_results;
+
+    QComboBox *m_referenceCombo = nullptr;
+    QDoubleSpinBox *m_windowSpin = nullptr;
+    QDoubleSpinBox *m_smoothingSpin = nullptr;
+    QListWidget *m_percentList = nullptr;
+    QDoubleSpinBox *m_percentSpin = nullptr;
+    QPushButton *m_addPercentButton = nullptr;
+    QPushButton *m_removePercentButton = nullptr;
+    QDoubleSpinBox *m_modelFromSpin = nullptr;
+    QDoubleSpinBox *m_modelToSpin = nullptr;
+    QComboBox *m_deltaCoCombo = nullptr;
+    QDoubleSpinBox *m_deltaCoSpin = nullptr;
+    QPushButton *m_copyCursorsButton = nullptr;
+    QPushButton *m_exportButton = nullptr;
+    QTableWidget *m_setpointTable = nullptr;
+    QTableWidget *m_modelTable = nullptr;
+    QList<QwtPlotMarker *> m_markers;
+
+    bool m_updating = false;      ///< programmatic control changes: no user handling
+    bool m_settingCursors = false; ///< setCursors() in progress: recompute once at the end
+    double m_prevFrom = 0.0;
+    double m_prevTo = 63.2;
+    qsizetype m_lastSize = 0;
+    double m_lastTime = 0.0;
 };
 
 } // namespace mb
