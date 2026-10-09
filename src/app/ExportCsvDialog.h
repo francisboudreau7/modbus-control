@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CsvExporter.h"
 #include "Tag.h"
 
 #include <QDialog>
@@ -7,6 +8,12 @@
 
 #include <optional>
 #include <utility>
+
+class QComboBox;
+class QDialogButtonBox;
+class QLabel;
+class QLineEdit;
+class QRadioButton;
 
 namespace mb {
 
@@ -29,10 +36,22 @@ public:
     void accept() override;
 
 private:
-    // Implementation-defined; the task may change the private section freely.
+    void updateState();
+
     const Recorder &m_recorder;
     QList<Tag> m_tags;
     std::optional<std::pair<double, double>> m_range;
+
+    QList<CsvColumn> m_columns;
+    qsizetype m_allRows = 0;
+    qsizetype m_rangeRows = 0;
+
+    QRadioButton *m_allRadio = nullptr;
+    QRadioButton *m_rangeRadio = nullptr;
+    QComboBox *m_delimiter = nullptr;
+    QLineEdit *m_file = nullptr;
+    QLabel *m_info = nullptr;
+    QDialogButtonBox *m_buttons = nullptr;
 };
 
 } // namespace mb
