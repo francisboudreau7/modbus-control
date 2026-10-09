@@ -20,15 +20,19 @@ inline constexpr int kProjectFormatVersion = 1;
 ///   "connection": { "host": "...", "port": 502, "unitId": 1, "timeoutMs": 1000, "pollPeriodMs": 500 },
 ///   "nextTagId": 4,
 ///   "tags": [ { "id": 1, "name": "...", "area": "holding"|"input", "address": 0,
-///               "type": "int16"|"uint16", "gain": 1.0, "offset": 0.0, "unit": "",
-///               "color": "#RRGGBB", "plotted": true, "writable": false }, ... ]
+///               "type": "int16"|"uint16"|"int32"|"uint32"|"float32",
+///               "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA", "gain": 1.0, "offset": 0.0,
+///               "unit": "", "color": "#RRGGBB", "plotted": true, "writable": false }, ... ]
 /// }
 ///
-/// Missing fields take the defaults of ConnectionSettings / Tag. nextTagId is always
-/// at least max(tag id) + 1.
+/// "byteOrder" only matters for the 32-bit types (2 registers); it is written for every tag.
+/// Missing fields take the defaults of ConnectionSettings / Tag (byteOrder defaults to
+/// "ABCD"). The change from format version 1 that added the 32-bit types and "byteOrder"
+/// is additive, so the version stays 1. nextTagId is always at least max(tag id) + 1.
 ///
-/// Ranges (values outside them are rejected when loading): port 1..65535, unitId 0..255,
-/// timeoutMs 100..60000, pollPeriodMs 100..60000, tag id >= 1, address 0..65535.
+/// Ranges (values outside them are rejected when loading): port 1..65535, unitId 0..247,
+/// timeoutMs 100..60000, pollPeriodMs 100..60000, tag id >= 1, address 0..65535. A 32-bit
+/// tag must also fit: address + 2 <= 65536, so address 65535 is only valid for 16-bit types.
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;
