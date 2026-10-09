@@ -231,6 +231,11 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
     return in;
 }
 
+double fopdtModelValue(const StepResult &, double)
+{
+    return kNaN; // T100 stub; implemented by T101
+}
+
 StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double t2,
                        const AnalysisSettings &settings)
 {

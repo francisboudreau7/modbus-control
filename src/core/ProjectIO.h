@@ -25,10 +25,10 @@ inline constexpr int kProjectFormatVersion = 1;
 ///               "type": "int16"|"uint16"|"int32"|"uint32"|"float32",
 ///               "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA", "gain": 1.0, "offset": 0.0,
 ///               "unit": "", "color": "#RRGGBB", "plotted": true, "writable": false,
-///               "analyzed": false }, ... ],
+///               "analyzed": false, "axis": "left"|"right", "quickA": 0, "quickB": 1000 }, ... ],
 ///   "analysis": { "percents": [0, 63.2], "reference": "cursor"|"mean", "referenceWindowS": 1,
 ///                 "smoothingS": 0, "modelPercents": [0, 63.2], "deltaCoTag": 0, "deltaCo": 0,
-///                 "detailedLabels": false }
+///                 "detailedLabels": false, "showModel": false, "guideLines": true }
 /// }
 ///
 /// "byteOrder" only matters for the 32-bit types (2 registers); it is written for every tag.
@@ -46,7 +46,11 @@ inline constexpr int kProjectFormatVersion = 1;
 /// (CursorValue) or "mean" (WindowMean); referenceWindowS in (0, 3600]; smoothingS in
 /// [0, 3600]; modelPercents = array of exactly 2 numbers a < b, both in [0, 100);
 /// deltaCoTag integer >= 0 (may name a tag that no longer exists); deltaCo any finite
-/// number; detailedLabels boolean. Anything else is rejected.
+/// number; detailedLabels, showModel, guideLines booleans. Anything else is rejected.
+///
+/// Added in v1.2 (optional, additive): per tag "axis" ("left" default, "right") and
+/// "quickA"/"quickB" (finite numbers; a missing key or null = no value; written only when
+/// set).
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;

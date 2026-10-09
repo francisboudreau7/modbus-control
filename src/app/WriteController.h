@@ -31,6 +31,12 @@ class TagTableModel;
 /// in a warning box. Shows a dialog with one value field per tag (prefilled with the current
 /// value), encodes all, confirms, and emits one writeRegisters with all registers.
 ///
+/// requestQuickWrite: like requestWrite, but while quickConfirm() is on the confirmation is
+/// a dialog with the same question and a check box "Don't ask again this session"; when it
+/// is ticked and the write confirmed, quick confirmation turns off (quickConfirmChanged).
+/// While quickConfirm() is off the write is sent without asking. Range errors and "not
+/// connected" are reported as for requestWrite.
+///
 /// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
 /// TagTableModel::setStatusText() on the affected tags.
 class WriteController : public QObject
@@ -44,8 +50,15 @@ public slots:
     void requestWriteSelection(const QList<int> &rows);
     void onWriteFinished(quint64 requestId, const mb::ModbusResult &result);
     void setConnected(bool connected);
+    void requestQuickWrite(mb::TagId id, double scaledValue);
+    /// Default true (each application start).
+    void setQuickConfirm(bool on);
+
+public:
+    bool quickConfirm() const;
 
 signals:
+    void quickConfirmChanged(bool on);
     /// Connect to PollWorker::writeRegisters (queued).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
     /// Status bar text.
@@ -60,6 +73,7 @@ private:
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
     bool m_connected = false;
+    bool m_quickConfirm = true;
     quint64 m_nextRequest = 1;
     QHash<quint64, QList<TagId>> m_pending;
 };

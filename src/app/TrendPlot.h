@@ -22,9 +22,13 @@ class Recorder;
 /// "Clear cursors", "Fit Y", "Clear data" (only emits clearDataRequested()).
 ///
 /// Plot: x = seconds since the time base, y = scaled value; one QwtPlotCurve per plotted
-/// tag (tag colour, legend title "name [unit]"); NaN samples break the line. Mouse wheel
-/// zooms, right-drag pans; zooming or panning pauses auto-scroll. While running,
-/// the x axis shows [tLast - window, tLast] (or everything for All) and y auto-scales.
+/// tag (tag colour, legend title "name [unit]"); NaN samples break the line. Each curve is
+/// attached to QwtAxis::YLeft or QwtAxis::YRight from Tag::axis; the right axis is visible
+/// only while at least one plotted tag uses it. Each Y axis auto-scales (and "Fit Y" fits)
+/// to its own curves only; an axis title lists the distinct units of its tags (", "
+/// separated, empty when none). Mouse wheel zooms (time axis and both Y axes), right-drag
+/// pans; zooming or panning pauses auto-scroll. While running, the x axis shows
+/// [tLast - window, tLast] (or everything for All) and the Y axes auto-scale.
 /// Curves are fed incrementally from the Recorder (Recorder::evictedCount() maps rows to
 /// absolute sample numbers) and decimated so 20 tags x 36 000 points stay smooth.
 class TrendPlot : public QWidget

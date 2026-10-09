@@ -132,6 +132,7 @@ TrendPlot *MainWindow::trendPlot() const { return m_trendPlot; }
 CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
 AnalysisView *MainWindow::analysisView() const { return m_analysisView; }
+QuickWritePanel *MainWindow::quickWritePanel() const { return m_quickWritePanel; } // T108 creates it
 
 bool MainWindow::isAnalysisTabActive() const
 {

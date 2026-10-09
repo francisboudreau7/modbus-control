@@ -40,6 +40,11 @@ struct AnalysisSettings {
     /// Plot labels of the setpoint markers: false = "63.2 %"; true = three lines
     /// "63.2 %", "t = 14.360 s", "y = 22.64 degC" (target value and tag unit).
     bool detailedLabels = false;
+    /// Draw the fitted model curve (see fopdtModelValue) on the Analysis plot.
+    bool showModel = false;
+    /// Dashed guide lines from each found setpoint marker down to the time axis and left to
+    /// the Y axis.
+    bool guideLines = true;
 
     friend bool operator==(const AnalysisSettings &, const AnalysisSettings &) = default;
 };
@@ -77,6 +82,11 @@ struct StepResult {
     std::optional<double> gain;              ///< K = deltaPv / deltaCo
     std::optional<double> deadTime;          ///< L in seconds (may be negative; not clamped)
     std::optional<double> timeConstant;      ///< T in seconds (> 0 when present)
+    /// Root-mean-square of (recorded − fopdtModelValue) over the non-NaN rows with time in
+    /// [t1, t2] (raw values, not smoothed). Present when deadTime and timeConstant are.
+    std::optional<double> fitRms;
+    /// fitRms / |deltaPv| * 100.
+    std::optional<double> fitRmsPercent;
 };
 
 /// Centred moving average: out[i] = mean of the non-NaN values[j] with
@@ -124,7 +134,13 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
 /// - Model (first-order plus dead time) from the crossings ta, tb of modelPercentA/B
 ///   (a, b as fractions): T = (tb - ta) / (ln(1 - a) - ln(1 - b)),
 ///   L = ta - T * (-ln(1 - a)) - stepTime; both nullopt when either crossing is missing,
-///   a >= b, or T <= 0. K = deltaPv / deltaCo when deltaCo is present.
+///   a >= b, or T <= 0. K = deltaPv / deltaCo when deltaCo is present. fitRms and
+///   fitRmsPercent as documented in StepResult.
+/// Model response at time t: y0 for t <= stepTime + L, else
+/// y0 + deltaPv * (1 - exp(-(t - stepTime - L) / T)). NaN when the result is invalid or has
+/// no deadTime/timeConstant. Uses neither K nor ΔCO.
+double fopdtModelValue(const StepResult &result, double t);
+
 StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double t2,
                        const AnalysisSettings &settings);
 

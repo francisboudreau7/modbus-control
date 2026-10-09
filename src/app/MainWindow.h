@@ -13,6 +13,7 @@ namespace mb {
 
 class AnalysisView;
 class ConnectionBar;
+class QuickWritePanel;
 class CursorPanel;
 class TagTableModel;
 class TagTableWidget;
@@ -24,8 +25,9 @@ class TrendPlot;
 ///   The active tab is saved/restored with QSettings ("mainWindow/tab").
 /// - Bottom dock "Tags": TagTableWidget (over tagModel()).
 /// - Right dock "Cursors": CursorPanel.
-/// - Menus: File (New, Open..., Save, Save As..., Quit), Export (Graph image...,
-///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers), Help (About).
+/// - Right dock "Quick write": QuickWritePanel over tagModel() (tabified with Cursors).
+/// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
+///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
 /// Window geometry and dock state are saved/restored with QSettings.
 class MainWindow : public QMainWindow
@@ -37,6 +39,10 @@ public:
         QAction *openProject = nullptr;
         QAction *saveProject = nullptr;
         QAction *saveProjectAs = nullptr;
+        /// "Save &session...": project + recording + cursors (.mbsession).
+        QAction *saveSession = nullptr;
+        /// "Open s&ession...".
+        QAction *openSession = nullptr;
         QAction *quit = nullptr;
         QAction *exportImage = nullptr;
         QAction *exportCsv = nullptr;
@@ -44,6 +50,8 @@ public:
         QAction *exportAnalysisCsv = nullptr;
         /// Options menu, checkable: "Use 1-based register numbers".
         QAction *oneBasedAddresses = nullptr;
+        /// Options menu, checkable, checked at start: "Confirm &quick writes".
+        QAction *confirmQuickWrites = nullptr;
         QAction *about = nullptr;
     };
 
@@ -56,6 +64,7 @@ public:
     TrendPlot *trendPlot() const;
     CursorPanel *cursorPanel() const;
     AnalysisView *analysisView() const;
+    QuickWritePanel *quickWritePanel() const;
     /// True while the Analysis tab is the current tab (image export uses its plot).
     bool isAnalysisTabActive() const;
     /// Makes the Trend (false) or Analysis (true) tab current.
@@ -85,6 +94,7 @@ private:
     TrendPlot *m_trendPlot = nullptr;
     CursorPanel *m_cursorPanel = nullptr;
     AnalysisView *m_analysisView = nullptr;
+    QuickWritePanel *m_quickWritePanel = nullptr;
     QLabel *m_connectionLabel = nullptr;
     Actions m_actions;
     std::function<bool()> m_closeHandler;

@@ -306,4 +306,20 @@ void WriteController::setConnected(bool connected)
         m_pending.clear();
 }
 
+// Stubs created by T100; implemented by T107.
+void WriteController::requestQuickWrite(mb::TagId id, double scaledValue)
+{
+    requestWrite(id, scaledValue);
+}
+
+void WriteController::setQuickConfirm(bool on)
+{
+    if (m_quickConfirm == on)
+        return;
+    m_quickConfirm = on;
+    emit quickConfirmChanged(on);
+}
+
+bool WriteController::quickConfirm() const { return m_quickConfirm; }
+
 } // namespace mb

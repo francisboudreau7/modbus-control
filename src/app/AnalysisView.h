@@ -29,22 +29,28 @@ class TrendPlot;
 /// - Right (in a QScrollArea), top to bottom:
 ///   * buttons "Copy cursors from Trend" (emits copyCursorsRequested()) and
 ///     "Export results (CSV)..." (emits exportResultsRequested(); enabled when at least one
-///     valid result exists);
+///     valid result exists) and "Copy results" (objectName "copyResultsButton": puts both
+///     tables on the clipboard as tableToTsv() of each with an empty selection, separated by
+///     one empty line; enabled like the export button);
 ///   * "References" group: mode combo "Value at cursor" / "Mean before cursor", a W spin box
 ///     ("Window", s, 0.1..3600, enabled only for the mean), and an S spin box ("Smoothing",
 ///     s, 0..3600, special value text "Off" at 0);
 ///   * "Setpoints" group: list of percentages ("63.2 %") with a spin box (0..100, 2 decimals)
 ///     and Add / Remove buttons; the list stays sorted ascending without duplicates, at most
 ///     20 entries; a check box "Show time and value on plot labels" (objectName
-///     "detailedLabelsCheck", AnalysisSettings::detailedLabels);
+///     "detailedLabelsCheck", AnalysisSettings::detailedLabels) and a check box "Guide lines"
+///     ("guideLinesCheck", AnalysisSettings::guideLines);
 ///   * "Model" group: spin boxes "From %" (a) and "To %" (b) (0..99.99; an edit that breaks
 ///     a < b is reverted), and ΔCO: a combo "Typed value" + every project tag ("name
-///     [unit]", item data = TagId) and a value spin box enabled for "Typed value";
+///     [unit]", item data = TagId) and a value spin box enabled for "Typed value"; a check
+///     box "Show model curve" ("showModelCheck", AnalysisSettings::showModel);
 ///   * "Setpoints" table: Tag (colour swatch, "name [unit]"), %, Target, Measured, Time (s),
 ///     t − C1 (s) (from the earlier cursor,
 ///     StepResult::t1); one row per (analyzed tag, percent); "—" when not found;
-///   * "Model" table: Tag, y0, y100, ΔPV, ΔCO, K, L (s), T (s); an invalid result shows its
-///     error text spanning the value cells; a missing value shows "—".
+///   * "Model" table: Tag, y0, y100, ΔPV, ΔCO, K, L (s), T (s), Fit RMS ("<fitRms> (<pct> %)",
+///     e.g. "0.12 (0.6 %)"); an invalid result shows its error text spanning the value cells;
+///     a missing value shows "—".
+///   Both tables get installCopyShortcut() (Ctrl+C) and allow extended selection.
 ///   Numbers use 6 significant digits.
 /// - Plot markers: for every found setpoint a QwtPlotMarker at (time, target) with an
 ///   XCross symbol (size 11) in the tag colour and the label "<percent> %" (e.g. "63.2 %"),
@@ -52,6 +58,14 @@ class TrendPlot;
 ///   right. The label has dark text in an opaque box with a border in the tag colour, so it
 ///   stays readable where it overlaps a curve. Markers are plot items, so the image export
 ///   includes them.
+/// - Guide lines (when guideLines): one plot item draws, for every found setpoint, a dashed
+///   vertical line from the marker down to the bottom of the canvas and a dashed horizontal
+///   line from the marker left to the left edge of the canvas (tag colour, alpha ~160, width
+///   1); computed at draw time so they follow zoom and pan.
+/// - Model curve (when showModel and the result has deadTime and timeConstant): a dashed
+///   QwtPlotCurve in the tag colour of fopdtModelValue() from t1 to t2 (about 400 points,
+///   exact break at stepTime + L), title "<name> model", not in the legend.
+/// - Markers, guide lines and model curves use the tag's Y axis (Tag::axis).
 ///
 /// Recomputes (analyzeStep for every analyzed tag, in tag order) when the cursors, settings
 /// or tags change, and in refresh() when new rows arrived while the previous last row was

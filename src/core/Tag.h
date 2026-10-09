@@ -3,6 +3,8 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <optional>
+
 namespace mb {
 
 /// Modbus data area a tag lives in.
@@ -35,6 +37,12 @@ enum class ByteOrder : quint8 {
     DCBA, ///< little endian: reg n = D C, reg n+1 = B A
 };
 
+/// Y axis a tag's curve uses on the trend plots.
+enum class YAxis : quint8 {
+    Left,
+    Right,
+};
+
 /// Quality of the most recent sample of a tag.
 enum class Quality : quint8 {
     Unknown,      ///< never read yet
@@ -64,6 +72,11 @@ struct Tag {
     bool plotted = true;
     bool writable = false; ///< only meaningful for Area::HoldingRegister tags
     bool analyzed = false; ///< shown and analysed in the Analysis tab
+    YAxis axis = YAxis::Left; ///< plot axis on both tabs
+    /// Quick-write values (scaled, like the Value column); empty = no button. Only used for
+    /// writable tags (isWritable()).
+    std::optional<double> quickA;
+    std::optional<double> quickB;
 
     bool isWritable() const { return writable && area == Area::HoldingRegister; }
     /// Last register used by the tag; a 2-register tag at address 65535 does not fit.
@@ -75,5 +88,6 @@ QString toString(Area area);
 QString toString(ValueType type); ///< "int16", "uint16", "int32", "uint32", "float32"
 QString toString(ByteOrder order); ///< "ABCD", "CDAB", "BADC", "DCBA"
 QString toString(Quality quality);
+QString toString(YAxis axis); ///< "Left", "Right"
 
 } // namespace mb

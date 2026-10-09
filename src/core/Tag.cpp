@@ -47,4 +47,9 @@ QString toString(Quality quality)
     return {};
 }
 
+QString toString(YAxis axis)
+{
+    return axis == YAxis::Right ? QStringLiteral("Right") : QStringLiteral("Left");
+}
+
 } // namespace mb

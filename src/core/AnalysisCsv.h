@@ -17,8 +17,8 @@ namespace mb {
 ///   Lag [degC],0,10,10.02,12.35,2.35
 ///   Lag [degC],63.2,22.64,22.6,14.36,4.36
 ///   <empty line>
-///   tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,note
-///   Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,
+///   tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note
+///   Lag [degC],10,30,10,30,20,10,10,2,2.35,2.01,0.12,0.6,
 ///
 /// - One setpoint row per SetpointResult of every result, results in the given order; one
 ///   model row per result.

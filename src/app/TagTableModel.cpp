@@ -17,9 +17,11 @@ const char *const kHeaders[TagTableModel::ColumnCount] = {
     QT_TRANSLATE_NOOP("TagTableModel", "Byte order"), QT_TRANSLATE_NOOP("TagTableModel", "Gain"),
     QT_TRANSLATE_NOOP("TagTableModel", "Offset"),  QT_TRANSLATE_NOOP("TagTableModel", "Unit"),
     QT_TRANSLATE_NOOP("TagTableModel", "Writable"), QT_TRANSLATE_NOOP("TagTableModel", "Plot"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Analyze"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Analyze"), QT_TRANSLATE_NOOP("TagTableModel", "Axis"),
     QT_TRANSLATE_NOOP("TagTableModel", "Color"),   QT_TRANSLATE_NOOP("TagTableModel", "Raw"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Value"),   QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Value"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Quick A"), QT_TRANSLATE_NOOP("TagTableModel", "Quick B"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
 };
 
 bool parseDouble(const QVariant &v, double &out)

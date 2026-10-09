@@ -12,6 +12,7 @@ add_library(mbcore STATIC
   CsvExporter.h CsvExporter.cpp
   StepAnalysis.h StepAnalysis.cpp
   AnalysisCsv.h AnalysisCsv.cpp
+  SessionIO.h SessionIO.cpp
 )
 target_include_directories(mbcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(mbcore PRIVATE MBCORE_VERSION="${PROJECT_VERSION}")
