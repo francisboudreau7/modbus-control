@@ -38,6 +38,9 @@ public:
     /// previous call (0 on the first call); input: raw value of params.sourceAddress
     /// (Lag only, interpreted as int16).
     quint16 next(double t, double dt, quint16 input = 0);
+    /// Same as next() but returns the value before rounding/clamping (Counter: the counter
+    /// value 0..65535). Advances the state exactly like next(); call one or the other per tick.
+    double nextValue(double t, double dt, quint16 input = 0);
 
     const SignalParams &params() const { return m_params; }
 
@@ -47,5 +50,26 @@ private:
     double m_state = 0.0; ///< Lag output / Counter value
     bool m_started = false;
 };
+
+/// How a signal value is stored in the input registers.
+enum class RegisterFormat : quint8 {
+    Int16,   ///< 1 register: rounded, clamped to int16, two's complement
+    Int32,   ///< 2 registers: rounded, clamped to int32, two's complement
+    Float32, ///< 2 registers: IEEE-754 single precision
+};
+
+/// Order of the 4 bytes A (most significant) .. D of a 2-register value; same meaning as
+/// the client's mb::ByteOrder: ABCD = reg n "A B", reg n+1 "C D"; CDAB = word swap;
+/// BADC = byte swap within each register; DCBA = little endian.
+enum class WordOrder : quint8 { ABCD, CDAB, BADC, DCBA };
+
+inline int registerCount(RegisterFormat format)
+{
+    return format == RegisterFormat::Int16 ? 1 : 2;
+}
+
+/// Encodes `value` into registerCount(format) registers written to out[0] (lower address)
+/// and, for 2-register formats, out[1]. Int16 ignores `order`.
+void encodeRegisters(double value, RegisterFormat format, WordOrder order, quint16 out[2]);
 
 } // namespace mbsim

@@ -26,7 +26,10 @@ struct PlannerOptions {
     int maxCount = 125;
 };
 
-/// Groups tags into as few reads as possible. Rules:
+/// Groups tags into as few reads as possible. Each tag occupies registerCount(tag.type)
+/// registers starting at tag.address and is never split across blocks; its offset is that
+/// of its first register. Tags that do not fit the address space (!fitsAddressSpace())
+/// are left out of every block. Rules:
 /// - tags are grouped per area; holding-register blocks come before input-register blocks,
 ///   each sorted by start address;
 /// - no block exceeds maxCount registers; no tag is split or dropped;

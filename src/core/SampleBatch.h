@@ -11,7 +11,7 @@ namespace mb {
 /// quality == Quality::Good.
 struct TagSample {
     TagId tagId = 0;
-    quint16 raw = 0;
+    quint32 raw = 0;    ///< combineRegisters() result (16-bit types use the low 16 bits)
     double value = 0.0; ///< scaled value (see decodeValue)
     Quality quality = Quality::Unknown;
 };

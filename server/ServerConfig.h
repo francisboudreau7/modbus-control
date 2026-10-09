@@ -11,8 +11,10 @@ namespace mbsim {
 
 /// Drives input register `inputAddress` with a simulated signal.
 struct SignalBinding {
-    quint16 inputAddress = 0;
+    quint16 inputAddress = 0; ///< first register; 2-register formats also use inputAddress + 1
     SignalParams params;
+    RegisterFormat format = RegisterFormat::Int16;
+    WordOrder byteOrder = WordOrder::ABCD; ///< 2-register formats only
 };
 
 /// Test server configuration. Registers are mapped from address 0.
@@ -24,7 +26,9 @@ struct SignalBinding {
 ///   "delayMs": 0, "dropPercent": 0, "verbose": false,
 ///   "signals": [ { "input": 0, "kind": "sine"|"triangle"|"sawtooth"|"square"|"counter"|
 ///                  "noise"|"lag"|"constant", "amplitude": 1000, "offset": 0,
-///                  "periodS": 5, "tauS": 2, "source": 100 }, ... ]
+///                  "periodS": 5, "tauS": 2, "source": 100,
+///                  "format": "int16"|"int32"|"float32", "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA" },
+///                ... ]
 /// }
 /// "host" defaults to loopback because the server has no authentication; use "0.0.0.0" to
 /// accept remote clients.
@@ -43,13 +47,16 @@ struct ServerConfig {
 
     /// Defaults: IR0 sine(1000, 5 s), IR1 triangle(1000, 10 s), IR2 counter,
     /// IR3 square(1000, 4 s), IR4 noise(100), IR5 sawtooth(1000, 8 s),
-    /// IR10 lag following HR100 (tau 2 s).
+    /// IR10 lag following HR100 (tau 2 s),
+    /// IR20-21 float32 ABCD sine(123.456, 5 s), IR22-23 float32 CDAB sine(123.456, 5 s),
+    /// IR24-25 int32 ABCD sawtooth(100000, 8 s).
     static ServerConfig defaults();
 };
 
 /// Parses server.json content on top of ServerConfig::defaults(). Fails on invalid
 /// JSON, wrong value types, unknown signal kind, out-of-range values (port 0, counts
-/// outside 1..65536, binding address >= inputCount, Lag source >= holdingCount,
+/// outside 1..65536, binding address + registerCount(format) > inputCount, Lag source >=
+/// holdingCount, unknown format/byteOrder strings,
 /// periodS/tauS <= 0, tickMs < 1, dropPercent outside 0..100).
 std::optional<ServerConfig> parseServerConfig(const QByteArray &json, QString *error = nullptr);
 std::optional<ServerConfig> loadServerConfig(const QString &path, QString *error = nullptr);

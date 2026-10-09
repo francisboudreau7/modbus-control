@@ -16,6 +16,20 @@ QString toString(ValueType type)
     switch (type) {
     case ValueType::Int16: return QStringLiteral("int16");
     case ValueType::UInt16: return QStringLiteral("uint16");
+    case ValueType::Int32: return QStringLiteral("int32");
+    case ValueType::UInt32: return QStringLiteral("uint32");
+    case ValueType::Float32: return QStringLiteral("float32");
+    }
+    return {};
+}
+
+QString toString(ByteOrder order)
+{
+    switch (order) {
+    case ByteOrder::ABCD: return QStringLiteral("ABCD");
+    case ByteOrder::CDAB: return QStringLiteral("CDAB");
+    case ByteOrder::BADC: return QStringLiteral("BADC");
+    case ByteOrder::DCBA: return QStringLiteral("DCBA");
     }
     return {};
 }
