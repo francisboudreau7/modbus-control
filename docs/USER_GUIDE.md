@@ -204,7 +204,8 @@ The file has one column per tag that has recorded data, including tags with Plot
 header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted when empty).
 
 - Encoding UTF-8, CRLF line endings.
-- `timestamp` is local time with milliseconds and no offset, for example `2026-10-09T14:03:12.250`.
+- `timestamp` is local time with milliseconds and the UTC offset, for example
+  `2026-10-09T14:03:12.250-04:00`.
 - `elapsed_s` is seconds since the time base started, with 3 decimals.
 - Values are the scaled values, with `.` as the decimal point. A missing sample is an empty cell.
 

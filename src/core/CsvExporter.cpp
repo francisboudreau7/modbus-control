@@ -38,7 +38,10 @@ QString formatTimestamp(const QDateTime &start, double t)
 {
     if (!start.isValid())
         return {};
-    return start.addMSecs(qRound64(t * 1000.0)).toLocalTime().toString(Qt::ISODateWithMs);
+    // Local time carrying its UTC offset, e.g. 2026-10-09T14:03:12.250-04:00 (a plain local
+    // QDateTime would be written without an offset).
+    const QDateTime local = start.addMSecs(qRound64(t * 1000.0)).toLocalTime();
+    return local.toOffsetFromUtc(local.offsetFromUtc()).toString(Qt::ISODateWithMs);
 }
 
 QString formatValue(double value)

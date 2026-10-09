@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QIODevice>
 #include <QLocale>
+#include <QRegularExpression>
 #include <QTime>
 #include <QTimeZone>
 #include <QtTest>
@@ -23,10 +24,15 @@ QDateTime fixedStart()
                      QTimeZone::fromSecondsAheadOfUtc(-4 * 3600));
 }
 
-// Same expression the exporter uses, so the expected output is correct in any local zone.
+// Builds the expected text by hand (local wall time plus "+hh:mm" offset), so it is correct in
+// any local zone without reusing the exporter's expression.
 QString expectedTimestamp(const QDateTime &start, double t)
 {
-    return start.addMSecs(qRound64(t * 1000.0)).toLocalTime().toString(Qt::ISODateWithMs);
+    const QDateTime local = start.addMSecs(qRound64(t * 1000.0)).toLocalTime();
+    const int offset = local.offsetFromUtc();
+    const int minutes = qAbs(offset) / 60;
+    return local.toString(QStringLiteral("yyyy-MM-ddTHH:mm:ss.zzz"))
+           + QString::asprintf("%c%02d:%02d", offset < 0 ? '-' : '+', minutes / 60, minutes % 60);
 }
 
 TagSample good(TagId id, double value)
@@ -119,6 +125,21 @@ private slots:
                                  + expectedTimestamp(start, 0.0) + QStringLiteral(",0.000,1.5,-2.5\r\n")
                                  + expectedTimestamp(start, 1.5) + QStringLiteral(",1.500,2,42\r\n");
         QCOMPARE(QString::fromUtf8(out), expected);
+    }
+
+    void timestampCarriesUtcOffset()
+    {
+        Recorder recorder(100);
+        recorder.setStartTime(fixedStart());
+        recorder.append(batch(0.0, {good(1, 1.0)}));
+
+        const QString out = QString::fromUtf8(run(recorder, {column(1, QStringLiteral("A"))}));
+        const QString dataLine = out.split(QStringLiteral("\r\n")).at(1);
+        const QString timestamp = dataLine.section(u',', 0, 0);
+
+        const QRegularExpression pattern(
+            QStringLiteral(R"(^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}([+-]\d\d:\d\d|Z)$)"));
+        QVERIFY2(pattern.match(timestamp).hasMatch(), qPrintable(timestamp));
     }
 
     void nanCellIsEmpty()
