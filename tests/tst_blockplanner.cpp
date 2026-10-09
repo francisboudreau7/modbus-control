@@ -1,4 +1,4 @@
-#include "BlockPlanner.h"
+﻿#include "BlockPlanner.h"
 
 #include <QtTest>
 
@@ -15,6 +15,13 @@ Tag mk(TagId id, quint16 addr, Area area = Area::HoldingRegister)
     t.id = id;
     t.address = addr;
     t.area = area;
+    return t;
+}
+
+Tag mk32(TagId id, quint16 addr, ValueType type = ValueType::Float32, Area area = Area::HoldingRegister)
+{
+    Tag t = mk(id, addr, area);
+    t.type = type;
     return t;
 }
 
@@ -189,6 +196,74 @@ private slots:
         QCOMPARE(r, (QList<ReadBlock>{blk(HR, 5, 1, {1, 2}, {0, 0})}));
     }
 
+    void floatSingle()
+    {
+        QCOMPARE(planBlocks({mk32(1, 10)}), (QList<ReadBlock>{blk(HR, 10, 2, {1}, {0})}));
+    }
+
+    void floatThenInt16Adjacent()
+    {
+        PlannerOptions o;
+        o.maxGap = 0;
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 12)}, o), (QList<ReadBlock>{blk(HR, 10, 3, {1, 2}, {0, 2})}));
+    }
+
+    void gapUsesEndRegister()
+    {
+        PlannerOptions o;
+        o.maxGap = 0;
+        // float at 10..11, int16 at 13: one unused register (12)
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 13)}, o),
+                 (QList<ReadBlock>{blk(HR, 10, 2, {1}, {0}), blk(HR, 13, 1, {2}, {0})}));
+        o.maxGap = 1;
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 13)}, o), (QList<ReadBlock>{blk(HR, 10, 4, {1, 2}, {0, 3})}));
+    }
+
+    void floatFitsExactlyAtMaxCount()
+    {
+        QCOMPARE(planBlocks({mk(1, 0), mk32(2, 123)}, [] { PlannerOptions o; o.maxGap = 200; return o; }()),
+                 (QList<ReadBlock>{blk(HR, 0, 125, {1, 2}, {0, 123})}));
+    }
+
+    void floatNeverSplitAtMaxCount()
+    {
+        PlannerOptions o;
+        o.maxGap = 200;
+        QCOMPARE(planBlocks({mk(1, 0), mk32(2, 124)}, o),
+                 (QList<ReadBlock>{blk(HR, 0, 1, {1}, {0}), blk(HR, 124, 2, {2}, {0})}));
+    }
+
+    void overlappingTags()
+    {
+        PlannerOptions o;
+        o.maxGap = 0;
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 10)}, o), (QList<ReadBlock>{blk(HR, 10, 2, {1, 2}, {0, 0})}));
+        QCOMPARE(planBlocks({mk32(1, 10), mk32(2, 11)}, o), (QList<ReadBlock>{blk(HR, 10, 3, {1, 2}, {0, 1})}));
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 11), mk(3, 12)}, o),
+                 (QList<ReadBlock>{blk(HR, 10, 3, {1, 2, 3}, {0, 1, 2})}));
+    }
+
+    void address65535Excluded()
+    {
+        QVERIFY(planBlocks({mk32(1, 65535)}).isEmpty());
+        QCOMPARE(planBlocks({mk32(1, 65535), mk(2, 65535)}), (QList<ReadBlock>{blk(HR, 65535, 1, {2}, {0})}));
+    }
+
+    void address65534Included()
+    {
+        QCOMPARE(planBlocks({mk32(1, 65534, ValueType::UInt32)}),
+                 (QList<ReadBlock>{blk(HR, 65534, 2, {1}, {0})}));
+    }
+
+    void maxCountOneWithFloat()
+    {
+        PlannerOptions o;
+        o.maxCount = 1;
+        // a 2-register tag needs a block of 2 even though maxCount is 1
+        QCOMPARE(planBlocks({mk32(1, 10), mk(2, 12)}, o),
+                 (QList<ReadBlock>{blk(HR, 10, 2, {1}, {0}), blk(HR, 12, 1, {2}, {0})}));
+    }
+
     void randomizedProperties()
     {
         std::mt19937 rng(12345);
@@ -205,12 +280,18 @@ private slots:
             const int span = rnd(1, 4) == 1 ? 65536 : rnd(1, 600);
             const int base = rnd(0, 65536 - span);
             QList<Tag> tags;
+            QHash<TagId, Tag> byId;
+            int fitting = 0;
             for (int i = 0; i < n; ++i) {
                 int addr = base + rnd(0, span - 1);
                 if (rnd(0, 9) == 0)
-                    addr = 65535;
-                tags.append(mk(static_cast<TagId>(i + 1), static_cast<quint16>(addr),
-                               rnd(0, 1) ? HR : IR));
+                    addr = rnd(0, 1) ? 65535 : 65534;
+                Tag t = mk(static_cast<TagId>(i + 1), static_cast<quint16>(addr), rnd(0, 1) ? HR : IR);
+                t.type = static_cast<ValueType>(rnd(0, 4));
+                tags.append(t);
+                byId.insert(t.id, t);
+                if (t.fitsAddressSpace())
+                    ++fitting;
             }
             std::shuffle(tags.begin(), tags.end(), rng);
 
@@ -221,7 +302,7 @@ private slots:
             bool seenIr = false;
             for (int b = 0; b < blocks.size(); ++b) {
                 const ReadBlock &blk_ = blocks[b];
-                QVERIFY2(blk_.count >= 1 && blk_.count <= effCount, ctx);
+                QVERIFY2(blk_.count >= 1 && blk_.count <= std::max(effCount, 2), ctx);
                 QVERIFY2(int(blk_.start) + int(blk_.count) <= 65536, ctx);
                 QCOMPARE(blk_.tagIds.size(), blk_.offsets.size());
                 QVERIFY2(!blk_.tagIds.isEmpty(), ctx);
@@ -229,43 +310,39 @@ private slots:
                     seenIr = true;
                 else
                     QVERIFY2(!seenIr, ctx);
+                int maxEnd = -1;   // highest register end (relative to start) so far
+                bool has32 = false;
                 for (int i = 0; i < blk_.tagIds.size(); ++i) {
-                    QVERIFY2(blk_.offsets[i] < blk_.count, ctx);
+                    const TagId id = blk_.tagIds[i];
+                    QVERIFY2(byId.contains(id), ctx);
+                    const Tag &t = byId[id];
+                    const int regs = registerCount(t.type);
+                    has32 = has32 || regs == 2;
+                    QVERIFY2(t.fitsAddressSpace(), ctx);
+                    QVERIFY2(int(blk_.offsets[i]) + regs <= int(blk_.count), ctx);
                     if (i > 0) {
                         const bool ordered = blk_.offsets[i - 1] < blk_.offsets[i]
                             || (blk_.offsets[i - 1] == blk_.offsets[i] && blk_.tagIds[i - 1] < blk_.tagIds[i]);
                         QVERIFY2(ordered, ctx);
+                        // internal gaps respect maxGap (negative gap = overlap)
+                        QVERIFY2(int(blk_.offsets[i]) - maxEnd - 1 <= effGap, ctx);
                     }
-                    const TagId id = blk_.tagIds[i];
+                    maxEnd = std::max(maxEnd, int(blk_.offsets[i]) + regs - 1);
                     seen[id] += 1;
-                    const Tag &t = tags[std::find_if(tags.begin(), tags.end(),
-                                                     [id](const Tag &x) { return x.id == id; })
-                                        - tags.begin()];
                     QVERIFY2(t.area == blk_.area, ctx);
                     QVERIFY2(int(blk_.start) + int(blk_.offsets[i]) == int(t.address), ctx);
                 }
-                // first and last entries touch the block edges
+                // the block is exactly as large as its tags need
                 QCOMPARE(int(blk_.offsets.first()), 0);
-                QCOMPARE(int(blk_.offsets.last()), int(blk_.count) - 1);
-                if (b > 0 && blocks[b - 1].area == blk_.area) {
-                    const ReadBlock &prev = blocks[b - 1];
-                    const int prevEnd = int(prev.start) + int(prev.count); // exclusive
-                    QVERIFY2(int(blk_.start) >= prevEnd, ctx);
-                    // blocks are only separate if merging was not allowed
-                    const int gap = int(blk_.start) - prevEnd;
-                    const int mergedSpan = int(blk_.start) + 1 - int(prev.start);
-                    QVERIFY2(gap > effGap || mergedSpan > effCount, ctx);
-                }
-                // internal gaps respect maxGap
-                for (int i = 1; i < blk_.offsets.size(); ++i)
-                    QVERIFY2(int(blk_.offsets[i]) - int(blk_.offsets[i - 1]) - 1 <= effGap, ctx);
+                QCOMPARE(maxEnd + 1, int(blk_.count));
+                if (!has32)
+                    QVERIFY2(blk_.count <= effCount, ctx);
             }
-            QCOMPARE(seen.size(), int(tags.size()));
+            QCOMPARE(seen.size(), fitting);
             for (auto it = seen.cbegin(); it != seen.cend(); ++it)
                 QCOMPARE(it.value(), 1);
         }
-    }
-};
+    }};
 
 QTEST_GUILESS_MAIN(TstBlockPlanner)
 #include "tst_blockplanner.moc"

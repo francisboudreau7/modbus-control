@@ -1,4 +1,4 @@
-#include "BlockPlanner.h"
+﻿#include "BlockPlanner.h"
 
 #include <algorithm>
 
@@ -10,7 +10,7 @@ void planArea(const QList<Tag> &tags, Area area, int maxGap, int maxCount, QList
 {
     QList<const Tag *> sorted;
     for (const Tag &t : tags) {
-        if (t.area == area)
+        if (t.area == area && t.fitsAddressSpace())
             sorted.append(&t);
     }
     std::sort(sorted.begin(), sorted.end(), [](const Tag *a, const Tag *b) {
@@ -21,17 +21,26 @@ void planArea(const QList<Tag> &tags, Area area, int maxGap, int maxCount, QList
 
     bool open = false;
     ReadBlock block;
-    int lastAddress = 0; // highest address in the current block
+    int blockEnd = 0;   // highest register covered by the current block
+    int blockLimit = 1; // size limit of the current block
     for (const Tag *t : sorted) {
         const int addr = t->address;
+        const int regs = registerCount(t->type);
+        const int end = addr + regs - 1;
+        // A block holding a tag of `regs` registers may be at least that big, even if
+        // maxCount is smaller (e.g. maxCount 1 with a 2-register tag): no tag is dropped.
+        const int tagLimit = std::max(maxCount, regs);
         if (open) {
-            const int gap = addr - lastAddress - 1;
-            const int span = addr - block.start + 1;
-            if (gap <= maxGap && span <= maxCount) {
+            const int gap = addr - blockEnd - 1; // negative when the tags overlap
+            const int newEnd = std::max(blockEnd, end);
+            const int span = newEnd - block.start + 1;
+            const int limit = std::max(blockLimit, tagLimit);
+            if (gap <= maxGap && span <= limit) {
                 block.offsets.append(static_cast<quint16>(addr - block.start));
                 block.tagIds.append(t->id);
                 block.count = static_cast<quint16>(span);
-                lastAddress = addr;
+                blockEnd = newEnd;
+                blockLimit = limit;
                 continue;
             }
             out.append(block);
@@ -39,10 +48,11 @@ void planArea(const QList<Tag> &tags, Area area, int maxGap, int maxCount, QList
         block = ReadBlock();
         block.area = area;
         block.start = t->address;
-        block.count = 1;
+        block.count = static_cast<quint16>(regs);
         block.tagIds.append(t->id);
         block.offsets.append(0);
-        lastAddress = addr;
+        blockEnd = end;
+        blockLimit = tagLimit;
         open = true;
     }
     if (open)
@@ -64,3 +74,4 @@ QList<ReadBlock> planBlocks(const QList<Tag> &tags, const PlannerOptions &option
 }
 
 } // namespace mb
+
