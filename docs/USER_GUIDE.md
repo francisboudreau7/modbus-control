@@ -332,6 +332,11 @@ For each setpoint, the recorded samples between the cursors are searched as foll
 
 Missing samples are skipped. When the level is never reached, the time shows "—".
 
+The search starts at the samples that define the 0 % level: the sample at or before C1 (Value at
+cursor), or the window of W seconds before C1 (Mean before cursor). So 0 % is always found. If the
+signal never returns to its starting value after C1, the 0 % time is the C1 sample itself, which can
+be a few milliseconds before C1, so t − C1 can be slightly negative.
+
 ### Results tables
 
 **Setpoints** table, one row per analysed tag and setpoint:
