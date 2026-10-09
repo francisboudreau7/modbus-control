@@ -54,6 +54,9 @@ public:
     /// Closes any open context, then creates, configures (unit id, timeout) and connects.
     ModbusResult open(const ConnectionSettings &settings);
     void close();
+    /// Discards pending input (modbus_flush); call after a Timeout so a late reply is not read as
+    /// the answer to the next request. No-op when closed.
+    void flush();
     bool isOpen() const { return m_ctx != nullptr; }
 
     /// FC03 for HoldingRegister, FC04 for InputRegister. On success `out` holds `count` values.

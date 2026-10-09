@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QList>
 #include <QObject>
 
@@ -63,16 +64,46 @@ signals:
     void message(const QString &text);
 
 private:
-    // Implementation-defined; T21 may change the private section freely.
+    struct PendingWrite {
+        quint64 id = 0;
+        quint16 address = 0;
+        QList<quint16> values;
+    };
+
+    void setState(ConnectionState state, const QString &detail);
+    int nextBackoffMs();
+    void attemptConnect(bool firstAttempt);
+    void enterReconnecting(const QString &reason);
+    void closeConnection();
+    void stopTimers();
+    void onPollTimer();
+    void onReconnectTimer();
+    void scheduleNextPoll(double cycleStartMs);
+    void serveWrites();
+    void drainWrites();
+    void failAllWrites(const ModbusResult &result);
+    void emitDisconnectedBatch(double t);
+    void pollCycle(double t);
+    void emitBlockMessage(const QString &text);
+    double nowMs() const { return m_clock.isValid() ? m_clock.nsecsElapsed() / 1.0e6 : 0.0; }
+    int periodMs() const;
+    QString endpoint() const;
+
     std::unique_ptr<ModbusConnection> m_conn;
     ConnectionSettings m_settings;
     QList<Tag> m_tags;
+    QHash<TagId, int> m_tagIndex;
     QList<ReadBlock> m_blocks;
-    QTimer *m_timer = nullptr;
+    QTimer *m_timer = nullptr;          ///< poll (or disconnected-gap) cycle, single shot
+    QTimer *m_reconnectTimer = nullptr; ///< backoff retry, single shot
     QElapsedTimer m_clock;
     ConnectionState m_state = ConnectionState::Disconnected;
+    QList<PendingWrite> m_writes;
+    bool m_writePassQueued = false;
+    int m_backoffStep = 0;
+    QString m_lastBlockMessage;
+    QElapsedTimer m_lastBlockMessageTime;
 };
-
 } // namespace mb
 
 Q_DECLARE_METATYPE(mb::ConnectionState)
