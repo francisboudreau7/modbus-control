@@ -22,7 +22,8 @@
       "unit": "",
       "color": "#1f77b4",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 2,
@@ -36,7 +37,8 @@
       "unit": "",
       "color": "#ff7f0e",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 3,
@@ -50,7 +52,8 @@
       "unit": "",
       "color": "#7f7f7f",
       "plotted": false,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 4,
@@ -64,7 +67,8 @@
       "unit": "",
       "color": "#2ca02c",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 5,
@@ -78,7 +82,8 @@
       "unit": "",
       "color": "#d62728",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 6,
@@ -92,7 +97,8 @@
       "unit": "",
       "color": "#9467bd",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 7,
@@ -106,7 +112,8 @@
       "unit": "",
       "color": "#8c564b",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": true
     },
     {
       "id": 8,
@@ -120,7 +127,8 @@
       "unit": "",
       "color": "#e377c2",
       "plotted": true,
-      "writable": true
+      "writable": true,
+      "analyzed": false
     },
     {
       "id": 9,
@@ -134,7 +142,8 @@
       "unit": "",
       "color": "#bcbd22",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 10,
@@ -148,7 +157,8 @@
       "unit": "",
       "color": "#17becf",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     },
     {
       "id": 11,
@@ -162,7 +172,17 @@
       "unit": "",
       "color": "#393b79",
       "plotted": true,
-      "writable": false
+      "writable": false,
+      "analyzed": false
     }
-  ]
+  ],
+  "analysis": {
+    "percents": [0, 63.2],
+    "reference": "cursor",
+    "referenceWindowS": 1,
+    "smoothingS": 0,
+    "modelPercents": [0, 63.2],
+    "deltaCoTag": 8,
+    "deltaCo": 0
+  }
 }

@@ -19,6 +19,8 @@ simulates signals and can inject delays and dropped connections.
 - Live trend with 60 s, 5 min, 30 min and All windows, zoom, pan, pause and fit-Y
 - Two draggable cursors with Δt, 1/Δt and per-tag Y@C1, Y@C2, ΔY
 - Export of the graph (PNG, SVG, PDF, optional cursors and readout box) and of the data (CSV)
+- Analysis tab for step tests: the times at 0 % and 63.2 % (or other setpoints) between two cursors,
+  and the gain K, dead time L and time constant T of a first-order model; results as CSV
 - Project files (`.mbproj`, JSON) with New, Open, Save and Save As
 - Test server `modbus_test_server` with simulated signals, a configuration file and fault injection
 
@@ -44,7 +46,8 @@ simulates signals and can inject delays and dropped connections.
    Lag, Setpoint, Float sine, Float sine (CDAB) and Int32 saw) and the connection 127.0.0.1:1502, unit 1, with a 200 ms period.
 
 4. Click **Connect**. The values update in the table and the trend starts to draw. Edit the
-   **Value** cell of **Setpoint** (HR 100) to write a value. The **Lag** signal follows it.
+   **Value** cell of **Setpoint** (HR 100) to write a value. The **Lag** signal follows it. To measure
+   its step response, use the **Analysis** tab (see [Try it with the test server](docs/USER_GUIDE.md#try-it-with-the-test-server)).
 
 See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for the full description of the application, and
 [docs/TEST_SERVER.md](docs/TEST_SERVER.md) for the test server.

@@ -92,7 +92,7 @@ Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType
 QList<Tag> demoTags()
 {
     const Area ir = Area::InputRegister;
-    return {
+    QList<Tag> tags{
         makeTag(1, QStringLiteral("Sine"), ir, 0, ValueType::Int16, QStringLiteral("#1f77b4"), true, false),
         makeTag(2, QStringLiteral("Triangle"), ir, 1, ValueType::Int16, QStringLiteral("#ff7f0e"), true, false),
         makeTag(3, QStringLiteral("Counter"), ir, 2, ValueType::UInt16, QStringLiteral("#7f7f7f"), false, false),
@@ -109,6 +109,9 @@ QList<Tag> demoTags()
         makeTag(11, QStringLiteral("Int32 saw"), ir, 24, ValueType::Int32, QStringLiteral("#393b79"),
                 true, false, ByteOrder::ABCD),
     };
+    for (Tag &t : tags)
+        t.analyzed = (t.id == 7); // Lag (IR 10): the step-response demo
+    return tags;
 }
 
 } // namespace
@@ -142,6 +145,10 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags(demoTags(), 12);
     pushTags();
+    // Analysis of the Lag step: the controller output step (deltaCo) is the Setpoint (HR 100, id 8).
+    AnalysisSettings analysis;
+    analysis.deltaCoTagId = 8;
+    m_window->analysisView()->setSettings(analysis);
     m_refreshTimer->start();
     updateTitle();
 }

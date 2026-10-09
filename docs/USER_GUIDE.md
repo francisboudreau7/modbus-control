@@ -7,9 +7,11 @@ This guide describes the application as built from this repository. For building
 
 - **Connection bar** (top): host, port, unit, timeout and period fields, the **FC06 only**
   checkbox, a status LED, and the Connect / Disconnect button.
-- **Trend** (centre): the live graph with its controls above it.
+- **Trend** and **Analysis** tabs (centre): **Trend** is the live graph with its controls above it.
+  **Analysis** measures the step response of the tags marked for analysis (see
+  [Analysis](#analysis-step-response)).
 - **Tags** (bottom dock): the tag table with Add, Duplicate, Remove and Write selected buttons.
-- **Cursors** (right dock): cursor times and the readout table.
+- **Cursors** (right dock): cursor times and the readout table of the Trend.
 - **Menus**: File, Export, View, Options and Help.
 - **Status bar**: short messages (left) and the connection state (right).
 
@@ -63,6 +65,7 @@ Each row is one register value that the application reads. Columns:
 | Unit | Shown after the name in the legend and the CSV header. Optional. |
 | Writable | Allows writes from the Value column. Holding registers only, of any type. The box is disabled for input registers, and changing Area to Input clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
+| Analyze | Shows the tag on the Analysis tab and includes it in the step-response results. See [Analysis](#analysis-step-response). |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
 | Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
 | Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
@@ -264,10 +267,163 @@ header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted wh
 - `elapsed_s` is seconds since the time base started, with 3 decimals.
 - Values are the scaled values, with `.` as the decimal point. A missing sample is an empty cell.
 
+## Analysis (step response)
+
+The Analysis tab measures a step response between two cursors. It finds the times at which the
+response reaches the setpoints (0 % and 63.2 % by default) and computes a first-order model with
+dead time: the gain K, the dead time L and the time constant T. It is meant for step tests, for
+example to get the values for Ziegler–Nichols open-loop tuning.
+
+### Preparing the tags
+
+Tick **Analyze** in the tag table for each tag to analyse. Only analysed tags are shown on the
+Analysis plot and in the results. Changing the box marks the project as modified.
+
+### Placing the cursors
+
+Each tag is analysed between the two cursors:
+
+- **C1** goes before the step, while the response is still at its starting value.
+- **C2** goes after the response has settled.
+
+Place them on the Analysis plot in the same way as on the Trend (see [Cursors](#cursors)), or place
+them on the Trend and click **Copy cursors from Trend**. The Analysis tab has its own cursors, and
+the Cursors dock shows only the Trend's cursors.
+
+### References
+
+The 0 % level is taken at C1 and the 100 % level at C2. **Reference** selects how:
+
+- **Value at cursor** (default): the recorded value at the cursor.
+- **Mean before cursor**: the mean of the recorded values in the **Window** W seconds before the
+  cursor (0.1 to 3600 s, default 1 s). Use it when the signal is noisy.
+
+ΔPV is the 100 % level minus the 0 % level. When the two levels are equal, the result says
+"No change between C1 and C2".
+
+### Smoothing
+
+**Smoothing** S (Off by default, up to 3600 s) applies a centred moving average of width S to the
+samples between the cursors before the setpoint times are searched. The reference levels are not
+smoothed.
+
+Smoothing has a bias. A centred average starts to rise up to S/2 before the real response, so the
+0 % time comes out early by up to S/2 and L comes out too small. With smoothing on, use a model
+**From %** above 0 (for example 10), or keep S small compared with L.
+
+### Setpoints
+
+The **Setpoints** list holds the percentages of the change to find. The default is 0 % and 63.2 %.
+Type a value (0 to 100, two decimals) and click **Add**; select an entry and click **Remove**. The
+list stays sorted, has no duplicates and holds at most 20 values. For Smith's method, add 28.3 and
+use the 28.3 % and 63.2 % times.
+
+### How the times are found
+
+For each setpoint, the recorded samples between the cursors are searched as follows:
+
+1. The 50 % point is found first: the first sample that has reached the 50 % level, counted from the
+   starting value. This is the anchor.
+2. For a setpoint of 50 % or more, the search runs forwards from the anchor to the first sample that
+   has reached the setpoint level.
+3. For a setpoint below 50 %, the search runs backwards from the anchor to the last sample that is
+   still on the starting side of the setpoint level.
+4. The time is interpolated linearly between the two samples on either side of the level.
+
+Missing samples are skipped. When the level is never reached, the time shows "—".
+
+### Results tables
+
+**Setpoints** table, one row per analysed tag and setpoint:
+
+| Column | Meaning |
+|---|---|
+| Tag | Colour swatch and `name [unit]`. |
+| % | The setpoint. |
+| Target | The level of the setpoint: 0 % level + % × ΔPV. |
+| Measured | The recorded (unsmoothed) value at the found time. |
+| Time (s) | The found time. |
+| t − C1 (s) | The found time minus the time of the earlier cursor. |
+
+**Model** table, one row per analysed tag:
+
+| Column | Meaning |
+|---|---|
+| Tag | As above. |
+| y0, y100 | The 0 % and 100 % levels. |
+| ΔPV | y100 − y0. |
+| ΔCO | The change of the controller output (see Model). |
+| K, L (s), T (s) | The model values. |
+
+A tag without a valid result shows its error text across the value columns. A value that cannot be
+computed shows "—". Numbers use 6 significant digits.
+
+Each found setpoint is also marked on the plot with a cross at its time and target level, in the
+tag's colour and labelled, for example, "63.2 %".
+
+### Model
+
+The model uses two setpoints, **From %** (a) and **To %** (b). They must be below 100, with a < b.
+The defaults are 0 % and 63.2 %. Let ta and tb be their times, and a and b the fractions:
+
+- K = ΔPV / ΔCO
+- T = (tb − ta) / (ln(1 − a) − ln(1 − b))
+- L = ta − T · (−ln(1 − a)) − t_step
+
+For From 0 % and To 63.2 % this is T = t63 − t0 and L = t0 − t_step.
+
+**ΔCO** is the step of the controller output. Either choose a tag in the list (for example
+**Setpoint**), and its change between the cursors is used, or choose **Typed value** and enter the
+step in the output's units. With no ΔCO (or 0 typed), K is not computed.
+
+t_step is the 50 % time of the ΔCO tag's step between the cursors. When the ΔCO tag gives no step,
+t_step is the time of C1.
+
+The app shows K, L and T only. It does not compute controller settings. For Ziegler–Nichols
+open-loop (reaction curve) tuning, apply these rules yourself:
+
+| Controller | Kp | Ti (s) | Td (s) |
+|---|---|---|---|
+| P | T / (K · L) | — | — |
+| PI | 0.9 · T / (K · L) | L / 0.3 (about 3.33 · L) | — |
+| PID | 1.2 · T / (K · L) | 2 · L | 0.5 · L |
+
+### Exporting results
+
+- **Export > Analysis results (CSV)...**, or **Export results (CSV)...** on the Analysis tab, is
+  enabled when at least one tag has a valid result. The default name is `analysis.csv` in the last
+  export folder, or in Documents.
+- The file is UTF-8 with CRLF line endings and comma separators. It has two sections, separated by an
+  empty line. The first has one row per setpoint (`tag,percent,target,measured,time_s,time_from_c1_s`).
+  The second has one row per tag (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,note`).
+  A missing value is an empty cell. For an invalid result, `note` holds the error text.
+- **Export > Graph image...** while the Analysis tab is active exports the Analysis plot, including the
+  setpoint markers. With **Include cursor readout** ticked, the box shows the results summary.
+
+### Saving
+
+The Analysis settings (reference, window, smoothing, setpoints, model and ΔCO) and the **Analyze**
+flags are saved in the project. The cursors are not.
+
+### Try it with the test server
+
+1. Start the test server in a console: `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
+2. Start the application with `examples\demo.mbproj` (or open it with File > Open), then click **Connect**.
+3. Double-click the **Value** cell of **Setpoint** (HR 100), type 0 and confirm. Wait a few seconds.
+4. Open the **Analysis** tab and place C1 now, before the step.
+5. Write 1000 to **Setpoint** the same way and wait about 10 s. The **Lag** signal (IR 10) starts to
+   rise after its 1 s dead time, with a time constant of 2 s. When it has settled, place C2.
+6. In **Model**, select **Setpoint** as the ΔCO tag.
+7. The Lag row shows K ≈ 1, L ≈ 1 s and T ≈ 2 s.
+
 ## Projects
 
 Projects are saved as `.mbproj` files. A project holds the connection settings (including FC06 only), the register numbering
-(1-based or not) and the tag list, including tag colours. Recorded data, cursors and the trend window are not saved.
+(1-based or not), the tag list, including tag colours and the **Analyze** flags, and the Analysis settings. Recorded data, cursors and the trend window are not saved.
+
+In the file, each tag has an `analyzed` key, and the Analysis settings are in an `analysis` object
+(`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`).
+Both are optional: a file without them loads with the defaults.
 
 | Menu item | Shortcut | Action |
 |---|---|---|
