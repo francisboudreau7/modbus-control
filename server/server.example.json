@@ -1,0 +1,20 @@
+{
+  "host": "0.0.0.0",
+  "port": 1502,
+  "unitId": 1,
+  "holdingCount": 200,
+  "inputCount": 64,
+  "tickMs": 50,
+  "delayMs": 0,
+  "dropPercent": 0,
+  "verbose": false,
+  "signals": [
+    { "input": 0,  "kind": "sine",     "amplitude": 1000, "offset": 0, "periodS": 5 },
+    { "input": 1,  "kind": "triangle", "amplitude": 1000, "offset": 0, "periodS": 10 },
+    { "input": 2,  "kind": "counter" },
+    { "input": 3,  "kind": "square",   "amplitude": 1000, "offset": 0, "periodS": 4 },
+    { "input": 4,  "kind": "noise",    "amplitude": 100,  "offset": 0 },
+    { "input": 5,  "kind": "sawtooth", "amplitude": 1000, "offset": 0, "periodS": 8 },
+    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 }
+  ]
+}
