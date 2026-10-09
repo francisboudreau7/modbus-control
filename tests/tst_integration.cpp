@@ -1,6 +1,8 @@
 ﻿#include "MetaTypes.h"
 #include "ModbusConnection.h"
 #include "PollWorker.h"
+#include "Recorder.h"
+#include "StepAnalysis.h"
 #include "TagCodec.h"
 
 #include <QElapsedTimer>
@@ -388,6 +390,49 @@ private slots:
                     && lag->quality == Quality::Good && lag->raw > 500;
             }(),
             4000);
+    }
+
+    void analysis_lagStepResponse()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        const TagId coId = 1;
+        const TagId pvId = 2;
+        m_harness->setTags({makeTag(coId, Area::HoldingRegister, 100, ValueType::Int16),
+                            makeTag(pvId, Area::InputRegister, 10, ValueType::Int16)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 2, 5000);
+        QTest::qWait(2000); // steady 0
+
+        const double tBeforeStep = m_harness->batches.last().t;
+        m_harness->write(78, 100, {1000});
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->writes.contains(78), 3000);
+        QVERIFY2(m_harness->writes.value(78).ok(), qPrintable(m_harness->writes.value(78).message));
+        QTest::qWait(10000);
+        const double tEnd = m_harness->batches.last().t;
+
+        Recorder recorder;
+        recorder.setStartTime(QDateTime::currentDateTime());
+        for (const SampleBatch &b : std::as_const(m_harness->batches))
+            recorder.append(b);
+
+        AnalysisSettings settings;
+        settings.percents = {0.0, 63.2};
+        settings.reference = ReferenceMode::CursorValue;
+        settings.modelPercentA = 0.0;
+        settings.modelPercentB = 63.2;
+        settings.deltaCoTagId = coId;
+        const StepResult r = analyzeStep(recorder, pvId, tBeforeStep - 0.5, tEnd, settings);
+        qInfo().noquote() << "lag step: K =" << (r.gain ? *r.gain : kNaN) << "L ="
+                          << (r.deadTime ? *r.deadTime : kNaN) << "T ="
+                          << (r.timeConstant ? *r.timeConstant : kNaN) << "error =" << r.error;
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.gain && r.deadTime && r.timeConstant);
+        QVERIFY2(std::abs(*r.gain - 1.0) <= 0.05, qPrintable(QString::number(*r.gain)));
+        QVERIFY2(std::abs(*r.timeConstant - 2.0) <= 0.3, qPrintable(QString::number(*r.timeConstant)));
+        QVERIFY2(std::abs(*r.deadTime - 1.0) <= 0.3, qPrintable(QString::number(*r.deadTime)));
+        QCOMPARE(r.setpoints.size(), 2);
+        QVERIFY(r.setpoints.at(1).found);
     }
 
     void worker_outOfMapBlockIsException()
