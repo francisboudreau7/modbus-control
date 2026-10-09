@@ -78,7 +78,7 @@ private slots:
 void TstServerConfig::defaultsMatchSpec()
 {
     const ServerConfig cfg = ServerConfig::defaults();
-    QCOMPARE(cfg.host, QStringLiteral("0.0.0.0"));
+    QCOMPARE(cfg.host, QStringLiteral("127.0.0.1"));
     QCOMPARE(cfg.port, quint16(1502));
     QCOMPARE(cfg.unitId, 1);
     QCOMPARE(cfg.holdingCount, 200);
@@ -203,7 +203,8 @@ void TstServerConfig::acceptsBoundaryValues_data()
     QTest::newRow("counts at 1") << QByteArray(R"({"holdingCount":1,"inputCount":1,"signals":[]})");
     QTest::newRow("dropPercent 100") << QByteArray(R"({"dropPercent":100})");
     QTest::newRow("tickMs 1") << QByteArray(R"({"tickMs":1})");
-    QTest::newRow("unitId 255") << QByteArray(R"({"unitId":255})");
+    QTest::newRow("unitId 0") << QByteArray(R"({"unitId":0})");
+    QTest::newRow("unitId 247") << QByteArray(R"({"unitId":247})");
     QTest::newRow("input at inputCount-1")
         << QByteArray(R"({"inputCount":8,"signals":[{"input":7,"kind":"counter"}]})");
     QTest::newRow("lag source at holdingCount-1")
@@ -231,7 +232,9 @@ void TstServerConfig::rejects_data()
     QTest::newRow("port fractional") << QByteArray(R"({"port":1.5})") << QStringLiteral("port");
     QTest::newRow("holdingCount 0") << QByteArray(R"({"holdingCount":0})") << QStringLiteral("holdingCount");
     QTest::newRow("inputCount 65537") << QByteArray(R"({"inputCount":65537})") << QStringLiteral("inputCount");
-    QTest::newRow("unitId 256") << QByteArray(R"({"unitId":256})") << QStringLiteral("unitId");
+    QTest::newRow("unitId 248") << QByteArray(R"({"unitId":248})") << QStringLiteral("unitId");
+    QTest::newRow("unitId 255") << QByteArray(R"({"unitId":255})") << QStringLiteral("unitId");
+    QTest::newRow("unitId -1") << QByteArray(R"({"unitId":-1})") << QStringLiteral("unitId");
     QTest::newRow("tickMs 0") << QByteArray(R"({"tickMs":0})") << QStringLiteral("tickMs");
     QTest::newRow("delayMs negative") << QByteArray(R"({"delayMs":-1})") << QStringLiteral("delayMs");
     QTest::newRow("dropPercent 150") << QByteArray(R"({"dropPercent":150})") << QStringLiteral("dropPercent");

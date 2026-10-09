@@ -30,8 +30,8 @@ simulates signals and can inject delays and dropped connections.
    build\msvc-debug\bin\modbus_test_server.exe --port 1502
    ```
 
-   The server listens on all interfaces by default. Add `--host 127.0.0.1` to accept local
-   connections only. The first start may show a Windows Firewall prompt.
+   The server listens on 127.0.0.1 (local connections only) by default. Add `--host 0.0.0.0`
+   to accept remote clients; it has no authentication.
 
 3. Start the application, with or without a project file:
 

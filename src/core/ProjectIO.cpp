@@ -149,12 +149,14 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
     qint64 unitId = conn.unitId;
     qint64 timeoutMs = conn.timeoutMs;
     qint64 pollPeriodMs = conn.pollPeriodMs;
-    constexpr qint64 kMaxInt = 0x7FFFFFFF;
+    // Same ranges as the ConnectionBar spin boxes.
+    constexpr qint64 kMinMs = 100;
+    constexpr qint64 kMaxMs = 60000;
     if (!readString(obj, QStringLiteral("host"), prefix, conn.host, error)
         || !readInt(obj, QStringLiteral("port"), prefix, 1, 65535, port, error)
         || !readInt(obj, QStringLiteral("unitId"), prefix, 0, 255, unitId, error)
-        || !readInt(obj, QStringLiteral("timeoutMs"), prefix, 0, kMaxInt, timeoutMs, error)
-        || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, 0, kMaxInt, pollPeriodMs, error)) {
+        || !readInt(obj, QStringLiteral("timeoutMs"), prefix, kMinMs, kMaxMs, timeoutMs, error)
+        || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, kMinMs, kMaxMs, pollPeriodMs, error)) {
         return false;
     }
     conn.port = static_cast<quint16>(port);

@@ -192,6 +192,7 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     m_placeButton->setCheckable(true);
     auto *clearButton = new QPushButton(tr("Clear cursors"), this);
     auto *fitButton = new QPushButton(tr("Fit Y"), this);
+    auto *clearDataButton = new QPushButton(tr("Clear data"), this);
 
     auto *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
@@ -200,6 +201,7 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     row->addWidget(m_placeButton);
     row->addWidget(clearButton);
     row->addWidget(fitButton);
+    row->addWidget(clearDataButton);
     row->addStretch(1);
 
     auto *layout = new QVBoxLayout(this);
@@ -258,6 +260,7 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
         m_placeButton->setChecked(on);
     });
     connect(clearButton, &QPushButton::clicked, m_cursors, &PlotCursors::clear);
+    connect(clearDataButton, &QPushButton::clicked, this, &TrendPlot::clearDataRequested);
     // Esc cancels placing wherever the focus is inside the trend (the cursors' own key
     // handling needs the plot to have focus).
     auto *escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);

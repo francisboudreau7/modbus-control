@@ -120,7 +120,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_window->setCloseHandler([this] { return maybeSave(); });
 
-    // First run: demo project, not modified.
+    // Every start: last connection settings and the demo tags, as an unmodified Untitled project.
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags(demoTags(), 9);
     pushTags();
@@ -155,6 +155,7 @@ void AppController::wireConnection()
     connect(bar, &ConnectionBar::settingsEdited, this, [this] { setModified(true); });
 
     connect(m_worker, &PollWorker::stateChanged, this, [this](ConnectionState state, const QString &detail) {
+        m_state = state;
         m_window->connectionBar()->setState(state, detail);
         m_window->setConnectionStatus(state, detail);
         m_writes->setConnected(state == ConnectionState::Connected);
@@ -185,6 +186,19 @@ void AppController::wireData()
         m_newData = false;
         m_window->trendPlot()->refresh();
         m_window->cursorPanel()->refresh();
+    });
+
+    connect(m_window->trendPlot(), &TrendPlot::clearDataRequested, this, [this] {
+        if (m_recorder.size() > 0) {
+            const auto answer = QMessageBox::question(
+                m_window, QStringLiteral("Clear data"),
+                QStringLiteral("Discard all recorded data? This cannot be undone."));
+            if (answer != QMessageBox::Yes)
+                return;
+        }
+        // The timeBaseReset handler clears the recorder and the plot.
+        QMetaObject::invokeMethod(m_worker, &PollWorker::resetTimeBase, Qt::QueuedConnection);
+        m_window->trendPlot()->cursors()->clear();
     });
 
     PlotCursors *cursors = m_window->trendPlot()->cursors();
@@ -273,8 +287,18 @@ Project AppController::currentProject() const
     return p;
 }
 
+void AppController::disconnectForProjectChange()
+{
+    if (m_state == ConnectionState::Disconnected)
+        return;
+    // Same path as the Disconnect button.
+    QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);
+    m_window->showStatusMessage(QStringLiteral("Disconnected to load project"));
+}
+
 void AppController::applyProject(const Project &project)
 {
+    disconnectForProjectChange();
     m_window->connectionBar()->setSettings(project.connection);
     m_window->tagModel()->setTags(project.tags, project.nextTagId);
     pushTags();
@@ -318,6 +342,7 @@ void AppController::newProject()
 {
     if (!maybeSave())
         return;
+    disconnectForProjectChange();
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags({}, 1);
     pushTags();

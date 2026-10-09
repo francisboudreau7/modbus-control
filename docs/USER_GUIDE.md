@@ -24,7 +24,7 @@ to stop. While connecting or connected, the fields are read-only.
 |---|---|---|
 | Host | IPv4 address, or `localhost` | Host names other than `localhost` are rejected, and Connect stays disabled. Use a lower-case `localhost`. |
 | Port | 1..65535 | Default 1502. |
-| Unit | 0..255 | Modbus unit id. Units 248..254 are rejected when connecting. |
+| Unit | 0..247 | Modbus unit id. |
 | Timeout | 100..60000 ms | How long to wait for each response. |
 | Period | 100..60000 ms | Time from one poll cycle to the next. A cycle that takes longer than the period starts the next one at once. |
 
@@ -136,6 +136,8 @@ Controls above the plot:
   data and turns auto-scaling back on.
 - **Place cursors**, **Clear cursors**: see Cursors.
 - **Fit Y**: sets the Y range to the visible data, and keeps fitting while the view follows the data.
+- **Clear data**: discards all recorded data (after a confirmation when there is any), clears the
+  cursors, and restarts the time axis at 0. The connection stays as it is.
 
 Mouse:
 
@@ -204,7 +206,8 @@ The file has one column per tag that has recorded data, including tags with Plot
 header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted when empty).
 
 - Encoding UTF-8, CRLF line endings.
-- `timestamp` is local time with milliseconds and no offset, for example `2026-10-09T14:03:12.250`.
+- `timestamp` is local time with milliseconds and the UTC offset, for example
+  `2026-10-09T14:03:12.250-04:00`.
 - `elapsed_s` is seconds since the time base started, with 3 decimals.
 - Values are the scaled values, with `.` as the decimal point. A missing sample is an empty cell.
 
@@ -240,9 +243,9 @@ server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 - Every poll cycle is recorded as one row, covering all tags, not just the plotted ones.
 - The history is kept in memory: 72 000 rows, about 2 hours at a 100 ms period. Older rows are
   dropped first.
-- The time base starts at the first connection in this run and is not reset. Disconnecting and
-  reconnecting continues the same timeline, and the recorded data is not cleared. Restart the
-  application to start a new recording.
+- The time base starts at the first connection in this run. Disconnecting and reconnecting
+  continues the same timeline, and the recorded data is not cleared. Use **Clear data** above the
+  trend (or restart the application) to start a new recording.
 
 ## Limits
 

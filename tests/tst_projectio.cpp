@@ -201,6 +201,22 @@ void TstProjectIO::boundaryValuesAccepted()
     })"));
     QVERIFY(maxPort.has_value());
     QCOMPARE(maxPort->connection.port, quint16(65535));
+
+    const auto minMs = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "connection":{"timeoutMs":100,"pollPeriodMs":100}
+    })"), &error);
+    QVERIFY2(minMs.has_value(), qPrintable(error));
+    QCOMPARE(minMs->connection.timeoutMs, 100);
+    QCOMPARE(minMs->connection.pollPeriodMs, 100);
+
+    const auto maxMs = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "connection":{"timeoutMs":60000,"pollPeriodMs":60000}
+    })"), &error);
+    QVERIFY2(maxMs.has_value(), qPrintable(error));
+    QCOMPARE(maxMs->connection.timeoutMs, 60000);
+    QCOMPARE(maxMs->connection.pollPeriodMs, 60000);
 }
 
 void TstProjectIO::invalidInputRejected_data()
@@ -256,6 +272,21 @@ void TstProjectIO::invalidInputRejected_data()
     QTest::newRow("port fractional")
         << json(R"({"format":"modbus-control-project","version":1,"connection":{"port":502.5}})")
         << QStringLiteral("port");
+    QTest::newRow("timeout below 100")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"timeoutMs":99}})")
+        << QStringLiteral("timeoutMs");
+    QTest::newRow("timeout zero")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"timeoutMs":0}})")
+        << QStringLiteral("timeoutMs");
+    QTest::newRow("timeout above 60000")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"timeoutMs":60001}})")
+        << QStringLiteral("timeoutMs");
+    QTest::newRow("period below 100")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"pollPeriodMs":50}})")
+        << QStringLiteral("pollPeriodMs");
+    QTest::newRow("period above 60000")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"pollPeriodMs":60001}})")
+        << QStringLiteral("pollPeriodMs");
 }
 
 void TstProjectIO::invalidInputRejected()

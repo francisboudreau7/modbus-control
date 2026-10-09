@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "PollWorker.h"
 #include "ProjectIO.h"
 #include "Recorder.h"
 
@@ -12,7 +13,6 @@ class QTimer;
 namespace mb {
 
 class MainWindow;
-class PollWorker;
 class WriteController;
 
 /// Application logic. Owns the PollWorker (on its own QThread), the Recorder and the
@@ -54,6 +54,7 @@ private:
     void openDialog();
     bool loadFrom(const QString &path);
     void applyProject(const Project &project);
+    void disconnectForProjectChange();
     Project currentProject() const;
     void exportImage();
     void exportCsv();
@@ -67,6 +68,7 @@ private:
     QString m_projectPath;
     bool m_modified = false;
     bool m_newData = false;
+    ConnectionState m_state = ConnectionState::Disconnected;
 };
 
 } // namespace mb

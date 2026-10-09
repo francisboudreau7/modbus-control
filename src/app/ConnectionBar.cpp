@@ -65,7 +65,7 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
     };
 
     m_port = makeSpin(QStringLiteral("Port"), 1, 65535, QString(), 70);
-    m_unit = makeSpin(QStringLiteral("Unit"), 0, 255, QString(), 60);
+    m_unit = makeSpin(QStringLiteral("Unit"), 0, 247, QString(), 60);
     m_timeout = makeSpin(QStringLiteral("Timeout"), 100, 60000, QStringLiteral(" ms"), 90);
     m_period = makeSpin(QStringLiteral("Period"), 100, 60000, QStringLiteral(" ms"), 90);
 

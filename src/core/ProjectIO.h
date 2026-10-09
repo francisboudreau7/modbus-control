@@ -26,6 +26,9 @@ inline constexpr int kProjectFormatVersion = 1;
 ///
 /// Missing fields take the defaults of ConnectionSettings / Tag. nextTagId is always
 /// at least max(tag id) + 1.
+///
+/// Ranges (values outside them are rejected when loading): port 1..65535, unitId 0..255,
+/// timeoutMs 100..60000, pollPeriodMs 100..60000, tag id >= 1, address 0..65535.
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;

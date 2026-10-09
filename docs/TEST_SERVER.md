@@ -20,7 +20,7 @@ At start-up it prints a banner, the unit id, the register ranges, the bound sign
 | `-h`, `--help` | Show the help. |
 | `--version` | Show the version and the libmodbus version. |
 | `--config <file>` | JSON configuration file (see below). |
-| `--host <address>` | Address to listen on. Default `0.0.0.0` (all interfaces). |
+| `--host <address>` | Address to listen on. Default `127.0.0.1` (local connections only, because the server has no authentication). Use `--host 0.0.0.0` to accept remote clients. |
 | `--port <port>` | TCP port. Default 1502. `0` lets the OS choose; the chosen port is on the `LISTENING` line. |
 | `--unit <id>` | Modbus unit id, 0..247. Default 1. |
 | `--tick <ms>` | Simulation tick period, 1..60000 ms. Default 50. |
@@ -87,7 +87,7 @@ The same content is in [`server/server.example.json`](../server/server.example.j
 
 ```json
 {
-  "host": "0.0.0.0",
+  "host": "127.0.0.1",
   "port": 1502,
   "unitId": 1,
   "holdingCount": 200,
@@ -112,7 +112,7 @@ Keys:
 
 | Key | Range | Notes |
 |---|---|---|
-| `host`, `port`, `unitId` | port 1..65535, unitId 0..255 | The command line accepts `--port 0` and unit ids up to 247 only. |
+| `host`, `port`, `unitId` | port 1..65535, unitId 0..247 | The command line also accepts `--port 0` (let the OS choose). |
 | `holdingCount` | 1..65536 | Holding registers HR 0..count-1. |
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |

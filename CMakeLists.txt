@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 
-# vcpkg toolchain: honour VCPKG_ROOT, fall back to the default checkout location.
+# vcpkg toolchain: pass -DCMAKE_TOOLCHAIN_FILE=... or set VCPKG_ROOT to your vcpkg checkout.
 if(NOT CMAKE_TOOLCHAIN_FILE)
   if(DEFINED ENV{VCPKG_ROOT})
-    set(_vcpkg_root "$ENV{VCPKG_ROOT}")
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "")
   else()
-    set(_vcpkg_root "C:/Users/franc/source/vcpkg")
+    message(FATAL_ERROR "Set VCPKG_ROOT to your vcpkg checkout (or pass -DCMAKE_TOOLCHAIN_FILE=...)")
   endif()
-  set(CMAKE_TOOLCHAIN_FILE "${_vcpkg_root}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "")
 endif()
 
 project(ModbusControl VERSION 0.1.0 LANGUAGES CXX)
