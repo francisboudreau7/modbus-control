@@ -165,7 +165,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** nothing.
+**In progress:** T72 (Sonnet) in worktree `..\modbus-control-wt\t72`, branch `task/t72` — items 2 and 3 below (the 1-based numbering contract is already on main, commit 546a027, with a stub in TagTableModel.cpp). If a new session finds no "T72:" commit on that branch, check `git -C ..\modbus-control-wt\t72 status` and finish or redo it.
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
 2. Orchestrator contract for **1-based register numbering** (user-requested):
