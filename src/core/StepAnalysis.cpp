@@ -231,9 +231,17 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
     return in;
 }
 
-double fopdtModelValue(const StepResult &, double)
+double fopdtModelValue(const StepResult &result, double t)
 {
-    return kNaN; // T100 stub; implemented by T101
+    if (!result.valid || !result.deadTime || !result.timeConstant) {
+        return kNaN;
+    }
+    const double start = result.stepTime + *result.deadTime;
+    if (t <= start) {
+        return result.y0;
+    }
+    return result.y0
+           + result.deltaPv * (1.0 - std::exp(-(t - start) / *result.timeConstant));
 }
 
 StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double t2,
@@ -316,6 +324,25 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
                 r.timeConstant = T;
                 r.deadTime = *ta - T * (-std::log(1.0 - a)) - r.stepTime;
             }
+        }
+    }
+
+    // Model fit residual over the raw (unsmoothed) non-NaN samples between the cursors.
+    if (r.deadTime && r.timeConstant) {
+        double sumSq = 0.0;
+        qsizetype count = 0;
+        for (qsizetype i = 0; i < raw.t.size(); ++i) {
+            if (raw.t[i] < t1 || raw.t[i] > t2) {
+                continue;
+            }
+            const double e = raw.v[i] - fopdtModelValue(r, raw.t[i]);
+            sumSq += e * e;
+            ++count;
+        }
+        if (count > 0) {
+            const double rms = std::sqrt(sumSq / double(count));
+            r.fitRms = rms;
+            r.fitRmsPercent = rms / std::abs(r.deltaPv) * 100.0;
         }
     }
     return r;
