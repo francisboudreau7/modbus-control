@@ -165,7 +165,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** nothing. Version bumped to 1.0.0 (e3e6582); tag-table editors made opaque (user-reported overlap bug, awaiting user confirmation in the real app); installer `out\installer\ModbusControl-1.0.0-setup.exe` built and install-tested (ships both example projects). Waiting for the user to confirm the fix and approve publishing the release.
+**In progress:** nothing. **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
@@ -189,9 +189,9 @@ table (orchestrator fix after merging T63).
    "FC06 only" if FC16 writes are rejected; add `examples/cm50.mbproj`.
 4. ~~**Final review (T53)**~~ (done: 7 findings fixed in 4a0fd36): run `/code-review` (or a review agent) over the whole repo; fix
    high-severity findings; rerun `ctest --repeat until-fail:3`.
-5. **Acceptance (T54)**: user runs the app against the test server (see README Quick start) and
+5. ~~**Acceptance (T54)**~~ (done): user runs the app against the test server (see README Quick start) and
    checks write/cursors/exports; Claude verifies by offscreen tests only (no desktop input).
-6. **T80 release v1.0.0**: bump `project(ModbusControl VERSION 1.0.0)`, run
+6. ~~**T80 release v1.0.0**~~ (done): bump `project(ModbusControl VERSION 1.0.0)`, run
    `installer\build_installer.ps1`, commit + push, then — after the user confirms —
    `gh release create v1.0.0 out\installer\ModbusControl-1.0.0-setup.exe --title "Modbus Control 1.0.0"`
    with release notes (features, CM50 notes, test server usage, licences).
