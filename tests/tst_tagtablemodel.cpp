@@ -651,6 +651,50 @@ private slots:
         QVERIFY(m.headerData(C::Type, Qt::Horizontal, Qt::ToolTipRole).toString().contains("two consecutive registers"));
         QVERIFY(m.headerData(C::ByteOrder, Qt::Horizontal, Qt::ToolTipRole).toString().contains("ABCD"));
         QCOMPARE(m.headerData(C::ByteOrder, Qt::Horizontal).toString(), QString("Byte order"));
+        QCOMPARE(m.headerData(C::Analyze, Qt::Horizontal, Qt::ToolTipRole).toString(),
+                 QString("Show this tag in the Analysis tab"));
+        QCOMPARE(m.headerData(C::Analyze, Qt::Horizontal).toString(), QString("Analyze"));
+    }
+
+    void analyzeColumn()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag holding = makeTag(1, "h", Area::HoldingRegister, 0);
+        holding.analyzed = true;
+        Tag input = makeTag(2, "i", Area::InputRegister, 1);
+        m.setTags({holding, makeTag(3, "p"), input}, 4);
+
+        // Check state follows Tag::analyzed, for holding and input registers alike.
+        QCOMPARE(m.data(ix(m, 0, C::Analyze), Qt::CheckStateRole).toInt(), int(Qt::Checked));
+        QCOMPARE(m.data(ix(m, 1, C::Analyze), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QCOMPARE(m.data(ix(m, 2, C::Analyze), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+
+        // Flags: user-checkable, enabled, not editable (the default: branch must not apply).
+        for (int r = 0; r < 3; ++r) {
+            QVERIFY(m.flags(ix(m, r, C::Analyze)) & Qt::ItemIsUserCheckable);
+            QVERIFY(m.flags(ix(m, r, C::Analyze)) & Qt::ItemIsEnabled);
+            QVERIFY(!(m.flags(ix(m, r, C::Analyze)) & Qt::ItemIsEditable));
+        }
+
+        // Toggling works for an input register too and emits tagsEdited and dataChanged.
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QVERIFY(m.setData(ix(m, 2, C::Analyze), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tagAt(2).analyzed);
+        QCOMPARE(m.data(ix(m, 2, C::Analyze), Qt::CheckStateRole).toInt(), int(Qt::Checked));
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(changed.first().at(0).value<QModelIndex>(), ix(m, 2, C::Analyze));
+
+        QVERIFY(m.setData(ix(m, 0, C::Analyze), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.tagAt(0).analyzed);
+        QCOMPARE(edited.size(), 2);
+
+        // The EditRole is refused.
+        QVERIFY(!m.setData(ix(m, 1, C::Analyze), Qt::Checked, Qt::EditRole));
+        QVERIFY(!m.tagAt(1).analyzed);
+        QCOMPARE(edited.size(), 2);
     }
 
     // Regression: a pick in the Type combo must be applied and the editor closed right away;

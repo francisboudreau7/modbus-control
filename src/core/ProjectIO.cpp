@@ -232,7 +232,8 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         || !readString(obj, QStringLiteral("unit"), prefix, tag.unit, error)
         || !readString(obj, QStringLiteral("color"), prefix, tag.color, error)
         || !readBool(obj, QStringLiteral("plotted"), prefix, tag.plotted, error)
-        || !readBool(obj, QStringLiteral("writable"), prefix, tag.writable, error)) {
+        || !readBool(obj, QStringLiteral("writable"), prefix, tag.writable, error)
+        || !readBool(obj, QStringLiteral("analyzed"), prefix, tag.analyzed, error)) {
         return false;
     }
     tag.address = static_cast<quint16>(address);
@@ -245,6 +246,101 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
                             .arg(registerCount(tag.type)));
         return false;
     }
+    return true;
+}
+
+// Optional "analysis" object. Every key is optional; a missing key keeps the default in `out`.
+bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error)
+{
+    const QString key = QStringLiteral("analysis");
+    const QJsonValue value = root.value(key);
+    if (value.isUndefined())
+        return true;
+    if (!value.isObject()) {
+        setError(error, QStringLiteral("\"analysis\" must be an object"));
+        return false;
+    }
+    const QJsonObject obj = value.toObject();
+    const QString prefix = QStringLiteral("analysis.");
+
+    const QJsonValue percents = obj.value(QStringLiteral("percents"));
+    if (!percents.isUndefined()) {
+        if (!percents.isArray()) {
+            setError(error, QStringLiteral("\"analysis.percents\" must be an array of numbers"));
+            return false;
+        }
+        const QJsonArray array = percents.toArray();
+        if (array.size() > 20) {
+            setError(error, QStringLiteral("\"analysis.percents\" must have at most 20 entries"));
+            return false;
+        }
+        QList<double> list;
+        for (const QJsonValue &entry : array) {
+            if (!entry.isDouble() || entry.toDouble() < 0.0 || entry.toDouble() > 100.0) {
+                setError(error, QStringLiteral("\"analysis.percents\" entries must be numbers from 0 to 100"));
+                return false;
+            }
+            list.append(entry.toDouble());
+        }
+        out.percents = list;
+    }
+
+    const QJsonValue reference = obj.value(QStringLiteral("reference"));
+    if (!reference.isUndefined()) {
+        if (!reference.isString()) {
+            setError(error, QStringLiteral("\"analysis.reference\" must be a string"));
+            return false;
+        }
+        const QString text = reference.toString();
+        if (text == QStringLiteral("cursor")) {
+            out.reference = ReferenceMode::CursorValue;
+        } else if (text == QStringLiteral("mean")) {
+            out.reference = ReferenceMode::WindowMean;
+        } else {
+            setError(error, QStringLiteral("\"analysis.reference\" has unknown value \"%1\" (expected \"cursor\" or \"mean\")")
+                                .arg(text));
+            return false;
+        }
+    }
+
+    if (!readDouble(obj, QStringLiteral("referenceWindowS"), prefix, out.referenceWindowS, error))
+        return false;
+    if (!(out.referenceWindowS > 0.0 && out.referenceWindowS <= 3600.0)) {
+        setError(error, QStringLiteral("\"analysis.referenceWindowS\" must be greater than 0 and at most 3600"));
+        return false;
+    }
+
+    if (!readDouble(obj, QStringLiteral("smoothingS"), prefix, out.smoothingS, error))
+        return false;
+    if (!(out.smoothingS >= 0.0 && out.smoothingS <= 3600.0)) {
+        setError(error, QStringLiteral("\"analysis.smoothingS\" must be from 0 to 3600"));
+        return false;
+    }
+
+    const QJsonValue model = obj.value(QStringLiteral("modelPercents"));
+    if (!model.isUndefined()) {
+        const QJsonArray pair = model.toArray();
+        if (!model.isArray() || pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()) {
+            setError(error, QStringLiteral("\"analysis.modelPercents\" must be an array of exactly 2 numbers"));
+            return false;
+        }
+        const double a = pair.at(0).toDouble();
+        const double b = pair.at(1).toDouble();
+        if (!(a >= 0.0 && a < b && b < 100.0)) {
+            setError(error, QStringLiteral("\"analysis.modelPercents\" must be two numbers a < b, both from 0 up to but not including 100"));
+            return false;
+        }
+        out.modelPercentA = a;
+        out.modelPercentB = b;
+    }
+
+    qint64 deltaCoTag = static_cast<qint64>(out.deltaCoTagId);
+    if (!readInt(obj, QStringLiteral("deltaCoTag"), prefix, 0, kMaxTagId, deltaCoTag, error))
+        return false;
+    out.deltaCoTagId = static_cast<TagId>(deltaCoTag);
+
+    if (!readDouble(obj, QStringLiteral("deltaCo"), prefix, out.manualDeltaCo, error))
+        return false;
     return true;
 }
 
@@ -277,9 +373,25 @@ QByteArray projectToJson(const Project &project)
             {QStringLiteral("color"), tag.color},
             {QStringLiteral("plotted"), tag.plotted},
             {QStringLiteral("writable"), tag.writable},
+            {QStringLiteral("analyzed"), tag.analyzed},
         };
         tags.append(obj);
     }
+
+    const AnalysisSettings &a = project.analysis;
+    QJsonArray percents;
+    for (double p : a.percents)
+        percents.append(p);
+    const QJsonObject analysis{
+        {QStringLiteral("percents"), percents},
+        {QStringLiteral("reference"),
+         a.reference == ReferenceMode::WindowMean ? QStringLiteral("mean") : QStringLiteral("cursor")},
+        {QStringLiteral("referenceWindowS"), a.referenceWindowS},
+        {QStringLiteral("smoothingS"), a.smoothingS},
+        {QStringLiteral("modelPercents"), QJsonArray{a.modelPercentA, a.modelPercentB}},
+        {QStringLiteral("deltaCoTag"), static_cast<qint64>(a.deltaCoTagId)},
+        {QStringLiteral("deltaCo"), a.manualDeltaCo},
+    };
 
     const QJsonObject root{
         {QStringLiteral("format"), QStringLiteral("modbus-control-project")},
@@ -288,6 +400,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("addressBase"), project.addressBase == 1 ? 1 : 0},
         {QStringLiteral("nextTagId"), static_cast<qint64>(project.nextTagId)},
         {QStringLiteral("tags"), tags},
+        {QStringLiteral("analysis"), analysis},
     };
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
@@ -370,6 +483,9 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
         maxId = std::max(maxId, tag.id);
         project.tags.append(tag);
     }
+
+    if (!readAnalysis(root, project.analysis, error))
+        return std::nullopt;
 
     project.nextTagId = static_cast<TagId>(std::max<qint64>(storedNextId, static_cast<qint64>(maxId) + 1));
     return project;
