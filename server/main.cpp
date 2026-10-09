@@ -209,7 +209,8 @@ int main(int argc, char *argv[])
             std::printf(" (%s %s)", formatName(binding.format), orderName(binding.byteOrder));
         }
         if (binding.params.kind == mbsim::SignalKind::Lag) {
-            std::printf(" following HR%u (tau %g s)", binding.params.sourceAddress, binding.params.tauS);
+            std::printf(" following HR%u (tau %g s, dead time %g s)", binding.params.sourceAddress,
+                        binding.params.tauS, binding.params.deadTimeS);
         }
         std::printf("\n");
     }

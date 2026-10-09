@@ -16,7 +16,7 @@ QList<SignalBinding> defaultBindings()
         {3, {SignalKind::Square, 1000.0, 0.0, 4.0, 2.0, 0}},
         {4, {SignalKind::Noise, 100.0, 0.0, 5.0, 2.0, 0}},
         {5, {SignalKind::Sawtooth, 1000.0, 0.0, 8.0, 2.0, 0}},
-        {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100}},
+        {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100, 1.0}},
         {20, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::ABCD},
         {22, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::CDAB},
         {24, {SignalKind::Sawtooth, 100000.0, 0.0, 8.0, 2.0, 0}, RegisterFormat::Int32, WordOrder::ABCD},
@@ -32,6 +32,7 @@ void compareBinding(const SignalBinding &actual, const SignalBinding &expected)
     QCOMPARE(actual.params.periodS, expected.params.periodS);
     QCOMPARE(actual.params.tauS, expected.params.tauS);
     QCOMPARE(actual.params.sourceAddress, expected.params.sourceAddress);
+    QCOMPARE(actual.params.deadTimeS, expected.params.deadTimeS);
     QCOMPARE(static_cast<int>(actual.format), static_cast<int>(expected.format));
     QCOMPARE(static_cast<int>(actual.byteOrder), static_cast<int>(expected.byteOrder));
 }
@@ -101,6 +102,7 @@ void TstServerConfig::defaultsMatchSpec()
     QCOMPARE(lag.inputAddress, quint16(10));
     QCOMPARE(lag.params.sourceAddress, quint16(100));
     QCOMPARE(lag.params.tauS, 2.0);
+    QCOMPARE(lag.params.deadTimeS, 1.0);
     QCOMPARE(static_cast<int>(lag.format), static_cast<int>(RegisterFormat::Int16));
 
     // The 32-bit defaults: IR20-21 float32 ABCD, IR22-23 float32 CDAB, IR24-25 int32 ABCD.
@@ -182,10 +184,10 @@ void TstServerConfig::lagBindingKeys()
 {
     QString error;
     const auto cfg = parseServerConfig(
-        R"JSON({"signals":[{"input":12,"kind":"lag","source":42,"tauS":3.5,"offset":7}]})JSON", &error);
+        R"JSON({"signals":[{"input":12,"kind":"lag","source":42,"tauS":3.5,"deadTimeS":2.5,"offset":7}]})JSON", &error);
     QVERIFY2(cfg.has_value(), qPrintable(error));
     compareBindings(cfg->signalBindings,
-                    {{12, {SignalKind::Lag, 1000.0, 7.0, 5.0, 3.5, 42}}});
+                    {{12, {SignalKind::Lag, 1000.0, 7.0, 5.0, 3.5, 42, 2.5}}});
 }
 
 void TstServerConfig::formatAndByteOrder_data()
@@ -269,6 +271,10 @@ void TstServerConfig::acceptsBoundaryValues_data()
         << QByteArray(R"({"inputCount":8,"signals":[{"input":7,"kind":"counter"}]})");
     QTest::newRow("lag source at holdingCount-1")
         << QByteArray(R"({"holdingCount":51,"signals":[{"input":10,"kind":"lag","source":50}]})");
+    QTest::newRow("deadTimeS 0")
+        << QByteArray(R"({"signals":[{"input":10,"kind":"lag","source":1,"deadTimeS":0}]})");
+    QTest::newRow("deadTimeS 60")
+        << QByteArray(R"({"signals":[{"input":10,"kind":"lag","source":1,"deadTimeS":60}]})");
     QTest::newRow("small period") << QByteArray(R"({"signals":[{"kind":"sine","periodS":0.001}]})");
     QTest::newRow("float32 ending at inputCount-1")
         << QByteArray(R"({"inputCount":8,"signals":[{"input":6,"kind":"sine","format":"float32"}]})");
@@ -343,6 +349,13 @@ void TstServerConfig::rejects_data()
                                        << QStringLiteral("periodS");
     QTest::newRow("tauS -1") << QByteArray(R"({"signals":[{"kind":"lag","source":1,"tauS":-1}]})")
                              << QStringLiteral("signals[0].tauS");
+    QTest::newRow("deadTimeS -1") << QByteArray(R"({"signals":[{"kind":"lag","source":1,"deadTimeS":-1}]})")
+                                  << QStringLiteral("signals[0].deadTimeS");
+    QTest::newRow("deadTimeS 61") << QByteArray(R"({"signals":[{"kind":"lag","source":1,"deadTimeS":61}]})")
+                                  << QStringLiteral("signals[0].deadTimeS");
+    QTest::newRow("deadTimeS as string")
+        << QByteArray(R"({"signals":[{"kind":"lag","source":1,"deadTimeS":"1"}]})")
+        << QStringLiteral("signals[0].deadTimeS");
 }
 
 void TstServerConfig::rejects()

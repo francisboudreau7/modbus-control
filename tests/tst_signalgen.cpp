@@ -45,6 +45,7 @@ private slots:
     void lagTimeConstant();
     void lagConverges();
     void lagNegativeInput();
+    void lagDeadTime();
     void nextValueMatchesNext_data();
     void nextValueMatchesNext();
     void counterNextValueRaw();
@@ -235,6 +236,43 @@ void TstSignalGen::lagNegativeInput()
         v = s16(gen.next(t, 0.5, quint16(0xFC18)));
     }
     QCOMPARE(v, -1000);
+}
+
+void TstSignalGen::lagDeadTime()
+{
+    // Input 0 for t < 5 s, then 1000 from t = 5 s on; sampled every 0.05 s (index i = t / 0.05).
+    auto run = [](double deadTimeS) {
+        SignalParams p = makeParams(SignalKind::Lag, 0.0, 0.0, 5.0);
+        p.tauS = 2.0;
+        p.deadTimeS = deadTimeS;
+        SignalGenerator gen(p);
+        QList<int> out;
+        for (int i = 0; i <= 200; ++i) {
+            const quint16 input = i >= 100 ? quint16(1000) : quint16(0);
+            out.append(s16(gen.next(i * 0.05, i == 0 ? 0.0 : 0.05, input)));
+        }
+        return out;
+    };
+    const auto firstNonZero = [](const QList<int> &values) {
+        for (int i = 0; i < values.size(); ++i) {
+            if (values.at(i) != 0)
+                return i;
+        }
+        return -1;
+    };
+
+    // Dead time 1 s: the step reaches the output at t = 6.0 s (index 120), one tick of slack.
+    const QList<int> delayed = run(1.0);
+    const int first = firstNonZero(delayed);
+    QVERIFY(first >= 0);
+    QVERIFY2(qAbs(first - 120) <= 1, qPrintable(QString::number(first)));
+    // 2 s after the delayed step (t = 8 s): 1 - exp(-1) = 63.2 % of 1000 (+-2 %).
+    QVERIFY2(qAbs(delayed.at(160) - 632) <= 20, qPrintable(QString::number(delayed.at(160))));
+
+    // Dead time 0: the step starts at t = 5 s (index 100), so t = 7 s is 2 s after it.
+    const QList<int> direct = run(0.0);
+    QVERIFY2(qAbs(firstNonZero(direct) - 100) <= 1, qPrintable(QString::number(firstNonZero(direct))));
+    QVERIFY2(qAbs(direct.at(140) - 632) <= 20, qPrintable(QString::number(direct.at(140))));
 }
 
 namespace {

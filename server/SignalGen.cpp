@@ -99,8 +99,16 @@ double SignalGenerator::nextValue(double t, double dt, quint16 input)
 
     case SignalKind::Lag: {
         const double in = static_cast<double>(static_cast<qint16>(input));
+        // Record this tick's input, then discard samples that can no longer be the delayed
+        // value: the front moves on while the next sample is already at or before t - deadTimeS.
+        m_history.emplace_back(t, in);
+        const double delayedBefore = t - m_params.deadTimeS;
+        while (m_history.size() > 1 && m_history[1].first <= delayedBefore)
+            m_history.pop_front();
+        const double delayedIn = m_history.front().second;
+
         if (dt > 0.0)
-            m_state += (in - m_state) * (1.0 - std::exp(-dt / m_params.tauS));
+            m_state += (delayedIn - m_state) * (1.0 - std::exp(-dt / m_params.tauS));
         m_started = true;
         return m_state;
     }
