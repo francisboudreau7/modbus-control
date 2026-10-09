@@ -30,6 +30,9 @@ public:
     /// Serves until `stop` becomes true (checked at least every tick). Returns the
     /// process exit code.
     int run(const std::atomic<bool> &stop);
+    /// Actual TCP port being listened on (differs from the config when it was 0).
+    /// 0 before a successful start().
+    quint16 boundPort() const;
 
 private:
     // Implementation-defined; T12 may change the private section freely.
@@ -38,6 +41,13 @@ private:
     _modbus_mapping_t *m_mapping = nullptr;
     int m_listenSocket = -1;
     QList<SignalGenerator> m_generators;
+    quint16 m_boundPort = 0;
+    QList<int> m_clients;
+
+    void tick(double t, double dt);
+    void closeClient(int fd, const char *why);
+    void logRequest(int fd, const unsigned char *query, int length);
+    void shutdown();
 };
 
 } // namespace mbsim
