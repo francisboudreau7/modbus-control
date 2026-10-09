@@ -150,6 +150,12 @@ void ModbusConnection::close()
     }
 }
 
+void ModbusConnection::flush()
+{
+    if (m_ctx)
+        modbus_flush(m_ctx);
+}
+
 ModbusResult ModbusConnection::open(const ConnectionSettings &settings)
 {
     close();

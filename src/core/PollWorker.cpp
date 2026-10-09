@@ -1,3 +1,364 @@
 #include "PollWorker.h"
 
-// Stub: implemented by its task (see TASKS.md).
+#include "TagCodec.h"
+
+#include <QTimer>
+
+#include <algorithm>
+#include <iterator>
+#include <utility>
+
+namespace mb {
+
+namespace {
+
+constexpr int kBackoffMs[] = {500, 1000, 2000, 4000, 8000, 10000};
+constexpr int kBackoffSteps = static_cast<int>(std::size(kBackoffMs));
+constexpr int kMinPollMs = 100;
+constexpr qint64 kMessageRepeatMs = 10000;
+
+Quality qualityFor(ModbusError e)
+{
+    switch (e) {
+    case ModbusError::Timeout: return Quality::Timeout;
+    case ModbusError::Exception: return Quality::Exception;
+    case ModbusError::ConnectionLost:
+    case ModbusError::NotConnected: return Quality::Disconnected;
+    default: return Quality::Error;
+    }
+}
+
+ModbusResult notConnectedResult()
+{
+    ModbusResult r;
+    r.error = ModbusError::NotConnected;
+    r.message = QStringLiteral("Not connected");
+    return r;
+}
+
+QString areaShort(Area a)
+{
+    return a == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
+}
+
+} // namespace
+
+QString toString(ConnectionState state)
+{
+    switch (state) {
+    case ConnectionState::Disconnected: return QStringLiteral("Disconnected");
+    case ConnectionState::Connecting: return QStringLiteral("Connecting");
+    case ConnectionState::Connected: return QStringLiteral("Connected");
+    case ConnectionState::Reconnecting: return QStringLiteral("Reconnecting");
+    }
+    return {};
+}
+
+PollWorker::PollWorker(QObject *parent)
+    : QObject(parent)
+    , m_conn(std::make_unique<ModbusConnection>())
+    , m_timer(new QTimer(this))
+    , m_reconnectTimer(new QTimer(this))
+{
+    m_timer->setSingleShot(true);
+    m_timer->setTimerType(Qt::PreciseTimer);
+    m_reconnectTimer->setSingleShot(true);
+    m_reconnectTimer->setTimerType(Qt::PreciseTimer);
+    connect(m_timer, &QTimer::timeout, this, &PollWorker::onPollTimer);
+    connect(m_reconnectTimer, &QTimer::timeout, this, &PollWorker::onReconnectTimer);
+}
+
+PollWorker::~PollWorker()
+{
+    stopTimers();
+    if (m_conn)
+        m_conn->close();
+}
+
+int PollWorker::periodMs() const
+{
+    return std::max(m_settings.pollPeriodMs, kMinPollMs);
+}
+
+QString PollWorker::endpoint() const
+{
+    return QStringLiteral("%1:%2").arg(m_settings.host).arg(m_settings.port);
+}
+
+void PollWorker::setState(ConnectionState state, const QString &detail)
+{
+    m_state = state;
+    emit stateChanged(state, detail);
+}
+
+void PollWorker::stopTimers()
+{
+    m_timer->stop();
+    m_reconnectTimer->stop();
+}
+
+void PollWorker::closeConnection()
+{
+    m_conn->close();
+}
+
+void PollWorker::resetTimeBase()
+{
+    m_clock.restart();
+    const QDateTime wall = QDateTime::currentDateTime();
+    emit timeBaseReset(wall);
+}
+
+void PollWorker::setTags(const QList<Tag> &tags)
+{
+    m_tags = tags;
+    m_tagIndex.clear();
+    for (int i = 0; i < m_tags.size(); ++i)
+        m_tagIndex.insert(m_tags.at(i).id, i);
+    m_blocks = planBlocks(m_tags);
+}
+
+void PollWorker::connectTo(const ConnectionSettings &settings)
+{
+    m_settings = settings;
+    stopTimers();
+    closeConnection();
+    m_backoffStep = 0;
+    m_lastBlockMessage.clear();
+    failAllWrites(notConnectedResult());
+    if (!m_clock.isValid())
+        resetTimeBase();
+    attemptConnect(true);
+}
+
+int PollWorker::nextBackoffMs()
+{
+    const int ms = kBackoffMs[std::min(m_backoffStep, kBackoffSteps - 1)];
+    if (m_backoffStep < kBackoffSteps - 1)
+        ++m_backoffStep;
+    return ms;
+}
+
+void PollWorker::attemptConnect(bool firstAttempt)
+{
+    if (firstAttempt)
+        setState(ConnectionState::Connecting, QStringLiteral("Connecting to %1").arg(endpoint()));
+
+    const ModbusResult r = m_conn->open(m_settings);
+    if (r.ok()) {
+        m_backoffStep = 0;
+        m_reconnectTimer->stop();
+        setState(ConnectionState::Connected,
+                 QStringLiteral("Connected to %1 (unit %2)").arg(endpoint()).arg(m_settings.unitId));
+        m_timer->start(0); // first cycle immediately
+        return;
+    }
+
+    if (firstAttempt) {
+        enterReconnecting(r.message);
+    } else {
+        // Still reconnecting: keep the state, report the failed attempt, schedule the next.
+        const int ms = nextBackoffMs();
+        emit message(QStringLiteral("Reconnect to %1 failed: %2 (retry in %3 s)")
+                         .arg(endpoint(), r.message)
+                         .arg(ms / 1000.0));
+        m_reconnectTimer->start(ms);
+    }
+}
+
+void PollWorker::enterReconnecting(const QString &reason)
+{
+    closeConnection();
+    const int ms = nextBackoffMs();
+    const QString detail = QStringLiteral("%1 (retry in %2 s)").arg(reason).arg(ms / 1000.0);
+    setState(ConnectionState::Reconnecting, detail);
+    emit message(QStringLiteral("Connection to %1 failed: %2").arg(endpoint(), detail));
+    failAllWrites(notConnectedResult());
+    m_reconnectTimer->start(ms);
+    // Gap batches: one all-Disconnected batch per poll period.
+    m_timer->start(periodMs());
+}
+
+void PollWorker::onReconnectTimer()
+{
+    if (m_state == ConnectionState::Reconnecting)
+        attemptConnect(false);
+}
+
+void PollWorker::disconnectFrom()
+{
+    stopTimers();
+    closeConnection();
+    m_writePassQueued = false;
+    failAllWrites(notConnectedResult());
+    setState(ConnectionState::Disconnected, QStringLiteral("Disconnected"));
+}
+
+void PollWorker::failAllWrites(const ModbusResult &result)
+{
+    const QList<PendingWrite> writes = std::exchange(m_writes, {});
+    for (const PendingWrite &w : writes)
+        emit writeFinished(w.id, result);
+}
+
+void PollWorker::writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values)
+{
+    if (m_state != ConnectionState::Connected || !m_conn->isOpen()) {
+        emit writeFinished(requestId, notConnectedResult());
+        return;
+    }
+    m_writes.append({requestId, address, values});
+    if (!m_writePassQueued) {
+        m_writePassQueued = true;
+        QTimer::singleShot(0, this, &PollWorker::drainWrites);
+    }
+}
+
+void PollWorker::drainWrites()
+{
+    m_writePassQueued = false;
+    if (m_state == ConnectionState::Connected)
+        serveWrites();
+}
+
+void PollWorker::serveWrites()
+{
+    while (!m_writes.isEmpty()) {
+        const PendingWrite w = m_writes.takeFirst();
+        ModbusResult r;
+        if (m_state != ConnectionState::Connected || !m_conn->isOpen())
+            r = notConnectedResult();
+        else if (w.values.size() == 1)
+            r = m_conn->writeSingle(w.address, w.values.first());
+        else
+            r = m_conn->writeMultiple(w.address, w.values);
+
+        if (r.error == ModbusError::Timeout)
+            m_conn->flush();
+        emit writeFinished(w.id, r);
+        if (r.error == ModbusError::ConnectionLost) {
+            enterReconnecting(r.message); // also fails the remaining writes
+            return;
+        }
+    }
+}
+
+void PollWorker::emitBlockMessage(const QString &text)
+{
+    if (text == m_lastBlockMessage && m_lastBlockMessageTime.isValid()
+        && m_lastBlockMessageTime.elapsed() < kMessageRepeatMs) {
+        return;
+    }
+    m_lastBlockMessage = text;
+    m_lastBlockMessageTime.restart();
+    emit message(text);
+}
+
+void PollWorker::emitDisconnectedBatch(double t)
+{
+    if (m_tags.isEmpty())
+        return;
+    SampleBatch batch;
+    batch.t = t;
+    batch.samples.reserve(m_tags.size());
+    for (const Tag &tag : std::as_const(m_tags)) {
+        TagSample s;
+        s.tagId = tag.id;
+        s.quality = Quality::Disconnected;
+        batch.samples.append(s);
+    }
+    emit samplesReady(batch);
+}
+
+void PollWorker::scheduleNextPoll(double cycleStartMs)
+{
+    const double spent = nowMs() - cycleStartMs;
+    m_timer->start(static_cast<int>(std::max(0.0, periodMs() - spent)));
+}
+
+void PollWorker::onPollTimer()
+{
+    const double startMs = nowMs();
+    const double t = startMs / 1000.0;
+    if (m_state == ConnectionState::Reconnecting) {
+        emitDisconnectedBatch(t);
+        scheduleNextPoll(startMs);
+        return;
+    }
+    if (m_state != ConnectionState::Connected)
+        return;
+
+    serveWrites();
+    if (m_state == ConnectionState::Connected)
+        pollCycle(t);
+    else if (m_state == ConnectionState::Reconnecting)
+        emitDisconnectedBatch(t); // a write hit ConnectionLost: this cycle is a gap
+
+    // enterReconnecting() arms its own timer; only a healthy cycle re-arms here.
+    if (m_state == ConnectionState::Connected)
+        scheduleNextPoll(startMs);
+}
+
+void PollWorker::pollCycle(double t)
+{
+    if (m_tags.isEmpty())
+        return;
+
+    SampleBatch batch;
+    batch.t = t;
+    batch.samples.resize(m_tags.size());
+    for (int i = 0; i < m_tags.size(); ++i) {
+        batch.samples[i].tagId = m_tags.at(i).id;
+        batch.samples[i].quality = Quality::Disconnected;
+    }
+
+    bool lost = false;
+    QString lostReason;
+    for (const ReadBlock &block : std::as_const(m_blocks)) {
+        QList<quint16> data;
+        const ModbusResult r = m_conn->readRegisters(block.area, block.start, block.count, data);
+        if (r.ok()) {
+            for (int k = 0; k < block.tagIds.size(); ++k) {
+                const int idx = m_tagIndex.value(block.tagIds.at(k), -1);
+                const int off = block.offsets.at(k);
+                if (idx < 0)
+                    continue;
+                TagSample &s = batch.samples[idx];
+                if (off >= data.size()) {
+                    s.quality = Quality::Error;
+                    continue;
+                }
+                s.raw = data.at(off);
+                s.value = decodeValue(m_tags.at(idx), s.raw);
+                s.quality = Quality::Good;
+            }
+            continue;
+        }
+
+        const Quality q = qualityFor(r.error);
+        for (const TagId id : block.tagIds) {
+            const int idx = m_tagIndex.value(id, -1);
+            if (idx >= 0)
+                batch.samples[idx].quality = q;
+        }
+        emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
+                             .arg(areaShort(block.area))
+                             .arg(block.start)
+                             .arg(block.start + block.count - 1)
+                             .arg(r.message));
+        if (r.error == ModbusError::Timeout)
+            m_conn->flush();
+        if (r.error == ModbusError::ConnectionLost) {
+            lost = true;
+            lostReason = r.message;
+            break; // remaining tags stay Disconnected
+        }
+    }
+
+    emit samplesReady(batch);
+
+    if (lost)
+        enterReconnecting(lostReason);
+}
+
+} // namespace mb
