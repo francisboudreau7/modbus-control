@@ -1,4 +1,4 @@
-#include "PollWorker.h"
+﻿#include "PollWorker.h"
 
 #include "TagCodec.h"
 
@@ -264,7 +264,7 @@ void PollWorker::emitDisconnectedBatch(double t)
     for (const Tag &tag : std::as_const(m_tags)) {
         TagSample s;
         s.tagId = tag.id;
-        s.quality = Quality::Disconnected;
+        s.quality = tag.fitsAddressSpace() ? Quality::Disconnected : Quality::Error;
         batch.samples.append(s);
     }
     emit samplesReady(batch);
@@ -312,6 +312,12 @@ void PollWorker::pollCycle(double t)
         batch.samples[i].quality = Quality::Disconnected;
     }
 
+    // Tags the planner left out (they do not fit the address space) are never read.
+    for (int i = 0; i < m_tags.size(); ++i) {
+        if (!m_tags.at(i).fitsAddressSpace())
+            batch.samples[i].quality = Quality::Error;
+    }
+
     bool lost = false;
     QString lostReason;
     for (const ReadBlock &block : std::as_const(m_blocks)) {
@@ -324,12 +330,16 @@ void PollWorker::pollCycle(double t)
                 if (idx < 0)
                     continue;
                 TagSample &s = batch.samples[idx];
-                if (off >= data.size()) {
+                const Tag &tag = m_tags.at(idx);
+                const int regs = registerCount(tag.type);
+                if (off + regs > data.size()) {
                     s.quality = Quality::Error;
                     continue;
                 }
-                s.raw = data.at(off);
-                s.value = decodeValue(m_tags.at(idx), s.raw);
+                const quint16 r0 = data.at(off);
+                const quint16 r1 = regs == 2 ? data.at(off + 1) : quint16(0);
+                s.raw = combineRegisters(tag, r0, r1);
+                s.value = decodeValue(tag, s.raw);
                 s.quality = Quality::Good;
             }
             continue;
