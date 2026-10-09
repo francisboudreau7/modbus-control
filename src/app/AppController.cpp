@@ -188,6 +188,19 @@ void AppController::wireData()
         m_window->cursorPanel()->refresh();
     });
 
+    connect(m_window->trendPlot(), &TrendPlot::clearDataRequested, this, [this] {
+        if (m_recorder.size() > 0) {
+            const auto answer = QMessageBox::question(
+                m_window, QStringLiteral("Clear data"),
+                QStringLiteral("Discard all recorded data? This cannot be undone."));
+            if (answer != QMessageBox::Yes)
+                return;
+        }
+        // The timeBaseReset handler clears the recorder and the plot.
+        QMetaObject::invokeMethod(m_worker, &PollWorker::resetTimeBase, Qt::QueuedConnection);
+        m_window->trendPlot()->cursors()->clear();
+    });
+
     PlotCursors *cursors = m_window->trendPlot()->cursors();
     connect(cursors, &PlotCursors::cursorsChanged, this, [this, cursors] {
         std::optional<double> c1;

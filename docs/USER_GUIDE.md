@@ -136,6 +136,8 @@ Controls above the plot:
   data and turns auto-scaling back on.
 - **Place cursors**, **Clear cursors**: see Cursors.
 - **Fit Y**: sets the Y range to the visible data, and keeps fitting while the view follows the data.
+- **Clear data**: discards all recorded data (after a confirmation when there is any), clears the
+  cursors, and restarts the time axis at 0. The connection stays as it is.
 
 Mouse:
 
@@ -241,9 +243,9 @@ server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 - Every poll cycle is recorded as one row, covering all tags, not just the plotted ones.
 - The history is kept in memory: 72 000 rows, about 2 hours at a 100 ms period. Older rows are
   dropped first.
-- The time base starts at the first connection in this run and is not reset. Disconnecting and
-  reconnecting continues the same timeline, and the recorded data is not cleared. Restart the
-  application to start a new recording.
+- The time base starts at the first connection in this run. Disconnecting and reconnecting
+  continues the same timeline, and the recorded data is not cleared. Use **Clear data** above the
+  trend (or restart the application) to start a new recording.
 
 ## Limits
 

@@ -19,7 +19,7 @@ class Recorder;
 ///
 /// Control row: time window combo (60 s, 5 min, 30 min, All), Pause/Run toggle,
 /// "Place cursors" toggle (bound to PlotCursors::setPlacing/placingChanged),
-/// "Clear cursors", "Fit Y".
+/// "Clear cursors", "Fit Y", "Clear data" (only emits clearDataRequested()).
 ///
 /// Plot: x = seconds since the time base, y = scaled value; one QwtPlotCurve per plotted
 /// tag (tag colour, legend title "name [unit]"); NaN samples break the line. Mouse wheel
@@ -55,6 +55,8 @@ public slots:
 
 signals:
     void pausedChanged(bool paused);
+    /// The "Clear data" button was pressed; the owner decides whether to clear the recording.
+    void clearDataRequested();
 
 private:
     // Implementation-defined; the task may change the private section freely.
