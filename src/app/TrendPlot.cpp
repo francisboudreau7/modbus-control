@@ -9,6 +9,7 @@
 #include <QPen>
 #include <QPushButton>
 #include <QShortcut>
+#include <QStringList>
 #include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -154,6 +155,7 @@ protected:
         m_y = e->modifiers().testFlag(Qt::ShiftModifier);
         setAxisEnabled(QwtPlot::xBottom, !m_y);
         setAxisEnabled(QwtPlot::yLeft, m_y);
+        setAxisEnabled(QwtPlot::yRight, m_y);
         QwtPlotMagnifier::widgetWheelEvent(e);
     }
     void rescale(double factor) override
@@ -217,9 +219,10 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     m_plot->setCanvasBackground(Qt::white);
     m_plot->setAutoReplot(false);
     m_plot->setAxisTitle(QwtPlot::xBottom, tr("Time (s)"));
-    m_plot->setAxisTitle(QwtPlot::yLeft, tr("Value"));
     m_plot->setAxisScale(QwtPlot::xBottom, 0.0, 60.0);
     m_plot->setAxisScale(QwtPlot::yLeft, -1.0, 1.0);
+    m_plot->setAxisScale(QwtPlot::yRight, -1.0, 1.0);
+    m_plot->setAxisVisible(QwtPlot::yRight, false);
 
     auto *grid = new QwtPlotGrid;
     grid->setPen(QColor(200, 200, 200), 0.0, Qt::DotLine);
@@ -296,6 +299,8 @@ void TrendPlot::setRecorder(const Recorder *recorder)
 void TrendPlot::setTags(const QList<Tag> &tags)
 {
     QList<CurveEntry *> next;
+    QStringList leftUnits, rightUnits;
+    bool anyRight = false;
     for (const Tag &tag : tags) {
         if (!tag.plotted)
             continue;
@@ -317,6 +322,12 @@ void TrendPlot::setTags(const QList<Tag> &tags)
         }
         const QString title = tag.unit.isEmpty() ? tag.name : QStringLiteral("%1 [%2]").arg(tag.name, tag.unit);
         entry->curve->setTitle(title);
+        entry->curve->setYAxis(tag.axis == YAxis::Right ? QwtPlot::yRight : QwtPlot::yLeft);
+        QStringList &units = tag.axis == YAxis::Right ? rightUnits : leftUnits;
+        if (!tag.unit.isEmpty() && !units.contains(tag.unit))
+            units.append(tag.unit);
+        if (tag.axis == YAxis::Right)
+            anyRight = true;
         QColor c(tag.color);
         if (!c.isValid())
             c = Qt::black;
@@ -329,6 +340,10 @@ void TrendPlot::setTags(const QList<Tag> &tags)
         delete e;
     }
     m_entries = next;
+
+    m_plot->setAxisTitle(QwtPlot::yLeft, leftUnits.join(QStringLiteral(", ")));
+    m_plot->setAxisTitle(QwtPlot::yRight, rightUnits.join(QStringLiteral(", ")));
+    m_plot->setAxisVisible(QwtPlot::yRight, anyRight);
 
     pull(); // new curves backfill from the recorder
     if (auto *legend = qobject_cast<QwtLegend *>(m_plot->legend())) {
@@ -386,10 +401,16 @@ bool TrendPlot::pull()
 
 void TrendPlot::fitY(double x1, double x2)
 {
+    fitAxis(QwtPlot::yLeft, x1, x2);
+    fitAxis(QwtPlot::yRight, x1, x2);
+}
+
+void TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
+{
     double lo = std::numeric_limits<double>::infinity();
     double hi = -lo;
     for (CurveEntry *e : std::as_const(m_entries)) {
-        if (!e->curve->isVisible())
+        if (!e->curve->isVisible() || e->curve->yAxis() != axis)
             continue;
         const TrendSeries *s = e->curve->series();
         const qsizetype n = s->count();
@@ -414,7 +435,7 @@ void TrendPlot::fitY(double x1, double x2)
         lo -= span * 0.05;
         hi += span * 0.05;
     }
-    m_plot->setAxisScale(QwtPlot::yLeft, lo, hi);
+    m_plot->setAxisScale(axis, lo, hi);
 }
 
 void TrendPlot::applyAxes()
