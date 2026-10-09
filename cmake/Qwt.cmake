@@ -32,3 +32,7 @@ target_include_directories(qwt PUBLIC "${qwt_src_SOURCE_DIR}/src")
 target_compile_definitions(qwt PUBLIC QWT_DLL PRIVATE QWT_MAKEDLL)
 target_link_libraries(qwt PUBLIC Qt6::Widgets Qt6::PrintSupport Qt6::Svg Qt6::Concurrent
                                  Qt6::OpenGL Qt6::OpenGLWidgets)
+
+# Install: the Qwt DLL goes to bin/ next to the executables. Its import library is not installed.
+install(TARGETS qwt RUNTIME DESTINATION bin)
+install(FILES "${qwt_src_SOURCE_DIR}/COPYING" RENAME COPYING-qwt.txt DESTINATION licenses)

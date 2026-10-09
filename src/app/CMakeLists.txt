@@ -31,3 +31,6 @@ if(WINDEPLOYQT_EXECUTABLE)
     COMMENT "Deploying Qt runtime with windeployqt"
     VERBATIM)
 endif()
+
+# Install: the GUI executable goes to bin/. Qt and the other runtime DLLs are added by cmake/Deploy.cmake.
+install(TARGETS modbus_control RUNTIME DESTINATION bin)

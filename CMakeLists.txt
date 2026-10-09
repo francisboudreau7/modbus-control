@@ -45,3 +45,6 @@ add_subdirectory(src/core)
 add_subdirectory(src/app)
 add_subdirectory(server)
 add_subdirectory(tests)
+
+# Install rules: `cmake --install build/<preset> --prefix <dir>` produces a self-contained folder.
+include(cmake/Deploy.cmake)
