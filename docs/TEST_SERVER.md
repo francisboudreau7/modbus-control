@@ -58,6 +58,9 @@ Default signal bindings:
 | IR 4 | noise | amplitude 100 |
 | IR 5 | sawtooth | amplitude 1000, period 8 s |
 | IR 10 | lag | follows HR 100, tau 2 s |
+| IR 20-21 | sine, float32 ABCD | amplitude 123.456, period 5 s |
+| IR 22-23 | sine, float32 CDAB | amplitude 123.456, period 5 s |
+| IR 24-25 | sawtooth, int32 ABCD | amplitude 100000, period 8 s |
 
 Writing HR 100 changes the lag output on IR 10, so a setpoint step shows as a first-order response.
 
@@ -77,8 +80,34 @@ defaulting to 0:
 | `noise` | `offset` plus a uniform random value in [-amplitude, +amplitude]; seeded per binding, so the sequence repeats between runs |
 | `lag` | first-order lag following the holding register `source`: `y += (in - y) * (1 - exp(-dt / tauS))`; `y` starts at `offset` |
 
-All kinds except `counter` are rounded to the nearest integer and clamped to int16. The counter is
+All kinds except `counter` are rounded to the nearest integer and clamped to int16 (for `int32` and `float32` see Value formats). The counter is
 uint16. At the default 50 ms tick the counter rises by 20 per second.
+
+## Value formats
+
+Each binding has a `format` that sets how its value is stored in the input registers:
+
+| `format` | Registers | Stored as |
+|---|---|---|
+| `int16` (default) | 1 | rounded to nearest, clamped to -32768..32767, two's complement |
+| `int32` | 2 | rounded to nearest, clamped to -2147483648..2147483647, two's complement |
+| `float32` | 2 | IEEE-754 single precision, not rounded |
+
+A 2-register value occupies `input` and `input + 1`. The `byteOrder` key gives the order of the four
+bytes A (most significant) to D across the two registers. It applies only to the 2-register formats:
+
+| `byteOrder` | IR n | IR n+1 |
+|---|---|---|
+| `ABCD` (default) | A B | C D |
+| `CDAB` | C D | A B |
+| `BADC` | B A | D C |
+| `DCBA` | D C | B A |
+
+For example, float32 123.456 is 0x42F6E979. `ABCD` stores 0x42F6 at `input` and 0xE979 at
+`input + 1`; `CDAB` stores 0xE979 and then 0x42F6.
+
+The `counter` kind with `int16` is the raw uint16 counter, so it wraps at 65535 rather than being
+clamped at 32767. The `format` and `byteOrder` keys are optional and can be combined with any kind.
 
 ## Configuration file
 
@@ -103,7 +132,10 @@ The same content is in [`server/server.example.json`](../server/server.example.j
     { "input": 3,  "kind": "square",   "amplitude": 1000, "offset": 0, "periodS": 4 },
     { "input": 4,  "kind": "noise",    "amplitude": 100,  "offset": 0 },
     { "input": 5,  "kind": "sawtooth", "amplitude": 1000, "offset": 0, "periodS": 8 },
-    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 }
+    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 },
+    { "input": 20, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "ABCD" },
+    { "input": 22, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "CDAB" },
+    { "input": 24, "kind": "sawtooth", "amplitude": 100000, "offset": 0, "periodS": 8, "format": "int32", "byteOrder": "ABCD" }
   ]
 }
 ```
@@ -117,10 +149,10 @@ Keys:
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |
 | `delayMs`, `dropPercent`, `verbose` | 0 or more; 0..100; true/false | Fault injection and logging. |
-| `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS` or `source` where they apply. |
+| `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
 
 If `signals` is present it replaces the default bindings completely. Each binding's `input` must be
-below `inputCount`. A `lag` binding's `source` must be below `holdingCount`. `periodS` and `tauS`
+within `inputCount` (a 2-register format also uses `input + 1`). A `lag` binding's `source` must be below `holdingCount`. `periodS` and `tauS`
 must be greater than 0.
 
 ## Fault injection

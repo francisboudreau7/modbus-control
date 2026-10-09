@@ -1,6 +1,7 @@
 #include "SignalGen.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace mbsim {
@@ -9,13 +10,27 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
+/// Rounds to nearest and clamps to [lo, hi]. NaN (e.g. from an infinite amplitude times
+/// zero) becomes 0 so that the integer conversions below stay well defined.
+double roundClamp(double value, double lo, double hi)
+{
+    if (std::isnan(value))
+        return 0.0;
+    return std::clamp(std::round(value), lo, hi);
+}
+
 /// Rounds to nearest, clamps to int16 and returns the two's-complement bit pattern.
 quint16 toRegister(double value)
 {
-    const double rounded = std::round(value);
-    const double clamped = std::clamp(rounded, -32768.0, 32767.0);
-    const auto asInt16 = static_cast<qint16>(static_cast<int>(clamped));
+    const auto asInt16 = static_cast<qint16>(roundClamp(value, -32768.0, 32767.0));
     return static_cast<quint16>(asInt16);
+}
+
+/// Rounds to nearest, clamps to int32 and returns the two's-complement bit pattern.
+quint32 toInt32Bits(double value)
+{
+    const auto asInt32 = static_cast<qint32>(roundClamp(value, -2147483648.0, 2147483647.0));
+    return static_cast<quint32>(asInt32);
 }
 
 /// Wraps an arbitrary integer into the uint16 range 0..65535.
@@ -25,6 +40,11 @@ quint16 wrapToUInt16(long long value)
     if (wrapped < 0)
         wrapped += 65536;
     return static_cast<quint16>(wrapped);
+}
+
+quint16 swapBytes(quint16 word)
+{
+    return static_cast<quint16>((word >> 8) | (word << 8));
 }
 
 } // namespace
@@ -39,7 +59,7 @@ SignalGenerator::SignalGenerator(const SignalParams &params, quint32 seed)
         m_state = static_cast<double>(wrapToUInt16(std::llround(m_params.offset)));
 }
 
-quint16 SignalGenerator::next(double t, double dt, quint16 input)
+double SignalGenerator::nextValue(double t, double dt, quint16 input)
 {
     // Phase within the current period, in [0, 1).
     const double phase = std::fmod(t, m_params.periodS) / m_params.periodS;
@@ -48,33 +68,33 @@ quint16 SignalGenerator::next(double t, double dt, quint16 input)
 
     switch (m_params.kind) {
     case SignalKind::Constant:
-        return toRegister(offset);
+        return offset;
 
     case SignalKind::Sine:
-        return toRegister(offset + amp * std::sin(2.0 * kPi * phase));
+        return offset + amp * std::sin(2.0 * kPi * phase);
 
     case SignalKind::Triangle:
         if (phase < 0.5)
-            return toRegister(offset - amp + 4.0 * amp * phase);
-        return toRegister(offset + amp - 4.0 * amp * (phase - 0.5));
+            return offset - amp + 4.0 * amp * phase;
+        return offset + amp - 4.0 * amp * (phase - 0.5);
 
     case SignalKind::Sawtooth:
-        return toRegister(offset - amp + 2.0 * amp * phase);
+        return offset - amp + 2.0 * amp * phase;
 
     case SignalKind::Square:
-        return toRegister(phase < 0.5 ? offset + amp : offset - amp);
+        return phase < 0.5 ? offset + amp : offset - amp;
 
     case SignalKind::Counter: {
         // The first call returns the start value; each later call increments with wraparound.
         if (m_started)
             m_state = static_cast<double>(wrapToUInt16(static_cast<long long>(m_state) + 1));
         m_started = true;
-        return static_cast<quint16>(m_state);
+        return m_state;
     }
 
     case SignalKind::Noise: {
         std::uniform_real_distribution<double> dist(-amp, amp);
-        return toRegister(dist(m_rng) + offset);
+        return dist(m_rng) + offset;
     }
 
     case SignalKind::Lag: {
@@ -82,11 +102,53 @@ quint16 SignalGenerator::next(double t, double dt, quint16 input)
         if (dt > 0.0)
             m_state += (in - m_state) * (1.0 - std::exp(-dt / m_params.tauS));
         m_started = true;
-        return toRegister(m_state);
+        return m_state;
     }
     }
 
-    return 0;
+    return 0.0;
+}
+
+quint16 SignalGenerator::next(double t, double dt, quint16 input)
+{
+    const double value = nextValue(t, dt, input);
+    if (m_params.kind == SignalKind::Counter)
+        return static_cast<quint16>(value);
+    return toRegister(value);
+}
+
+void encodeRegisters(double value, RegisterFormat format, WordOrder order, quint16 out[2])
+{
+    if (format == RegisterFormat::Int16) {
+        out[0] = toRegister(value);
+        return;
+    }
+
+    // The 32-bit word is split into the high half (A B) and the low half (C D).
+    const quint32 bits = format == RegisterFormat::Int32
+        ? toInt32Bits(value)
+        : std::bit_cast<quint32>(static_cast<float>(value));
+    const auto hi = static_cast<quint16>(bits >> 16);
+    const auto lo = static_cast<quint16>(bits & 0xFFFFu);
+
+    switch (order) {
+    case WordOrder::ABCD:
+        out[0] = hi;
+        out[1] = lo;
+        break;
+    case WordOrder::CDAB:
+        out[0] = lo;
+        out[1] = hi;
+        break;
+    case WordOrder::BADC:
+        out[0] = swapBytes(hi);
+        out[1] = swapBytes(lo);
+        break;
+    case WordOrder::DCBA:
+        out[0] = swapBytes(lo);
+        out[1] = swapBytes(hi);
+        break;
+    }
 }
 
 } // namespace mbsim

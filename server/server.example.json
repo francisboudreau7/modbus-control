@@ -15,6 +15,9 @@
     { "input": 3,  "kind": "square",   "amplitude": 1000, "offset": 0, "periodS": 4 },
     { "input": 4,  "kind": "noise",    "amplitude": 100,  "offset": 0 },
     { "input": 5,  "kind": "sawtooth", "amplitude": 1000, "offset": 0, "periodS": 8 },
-    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 }
+    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 },
+    { "input": 20, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "ABCD" },
+    { "input": 22, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "CDAB" },
+    { "input": 24, "kind": "sawtooth", "amplitude": 100000, "offset": 0, "periodS": 8, "format": "int32", "byteOrder": "ABCD" }
   ]
 }

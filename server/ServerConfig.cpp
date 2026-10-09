@@ -161,6 +161,46 @@ bool readKind(const ObjectReader &r, SignalKind &kind)
     return r.fail("kind", QStringLiteral("has unknown kind \"%1\"").arg(name));
 }
 
+bool readFormat(const ObjectReader &r, RegisterFormat &format)
+{
+    const auto value = r.get("format");
+    if (!value)
+        return true;
+    if (!value->isString())
+        return r.fail("format", QStringLiteral("must be a string"));
+    const QString name = value->toString();
+    if (name == QStringLiteral("int16"))
+        format = RegisterFormat::Int16;
+    else if (name == QStringLiteral("int32"))
+        format = RegisterFormat::Int32;
+    else if (name == QStringLiteral("float32"))
+        format = RegisterFormat::Float32;
+    else
+        return r.fail("format", QStringLiteral("has unknown format \"%1\"").arg(name));
+    return true;
+}
+
+bool readByteOrder(const ObjectReader &r, WordOrder &order)
+{
+    const auto value = r.get("byteOrder");
+    if (!value)
+        return true;
+    if (!value->isString())
+        return r.fail("byteOrder", QStringLiteral("must be a string"));
+    const QString name = value->toString();
+    if (name == QStringLiteral("ABCD"))
+        order = WordOrder::ABCD;
+    else if (name == QStringLiteral("CDAB"))
+        order = WordOrder::CDAB;
+    else if (name == QStringLiteral("BADC"))
+        order = WordOrder::BADC;
+    else if (name == QStringLiteral("DCBA"))
+        order = WordOrder::DCBA;
+    else
+        return r.fail("byteOrder", QStringLiteral("has unknown byteOrder \"%1\"").arg(name));
+    return true;
+}
+
 bool readBinding(const QJsonObject &object, const QString &prefix, QString *error, SignalBinding &binding)
 {
     const ObjectReader r(object, prefix, error);
@@ -171,7 +211,9 @@ bool readBinding(const QJsonObject &object, const QString &prefix, QString *erro
         && r.readNumber("offset", params.offset)
         && r.readPositive("periodS", params.periodS)
         && r.readPositive("tauS", params.tauS)
-        && r.readInt<quint16>("source", 0, 65535, params.sourceAddress);
+        && r.readInt<quint16>("source", 0, 65535, params.sourceAddress)
+        && readFormat(r, binding.format)
+        && readByteOrder(r, binding.byteOrder);
 }
 
 bool readSignals(const ObjectReader &r, ServerConfig &cfg)
@@ -224,10 +266,12 @@ bool checkBindings(const ServerConfig &cfg, QString *error)
 {
     for (qsizetype i = 0; i < cfg.signalBindings.size(); ++i) {
         const SignalBinding &binding = cfg.signalBindings.at(i);
-        if (binding.inputAddress >= cfg.inputCount) {
-            setError(error, QStringLiteral("\"signals[%1].input\" is %2, but must be below inputCount (%3)")
+        const int registers = registerCount(binding.format);
+        if (binding.inputAddress + registers > cfg.inputCount) {
+            setError(error, QStringLiteral("\"signals[%1].input\" is %2, but %3 register(s) from there must fit below inputCount (%4)")
                                 .arg(i)
                                 .arg(binding.inputAddress)
+                                .arg(registers)
                                 .arg(cfg.inputCount));
             return false;
         }
@@ -255,6 +299,9 @@ ServerConfig ServerConfig::defaults()
         {4, {SignalKind::Noise, 100.0, 0.0, 5.0, 2.0, 0}},
         {5, {SignalKind::Sawtooth, 1000.0, 0.0, 8.0, 2.0, 0}},
         {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100}},
+        {20, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::ABCD},
+        {22, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::CDAB},
+        {24, {SignalKind::Sawtooth, 100000.0, 0.0, 8.0, 2.0, 0}, RegisterFormat::Int32, WordOrder::ABCD},
     };
     return cfg;
 }

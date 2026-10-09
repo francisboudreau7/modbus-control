@@ -192,7 +192,19 @@ void ServerLoop::tick(double t, double dt)
         if (binding.params.kind == SignalKind::Lag) {
             input = m_mapping->tab_registers[binding.params.sourceAddress];
         }
-        m_mapping->tab_input_registers[binding.inputAddress] = m_generators[i].next(t, dt, input);
+        const double value = m_generators[i].nextValue(t, dt, input);
+
+        quint16 regs[2] = {0, 0};
+        if (binding.params.kind == SignalKind::Counter && binding.format == RegisterFormat::Int16) {
+            // The counter is a raw uint16 that wraps at 65535; the int16 encoding would clamp it at 32767.
+            regs[0] = static_cast<quint16>(value);
+        } else {
+            encodeRegisters(value, binding.format, binding.byteOrder, regs);
+        }
+        m_mapping->tab_input_registers[binding.inputAddress] = regs[0];
+        if (registerCount(binding.format) == 2) {
+            m_mapping->tab_input_registers[binding.inputAddress + 1] = regs[1];
+        }
     }
 }
 
