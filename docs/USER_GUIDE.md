@@ -24,7 +24,7 @@ to stop. While connecting or connected, the fields are read-only.
 |---|---|---|
 | Host | IPv4 address, or `localhost` | Host names other than `localhost` are rejected, and Connect stays disabled. Use a lower-case `localhost`. |
 | Port | 1..65535 | Default 1502. |
-| Unit | 0..255 | Modbus unit id. Units 248..254 are rejected when connecting. |
+| Unit | 0..247 | Modbus unit id. |
 | Timeout | 100..60000 ms | How long to wait for each response. |
 | Period | 100..60000 ms | Time from one poll cycle to the next. A cycle that takes longer than the period starts the next one at once. |
 

@@ -203,7 +203,7 @@ bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
     const ObjectReader r(root, QString(), error);
     const bool ok = r.readString("host", cfg.host)
         && r.readInt<quint16>("port", 1, 65535, cfg.port)
-        && r.readInt("unitId", 0, 255, cfg.unitId)
+        && r.readInt("unitId", 0, 247, cfg.unitId)
         && r.readInt("holdingCount", 1, 65536, cfg.holdingCount)
         && r.readInt("inputCount", 1, 65536, cfg.inputCount)
         && r.readInt("tickMs", 1, std::numeric_limits<int>::max(), cfg.tickMs)

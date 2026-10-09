@@ -112,7 +112,7 @@ Keys:
 
 | Key | Range | Notes |
 |---|---|---|
-| `host`, `port`, `unitId` | port 1..65535, unitId 0..255 | The command line accepts `--port 0` and unit ids up to 247 only. |
+| `host`, `port`, `unitId` | port 1..65535, unitId 0..247 | The command line also accepts `--port 0` (let the OS choose). |
 | `holdingCount` | 1..65536 | Holding registers HR 0..count-1. |
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |
