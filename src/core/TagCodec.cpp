@@ -1,6 +1,7 @@
 #include "TagCodec.h"
 
 #include <bit>
+#include <cfloat>
 #include <cmath>
 
 namespace mb {
@@ -94,6 +95,65 @@ std::optional<quint16> encodeValue(const Tag &tag, double scaled)
     if (tag.type == ValueType::Int16)
         return static_cast<quint16>(static_cast<qint16>(r));
     return static_cast<quint16>(r);
+}
+
+std::optional<QList<quint16>> encodeRegisters(const Tag &tag, double scaled)
+{
+    if (registerCount(tag.type) == 1) {
+        const std::optional<quint16> reg = encodeValue(tag, scaled);
+        if (!reg)
+            return std::nullopt;
+        return QList<quint16>{*reg};
+    }
+    if (tag.gain == 0.0 || !std::isfinite(scaled))
+        return std::nullopt;
+
+    const double x = (scaled - tag.offset) / tag.gain;
+    if (!std::isfinite(x))
+        return std::nullopt;
+
+    // The 32-bit pattern in ABCD form, i.e. the value combineRegisters would return.
+    quint32 pattern = 0;
+    switch (tag.type) {
+    case ValueType::Int32: {
+        const double r = std::round(x);
+        // Positive comparison so that the bounds are rejected only when really exceeded.
+        if (!(r >= -2147483648.0 && r <= 2147483647.0))
+            return std::nullopt;
+        pattern = static_cast<quint32>(static_cast<qint32>(r));
+        break;
+    }
+    case ValueType::UInt32: {
+        const double r = std::round(x);
+        if (!(r >= 0.0 && r <= 4294967295.0))
+            return std::nullopt;
+        pattern = static_cast<quint32>(r);
+        break;
+    }
+    case ValueType::Float32:
+        if (std::fabs(x) > FLT_MAX)
+            return std::nullopt;
+        pattern = std::bit_cast<quint32>(static_cast<float>(x));
+        break;
+    case ValueType::Int16:
+    case ValueType::UInt16:
+        return std::nullopt; // handled above
+    }
+
+    // Exact inverse of combineRegisters: undo the byte order of the two registers.
+    const quint16 ab = static_cast<quint16>(pattern >> 16);
+    const quint16 cd = static_cast<quint16>(pattern & 0xFFFFu);
+    switch (tag.byteOrder) {
+    case ByteOrder::ABCD:
+        return QList<quint16>{ab, cd};
+    case ByteOrder::CDAB:
+        return QList<quint16>{cd, ab};
+    case ByteOrder::BADC:
+        return QList<quint16>{swapBytes(ab), swapBytes(cd)};
+    case ByteOrder::DCBA:
+        return QList<quint16>{swapBytes(cd), swapBytes(ab)};
+    }
+    return std::nullopt;
 }
 
 } // namespace mb

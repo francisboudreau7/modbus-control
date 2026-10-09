@@ -2,6 +2,7 @@
 
 #include <QtTest>
 
+#include <cfloat>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -94,6 +95,18 @@ private slots:
     void int16IgnoresHighBits();
     void encode32BitReturnsNullopt_data();
     void encode32BitReturnsNullopt();
+
+    void encodeRegistersRoundTrip_data();
+    void encodeRegistersRoundTrip();
+    void encodeRegistersKnownValues_data();
+    void encodeRegistersKnownValues();
+    void encodeRegistersGainOffset();
+    void encodeRegistersOutOfRange_data();
+    void encodeRegistersOutOfRange();
+    void encodeRegistersNonFinite_data();
+    void encodeRegistersNonFinite();
+    void encodeRegistersGainZero();
+    void encodeRegisters16BitMatchesEncodeValue();
 };
 
 void TstTagCodec::decodeValue_data()
@@ -451,6 +464,202 @@ void TstTagCodec::encode32BitReturnsNullopt()
 
     for (const mb::ByteOrder order : kOrders)
         QVERIFY(!mb::encodeValue(makeTag(type, 1.0, 0.0, order), scaled).has_value());
+}
+
+void TstTagCodec::encodeRegistersRoundTrip_data()
+{
+    QTest::addColumn<mb::ValueType>("type");
+    QTest::addColumn<double>("value");
+
+    QTest::newRow("int32 zero") << mb::ValueType::Int32 << 0.0;
+    QTest::newRow("int32 -1") << mb::ValueType::Int32 << -1.0;
+    QTest::newRow("int32 INT32_MIN") << mb::ValueType::Int32
+                                     << static_cast<double>(std::numeric_limits<qint32>::min());
+    QTest::newRow("int32 INT32_MAX") << mb::ValueType::Int32
+                                     << static_cast<double>(std::numeric_limits<qint32>::max());
+
+    QTest::newRow("uint32 zero") << mb::ValueType::UInt32 << 0.0;
+    QTest::newRow("uint32 0x80000000") << mb::ValueType::UInt32 << 2147483648.0;
+    QTest::newRow("uint32 UINT32_MAX") << mb::ValueType::UInt32
+                                       << static_cast<double>(std::numeric_limits<quint32>::max());
+
+    QTest::newRow("float32 zero") << mb::ValueType::Float32 << 0.0;
+    QTest::newRow("float32 1") << mb::ValueType::Float32 << 1.0;
+    QTest::newRow("float32 -2.5") << mb::ValueType::Float32 << -2.5;
+    QTest::newRow("float32 123.456") << mb::ValueType::Float32 << static_cast<double>(123.456f);
+    QTest::newRow("float32 1e-30") << mb::ValueType::Float32 << static_cast<double>(1e-30f);
+    QTest::newRow("float32 -3.4e38") << mb::ValueType::Float32 << static_cast<double>(-3.4e38f);
+    QTest::newRow("float32 FLT_MAX") << mb::ValueType::Float32 << static_cast<double>(FLT_MAX);
+}
+
+void TstTagCodec::encodeRegistersRoundTrip()
+{
+    QFETCH(mb::ValueType, type);
+    QFETCH(double, value);
+
+    for (const mb::ByteOrder order : kOrders) {
+        const mb::Tag tag = makeTag(type, 1.0, 0.0, order);
+        const std::optional<QList<quint16>> regs = mb::encodeRegisters(tag, value);
+        QVERIFY(regs.has_value());
+        QCOMPARE(regs->size(), qsizetype(2));
+        const quint32 raw = mb::combineRegisters(tag, regs->at(0), regs->at(1));
+        QCOMPARE(mb::decodeValue(tag, raw), value);
+    }
+}
+
+void TstTagCodec::encodeRegistersKnownValues_data()
+{
+    QTest::addColumn<mb::ValueType>("type");
+    QTest::addColumn<mb::ByteOrder>("order");
+    QTest::addColumn<double>("scaled");
+    QTest::addColumn<quint16>("r0");
+    QTest::addColumn<quint16>("r1");
+
+    // float 123.456f = 0x42F6E979 (A=42 B=F6 C=E9 D=79).
+    const double f = static_cast<double>(123.456f);
+    QTest::newRow("float ABCD") << mb::ValueType::Float32 << mb::ByteOrder::ABCD << f << quint16(0x42F6)
+                                << quint16(0xE979);
+    QTest::newRow("float CDAB") << mb::ValueType::Float32 << mb::ByteOrder::CDAB << f << quint16(0xE979)
+                                << quint16(0x42F6);
+    QTest::newRow("float BADC") << mb::ValueType::Float32 << mb::ByteOrder::BADC << f << quint16(0xF642)
+                                << quint16(0x79E9);
+    QTest::newRow("float DCBA") << mb::ValueType::Float32 << mb::ByteOrder::DCBA << f << quint16(0x79E9)
+                                << quint16(0xF642);
+
+    // int32 -2 = 0xFFFFFFFE (A=FF B=FF C=FF D=FE).
+    QTest::newRow("int32 -2 ABCD") << mb::ValueType::Int32 << mb::ByteOrder::ABCD << -2.0 << quint16(0xFFFF)
+                                   << quint16(0xFFFE);
+    QTest::newRow("int32 -2 CDAB") << mb::ValueType::Int32 << mb::ByteOrder::CDAB << -2.0 << quint16(0xFFFE)
+                                   << quint16(0xFFFF);
+    QTest::newRow("int32 -2 BADC") << mb::ValueType::Int32 << mb::ByteOrder::BADC << -2.0 << quint16(0xFFFF)
+                                   << quint16(0xFEFF);
+    QTest::newRow("int32 -2 DCBA") << mb::ValueType::Int32 << mb::ByteOrder::DCBA << -2.0 << quint16(0xFEFF)
+                                   << quint16(0xFFFF);
+
+    // Rounding to nearest, half away from zero (as encodeValue).
+    QTest::newRow("int32 2.6 -> 3") << mb::ValueType::Int32 << mb::ByteOrder::ABCD << 2.6 << quint16(0x0000)
+                                    << quint16(0x0003);
+    QTest::newRow("int32 -2.6 -> -3") << mb::ValueType::Int32 << mb::ByteOrder::ABCD << -2.6 << quint16(0xFFFF)
+                                      << quint16(0xFFFD);
+    QTest::newRow("uint32 2.4 -> 2") << mb::ValueType::UInt32 << mb::ByteOrder::ABCD << 2.4 << quint16(0x0000)
+                                     << quint16(0x0002);
+}
+
+void TstTagCodec::encodeRegistersKnownValues()
+{
+    QFETCH(mb::ValueType, type);
+    QFETCH(mb::ByteOrder, order);
+    QFETCH(double, scaled);
+    QFETCH(quint16, r0);
+    QFETCH(quint16, r1);
+
+    const std::optional<QList<quint16>> regs = mb::encodeRegisters(makeTag(type, 1.0, 0.0, order), scaled);
+    QVERIFY(regs.has_value());
+    QCOMPARE(regs->size(), qsizetype(2));
+    QCOMPARE(regs->at(0), r0);
+    QCOMPARE(regs->at(1), r1);
+}
+
+void TstTagCodec::encodeRegistersGainOffset()
+{
+    // Float 51 with gain 0.5, offset 1: x = (51 - 1) / 0.5 = 100.0f = 0x42C80000.
+    for (const mb::ByteOrder order : kOrders) {
+        const mb::Tag tag = makeTag(mb::ValueType::Float32, 0.5, 1.0, order);
+        const std::optional<QList<quint16>> regs = mb::encodeRegisters(tag, 51.0);
+        QVERIFY(regs.has_value());
+        QCOMPARE(regs->size(), qsizetype(2));
+        const std::pair<quint16, quint16> expected = splitRegisters(order, 0x42C80000u);
+        QCOMPARE(regs->at(0), expected.first);
+        QCOMPARE(regs->at(1), expected.second);
+        QCOMPARE(mb::decodeValue(tag, mb::combineRegisters(tag, regs->at(0), regs->at(1))), 51.0);
+    }
+
+    // Int32 with gain 2, offset 10: x = (8 - 10) / 2 = -1 = 0xFFFFFFFF.
+    for (const mb::ByteOrder order : kOrders) {
+        const mb::Tag tag = makeTag(mb::ValueType::Int32, 2.0, 10.0, order);
+        const std::optional<QList<quint16>> regs = mb::encodeRegisters(tag, 8.0);
+        QVERIFY(regs.has_value());
+        const std::pair<quint16, quint16> expected = splitRegisters(order, 0xFFFFFFFFu);
+        QCOMPARE(regs->at(0), expected.first);
+        QCOMPARE(regs->at(1), expected.second);
+    }
+}
+
+void TstTagCodec::encodeRegistersOutOfRange_data()
+{
+    QTest::addColumn<mb::ValueType>("type");
+    QTest::addColumn<double>("scaled");
+
+    QTest::newRow("int32 2^31") << mb::ValueType::Int32 << 2147483648.0;
+    QTest::newRow("int32 2^31 + 0.5 rounds out") << mb::ValueType::Int32 << 2147483647.5;
+    QTest::newRow("int32 below min") << mb::ValueType::Int32 << -2147483649.0;
+    QTest::newRow("uint32 -1") << mb::ValueType::UInt32 << -1.0;
+    QTest::newRow("uint32 2^32") << mb::ValueType::UInt32 << 4294967296.0;
+    QTest::newRow("float32 1e39") << mb::ValueType::Float32 << 1e39;
+    QTest::newRow("float32 -1e39") << mb::ValueType::Float32 << -1e39;
+}
+
+void TstTagCodec::encodeRegistersOutOfRange()
+{
+    QFETCH(mb::ValueType, type);
+    QFETCH(double, scaled);
+
+    for (const mb::ByteOrder order : kOrders)
+        QVERIFY(!mb::encodeRegisters(makeTag(type, 1.0, 0.0, order), scaled).has_value());
+}
+
+void TstTagCodec::encodeRegistersNonFinite_data()
+{
+    QTest::addColumn<mb::ValueType>("type");
+    QTest::addColumn<double>("scaled");
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const mb::ValueType type : {mb::ValueType::Int32, mb::ValueType::UInt32, mb::ValueType::Float32}) {
+        const QString name = mb::toString(type);
+        QTest::addRow("%s NaN", qPrintable(name)) << type << nan;
+        QTest::addRow("%s +inf", qPrintable(name)) << type << inf;
+        QTest::addRow("%s -inf", qPrintable(name)) << type << -inf;
+    }
+}
+
+void TstTagCodec::encodeRegistersNonFinite()
+{
+    QFETCH(mb::ValueType, type);
+    QFETCH(double, scaled);
+
+    for (const mb::ByteOrder order : kOrders)
+        QVERIFY(!mb::encodeRegisters(makeTag(type, 1.0, 0.0, order), scaled).has_value());
+
+    // A NaN offset makes every scaled value non-finite after the inverse transform.
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    QVERIFY(!mb::encodeRegisters(makeTag(type, 1.0, nan), 1.0).has_value());
+}
+
+void TstTagCodec::encodeRegistersGainZero()
+{
+    for (const mb::ValueType type : {mb::ValueType::Int32, mb::ValueType::UInt32, mb::ValueType::Float32}) {
+        for (const mb::ByteOrder order : kOrders)
+            QVERIFY(!mb::encodeRegisters(makeTag(type, 0.0, 5.0, order), 5.0).has_value());
+    }
+}
+
+void TstTagCodec::encodeRegisters16BitMatchesEncodeValue()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double values[] = {0.0, 1.0, -1.0, 2.4, 32767.0, 32768.0, -32768.0, -32769.0, 65535.0, 65536.0, nan};
+    for (const mb::ValueType type : {mb::ValueType::Int16, mb::ValueType::UInt16}) {
+        for (const double v : values) {
+            const mb::Tag tag = makeTag(type, 1.0, 0.0);
+            const std::optional<quint16> single = mb::encodeValue(tag, v);
+            const std::optional<QList<quint16>> multi = mb::encodeRegisters(tag, v);
+            QCOMPARE(multi.has_value(), single.has_value());
+            if (single) {
+                QCOMPARE(multi->size(), qsizetype(1));
+                QCOMPARE(multi->at(0), *single);
+            }
+        }
+    }
 }
 
 QTEST_GUILESS_MAIN(TstTagCodec)
