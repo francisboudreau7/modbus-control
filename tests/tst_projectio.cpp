@@ -1,12 +1,355 @@
+#include "ProjectIO.h"
+
 #include <QtTest>
 
-// Stub: implemented by its task (see TASKS.md).
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
+using namespace mb;
+
+namespace {
+
+Project sampleProject()
+{
+    Project p;
+    p.connection.host = QStringLiteral("10.0.0.5");
+    p.connection.port = 1502;
+    p.connection.unitId = 7;
+    p.connection.timeoutMs = 2500;
+    p.connection.pollPeriodMs = 200;
+
+    Tag temp;
+    temp.id = 1;
+    temp.name = QStringLiteral("Temp");
+    temp.area = Area::HoldingRegister;
+    temp.address = 100;
+    temp.type = ValueType::Int16;
+    temp.gain = 0.1;
+    temp.offset = -40.0;
+    temp.unit = QStringLiteral("\u00b0C");
+    temp.color = QStringLiteral("#ff0000");
+    temp.plotted = false;
+    temp.writable = true;
+
+    Tag pressure;
+    pressure.id = 2;
+    pressure.name = QStringLiteral("Pressure");
+    pressure.area = Area::InputRegister;
+    pressure.address = 3;
+    pressure.type = ValueType::UInt16;
+    pressure.gain = 2.5;
+    pressure.offset = 1.25;
+    pressure.unit = QStringLiteral("bar");
+    pressure.color = QStringLiteral("#00ff00");
+    pressure.plotted = true;
+    pressure.writable = false;
+
+    Tag unicodeName;
+    unicodeName.id = 5;
+    unicodeName.name = QStringLiteral("Temp\u00e9rature \u00b0C");
+    unicodeName.area = Area::HoldingRegister;
+    unicodeName.address = 65535;
+    unicodeName.type = ValueType::UInt16;
+
+    Tag level;
+    level.id = 9;
+    level.name = QStringLiteral("Level");
+    level.area = Area::InputRegister;
+    level.address = 0;
+    level.gain = 0.001;
+
+    p.tags = {temp, pressure, unicodeName, level};
+    p.nextTagId = 10;
+    return p;
+}
+
+QByteArray json(const char *text)
+{
+    return QByteArray(text);
+}
+
+void writeBytes(const QString &path, const QByteArray &data)
+{
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    QCOMPARE(f.write(data), data.size());
+}
+
+} // namespace
+
 class TstProjectIO : public QObject
 {
     Q_OBJECT
 private slots:
-    void notImplemented() { QSKIP("not implemented yet"); }
+    void roundTrip();
+    void writesSchemaKeys();
+    void minimalJsonUsesDefaults();
+    void missingTagFieldsUseDefaults();
+    void nextTagIdIsRaisedAboveMaxId();
+    void storedNextTagIdIsKept();
+    void boundaryValuesAccepted();
+    void invalidInputRejected_data();
+    void invalidInputRejected();
+    void saveAndLoadFile();
+    void saveOverwritesExistingFile();
+    void loadMissingFileFailsWithPath();
+    void loadCorruptFileFailsWithPath();
+    void unicodeNamesSurvive();
 };
+
+void TstProjectIO::roundTrip()
+{
+    const Project original = sampleProject();
+    const QByteArray data = projectToJson(original);
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(data, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, original);
+}
+
+void TstProjectIO::writesSchemaKeys()
+{
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(sampleProject())).object();
+    QCOMPARE(root.value(QStringLiteral("format")).toString(), QStringLiteral("modbus-control-project"));
+    QCOMPARE(root.value(QStringLiteral("version")).toInt(), kProjectFormatVersion);
+    QCOMPARE(root.value(QStringLiteral("nextTagId")).toInt(), 10);
+
+    const QJsonObject conn = root.value(QStringLiteral("connection")).toObject();
+    QCOMPARE(conn.value(QStringLiteral("host")).toString(), QStringLiteral("10.0.0.5"));
+    QCOMPARE(conn.value(QStringLiteral("port")).toInt(), 1502);
+    QCOMPARE(conn.value(QStringLiteral("unitId")).toInt(), 7);
+    QCOMPARE(conn.value(QStringLiteral("timeoutMs")).toInt(), 2500);
+    QCOMPARE(conn.value(QStringLiteral("pollPeriodMs")).toInt(), 200);
+
+    const QJsonArray tags = root.value(QStringLiteral("tags")).toArray();
+    QCOMPARE(tags.size(), qsizetype(4));
+    const QJsonObject pressure = tags.at(1).toObject();
+    QCOMPARE(pressure.value(QStringLiteral("area")).toString(), QStringLiteral("input"));
+    QCOMPARE(pressure.value(QStringLiteral("type")).toString(), QStringLiteral("uint16"));
+    QCOMPARE(pressure.value(QStringLiteral("plotted")).toBool(), true);
+    QCOMPARE(tags.at(0).toObject().value(QStringLiteral("area")).toString(), QStringLiteral("holding"));
+}
+
+void TstProjectIO::minimalJsonUsesDefaults()
+{
+    QString error;
+    const auto project = projectFromJson(
+        json(R"({"format":"modbus-control-project","version":1})"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->connection, ConnectionSettings{});
+    QVERIFY(project->tags.isEmpty());
+    QCOMPARE(project->nextTagId, TagId(1));
+}
+
+void TstProjectIO::missingTagFieldsUseDefaults()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":3}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->tags.size(), qsizetype(1));
+
+    Tag expected;
+    expected.id = 3;
+    QCOMPARE(project->tags.first(), expected);
+    QCOMPARE(project->tags.first().color, QStringLiteral("#1f77b4"));
+    QCOMPARE(project->nextTagId, TagId(4));
+}
+
+void TstProjectIO::nextTagIdIsRaisedAboveMaxId()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"nextTagId":2,
+        "tags":[{"id":7},{"id":4}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->nextTagId, TagId(8));
+}
+
+void TstProjectIO::storedNextTagIdIsKept()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"nextTagId":20,
+        "tags":[{"id":7}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->nextTagId, TagId(20));
+}
+
+void TstProjectIO::boundaryValuesAccepted()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "connection":{"port":1},
+        "tags":[{"id":1,"address":0},{"id":2,"address":65535}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->connection.port, quint16(1));
+    QCOMPARE(project->tags.at(0).address, quint16(0));
+    QCOMPARE(project->tags.at(1).address, quint16(65535));
+
+    const auto maxPort = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"connection":{"port":65535}
+    })"));
+    QVERIFY(maxPort.has_value());
+    QCOMPARE(maxPort->connection.port, quint16(65535));
+}
+
+void TstProjectIO::invalidInputRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("fragment");
+
+    QTest::newRow("not JSON")
+        << json("{not json") << QStringLiteral("Invalid JSON");
+    QTest::newRow("top-level array")
+        << json("[]") << QStringLiteral("top-level");
+    QTest::newRow("format missing")
+        << json(R"({"version":1})") << QStringLiteral("format");
+    QTest::newRow("format different")
+        << json(R"({"format":"something-else","version":1})") << QStringLiteral("format");
+    QTest::newRow("version missing")
+        << json(R"({"format":"modbus-control-project"})") << QStringLiteral("version");
+    QTest::newRow("version fractional")
+        << json(R"({"format":"modbus-control-project","version":1.5})") << QStringLiteral("integer");
+    QTest::newRow("version string")
+        << json(R"({"format":"modbus-control-project","version":"1"})") << QStringLiteral("integer");
+    QTest::newRow("version too new")
+        << json(R"({"format":"modbus-control-project","version":2})") << QStringLiteral("newer");
+    QTest::newRow("version zero")
+        << json(R"({"format":"modbus-control-project","version":0})") << QStringLiteral("version");
+    QTest::newRow("unknown area")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"area":"coil"}]})")
+        << QStringLiteral("area");
+    QTest::newRow("unknown type")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float32"}]})")
+        << QStringLiteral("type");
+    QTest::newRow("duplicate tag id")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1},{"id":1}]})")
+        << QStringLiteral("Duplicate");
+    QTest::newRow("tag id zero")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":0}]})")
+        << QStringLiteral("id");
+    QTest::newRow("tag id missing")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"name":"x"}]})")
+        << QStringLiteral("id");
+    QTest::newRow("address too large")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"address":65536}]})")
+        << QStringLiteral("address");
+    QTest::newRow("address negative")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"address":-1}]})")
+        << QStringLiteral("address");
+    QTest::newRow("port zero")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"port":0}})")
+        << QStringLiteral("port");
+    QTest::newRow("port too large")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"port":65536}})")
+        << QStringLiteral("port");
+    QTest::newRow("port fractional")
+        << json(R"({"format":"modbus-control-project","version":1,"connection":{"port":502.5}})")
+        << QStringLiteral("port");
+}
+
+void TstProjectIO::invalidInputRejected()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, fragment);
+
+    QString error;
+    const auto project = projectFromJson(text, &error);
+    QVERIFY(!project.has_value());
+    QVERIFY2(error.contains(fragment, Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("error was: %1").arg(error)));
+}
+
+void TstProjectIO::saveAndLoadFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plant.mbproj"));
+
+    const Project original = sampleProject();
+    QString error;
+    QVERIFY2(saveProject(path, original, &error), qPrintable(error));
+    QVERIFY(QFile::exists(path));
+
+    const auto loaded = loadProject(path, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, original);
+}
+
+void TstProjectIO::saveOverwritesExistingFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plant.mbproj"));
+
+    QString error;
+    QVERIFY(saveProject(path, sampleProject(), &error));
+
+    Project second;
+    second.nextTagId = 1;
+    QVERIFY2(saveProject(path, second, &error), qPrintable(error));
+
+    const auto loaded = loadProject(path, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, second);
+}
+
+void TstProjectIO::loadMissingFileFailsWithPath()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("does-not-exist.mbproj"));
+
+    QString error;
+    const auto loaded = loadProject(path, &error);
+    QVERIFY(!loaded.has_value());
+    QVERIFY2(error.contains(path), qPrintable(QStringLiteral("error was: %1").arg(error)));
+}
+
+void TstProjectIO::loadCorruptFileFailsWithPath()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("corrupt.mbproj"));
+    writeBytes(path, json("{\"format\":"));
+
+    QString error;
+    const auto loaded = loadProject(path, &error);
+    QVERIFY(!loaded.has_value());
+    QVERIFY2(error.contains(path), qPrintable(QStringLiteral("error was: %1").arg(error)));
+}
+
+void TstProjectIO::unicodeNamesSurvive()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("unicode.mbproj"));
+
+    Project p;
+    Tag tag;
+    tag.id = 1;
+    tag.name = QStringLiteral("Temp\u00e9rature \u00b0C");
+    tag.unit = QStringLiteral("\u00b0C");
+    p.tags.append(tag);
+    p.nextTagId = 2;
+
+    QString error;
+    QVERIFY2(saveProject(path, p, &error), qPrintable(error));
+    const auto loaded = loadProject(path, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(loaded->tags.first().name, QStringLiteral("Temp\u00e9rature \u00b0C"));
+    QCOMPARE(*loaded, p);
+}
 
 QTEST_GUILESS_MAIN(TstProjectIO)
 #include "tst_projectio.moc"
