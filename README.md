@@ -87,8 +87,11 @@ preset.
 
 ### Installer
 
-Build the installer with `cmake --install`, then compile the Inno Setup script. Details are in
-installer/README (written with the installer script).
+A Windows installer (Inno Setup 6) is built by `installer\build_installer.ps1`. It runs
+`cmake --install` into `out\install` and compiles `installer\modbus_control.iss` into
+`out\installer\ModbusControl-<version>-setup.exe`. The installer supports per-user and all-users
+installs and associates `.mbproj` files. See [installer/README.md](installer/README.md) for the
+prerequisites, the silent install and uninstall commands, and what is installed.
 
 ## Project layout
 
