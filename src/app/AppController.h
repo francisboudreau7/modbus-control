@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ProjectIO.h"
 #include "Recorder.h"
@@ -38,7 +38,26 @@ public:
     bool openProject(const QString &path);
 
 private:
-    // Implementation-defined; the task may change the private section freely.
+    void wireConnection();
+    void wireData();
+    void wireTags();
+    void wireWrites();
+    void wireActions();
+    void pushTags();
+    void setModified(bool modified);
+    void updateTitle();
+    bool maybeSave();
+    bool save();
+    bool saveAs();
+    bool saveTo(const QString &path);
+    void newProject();
+    void openDialog();
+    bool loadFrom(const QString &path);
+    void applyProject(const Project &project);
+    Project currentProject() const;
+    void exportImage();
+    void exportCsv();
+
     MainWindow *m_window = nullptr;
     QThread *m_thread = nullptr;
     PollWorker *m_worker = nullptr;
@@ -47,6 +66,7 @@ private:
     QTimer *m_refreshTimer = nullptr;
     QString m_projectPath;
     bool m_modified = false;
+    bool m_newData = false;
 };
 
 } // namespace mb
