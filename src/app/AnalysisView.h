@@ -39,7 +39,8 @@ class TrendPlot;
 ///     a < b is reverted), and ΔCO: a combo "Typed value" + every project tag ("name
 ///     [unit]", item data = TagId) and a value spin box enabled for "Typed value";
 ///   * "Setpoints" table: Tag (colour swatch, "name [unit]"), %, Target, Measured, Time (s),
-///     t − C1 (s); one row per (analyzed tag, percent); "—" when not found;
+///     t − C1 (s) (from the earlier cursor,
+///     StepResult::t1); one row per (analyzed tag, percent); "—" when not found;
 ///   * "Model" table: Tag, y0, y100, ΔPV, ΔCO, K, L (s), T (s); an invalid result shows its
 ///     error text spanning the value cells; a missing value shows "—".
 ///   Numbers use 6 significant digits.

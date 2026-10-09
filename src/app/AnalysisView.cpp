@@ -477,7 +477,6 @@ void AnalysisView::rebuildTables()
     m_modelTable->clearSpans();
     m_modelTable->setRowCount(0);
 
-    const double c1 = m_plot->cursors()->hasC1() ? m_plot->cursors()->c1() : kNaN;
     int spRow = 0;
     int mRow = 0;
     for (const StepResult &r : std::as_const(m_results)) {
@@ -517,7 +516,7 @@ void AnalysisView::rebuildTables()
                 fmtNum(sp.target),
                 sp.found ? fmtNum(sp.measured) : kDash,
                 sp.found ? fmtNum(sp.time) : kDash,
-                sp.found ? fmtNum(sp.time - c1) : kDash,
+                sp.found ? fmtNum(sp.time - r.t1) : kDash, // from the earlier cursor, like the CSV
             };
             for (int c = 0; c < 5; ++c)
                 m_setpointTable->setItem(spRow, c + 1, makeItem(texts[c], true));
