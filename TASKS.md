@@ -181,7 +181,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** Wave 8 (Analysis mode) — T90–T96 merged (integration: K 0.99, L 1.03 s, T 2.04 s vs 1, 1, 2); T97 merged; 0 % search fix (2825e69); next: label option (user request), then T98 (release). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
+**In progress:** Wave 8 done except the GitHub release: T90–T97 merged, review fixes in 44c28f0, version 1.1.0, installer `outinstallerModbusControl-1.1.0-setup.exe` (sha256 6d96c9f1…e14d) built. Next: after the user confirms, `gh release create v1.1.0 outinstallerModbusControl-1.1.0-setup.exe --title "Modbus Control 1.1.0" --notes-file <notes>`. **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).
