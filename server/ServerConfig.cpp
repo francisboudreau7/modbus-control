@@ -211,6 +211,7 @@ bool readBinding(const QJsonObject &object, const QString &prefix, QString *erro
         && r.readNumber("offset", params.offset)
         && r.readPositive("periodS", params.periodS)
         && r.readPositive("tauS", params.tauS)
+        && r.readInRange("deadTimeS", params.deadTimeS, 0.0, 60.0)
         && r.readInt<quint16>("source", 0, 65535, params.sourceAddress)
         && readFormat(r, binding.format)
         && readByteOrder(r, binding.byteOrder);
@@ -298,7 +299,7 @@ ServerConfig ServerConfig::defaults()
         {3, {SignalKind::Square, 1000.0, 0.0, 4.0, 2.0, 0}},
         {4, {SignalKind::Noise, 100.0, 0.0, 5.0, 2.0, 0}},
         {5, {SignalKind::Sawtooth, 1000.0, 0.0, 8.0, 2.0, 0}},
-        {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100}},
+        {10, {SignalKind::Lag, 1000.0, 0.0, 5.0, 2.0, 100, 1.0}},
         {20, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::ABCD},
         {22, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::CDAB},
         {24, {SignalKind::Sawtooth, 100000.0, 0.0, 8.0, 2.0, 0}, RegisterFormat::Int32, WordOrder::ABCD},

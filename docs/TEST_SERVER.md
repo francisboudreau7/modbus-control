@@ -57,7 +57,7 @@ Default signal bindings:
 | IR 3 | square | amplitude 1000, period 4 s |
 | IR 4 | noise | amplitude 100 |
 | IR 5 | sawtooth | amplitude 1000, period 8 s |
-| IR 10 | lag | follows HR 100, tau 2 s |
+| IR 10 | lag | follows HR 100, tau 2 s, dead time 1 s |
 | IR 20-21 | sine, float32 ABCD | amplitude 123.456, period 5 s |
 | IR 22-23 | sine, float32 CDAB | amplitude 123.456, period 5 s |
 | IR 24-25 | sawtooth, int32 ABCD | amplitude 100000, period 8 s |
@@ -78,7 +78,7 @@ defaulting to 0:
 | `square` | `offset + amplitude` for the first half of the period, `offset - amplitude` for the second half |
 | `counter` | starts at `offset`, +1 per tick, wraps from 65535 to 0 (`amplitude` and `periodS` are ignored) |
 | `noise` | `offset` plus a uniform random value in [-amplitude, +amplitude]; seeded per binding, so the sequence repeats between runs |
-| `lag` | first-order lag following the holding register `source`: `y += (in - y) * (1 - exp(-dt / tauS))`; `y` starts at `offset` |
+| `lag` | first-order lag following the holding register `source` with a dead time `deadTimeS`: `y += (in(t - deadTimeS) - y) * (1 - exp(-dt / tauS))`; `y` starts at `offset` |
 
 All kinds except `counter` are rounded to the nearest integer and clamped to int16 (for `int32` and `float32` see Value formats). The counter is
 uint16. At the default 50 ms tick the counter rises by 20 per second.
@@ -132,7 +132,7 @@ The same content is in [`server/server.example.json`](../server/server.example.j
     { "input": 3,  "kind": "square",   "amplitude": 1000, "offset": 0, "periodS": 4 },
     { "input": 4,  "kind": "noise",    "amplitude": 100,  "offset": 0 },
     { "input": 5,  "kind": "sawtooth", "amplitude": 1000, "offset": 0, "periodS": 8 },
-    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2 },
+    { "input": 10, "kind": "lag",      "source": 100, "tauS": 2, "deadTimeS": 1 },
     { "input": 20, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "ABCD" },
     { "input": 22, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "CDAB" },
     { "input": 24, "kind": "sawtooth", "amplitude": 100000, "offset": 0, "periodS": 8, "format": "int32", "byteOrder": "ABCD" }
@@ -149,11 +149,11 @@ Keys:
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |
 | `delayMs`, `dropPercent`, `verbose` | 0 or more; 0..100; true/false | Fault injection and logging. |
-| `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
+| `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS`, `deadTimeS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
 
 If `signals` is present it replaces the default bindings completely. Each binding's `input` must be
 within `inputCount` (a 2-register format also uses `input + 1`). A `lag` binding's `source` must be below `holdingCount`. `periodS` and `tauS`
-must be greater than 0.
+must be greater than 0. `deadTimeS` (lag only, default 0) must be from 0 to 60 seconds; the lag input is taken that many seconds late, so a step on the source shows up on the output after the dead time and then rises with time constant `tauS`.
 
 ## Fault injection
 

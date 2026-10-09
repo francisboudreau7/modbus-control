@@ -2,7 +2,9 @@
 
 #include <QtGlobal>
 
+#include <deque>
 #include <random>
+#include <utility>
 
 namespace mbsim {
 
@@ -53,6 +55,9 @@ private:
     std::mt19937 m_rng;
     double m_state = 0.0; ///< Lag output / Counter value
     bool m_started = false;
+    /// Lag: (t, input) samples, oldest first. The front is the newest sample at or before
+    /// t - deadTimeS (or the first sample seen if there is none); older samples are dropped.
+    std::deque<std::pair<double, double>> m_history;
 };
 
 /// How a signal value is stored in the input registers.
