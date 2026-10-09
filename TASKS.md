@@ -136,3 +136,69 @@ puts most of the risk in Sonnet's tasks.
 | T62 | Test server publishes int32/float32 in any byte order; defaults IR20–25 | H | contracts | server/*.cpp, tests, docs | Tests pass |
 | T63 | Tag table Byte order column, new types, demo tags, docs | H | contracts | TagTableModel/Widget, AppController, docs | Tests pass |
 | T64 | Integration test: float32 ABCD/CDAB and int32 read from the server match the expected signal | S | T61, T62 | tests/tst_integration.cpp | Passes 10x |
+
+### Wave 7 — CM50 support and release (added on request)
+
+Target device: ABB ControlMaster CM50 over Modbus TCP (Ethernet option; port 502; max 3
+connections). From ABB IM/CM/C-EN Rev. I: the manual's tables use 1-based register numbers
+(register N = protocol address N-1); floats are IEEE-754 in high/low word order (ABCD), or CDAB
+with the controller's "Reverse IEEE Data" setting; holding registers are documented for FC03/FC06
+only. Read-only 32-bit integers: IR 4001-4007 (totalizers). Floats: IR 5001-5107 (PV, outputs,
+setpoints); writable floats HR 6591-7149 (alarm trips, setpoints, PID, constants); writable
+32-bit HR 6001-6011 (totalizer presets); 16-bit HR 2001-2008, 851-854. Coils/discrete inputs
+(FC01/02/05) and RTU were explicitly left out of scope by the user.
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| — | Contracts: 32-bit tags writable (`Tag::isWritable`), `encodeRegisters`, `ConnectionSettings::singleRegisterWrites`, PollWorker/WriteController docs | O | — | headers | Builds |
+| T70 | `encodeRegisters` + tests; project key `singleRegisterWrites` | H | contracts | TagCodec.cpp, ProjectIO.cpp, tests | Tests pass |
+| T71 | Per-register FC06 write mode in PollWorker; WriteController 32-bit + mixed selection; integration tests for 32-bit reads/writes (covers T64) | S | contracts | PollWorker.cpp, WriteController.cpp, tst_integration | 5x stable |
+| T72 | Final UI: see "Remaining work" below | H/S | T63, contracts for 1-based numbering | app + docs | Tests pass |
+| T80 | Release v1.0.0 on GitHub with the installer | O | everything | CMakeLists version, gh release | User confirmed, release visible |
+
+## Status and remaining work
+
+_Last updated: 2026-10-09. Update this section whenever a task is merged._
+
+**Merged into `main` and pushed** (all 14 ctest targets pass): T01, T02, T10–T18, T20–T22, T30–T34,
+T40–T44, T50–T52, T53a (polish fixes), T60, T61, T62, T70, T71, plus the 32-bit contracts and an
+MIT LICENSE. T64 is covered by T71's tests.
+
+**In progress when this was written**
+- **T63** (Haiku) in worktree `..\modbus-control-wt\t63`, branch `task/t63`: tag table Byte order
+  column, Type combo with int32/uint32/float32, Raw as 0x%08X for 32-bit, float display 'g' 7,
+  demo tags "Float sine" IR20 float32 ABCD, "Float sine (CDAB)" IR22 float32 CDAB, "Int32 saw"
+  IR24 int32 ABCD, `examples/demo.mbproj`, USER_GUIDE/README docs. NOTE: it was written against
+  the older contract where 32-bit tags were read-only — after merging, T72 must make them
+  writable in the UI. If a new session finds `task/t63` without a "T63:" commit, check
+  `git -C ..\modbus-control-wt\t63 status`; either finish it there or redo it.
+
+**Remaining, in order**
+1. Merge T63 (review the diff, build, ctest, push).
+2. Orchestrator contract for **1-based register numbering** (user-requested):
+   - `Project::addressBase` (0 or 1, default 0), JSON top-level key `"addressBase"`; tag
+     addresses in files stay zero-based protocol addresses.
+   - `TagTableModel::setAddressBase(int)` / `addressBase()`: Address column shows and accepts
+     address + base (edit range base..65535+base, 32-bit tags up to 65534+base); header
+     "Address" (0-based) or "Register" (1-based) with tooltip; emits dataChanged for the column.
+   - `MainWindow::Actions::oneBasedAddresses`: checkable action in a new "Options" menu
+     ("Use 1-based register numbers").
+   - WriteController texts use the model's base ("HR 6639-6640" for protocol 6638).
+   - AppController: wire the action, apply/save with the project, mark modified on toggle.
+   - PollWorker status messages stay in protocol addresses (documented limitation).
+3. **T72 final UI** (Haiku, or Sonnet if it grows): implement item 2; make 32-bit holding tags
+   writable in TagTableModel (Writable checkbox enabled, Value editable for any isWritable tag);
+   ConnectionBar "FC06 only" checkbox bound to `singleRegisterWrites` (see ConnectionBar.h);
+   ProjectIO `addressBase` + tests; tests for all of it; USER_GUIDE: 32-bit writes, FC06-only
+   option, 1-based numbering, and a "Connecting to an ABB CM50" section with a few example tags
+   (Loop 1 PV IR 5009 float32 ABCD read-only; Loop 1 Local Setpoint 1 HR 6639 float32 writable;
+   Totalizer 1 batch total IR 4001 uint32), noting "Reverse IEEE Data" = CDAB and to enable
+   "FC06 only" if FC16 writes are rejected; add `examples/cm50.mbproj`.
+4. **Final review (T53)**: run `/code-review` (or a review agent) over the whole repo; fix
+   high-severity findings; rerun `ctest --repeat until-fail:3`.
+5. **Acceptance (T54)**: user runs the app against the test server (see README Quick start) and
+   checks write/cursors/exports; Claude verifies by offscreen tests only (no desktop input).
+6. **T80 release v1.0.0**: bump `project(ModbusControl VERSION 1.0.0)`, run
+   `installer\build_installer.ps1`, commit + push, then — after the user confirms —
+   `gh release create v1.0.0 out\installer\ModbusControl-1.0.0-setup.exe --title "Modbus Control 1.0.0"`
+   with release notes (features, CM50 notes, test server usage, licences).
