@@ -2,7 +2,10 @@
 
 #include "Tag.h"
 
+#include <QHash>
 #include <QWidget>
+
+class QLabel;
 
 namespace mb {
 
@@ -35,8 +38,14 @@ signals:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    void rebuild();
+    void updateValue(int row);
+    QString valueText(int row) const;
+
     TagTableModel *m_model = nullptr;
     bool m_connected = false;
+    QWidget *m_content = nullptr;
+    QHash<TagId, QLabel *> m_valueLabels;
 };
 
 } // namespace mb
