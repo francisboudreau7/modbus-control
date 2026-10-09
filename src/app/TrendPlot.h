@@ -5,6 +5,9 @@
 #include <QList>
 #include <QWidget>
 
+class QComboBox;
+class QPushButton;
+class QToolButton;
 class QwtPlot;
 
 namespace mb {
@@ -29,6 +32,7 @@ class TrendPlot : public QWidget
     Q_OBJECT
 public:
     explicit TrendPlot(QWidget *parent = nullptr);
+    ~TrendPlot() override;
 
     /// Not owned; may be null. Must outlive this widget or be reset to null.
     void setRecorder(const Recorder *recorder);
@@ -59,6 +63,19 @@ private:
     const Recorder *m_recorder = nullptr;
     double m_window = 60.0;
     bool m_paused = false;
+    bool m_autoY = true;
+
+    struct CurveEntry;
+    bool pull(); ///< appends new recorder rows to the curves; true if anything changed
+    void fitY(double x1, double x2);
+    void adaptPens();  ///< thinner pens when very many points are visible (speed)
+    bool m_thinPens = false;
+    void applyAxes(); ///< running: x window + y fit
+
+    QList<CurveEntry *> m_entries;
+    QComboBox *m_windowCombo = nullptr;
+    QToolButton *m_pauseButton = nullptr;
+    QPushButton *m_placeButton = nullptr;
 };
 
 } // namespace mb
