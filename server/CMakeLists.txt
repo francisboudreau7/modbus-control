@@ -12,3 +12,7 @@ endif()
 
 add_executable(modbus_test_server main.cpp)
 target_link_libraries(modbus_test_server PRIVATE mbsim mc_warnings)
+
+# Install: the test server to bin/ and its example configuration to share/modbus-control/.
+install(TARGETS modbus_test_server RUNTIME DESTINATION bin)
+install(FILES server.example.json DESTINATION share/modbus-control)
