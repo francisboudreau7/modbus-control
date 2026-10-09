@@ -14,13 +14,20 @@ namespace mb {
 /// Columns and roles:
 /// - Name, Unit: DisplayRole/EditRole QString.
 /// - Area: DisplayRole/EditRole "Holding" | "Input" (see toString(Area)).
-/// - Address: int 0..65535.  Type: "int16" | "uint16".  Gain (!= 0), Offset: double.
-/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers).
+/// - Address: int 0..65535. A 32-bit tag must end at or below 65535 (address <= 65534).
+/// - Type: DisplayRole/EditRole "int16" | "uint16" | "int32" | "uint32" | "float32".
+///   Changing it to a 32-bit type clears Writable; it is rejected if the tag would not fit.
+/// - ByteOrder: DisplayRole/EditRole "ABCD" | "CDAB" | "BADC" | "DCBA". For 16-bit tags the
+///   display is an em dash, the cell is not editable and ToolTipRole explains why.
+/// - Gain (!= 0), Offset: double.
+/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers and
+///   for 32-bit tags, which are read-only for now).
 /// - Color: DisplayRole "#RRGGBB", DecorationRole QColor, EditRole "#RRGGBB".
-/// - Raw: read-only, "0x%04X (%u)" or empty.  Quality: read-only text, ForegroundRole
-///   colour (Good green, Unknown grey, others red); ToolTipRole holds the last error text.
-/// - Value: scaled value as text (6 significant digits) or empty. Editable only when the
-///   tag isWritable(): setData() on it does NOT change the model; it emits
+/// - Raw: read-only, "0x%04X (%u)" for 16-bit tags, "0x%08X" for 32-bit tags, or empty.
+///   Quality: read-only text, ForegroundRole colour (Good green, Unknown grey, others red);
+///   ToolTipRole holds the last error text.
+/// - Value: scaled value as text (6 significant digits, 7 for float32) or empty. Editable
+///   only when the tag isWritable(): setData() on it does NOT change the model; it emits
 ///   writeRequested(id, value) and returns true.
 /// Invalid edits (bad address, gain 0, unparsable numbers) make setData() return false.
 class TagTableModel : public QAbstractTableModel
@@ -28,8 +35,8 @@ class TagTableModel : public QAbstractTableModel
     Q_OBJECT
 public:
     enum Column {
-        Name, Area, Address, Type, Gain, Offset, Unit, Writable, Plot, Color, Raw, Value, Quality,
-        ColumnCount
+        Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Color, Raw, Value,
+        Quality, ColumnCount
     };
 
     explicit TagTableModel(QObject *parent = nullptr);
@@ -75,7 +82,7 @@ private:
     // Implementation-defined; the task may change the private section freely.
     struct Live {
         bool valid = false;
-        quint16 raw = 0;
+        quint32 raw = 0;
         double value = 0.0;
         mb::Quality quality = mb::Quality::Unknown;
         QString status;

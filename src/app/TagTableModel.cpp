@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 
 namespace mb {
 
@@ -13,11 +14,11 @@ namespace {
 const char *const kHeaders[TagTableModel::ColumnCount] = {
     QT_TRANSLATE_NOOP("TagTableModel", "Name"),    QT_TRANSLATE_NOOP("TagTableModel", "Area"),
     QT_TRANSLATE_NOOP("TagTableModel", "Address"), QT_TRANSLATE_NOOP("TagTableModel", "Type"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Gain"),    QT_TRANSLATE_NOOP("TagTableModel", "Offset"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Unit"),    QT_TRANSLATE_NOOP("TagTableModel", "Writable"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Plot"),    QT_TRANSLATE_NOOP("TagTableModel", "Color"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Raw"),     QT_TRANSLATE_NOOP("TagTableModel", "Value"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Byte order"), QT_TRANSLATE_NOOP("TagTableModel", "Gain"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Offset"),  QT_TRANSLATE_NOOP("TagTableModel", "Unit"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Writable"), QT_TRANSLATE_NOOP("TagTableModel", "Plot"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Color"),   QT_TRANSLATE_NOOP("TagTableModel", "Raw"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Value"),   QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
 };
 
 bool parseDouble(const QVariant &v, double &out)
@@ -29,6 +30,33 @@ bool parseDouble(const QVariant &v, double &out)
         out = v.toDouble(&ok);
     return ok && std::isfinite(out);
 }
+
+bool parseValueType(const QString &s, mb::ValueType &out)
+{
+    for (mb::ValueType v : {mb::ValueType::Int16, mb::ValueType::UInt16, mb::ValueType::Int32,
+                            mb::ValueType::UInt32, mb::ValueType::Float32}) {
+        if (s.compare(toString(v), Qt::CaseInsensitive) == 0) {
+            out = v;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool parseByteOrder(const QString &s, mb::ByteOrder &out)
+{
+    for (mb::ByteOrder o : {mb::ByteOrder::ABCD, mb::ByteOrder::CDAB, mb::ByteOrder::BADC,
+                            mb::ByteOrder::DCBA}) {
+        if (s.compare(toString(o), Qt::CaseInsensitive) == 0) {
+            out = o;
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Shown in the ByteOrder column of 16-bit tags (em dash).
+QString noByteOrderText() { return QString(QChar(0x2014)); }
 
 // Tableau 10. New tags take the first colour no existing tag uses.
 const char *const kPalette[] = {"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -72,6 +100,7 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     const Live live = m_live.value(t.id);
     const bool edit = role == Qt::EditRole;
     const bool disp = role == Qt::DisplayRole;
+    const bool is32 = registerCount(t.type) == 2;
 
     switch (index.column()) {
     case Name:
@@ -86,6 +115,11 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case Type:
         if (disp || edit) return toString(t.type);
         break;
+    case ByteOrder:
+        if (role == Qt::ToolTipRole && !is32) return tr("Only used by 32-bit types");
+        if (edit || (disp && is32)) return toString(t.byteOrder);
+        if (disp) return noByteOrderText();
+        break;
     case Gain:
         if (disp || edit) return t.gain;
         break;
@@ -98,6 +132,8 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case Writable:
         if (role == Qt::CheckStateRole)
             return t.isWritable() ? Qt::Checked : Qt::Unchecked;
+        if (role == Qt::ToolTipRole && is32)
+            return tr("32-bit tags are read-only");
         break;
     case Plot:
         if (role == Qt::CheckStateRole)
@@ -108,12 +144,21 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (role == Qt::DecorationRole) return QColor(t.color);
         break;
     case Raw:
-        if (disp)
-            return live.valid ? QString::asprintf("0x%04X (%u)", uint(live.raw), uint(live.raw))
-                              : QString();
+        if (disp) {
+            if (!live.valid)
+                return QString();
+            if (is32)
+                return QString::asprintf("0x%08X", uint(live.raw));
+            const uint raw16 = uint(live.raw & 0xFFFFu);
+            return QString::asprintf("0x%04X (%u)", raw16, raw16);
+        }
         break;
     case Value:
-        if (disp) return live.valid ? QString::number(live.value, 'g', 6) : QString();
+        if (disp) {
+            if (!live.valid)
+                return QString();
+            return QString::number(live.value, 'g', t.type == ValueType::Float32 ? 7 : 6);
+        }
         if (edit) return live.valid ? QVariant(live.value) : QVariant();
         break;
     case Quality:
@@ -145,7 +190,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             return false;
         const bool on = value.toInt() == Qt::Checked;
         if (col == Writable) {
-            if (on && t.area == mb::Area::InputRegister)
+            if (on && (t.area == mb::Area::InputRegister || registerCount(t.type) == 2))
                 return false;
             t.writable = on;
         } else {
@@ -159,6 +204,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         return false;
 
     bool writableCleared = false;
+    bool rowChanged = false;
     switch (col) {
     case Name: {
         const QString n = value.toString().trimmed();
@@ -186,17 +232,30 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         bool ok = false;
         const int a = value.toInt(&ok);
         if (!ok || a < 0 || a > 65535) return false;
+        Tag probe = t;
+        probe.address = quint16(a);
+        if (!probe.fitsAddressSpace()) return false;
         t.address = quint16(a);
         break;
     }
     case Type: {
-        const QString s = value.toString();
-        if (s.compare(toString(mb::ValueType::Int16), Qt::CaseInsensitive) == 0)
-            t.type = mb::ValueType::Int16;
-        else if (s.compare(toString(mb::ValueType::UInt16), Qt::CaseInsensitive) == 0)
-            t.type = mb::ValueType::UInt16;
-        else
-            return false;
+        mb::ValueType nt = mb::ValueType::Int16;
+        if (!parseValueType(value.toString(), nt)) return false;
+        Tag probe = t;
+        probe.type = nt;
+        if (!probe.fitsAddressSpace()) return false;
+        t.type = nt;
+        if (registerCount(nt) == 2 && t.writable) {
+            t.writable = false;
+            writableCleared = true;
+        }
+        rowChanged = true; // Raw, Value, ByteOrder and Writable all depend on the type
+        break;
+    }
+    case ByteOrder: {
+        mb::ByteOrder order = mb::ByteOrder::ABCD;
+        if (registerCount(t.type) != 2 || !parseByteOrder(value.toString(), order)) return false;
+        t.byteOrder = order;
         break;
     }
     case Gain: {
@@ -234,7 +293,10 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         return false;
     }
 
-    emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole, Qt::DecorationRole});
+    if (rowChanged)
+        emit dataChanged(this->index(index.row(), 0), this->index(index.row(), ColumnCount - 1));
+    else
+        emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole, Qt::DecorationRole});
     if (writableCleared) {
         const QModelIndex i = this->index(index.row(), Writable);
         emit dataChanged(i, i, {Qt::CheckStateRole});
@@ -252,11 +314,15 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     switch (index.column()) {
     case Writable:
         f |= Qt::ItemIsUserCheckable;
-        if (t.area == mb::Area::InputRegister)
+        if (t.area == mb::Area::InputRegister || registerCount(t.type) == 2)
             f &= ~Qt::ItemFlags(Qt::ItemIsEnabled);
         break;
     case Plot:
         f |= Qt::ItemIsUserCheckable;
+        break;
+    case ByteOrder:
+        if (registerCount(t.type) == 2)
+            f |= Qt::ItemIsEditable;
         break;
     case Raw:
     case Quality:
@@ -274,8 +340,17 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
 
 QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) const
 {
-    if (o == Qt::Horizontal && role == Qt::DisplayRole && section >= 0 && section < ColumnCount)
-        return tr(kHeaders[section]);
+    if (o == Qt::Horizontal && section >= 0 && section < ColumnCount) {
+        if (role == Qt::DisplayRole)
+            return tr(kHeaders[section]);
+        if (role == Qt::ToolTipRole && section == Type)
+            return tr("Value type. int16 and uint16 use one register. int32, uint32 and float32 "
+                      "use two consecutive registers.");
+        if (role == Qt::ToolTipRole && section == ByteOrder)
+            return tr("Byte order of 32-bit values. A is the most significant byte. ABCD is big "
+                      "endian: register n holds A B and register n+1 holds C D. Only used by "
+                      "32-bit types.");
+    }
     return QAbstractTableModel::headerData(section, o, role);
 }
 

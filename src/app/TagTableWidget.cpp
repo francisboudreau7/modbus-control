@@ -145,7 +145,7 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     m_view->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed
                             | QAbstractItemView::SelectedClicked);
 
-    const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 70, 60, 60, 60, 70, 50, 80, 100, 90, 90};
+    const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 80, 70, 60, 60, 60, 70, 50, 80, 100, 90, 90};
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnWidth(c, widths[c]);
 
@@ -154,7 +154,15 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         new ComboDelegate({toString(Area::HoldingRegister), toString(Area::InputRegister)}, this));
     m_view->setItemDelegateForColumn(
         TagTableModel::Type,
-        new ComboDelegate({toString(ValueType::Int16), toString(ValueType::UInt16)}, this));
+        new ComboDelegate({toString(ValueType::Int16), toString(ValueType::UInt16),
+                           toString(ValueType::Int32), toString(ValueType::UInt32),
+                           toString(ValueType::Float32)},
+                          this));
+    m_view->setItemDelegateForColumn(
+        TagTableModel::ByteOrder,
+        new ComboDelegate({toString(ByteOrder::ABCD), toString(ByteOrder::CDAB),
+                           toString(ByteOrder::BADC), toString(ByteOrder::DCBA)},
+                          this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
 

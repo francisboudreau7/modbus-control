@@ -55,15 +55,16 @@ Each row is one register value that the application reads. Columns:
 | Name | Name shown in the table, trend legend and cursor panel. Cannot be empty. |
 | Area | `Holding` (FC03 read, FC06/FC16 write) or `Input` (FC04 read). |
 | Address | Zero-based Modbus address, 0..65535. HR 100 is address 100. |
-| Type | `int16` (signed) or `uint16` (unsigned). |
+| Type | `int16` (signed) or `uint16` (unsigned), one register. `int32` (signed), `uint32` (unsigned) and `float32` (IEEE-754 single precision), two consecutive registers. See 32-bit values. |
+| Byte order | `ABCD`, `CDAB`, `BADC` or `DCBA`: how the two registers of a 32-bit value are arranged. Shows `—` for 16-bit types, where it has no effect. See 32-bit values. |
 | Gain | Multiplier applied to the raw value. Cannot be 0. |
 | Offset | Added after the gain. |
 | Unit | Shown after the name in the legend and the CSV header. Optional. |
-| Writable | Allows writes from the Value column. Holding registers only. The box is disabled for input registers, and changing Area to Input clears it. |
+| Writable | Allows writes from the Value column. 16-bit holding registers only. The box is disabled for input registers and for 32-bit types (they are read-only for now). Changing Area to Input, or Type to a 32-bit type, clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
-| Raw | The register value as read, in hex and decimal. Read-only. |
-| Value | Scaled value: `raw * gain + offset`, with 6 significant digits. Read-only, except for writable tags (see Writing values). |
+| Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
+| Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
 | Quality | State of the last read. Read-only. |
 
 Quality values:
@@ -79,6 +80,32 @@ Quality values:
 
 Hover over a Quality cell to see the last failed write for that tag. The tooltip is cleared by the
 next successful write. Read errors are reported in the status bar only.
+
+### 32-bit values
+
+`int32`, `uint32` and `float32` tags read two consecutive registers, starting at **Address**. The
+second register is Address + 1, so a 32-bit tag at address 65535 would need a register past the end
+of the address space and is rejected. Use 65534 or lower.
+
+The two registers are combined according to **Byte order**. A, B, C and D are the four bytes of the
+value, from most to least significant. The table shows what is in each register for the value
+`0x42F6E979` (`float32` 123.456):
+
+| Byte order | Register at Address (n) | Register at Address + 1 | Typical use |
+|---|---|---|---|
+| `ABCD` | `0x42F6` (A B) | `0xE979` (C D) | Big endian. The Modbus default. |
+| `CDAB` | `0xE979` (C D) | `0x42F6` (A B) | Word swap. Common in PLCs and meters. |
+| `BADC` | `0xF642` (B A) | `0x79E9` (D C) | Byte swap within each register. |
+| `DCBA` | `0x79E9` (D C) | `0xF642` (B A) | Little endian. |
+
+If a 32-bit value looks wrong (a float that is far too large or small, or an integer that jumps
+around), the byte order is usually wrong. Try `CDAB` first, then the others.
+
+The Raw column shows the 32-bit value after the byte order has been applied, as ABCD. If the byte
+order matches the server, Raw shows the value the server meant, and Value is the scaled result.
+
+32-bit tags are read-only for now. The Writable box is disabled and writes from the Value column are
+not possible. Their Raw and Value cells are updated by polling like any other tag.
 
 ### Editing the table
 
@@ -96,7 +123,7 @@ Tag edits mark the project as modified. Live values do not.
 ## Writing values
 
 Writes go to the server between poll cycles. Only the following tags can be written:
-holding registers with **Writable** ticked.
+16-bit holding registers with **Writable** ticked. 32-bit tags are read-only.
 
 ### One register
 
@@ -228,7 +255,7 @@ The window title shows `*` when there are unsaved changes. New, Open and Quit as
 (Save, Discard or Cancel).
 
 Start-up: the application always starts with the built-in demo tags (Sine, Triangle, Counter,
-Square, Noise, Sawtooth, Lag and Setpoint), and not with a file. It does not reopen the last project.
+Square, Noise, Sawtooth, Lag, Setpoint, Float sine, Float sine (CDAB) and Int32 saw), and not with a file. It does not reopen the last project.
 To start with a project, give its path on the command line:
 
 ```bat
@@ -251,7 +278,7 @@ server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 
 - One server at a time.
 - Modbus TCP only. No serial (RTU) connections.
-- 16-bit holding and input registers only, with `int16` or `uint16` types. There are no 32-bit
-  or floating-point types, and no coils.
+- Holding and input registers only, with `int16` and `uint16` (one register) or `int32`,
+  `uint32` and `float32` (two registers) types. 32-bit tags are read-only. There are no coils.
 - Some TCP servers ignore the unit id. It is still sent with each request.
 - The history is in memory only, and the project file does not store it.

@@ -64,7 +64,7 @@ void storeLastConnection(const ConnectionSettings &s)
 }
 
 Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType type,
-            const QString &color, bool plotted, bool writable)
+            const QString &color, bool plotted, bool writable, ByteOrder order = ByteOrder::ABCD)
 {
     Tag t;
     t.id = id;
@@ -72,6 +72,7 @@ Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType
     t.area = area;
     t.address = address;
     t.type = type;
+    t.byteOrder = order;
     t.color = color;
     t.plotted = plotted;
     t.writable = writable;
@@ -91,6 +92,12 @@ QList<Tag> demoTags()
         makeTag(7, QStringLiteral("Lag"), ir, 10, ValueType::Int16, QStringLiteral("#8c564b"), true, false),
         makeTag(8, QStringLiteral("Setpoint"), Area::HoldingRegister, 100, ValueType::Int16,
                 QStringLiteral("#e377c2"), true, true),
+        makeTag(9, QStringLiteral("Float sine"), ir, 20, ValueType::Float32, QStringLiteral("#bcbd22"),
+                true, false, ByteOrder::ABCD),
+        makeTag(10, QStringLiteral("Float sine (CDAB)"), ir, 22, ValueType::Float32,
+                QStringLiteral("#17becf"), true, false, ByteOrder::CDAB),
+        makeTag(11, QStringLiteral("Int32 saw"), ir, 24, ValueType::Int32, QStringLiteral("#393b79"),
+                true, false, ByteOrder::ABCD),
     };
 }
 
@@ -122,7 +129,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     // Every start: last connection settings and the demo tags, as an unmodified Untitled project.
     m_window->connectionBar()->setSettings(lastConnection());
-    m_window->tagModel()->setTags(demoTags(), 9);
+    m_window->tagModel()->setTags(demoTags(), 12);
     pushTags();
     m_refreshTimer->start();
     updateTitle();

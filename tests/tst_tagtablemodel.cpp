@@ -438,6 +438,156 @@ private slots:
             QCOMPARE(m.data(ix(m, r, C::Quality)).toString(), QString("Unknown"));
         }
     }
+
+    void newTypesDisplayAndEdit()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 0)}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QVERIFY(m.setData(ix(m, 0, C::Type), "int32"));
+        QVERIFY(m.tagAt(0).type == ValueType::Int32);
+        QCOMPARE(m.data(ix(m, 0, C::Type)).toString(), QString("int32"));
+        QVERIFY(m.setData(ix(m, 0, C::Type), "UINT32"));
+        QVERIFY(m.tagAt(0).type == ValueType::UInt32);
+        QCOMPARE(m.data(ix(m, 0, C::Type)).toString(), QString("uint32"));
+        QVERIFY(m.setData(ix(m, 0, C::Type), "float32"));
+        QVERIFY(m.tagAt(0).type == ValueType::Float32);
+        QCOMPARE(m.data(ix(m, 0, C::Type), Qt::EditRole).toString(), QString("float32"));
+        QVERIFY(m.setData(ix(m, 0, C::Type), "int16"));
+        QCOMPARE(m.data(ix(m, 0, C::Type)).toString(), QString("int16"));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "double"));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "float"));
+        QVERIFY(m.tagAt(0).type == ValueType::Int16);
+        QCOMPARE(edited.size(), 4);
+    }
+
+    void byteOrderColumn()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag t16 = makeTag(1, "s16", Area::HoldingRegister, 0);
+        Tag t32 = makeTag(2, "f32", Area::HoldingRegister, 2);
+        t32.type = ValueType::Float32;
+        m.setTags({t16, t32}, 3);
+        const QString dash(QChar(0x2014));
+
+        // 16-bit: dash, not editable, explained in the tooltip.
+        QCOMPARE(m.data(ix(m, 0, C::ByteOrder)).toString(), dash);
+        QCOMPARE(m.data(ix(m, 0, C::ByteOrder), Qt::ToolTipRole).toString(),
+                 QString("Only used by 32-bit types"));
+        QVERIFY(!(m.flags(ix(m, 0, C::ByteOrder)) & Qt::ItemIsEditable));
+        QVERIFY(!m.setData(ix(m, 0, C::ByteOrder), "CDAB"));
+        QVERIFY(m.tagAt(0).byteOrder == ByteOrder::ABCD);
+
+        // 32-bit: shows and edits the order.
+        QCOMPARE(m.data(ix(m, 1, C::ByteOrder)).toString(), QString("ABCD"));
+        QVERIFY(m.flags(ix(m, 1, C::ByteOrder)) & Qt::ItemIsEditable);
+        QVERIFY(m.setData(ix(m, 1, C::ByteOrder), "CDAB"));
+        QVERIFY(m.tagAt(1).byteOrder == ByteOrder::CDAB);
+        QCOMPARE(m.data(ix(m, 1, C::ByteOrder)).toString(), QString("CDAB"));
+        QVERIFY(m.setData(ix(m, 1, C::ByteOrder), "badc"));
+        QVERIFY(m.tagAt(1).byteOrder == ByteOrder::BADC);
+        QVERIFY(!m.setData(ix(m, 1, C::ByteOrder), "ABCDE"));
+        QVERIFY(!m.setData(ix(m, 1, C::ByteOrder), "XY"));
+        QVERIFY(m.tagAt(1).byteOrder == ByteOrder::BADC);
+        QCOMPARE(m.data(ix(m, 1, C::ByteOrder), Qt::ToolTipRole).toString(), QString());
+    }
+
+    void typeChangeTo32BitClearsWritable()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "w", Area::HoldingRegister, 10, true)}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QVERIFY(m.setData(ix(m, 0, C::Type), "float32"));
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(!m.tagAt(0).isWritable());
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QCOMPARE(edited.size(), 1);
+    }
+
+    void address65535Rules()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag f = makeTag(2, "f", Area::HoldingRegister, 10);
+        m.setTags({makeTag(1, "top", Area::HoldingRegister, 65535), f}, 3);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        // A 16-bit tag at 65535 cannot become 32-bit.
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "float32"));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "uint32"));
+        QVERIFY(m.tagAt(0).type == ValueType::Int16);
+        QCOMPARE(edited.size(), 0);
+
+        // A 32-bit tag cannot move to 65535; 65534 is the last valid address.
+        QVERIFY(m.setData(ix(m, 1, C::Type), "float32"));
+        QVERIFY(!m.setData(ix(m, 1, C::Address), 65535));
+        QCOMPARE(m.tagAt(1).address, quint16(10));
+        QVERIFY(m.setData(ix(m, 1, C::Address), 65534));
+        QCOMPARE(m.tagAt(1).address, quint16(65534));
+        QCOMPARE(edited.size(), 2);
+
+        // A 16-bit tag may use 65535.
+        QVERIFY(m.setData(ix(m, 0, C::Address), 65535));
+        QCOMPARE(m.tagAt(0).address, quint16(65535));
+    }
+
+    void writableIsReadOnlyFor32Bit()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag t = makeTag(1, "f", Area::HoldingRegister, 0, true);
+        t.type = ValueType::Float32;
+        m.setTags({t}, 2);
+        QVERIFY(!(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsEnabled));
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::ToolTipRole).toString(),
+                 QString("32-bit tags are read-only"));
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!m.tagAt(0).isWritable());
+        QVERIFY(!m.setData(ix(m, 0, C::Value), 1.0));
+        QVERIFY(!(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+    }
+
+    void raw32AndFloatFormatting()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag t = makeTag(1, "f", Area::InputRegister, 20);
+        t.type = ValueType::Float32;
+        m.setTags({t, makeTag(2, "s", Area::InputRegister, 30)}, 3);
+
+        SampleBatch b;
+        b.samples << TagSample{1, 0x42F6E979u, 123.456, Quality::Good}
+                  << TagSample{2, 0x0000FFFFu, -1.0, Quality::Good};
+        m.updateSamples(b);
+        QCOMPARE(m.data(ix(m, 0, C::Raw)).toString(), QString("0x42F6E979"));
+        QCOMPARE(m.data(ix(m, 0, C::Value)).toString(), QString("123.456"));
+        // 16-bit rows keep the 16-bit format.
+        QCOMPARE(m.data(ix(m, 1, C::Raw)).toString(), QString("0xFFFF (65535)"));
+
+        b.samples[0].value = 1.0 / 3.0;
+        m.updateSamples(b);
+        QCOMPARE(m.data(ix(m, 0, C::Value)).toString(), QString("0.3333333"));
+
+        // Not Good: no raw, no value.
+        b.samples[0].quality = Quality::Timeout;
+        m.updateSamples(b);
+        QVERIFY(m.data(ix(m, 0, C::Raw)).toString().isEmpty());
+        QVERIFY(m.data(ix(m, 0, C::Value)).toString().isEmpty());
+    }
+
+    void headerTooltips()
+    {
+        TagTableModel m;
+        QVERIFY(m.headerData(C::Type, Qt::Horizontal, Qt::ToolTipRole).toString().contains("two consecutive registers"));
+        QVERIFY(m.headerData(C::ByteOrder, Qt::Horizontal, Qt::ToolTipRole).toString().contains("ABCD"));
+        QCOMPARE(m.headerData(C::ByteOrder, Qt::Horizontal).toString(), QString("Byte order"));
+    }
 };
 
 QTEST_MAIN(TstTagTableModel)
