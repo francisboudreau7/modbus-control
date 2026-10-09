@@ -230,7 +230,16 @@ void PollWorker::serveWrites()
             r = notConnectedResult();
         else if (w.values.size() == 1)
             r = m_conn->writeSingle(w.address, w.values.first());
-        else
+        else if (m_settings.singleRegisterWrites && w.values.size() > 1) {
+            for (qsizetype i = 0; i < w.values.size(); ++i) {
+                const quint16 reg = static_cast<quint16>(w.address + i);
+                r = m_conn->writeSingle(reg, w.values.at(i));
+                if (!r.ok()) {
+                    r.message = QStringLiteral("Write of register %1 failed: %2").arg(reg).arg(r.message);
+                    break;
+                }
+            }
+        } else
             r = m_conn->writeMultiple(w.address, w.values);
 
         if (r.error == ModbusError::Timeout)

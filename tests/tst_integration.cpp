@@ -1,6 +1,7 @@
 ﻿#include "MetaTypes.h"
 #include "ModbusConnection.h"
 #include "PollWorker.h"
+#include "TagCodec.h"
 
 #include <QElapsedTimer>
 #include <QMetaObject>
@@ -10,6 +11,8 @@
 #include <QThread>
 #include <QtTest>
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 using namespace mb;
@@ -485,6 +488,163 @@ private slots:
         QList<quint16> v;
         QVERIFY(c.readRegisters(Area::HoldingRegister, 150, 1, v).ok());
         QCOMPARE(v.value(0), quint16(321));
+    }
+
+    // ---- 32-bit values (T64 / T71) ---------------------------------------------------------
+
+    void worker_reads32BitTags()
+    {
+        QVERIFY(m_server->start());
+        Tag abcd = makeTag(1, Area::InputRegister, 20, ValueType::Float32);
+        Tag cdab = makeTag(2, Area::InputRegister, 22, ValueType::Float32);
+        cdab.byteOrder = ByteOrder::CDAB;
+        Tag i32 = makeTag(3, Area::InputRegister, 24, ValueType::Int32);
+        Tag wrong = makeTag(4, Area::InputRegister, 20, ValueType::Float32); // ABCD data read as CDAB
+        wrong.byteOrder = ByteOrder::CDAB;
+
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->setTags({abcd, cdab, i32, wrong});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+
+        // Good quality within 2 s.
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                for (const SampleBatch &b : std::as_const(m_harness->batches)) {
+                    bool all = b.samples.size() == 4;
+                    for (const TagSample &s : b.samples)
+                        all = all && s.quality == Quality::Good;
+                    if (all)
+                        return true;
+                }
+                return false;
+            }(),
+            2000);
+
+        // Collect ~5 s of batches.
+        QTest::qWait(5000);
+
+        constexpr double amplitude = 123.456;
+        int goodBatches = 0;
+        bool anyNonZero = false;
+        bool wrongDiffers = false;
+        double maxAbsInt32 = 0;
+        for (const SampleBatch &b : std::as_const(m_harness->batches)) {
+            const TagSample *a = WorkerHarness::sampleOf(b, 1);
+            const TagSample *c = WorkerHarness::sampleOf(b, 2);
+            const TagSample *n = WorkerHarness::sampleOf(b, 3);
+            const TagSample *w = WorkerHarness::sampleOf(b, 4);
+            QVERIFY(a && c && n && w);
+            if (a->quality != Quality::Good || c->quality != Quality::Good
+                || n->quality != Quality::Good || w->quality != Quality::Good)
+                continue;
+            ++goodBatches;
+            QVERIFY2(std::abs(a->value) <= amplitude + 1e-3, qPrintable(QString::number(a->value)));
+            QVERIFY2(std::abs(c->value) <= amplitude + 1e-3, qPrintable(QString::number(c->value)));
+            QVERIFY2(std::abs(a->value - c->value) <= 0.01 * amplitude,
+                     qPrintable(QStringLiteral("ABCD %1 vs CDAB %2").arg(a->value).arg(c->value)));
+            if (a->value != 0.0 || c->value != 0.0)
+                anyNonZero = true;
+            if (!(std::abs(w->value - a->value) < 1e-3)) // also true for NaN
+                wrongDiffers = true;
+            maxAbsInt32 = std::max(maxAbsInt32, std::abs(n->value));
+        }
+        QVERIFY2(goodBatches >= 20, qPrintable(QString::number(goodBatches)));
+        QVERIFY(anyNonZero);
+        QVERIFY2(wrongDiffers, "reading ABCD data as CDAB must give a different value");
+        QVERIFY2(maxAbsInt32 > 32767, qPrintable(QString::number(maxAbsInt32)));
+    }
+
+    void conn_write32BitRoundTrip_data()
+    {
+        QTest::addColumn<int>("order");
+        QTest::addColumn<quint16>("address");
+        QTest::newRow("ABCD") << int(ByteOrder::ABCD) << quint16(150);
+        QTest::newRow("CDAB") << int(ByteOrder::CDAB) << quint16(150);
+    }
+
+    void conn_write32BitRoundTrip()
+    {
+        QFETCH(int, order);
+        QFETCH(quint16, address);
+        QVERIFY(m_server->start());
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+
+        Tag f = makeTag(1, Area::HoldingRegister, address, ValueType::Float32);
+        f.byteOrder = static_cast<ByteOrder>(order);
+        const auto regs = encodeRegisters(f, 123.25);
+        QVERIFY(regs.has_value());
+        QCOMPARE(regs->size(), 2);
+        QVERIFY2(c.writeMultiple(address, *regs).ok(), "writeMultiple failed");
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, address, 2, v).ok());
+        QCOMPARE(v, *regs);
+        QCOMPARE(decodeValue(f, combineRegisters(f, v.at(0), v.at(1))), 123.25);
+
+        Tag i = makeTag(2, Area::HoldingRegister, 152, ValueType::Int32);
+        i.byteOrder = static_cast<ByteOrder>(order);
+        const auto iregs = encodeRegisters(i, -100000.0);
+        QVERIFY(iregs.has_value());
+        QVERIFY(c.writeMultiple(152, *iregs).ok());
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 152, 2, v).ok());
+        QCOMPARE(decodeValue(i, combineRegisters(i, v.at(0), v.at(1))), -100000.0);
+    }
+
+    void worker_write32Bit_data()
+    {
+        QTest::addColumn<bool>("single");
+        QTest::newRow("FC16") << false;
+        QTest::newRow("FC06 per register") << true;
+    }
+
+    void worker_write32Bit()
+    {
+        QFETCH(bool, single);
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        ConnectionSettings s = settingsFor(m_server->port(), 1000, 1, 100);
+        s.singleRegisterWrites = single;
+        m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
+        m_harness->connectTo(s);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 1, 5000);
+
+        Tag f = makeTag(2, Area::HoldingRegister, 160, ValueType::Float32);
+        const auto regs = encodeRegisters(f, 42.5);
+        QVERIFY(regs.has_value());
+        m_harness->write(5, 160, *regs);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->writes.contains(5), 3000);
+        QVERIFY2(m_harness->writes.value(5).ok(), qPrintable(m_harness->writes.value(5).message));
+
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 160, 2, v).ok());
+        QCOMPARE(decodeValue(f, combineRegisters(f, v.at(0), v.at(1))), 42.5);
+    }
+
+    void worker_singleRegisterWriteFailsOnSecondRegister()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        ConnectionSettings s = settingsFor(m_server->port(), 1000, 1, 100);
+        s.singleRegisterWrites = true;
+        m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
+        m_harness->connectTo(s);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 1, 5000);
+
+        m_harness->write(6, 199, {0x1234, 0x5678}); // register 200 is outside the server map
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->writes.contains(6), 3000);
+        const ModbusResult r = m_harness->writes.value(6);
+        QCOMPARE(r.error, ModbusError::Exception);
+        QCOMPARE(r.exceptionCode, 2);
+        QVERIFY2(r.message.contains(QStringLiteral("200")), qPrintable(r.message));
+        QVERIFY(m_harness->lastState() == ConnectionState::Connected);
+
+        ModbusConnection c; // the first register was written before the failure
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 199, 1, v).ok());
+        QCOMPARE(v.value(0), quint16(0x1234));
     }
 
 private:

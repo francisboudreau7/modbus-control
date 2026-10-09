@@ -22,10 +22,24 @@ QString typeText(const Tag &tag)
     return toString(tag.type);
 }
 
-QString rawText(const Tag &tag, quint16 raw)
+/// Raw value as shown in the confirmation: decimal for 16-bit, 0x%08X (ABCD pattern) for 32-bit.
+QString rawText(const Tag &tag, const QList<quint16> &regs)
 {
+    if (registerCount(tag.type) == 2 && regs.size() >= 2)
+        return QStringLiteral("0x")
+               + QString::number(combineRegisters(tag, regs.at(0), regs.at(1)), 16)
+                     .rightJustified(8, QLatin1Char('0'))
+                     .toUpper();
+    const quint16 raw = regs.value(0);
     return tag.type == ValueType::Int16 ? QString::number(static_cast<qint16>(raw))
                                         : QString::number(raw);
+}
+
+QString registerRange(const Tag &tag)
+{
+    const int n = registerCount(tag.type);
+    return n == 2 ? QStringLiteral("HR %1-%2").arg(tag.address).arg(tag.address + 1)
+                  : QStringLiteral("HR %1").arg(tag.address);
 }
 
 QString valueText(double v)
@@ -119,7 +133,7 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     if (!tag.isWritable())
         return;
 
-    const auto raw = encodeValue(tag, scaledValue);
+    const auto raw = encodeRegisters(tag, scaledValue);
     if (!raw) {
         m_warn(tr("Value %1 is out of range for %2 (%3, gain %4, offset %5).")
                    .arg(valueText(scaledValue), tag.name, typeText(tag), valueText(tag.gain),
@@ -128,10 +142,12 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     }
 
     const QString unit = tag.unit.isEmpty() ? QString() : QStringLiteral(" ") + tag.unit;
-    if (!m_confirm(tr("Write %1%2 (raw %3) to HR %4 '%5'?")
-                       .arg(valueText(scaledValue), unit, rawText(tag, *raw))
-                       .arg(tag.address)
-                       .arg(tag.name)))
+    const QString typeInfo = registerCount(tag.type) == 2
+        ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
+        : QString();
+    if (!m_confirm(tr("Write %1%2 (raw %3) to %4 '%5'%6?")
+                       .arg(valueText(scaledValue), unit, rawText(tag, *raw), registerRange(tag),
+                            tag.name, typeInfo)))
         return;
 
     // The connection may have dropped while the dialog was open.
@@ -141,8 +157,8 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     }
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, {id});
-    emit message(tr("Writing %1 to HR %2 '%3' ...").arg(valueText(scaledValue)).arg(tag.address).arg(tag.name));
-    emit writeRegisters(reqId, tag.address, {*raw});
+    emit message(tr("Writing %1 to %2 '%3' ...").arg(valueText(scaledValue), registerRange(tag), tag.name));
+    emit writeRegisters(reqId, tag.address, *raw);
 }
 
 void WriteController::requestWriteSelection(const QList<int> &rows)
@@ -170,19 +186,32 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         return;
     }
     std::sort(tags.begin(), tags.end(), [](const Tag &a, const Tag &b) { return a.address < b.address; });
-    for (qsizetype i = 1; i < tags.size(); ++i) {
-        if (tags.at(i).address == tags.at(i - 1).address) {
-            m_warn(tr("'%1' and '%2' use the same address (HR %3).")
-                       .arg(tags.at(i - 1).name, tags.at(i).name)
-                       .arg(tags.at(i).address));
+    int totalRegisters = 0;
+    for (qsizetype i = 0; i < tags.size(); ++i) {
+        totalRegisters += registerCount(tags.at(i).type);
+        if (i == 0)
+            continue;
+        const Tag &prev = tags.at(i - 1);
+        const Tag &next = tags.at(i);
+        const int expected = prev.address + registerCount(prev.type);
+        if (next.address < expected) {
+            m_warn(tr("'%1' (%2) overlaps '%3' (%4).")
+                       .arg(next.name, registerRange(next), prev.name, registerRange(prev)));
             return;
         }
-        if (tags.at(i).address != tags.at(i - 1).address + 1) {
-            m_warn(tr("The selected registers are not consecutive: gap between HR %1 and HR %2.")
-                       .arg(tags.at(i - 1).address)
-                       .arg(tags.at(i).address));
+        if (next.address != expected) {
+            m_warn(tr("The selected registers are not consecutive: '%1' (%2) should start at HR %3 "
+                      "to follow '%4' (%5), but starts at HR %6.")
+                       .arg(next.name, registerRange(next))
+                       .arg(expected)
+                       .arg(prev.name, registerRange(prev))
+                       .arg(next.address));
             return;
         }
+    }
+    if (totalRegisters > 123) {
+        m_warn(tr("Too many registers: the selection spans %1 registers (maximum 123).").arg(totalRegisters));
+        return;
     }
 
     // Prefill with the current scaled values (Value column), else decode of 0.
@@ -207,13 +236,13 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     QList<quint16> raws;
     QStringList bad;
     for (qsizetype i = 0; i < tags.size(); ++i) {
-        const auto raw = encodeValue(tags.at(i), values->at(i));
+        const auto raw = encodeRegisters(tags.at(i), values->at(i));
         if (!raw)
             bad.append(tr("%1 = %2 (%3, gain %4, offset %5)")
                            .arg(tags.at(i).name, valueText(values->at(i)), typeText(tags.at(i)),
                                 valueText(tags.at(i).gain), valueText(tags.at(i).offset)));
         else
-            raws.append(*raw);
+            raws += *raw;
     }
     if (!bad.isEmpty()) {
         m_warn(tr("Out of range values:\n%1").arg(bad.join(QLatin1Char('\n'))));
@@ -221,8 +250,8 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     }
 
     const quint16 first = tags.first().address;
-    const quint16 last = tags.last().address;
-    if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(tags.size()).arg(first).arg(last)))
+    const int last = tags.last().address + registerCount(tags.last().type) - 1;
+    if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(totalRegisters).arg(first).arg(last)))
         return;
 
     if (!m_connected) {
@@ -234,7 +263,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         ids.append(tag.id);
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, ids);
-    emit message(tr("Writing %1 registers HR %2..%3 ...").arg(tags.size()).arg(first).arg(last));
+    emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(first).arg(last));
     emit writeRegisters(reqId, first, raws);
 }
 
