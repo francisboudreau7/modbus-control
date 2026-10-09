@@ -172,6 +172,24 @@ setpoints); writable floats HR 6591-7149 (alarm trips, setpoints, PID, constants
 
 Parallel groups: T91, T92, T93, T94 run together after T90; T95 after T91; T96 after T92–T95; T97 after T96.
 
+### Wave 9 — v1.2 user experience (planned on request; design in PLAN.md "v1.2 user-experience features")
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| T100 | Contracts + stubs: `Tag::axis`, `Tag::quickA/quickB`; `AnalysisSettings::showModel/guideLines`; `StepResult::fitRms/fitRmsPercent` + `fopdtModelValue()`; `SessionIO.h`; `ClipboardCopy.h`; `QuickWritePanel.h`; TrendPlot right-axis doc; WriteController quick-write API; MainWindow session actions, Quick write dock, Options toggle; TagTableModel Axis / Quick A / Quick B columns; CMake + empty tests | O | — | headers, stubs, CMake | Builds, existing tests pass |
+| T101 | Model value + fit RMS numerics; AnalysisCsv fit columns; tests | H | T100 | StepAnalysis.cpp, AnalysisCsv.cpp, their tests | Tests pass |
+| T102 | Tag table Axis / Quick A / Quick B columns (+ delegates); ProjectIO keys `axis`, `quickA`, `quickB`, `showModel`, `guideLines`; tests | H | T100 | TagTableModel.cpp, TagTableWidget.cpp, ProjectIO.cpp, tests | Tests pass |
+| T103 | SessionIO: save/load project + recording + cursors (compressed float64 columns, NaN kept, 72 000 rows × 20 tags round-trip < 1 s); tests | S | T100 | SessionIO.cpp, tests/tst_sessionio.cpp | Tests pass |
+| T104 | ClipboardCopy: table/selection → TSV; Ctrl+C helper; tests | H | T100 | ClipboardCopy.cpp, tests/tst_clipboard.cpp | Tests pass |
+| T105 | TrendPlot right Y axis: curves per tag axis, separate auto-scale/Fit Y, unit titles, right axis hidden when unused; tests | S | T100 | TrendPlot.cpp, tests | Tests pass |
+| T106 | AnalysisView: model curve, Fit RMS column, guide-line plot item, markers/curves on the tag's axis, Ctrl+C + Copy results; tests | S | T101, T104, T105 | AnalysisView.cpp, tests/tst_analysisview.cpp | Tests pass |
+| T107 | QuickWritePanel dock + WriteController quick writes with "Don't ask again this session"; tests | S | T100 | QuickWritePanel.cpp, WriteController.cpp, tests | Tests pass |
+| T108 | Wiring: Save/Open session (offline view, Connect → continue/new prompt with time offset + NaN gap row), Quick write dock + Options toggle, modified/unsaved prompts; integration test: record → save session → reopen → same analysis results | S | T101–T107 | MainWindow.cpp, AppController.cpp, tst_integration | All tests pass |
+| T109 | Docs + demo: USER_GUIDE (sessions, axis, quick writes, model curve, guides, copy), README, demo.mbproj (Setpoint quick A 0 / B 1000, Setpoint on the right axis) | H | T108 | docs, README, examples | Reviewed |
+| T110 | Review, version 1.2.0, installer; GitHub release only after the user confirms | O | all | | User confirmed |
+
+Parallel groups: T101–T105 and T107 after T100; T106 after T101/T104/T105; T108 after the rest; T109 after T108.
+
 ## Status and remaining work
 
 _Last updated: 2026-10-09. Update this section whenever a task is merged._
@@ -181,7 +199,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** planning v1.2 (user picked suggestions 2, 3, 4, 5, 7, 8 — see Wave 9 once written). **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
+**In progress:** Wave 9 (v1.2) planned; T100 contracts next, waiting for the user to say start. **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).

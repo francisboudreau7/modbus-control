@@ -128,3 +128,17 @@ and ask for any percentages between them.
 | Persistence | Analysis settings saved in `.mbproj` (top-level `"analysis"` object, optional). Cursor positions are not saved. |
 | Export | "Export results (CSV)…" in the Analysis tab and the Export menu. The graph image export uses the visible tab's plot; on the Analysis tab the setpoint markers are included and the readout is the results summary. |
 | Test server | The `lag` signal gets an optional dead time (`deadTimeS`, default 1 s on IR 10), so a step on HR 100 gives a textbook first-order-plus-dead-time response. |
+
+## v1.2 user-experience features (planned on request)
+
+Chosen from the post-1.1 suggestions (numbers refer to that list): 2 model curve, 3 guide lines,
+4 sessions, 5 clipboard, 7 second Y axis, 8 quick writes.
+
+| # | Feature | Decisions |
+|---|---|---|
+| 2 | Model curve + fit error | Analysis "Model" group checkbox **Show model curve** (`AnalysisSettings::showModel`, default off). Draws y(t) = y0 for t ≤ t_step + L, else y0 + ΔPV·(1 − e^−(t − t_step − L)/T), dashed, tag colour, from C1 to C2, only when K-independent L and T are valid. Model table gains **Fit RMS** (RMS of raw − model over the rows in [C1, C2]) shown as value and % of \|ΔPV\|. Included in image export and results CSV (new columns `fit_rms`, `fit_rms_percent`). |
+| 3 | Guide lines | Checkbox **Guide lines** under Setpoints (`AnalysisSettings::guideLines`, default on). For every found setpoint: a dashed vertical line from the marker down to the bottom of the canvas and a dashed horizontal line from the marker left to the left edge of the canvas (a custom QwtPlotItem, so the lines follow zoom/pan). Thin, tag colour, semi-transparent. |
+| 4 | Sessions | New `.mbsession` file: the project + the recording + both tabs' cursors. File > **Save session…** / **Open session…**. Opening disconnects and shows the data offline; the Analysis works as usual. Recording stored compactly (float64 columns, qCompress, base64 in JSON). On Connect with loaded data: ask **Continue this recording** (new samples appended after a NaN gap, time continues from the loaded start time) or **Start a new recording**. The unsaved-changes prompt also covers an unsaved recording only when a session was opened (live recordings stay as today). |
+| 5 | Clipboard | Ctrl+C on the Analysis Setpoints and Model tables copies the selected cells, or the whole table with headers when nothing is selected, as tab-separated text. A **Copy results** button copies both tables (blank line between). |
+| 7 | Second Y axis | Tag-table column **Axis** (Left/Right, `Tag::axis`, JSON `"axis": "left"\|"right"`, default left). Both tabs' TrendPlots attach curves to their axis; each axis auto-scales separately; axis titles list the units of their tags; the right axis is hidden when unused. Analysis markers, guide lines and model curves use their tag's axis. |
+| 8 | Quick writes | Tag-table columns **Quick A** / **Quick B** (scaled values, empty = none; `Tag::quickA/quickB`, JSON `"quickA"`/`"quickB"`, only meaningful for writable tags). New dock **Quick write**: one row per writable tag with A or B set: name, live value, buttons "A: <value>" and "B: <value>". Click → WriteController writes. Confirmation dialog has **Don't ask again this session**; Options menu **Confirm quick writes** (checked by default each launch) re-enables it. Normal table edits always confirm. |
