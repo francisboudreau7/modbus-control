@@ -30,6 +30,25 @@ bool parseDouble(const QVariant &v, double &out)
     return ok && std::isfinite(out);
 }
 
+// Tableau 10. New tags take the first colour no existing tag uses.
+const char *const kPalette[] = {"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                                "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"};
+constexpr int kPaletteSize = int(sizeof(kPalette) / sizeof(kPalette[0]));
+
+QString nextPaletteColor(const QList<Tag> &existing)
+{
+    for (const char *candidate : kPalette) {
+        const QString color = QLatin1String(candidate);
+        const bool used = std::any_of(existing.cbegin(), existing.cend(), [&](const Tag &t) {
+            return t.color.compare(color, Qt::CaseInsensitive) == 0;
+        });
+        if (!used)
+            return color;
+    }
+    // All used: cycle.
+    return QLatin1String(kPalette[existing.size() % kPaletteSize]);
+}
+
 } // namespace
 
 TagTableModel::TagTableModel(QObject *parent) : QAbstractTableModel(parent) {}
@@ -305,6 +324,8 @@ int TagTableModel::addTag(const Tag &prototype)
         t.area = last.area;
         t.address = last.address < 65535 ? quint16(last.address + 1) : quint16(65535);
     }
+    if (t.color.compare(Tag().color, Qt::CaseInsensitive) == 0)
+        t.color = nextPaletteColor(m_tags);
     t.id = m_nextId++;
     if (t.name.trimmed().isEmpty())
         t.name = QStringLiteral("Tag %1").arg(t.id);

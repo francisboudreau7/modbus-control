@@ -315,6 +315,33 @@ private slots:
         QCOMPARE(m.tags().last().id, TagId(6));
     }
 
+    void newTagsGetDistinctPaletteColours()
+    {
+        const QStringList palette = {"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                                     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"};
+        TagTableModel m;
+        for (int i = 0; i < 10; ++i)
+            QCOMPARE(m.tagAt(m.addTag()).color, palette.at(i));
+
+        // All used: cycles.
+        QCOMPARE(m.tagAt(m.addTag()).color, palette.at(0));
+
+        // A freed colour is reused first.
+        TagTableModel m2;
+        for (int i = 0; i < 3; ++i)
+            m2.addTag();
+        QVERIFY(m2.removeRows(1, 1));
+        QCOMPARE(m2.tagAt(m2.addTag()).color, palette.at(1));
+
+        // An explicit colour is kept; duplicates keep the source colour.
+        Tag proto;
+        proto.color = "#123456";
+        const int r = m2.addTag(proto);
+        QCOMPARE(m2.tagAt(r).color, QString("#123456"));
+        const int d = m2.duplicateTag(r);
+        QCOMPARE(m2.tagAt(d).color, QString("#123456"));
+    }
+
     void updateSamplesSignals()
     {
         TagTableModel m;
