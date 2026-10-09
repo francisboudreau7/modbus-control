@@ -24,7 +24,11 @@ struct AnalysisSettings {
     QList<double> percents{0.0, 63.2};
     ReferenceMode reference = ReferenceMode::CursorValue;
     double referenceWindowS = 1.0; ///< W for WindowMean, in (0, 3600]
-    double smoothingS = 0.0;       ///< S: centred moving-average width in [0, 3600]; 0 = off
+    /// S: centred moving-average width in [0, 3600]; 0 = off. A centred average starts
+    /// rising up to S/2 before the real response, so low percentages (0 %) come out early by
+    /// up to S/2 and L is biased low; with smoothing, prefer a model "From %" above 0 (e.g. 10)
+    /// or keep S small compared with L.
+    double smoothingS = 0.0;
     /// Setpoints a < b used for the model, both in [0, 100).
     double modelPercentA = 0.0;
     double modelPercentB = 63.2;
@@ -108,12 +112,13 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
 /// Full analysis of `pvTag` between the cursors t1 and t2 (any order):
 /// - y0/y100 from referenceLevel() at t1/t2; the rows of [t1, t2] are smoothed with
 ///   settings.smoothingS, then findCrossingTime() runs for every percent.
-/// - ΔCO: analyzeStepInput() when settings.deltaCoTagId != 0 and != pvTag, else
-///   manualDeltaCo when nonzero. stepTime as documented in StepResult.
+/// - ΔCO: analyzeStepInput() when settings.deltaCoTagId != 0 and != pvTag (if that gives
+///   nullopt there is no ΔCO; it does not fall back to manualDeltaCo); when deltaCoTagId == 0,
+///   manualDeltaCo if nonzero. stepTime as documented in StepResult.
 /// - Model (first-order plus dead time) from the crossings ta, tb of modelPercentA/B
 ///   (a, b as fractions): T = (tb - ta) / (ln(1 - a) - ln(1 - b)),
-///   L = ta - T * (-ln(1 - a)) - stepTime; both nullopt when either crossing is missing
-///   or a >= b. K = deltaPv / deltaCo when deltaCo is present.
+///   L = ta - T * (-ln(1 - a)) - stepTime; both nullopt when either crossing is missing,
+///   a >= b, or T <= 0. K = deltaPv / deltaCo when deltaCo is present.
 StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double t2,
                        const AnalysisSettings &settings);
 
