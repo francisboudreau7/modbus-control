@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -257,6 +258,11 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
         m_placeButton->setChecked(on);
     });
     connect(clearButton, &QPushButton::clicked, m_cursors, &PlotCursors::clear);
+    // Esc cancels placing wherever the focus is inside the trend (the cursors' own key
+    // handling needs the plot to have focus).
+    auto *escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    escape->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(escape, &QShortcut::activated, m_cursors, [this] { m_cursors->setPlacing(false); });
     connect(m_cursors, &PlotCursors::interacted, this, [this] { setPaused(true); });
     connect(fitButton, &QPushButton::clicked, this, [this] {
         m_autoY = true;
