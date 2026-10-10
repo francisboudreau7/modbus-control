@@ -7,6 +7,7 @@
 #include "TagCodec.h"
 
 #include <QElapsedTimer>
+#include <QFile>
 #include <QMetaObject>
 #include <QProcess>
 #include <QRegularExpression>
@@ -183,6 +184,38 @@ private:
     QThread m_thread;
     PollWorker *m_worker = nullptr;
 };
+
+/// Result of running modbus_test_server to completion (for CLI tests that exit on their own).
+struct CliRun
+{
+    bool finished = false;
+    int exitCode = -1;
+    QString out;
+    QString err;
+};
+
+CliRun runServerCli(const QStringList &args)
+{
+    QProcess p;
+    p.start(QStringLiteral(MC_TEST_SERVER_PATH), args);
+    CliRun r;
+    if (!p.waitForStarted(10000) || !p.waitForFinished(10000)) {
+        p.kill();
+        p.waitForFinished(5000);
+        return r;
+    }
+    r.finished = true;
+    r.exitCode = p.exitCode();
+    r.out = QString::fromLocal8Bit(p.readAllStandardOutput());
+    r.err = QString::fromLocal8Bit(p.readAllStandardError());
+    return r;
+}
+
+bool writeTextFile(const QString &path, const QByteArray &content)
+{
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly) && f.write(content) == content.size();
+}
 
 } // namespace
 
@@ -778,6 +811,271 @@ private slots:
         QList<quint16> v;
         QVERIFY(c.readRegisters(Area::HoldingRegister, 199, 1, v).ok());
         QCOMPARE(v.value(0), quint16(0x1234));
+    }
+
+    // ---- ModbusConnection error paths ------------------------------------------------------
+
+    void conn_notConnectedOperations()
+    {
+        ModbusConnection c;
+        QVERIFY(!c.isOpen());
+        QList<quint16> v;
+        QCOMPARE(c.readRegisters(Area::HoldingRegister, 0, 1, v).error, ModbusError::NotConnected);
+        QCOMPARE(c.readRegisters(Area::InputRegister, 0, 1, v).error, ModbusError::NotConnected);
+        QCOMPARE(c.writeSingle(0, 1).error, ModbusError::NotConnected);
+        QCOMPARE(c.writeMultiple(0, {1, 2}).error, ModbusError::NotConnected);
+        QCOMPARE(c.writeMultiple(0, {}).error, ModbusError::NotConnected); // checked before the count
+        c.flush(); // no-op when closed
+        c.close();
+        QVERIFY(!c.isOpen());
+    }
+
+    void conn_openRejectsBadSettings()
+    {
+        // Validation happens before any socket is created: no server needed.
+        auto expectInvalid = [](ConnectionSettings s, const char *what) {
+            ModbusConnection c;
+            const ModbusResult r = c.open(s);
+            QVERIFY2(r.error == ModbusError::InvalidArgument, what);
+            QVERIFY(!c.isOpen());
+        };
+        ConnectionSettings s = settingsFor(9);
+        s.host = QStringLiteral("   ");
+        expectInvalid(s, "blank host");
+        s.host = QStringLiteral("example.invalid");
+        expectInvalid(s, "host name that is not an IPv4 literal");
+        s.host = QStringLiteral("256.1.1.1");
+        expectInvalid(s, "IPv4 octet above 255");
+        s.host = QStringLiteral("10.0.0");
+        expectInvalid(s, "three-part address");
+        s = settingsFor(9);
+        s.port = 0;
+        expectInvalid(s, "port 0");
+        s = settingsFor(9);
+        s.unitId = 248;
+        expectInvalid(s, "unit id 248");
+        s = settingsFor(9);
+        s.timeoutMs = 0;
+        expectInvalid(s, "timeout 0");
+    }
+
+    void conn_openAcceptsLocalhostAndUnit255()
+    {
+        QVERIFY(m_server->start());
+        ConnectionSettings s = settingsFor(m_server->port());
+        s.host = QStringLiteral("LocalHost"); // mapped to 127.0.0.1, case-insensitive
+        ModbusConnection c;
+        QVERIFY2(c.open(s).ok(), "localhost should be accepted");
+        c.close();
+        s.unitId = 255; // accepted for TCP
+        QVERIFY2(c.open(s).ok(), "unit id 255 should be accepted");
+    }
+
+    void conn_invalidRangeArguments()
+    {
+        QVERIFY(m_server->start());
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QCOMPARE(c.readRegisters(Area::HoldingRegister, 0, 0, v).error, ModbusError::InvalidArgument);
+        QCOMPARE(c.readRegisters(Area::HoldingRegister, 0, 126, v).error, ModbusError::InvalidArgument);
+        QCOMPARE(c.readRegisters(Area::InputRegister, 65535, 2, v).error, ModbusError::InvalidArgument);
+        QCOMPARE(c.writeMultiple(0, {}).error, ModbusError::InvalidArgument);
+
+        QList<quint16> tooMany(124, 7);
+        QCOMPARE(c.writeMultiple(0, tooMany).error, ModbusError::InvalidArgument);
+        QCOMPARE(c.writeMultiple(65535, {1, 2}).error, ModbusError::InvalidArgument);
+
+        // Limits themselves are accepted: 125 registers read, 123 written.
+        QList<quint16> maxRead;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 0, 125, maxRead).ok());
+        QCOMPARE(maxRead.size(), 125);
+        QVERIFY(c.writeMultiple(0, QList<quint16>(123, 9)).ok());
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 122, 1, v).ok());
+        QCOMPARE(v.value(0), quint16(9));
+    }
+
+    void conn_serverStoppedFailsRead()
+    {
+        QVERIFY(m_server->start());
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port(), 500)).ok());
+        m_server->stop();
+        QList<quint16> v;
+        const ModbusResult r = c.readRegisters(Area::InputRegister, 0, 1, v);
+        qInfo() << "read after server stop:" << int(r.error) << r.message;
+        QVERIFY(!r.ok());
+        QVERIFY2(r.error == ModbusError::ConnectionLost || r.error == ModbusError::Timeout,
+                 qPrintable(r.message));
+    }
+
+    // ---- modbus_test_server command line (server/main.cpp) ---------------------------------
+
+    void server_help()
+    {
+        const CliRun r = runServerCli({QStringLiteral("--help")});
+        QVERIFY(r.finished);
+        QCOMPARE(r.exitCode, 0);
+        for (const char *opt : {"--log-writes", "--config", "--delay", "--drop", "--verbose", "--port"})
+            QVERIFY2(r.out.contains(QLatin1String(opt)), opt);
+    }
+
+    void server_version()
+    {
+        const CliRun r = runServerCli({QStringLiteral("--version")});
+        QVERIFY(r.finished);
+        QCOMPARE(r.exitCode, 0);
+        QVERIFY2(QRegularExpression(QStringLiteral("^modbus_test_server \\d+\\.\\d+\\.\\d+ \\(libmodbus "))
+                     .match(r.out)
+                     .hasMatch(),
+                 qPrintable(r.out));
+    }
+
+    void server_invalidOptions_data()
+    {
+        QTest::addColumn<QStringList>("args");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("port above 65535")
+            << QStringList{QStringLiteral("--port"), QStringLiteral("70000")}
+            << QStringLiteral("--port must be 0..65535");
+        QTest::newRow("port not a number")
+            << QStringList{QStringLiteral("--port"), QStringLiteral("abc")}
+            << QStringLiteral("--port must be 0..65535");
+        QTest::newRow("drop above 100")
+            << QStringList{QStringLiteral("--drop"), QStringLiteral("150")}
+            << QStringLiteral("--drop must be 0..100");
+        QTest::newRow("negative delay") << QStringList{QStringLiteral("--delay"), QStringLiteral("-1")}
+                                        << QStringLiteral("delay");
+        QTest::newRow("tick zero")
+            << QStringList{QStringLiteral("--tick"), QStringLiteral("0")}
+            << QStringLiteral("--tick must be 1..60000 ms");
+        QTest::newRow("unit above 247")
+            << QStringList{QStringLiteral("--unit"), QStringLiteral("300")}
+            << QStringLiteral("--unit must be 0..247");
+        QTest::newRow("unknown option") << QStringList{QStringLiteral("--bogus")} << QStringLiteral("bogus");
+        QTest::newRow("option without value") << QStringList{QStringLiteral("--tick")} << QStringLiteral("tick");
+        QTest::newRow("positional argument")
+            << QStringList{QStringLiteral("extra")}
+            << QStringLiteral("unexpected argument 'extra'");
+    }
+
+    void server_invalidOptions()
+    {
+        QFETCH(QStringList, args);
+        QFETCH(QString, expected);
+        const CliRun r = runServerCli(args);
+        QVERIFY(r.finished);
+        QCOMPARE(r.exitCode, 2);
+        QVERIFY2(r.err.startsWith(QStringLiteral("modbus_test_server:")), qPrintable(r.err));
+        QVERIFY2(r.err.contains(expected), qPrintable(r.err));
+    }
+
+    void server_configErrors_data()
+    {
+        QTest::addColumn<QByteArray>("json");
+        QTest::addColumn<bool>("missingFile");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("missing file") << QByteArray() << true << QStringLiteral("Cannot open");
+        QTest::newRow("invalid JSON") << QByteArray("{ \"tickMs\": ") << false
+                                      << QStringLiteral("Invalid JSON");
+        QTest::newRow("top-level array") << QByteArray("[1, 2]") << false
+                                         << QStringLiteral("must be an object");
+        QTest::newRow("value out of range") << QByteArray("{\"tickMs\": 0}") << false
+                                            << QStringLiteral("\"tickMs\"");
+    }
+
+    void server_configErrors()
+    {
+        QFETCH(QByteArray, json);
+        QFETCH(bool, missingFile);
+        QFETCH(QString, expected);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(missingFile ? QStringLiteral("nope.json") : QStringLiteral("server.json"));
+        if (!missingFile)
+            QVERIFY(writeTextFile(path, json));
+        const CliRun r = runServerCli({QStringLiteral("--config"), path});
+        QVERIFY(r.finished);
+        QCOMPARE(r.exitCode, 2);
+        QVERIFY2(r.err.contains(QStringLiteral("invalid config: ")), qPrintable(r.err));
+        QVERIFY2(r.err.contains(expected), qPrintable(r.err));
+    }
+
+    void server_configFileApplied()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("server.json"));
+        QVERIFY(writeTextFile(path, R"({
+  "unitId": 3, "holdingCount": 40, "inputCount": 12, "tickMs": 100,
+  "signals": [
+    {"input": 0, "kind": "constant", "amplitude": 77, "offset": 0},
+    {"input": 4, "kind": "counter", "format": "int32", "byteOrder": "CDAB"}
+  ]
+})"));
+        QVERIFY(m_server->start({QStringLiteral("--config"), path}));
+        const QString banner = m_server->log();
+        QVERIFY2(banner.contains(QStringLiteral("unit 3, holding registers 0..39 (read/write), input registers 0..11, tick 100 ms")),
+                 qPrintable(banner));
+        QVERIFY(banner.contains(QStringLiteral("IR0: constant")));
+        QVERIFY(banner.contains(QStringLiteral("IR4-5: counter (int32 CDAB)")));
+
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port(), 1000, 3)).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 39, 1, v).ok());
+        const ModbusResult beyond = c.readRegisters(Area::HoldingRegister, 40, 1, v);
+        QCOMPARE(beyond.error, ModbusError::Exception);
+        QCOMPARE(beyond.exceptionCode, 2);
+        QVERIFY(c.readRegisters(Area::InputRegister, 4, 2, v).ok());
+        QCOMPARE(c.readRegisters(Area::InputRegister, 12, 1, v).exceptionCode, 2);
+    }
+
+    void server_verboseLogsConnection()
+    {
+        QVERIFY(m_server->start({QStringLiteral("-v")}));
+        {
+            ModbusConnection c;
+            QVERIFY(c.open(settingsFor(m_server->port())).ok());
+            QList<quint16> v;
+            QVERIFY(c.readRegisters(Area::InputRegister, 0, 2, v).ok());
+            c.close();
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("disconnected (")), 3000);
+        const QString log = m_server->log();
+        QVERIFY2(log.contains(QStringLiteral("] connected")), qPrintable(log));
+        QVERIFY2(log.contains(QStringLiteral("unit=1 fc=0x04 read addr=0 count=2")), qPrintable(log));
+    }
+
+    void server_logWritesShowsValues()
+    {
+        QVERIFY(m_server->start({QStringLiteral("--log-writes")}));
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        // 1.0f is 0x3F800000: ABCD = 0x3F80,0x0000.
+        QVERIFY(c.writeMultiple(30, {0x3F80, 0x0000}).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 30, 2, v).ok());
+        QVERIFY(c.writeSingle(40, 0x3F80).ok());
+        QVERIFY(c.writeSingle(41, 0x0000).ok());
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("FC06 pair")), 3000);
+        const QString log = m_server->log();
+        QVERIFY2(log.contains(QStringLiteral("fc=0x10 write addr=30 count=2 values=0x3F80,0x0000")), qPrintable(log));
+        QVERIFY2(log.contains(QStringLiteral("float ABCD=1 ")), qPrintable(log));
+        QVERIFY2(log.contains(QStringLiteral("FC06 pair addr=40-41 values=0x3F80,0x0000")), qPrintable(log));
+        QVERIFY2(!log.contains(QStringLiteral("read addr=")), "reads must not be logged with --log-writes");
+        QVERIFY2(!log.contains(QStringLiteral("] connected")), "connections are logged only with -v");
+    }
+
+    void server_dropInjectionLogged()
+    {
+        QVERIFY(m_server->start({QStringLiteral("-v"), QStringLiteral("--drop"), QStringLiteral("100")}));
+        QVERIFY(m_server->log().contains(QStringLiteral("fault injection: delay 0 ms, drop 100%")));
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port(), 500)).ok());
+        QList<quint16> v;
+        QVERIFY(!c.readRegisters(Area::InputRegister, 0, 1, v).ok());
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("fault injection: dropped")), 3000);
     }
 
 private:
