@@ -11,8 +11,10 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
+#include <QPushButton>
 
 #include <algorithm>
+#include <cmath>
 
 namespace mb {
 
@@ -51,6 +53,39 @@ QString valueText(double v)
 QString tagLabel(const Tag &tag, int base)
 {
     return QStringLiteral("%1 (HR %2)").arg(tag.name).arg(tag.address + base);
+}
+
+QString unitSuffix(const Tag &tag)
+{
+    return tag.unit.isEmpty() ? QString() : QStringLiteral(" ") + tag.unit;
+}
+
+/// "0 to 100", "at least 0" or "at most 100" (no unit); empty when no limit is set.
+QString limitsText(const Tag &tag)
+{
+    if (tag.writeMin && tag.writeMax)
+        return QObject::tr("%1 to %2").arg(valueText(*tag.writeMin), valueText(*tag.writeMax));
+    if (tag.writeMin)
+        return QObject::tr("at least %1").arg(valueText(*tag.writeMin));
+    if (tag.writeMax)
+        return QObject::tr("at most %1").arg(valueText(*tag.writeMax));
+    return QString();
+}
+
+/// "'Setpoint' accepts 0 to 100 °C; 150 was not written."
+QString limitViolationText(const Tag &tag, double value)
+{
+    return QObject::tr("'%1' accepts %2%3; %4 was not written.")
+        .arg(tag.name, limitsText(tag), unitSuffix(tag), valueText(value));
+}
+
+/// Typical of a wrong byte order or register: not finite, huge or tiny non-zero.
+bool implausibleFloat(double x)
+{
+    if (!std::isfinite(x))
+        return true;
+    const double a = std::abs(x);
+    return a > 1e9 || (a > 0.0 && a < 1e-6);
 }
 
 /// One line edit per tag; values are parsed with the C locale.
@@ -120,6 +155,14 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
     m_warn = [this](const QString &text) {
         QMessageBox::warning(m_dialogParent, tr("Write"), text);
     };
+    m_warnImplausible = [this](const QString &text) {
+        QMessageBox box(QMessageBox::Warning, tr("Write"), text, QMessageBox::NoButton, m_dialogParent);
+        QPushButton *anyway = box.addButton(tr("Write anyway"), QMessageBox::AcceptRole);
+        QPushButton *cancel = box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(cancel);
+        box.exec();
+        return box.clickedButton() == anyway;
+    };
     m_askValues = [this](const QList<Tag> &tags,
                          const QList<double> &current) -> std::optional<QList<double>> {
         ValuesDialog dlg(tags, current, m_model->addressBase(), m_dialogParent);
@@ -151,6 +194,23 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     if (!tag.isWritable())
         return;
 
+    // 2. write limits
+    if (std::isfinite(scaledValue) && !tag.withinWriteLimits(scaledValue)) {
+        m_warn(limitViolationText(tag, scaledValue));
+        return;
+    }
+
+    // 3. 32-bit tags need a valid reading
+    const bool wide = registerCount(tag.type) == 2;
+    const std::optional<double> current = m_model->goodValue(id);
+    if (wide && !current) {
+        m_warn(tr("No valid reading of '%1' yet. Check the connection, register number and byte "
+                  "order before writing.")
+                   .arg(tag.name));
+        return;
+    }
+
+    // 4. encodable
     const auto raw = encodeRegisters(tag, scaledValue);
     if (!raw) {
         m_warn(tr("Value %1 is out of range for %2 (%3, gain %4, offset %5).")
@@ -159,14 +219,28 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     }
 
-    const QString unit = tag.unit.isEmpty() ? QString() : QStringLiteral(" ") + tag.unit;
-    const QString typeInfo = registerCount(tag.type) == 2
-        ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
-        : QString();
-    const QString question = tr("Write %1%2 (raw %3) to %4 '%5'%6?")
-                                 .arg(valueText(scaledValue), unit, rawText(tag, *raw),
-                                      registerRange(tag, base), tag.name, typeInfo);
-    if (quick) {
+    // 5. implausible current float
+    if (tag.type == ValueType::Float32 && current && implausibleFloat(*current)) {
+        if (!m_warnImplausible(
+                tr("The current value of '%1' is %2, which is implausible. This usually means a "
+                   "wrong byte order or register number, so the value you write may also be "
+                   "misinterpreted by the device.\n\nWrite anyway?")
+                    .arg(tag.name, valueText(*current))))
+            return;
+    }
+
+    const QString unit = unitSuffix(tag);
+    const QString typeInfo = wide ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
+                                  : QString();
+    QString question = tr("Write %1%2 (raw %3) to %4 '%5'%6?")
+                           .arg(valueText(scaledValue), unit, rawText(tag, *raw),
+                                registerRange(tag, base), tag.name, typeInfo);
+    question += tr("\nCurrent value: %1")
+                    .arg(current ? valueText(*current) + unit : tr("unknown"));
+    const QString limits = limitsText(tag);
+    if (!limits.isEmpty())
+        question += tr("\nLimits: %1%2").arg(limits, unit);
+    if (quick && !wide) {
         if (m_quickConfirm) {
             const QuickAnswer answer = m_quickConfirmPrompt(question);
             if (!answer.confirmed)
@@ -243,6 +317,18 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         return;
     }
 
+    // 32-bit tags need a valid reading.
+    QStringList noReading;
+    for (const Tag &tag : tags)
+        if (registerCount(tag.type) == 2 && !m_model->goodValue(tag.id))
+            noReading.append(tag.name);
+    if (!noReading.isEmpty()) {
+        m_warn(tr("No valid reading of %1 yet. Check the connection, register number and byte "
+                  "order before writing.")
+                   .arg(noReading.join(QStringLiteral(", "))));
+        return;
+    }
+
     // Prefill with the current scaled values (Value column), else decode of 0.
     QList<double> current;
     for (const Tag &tag : tags) {
@@ -261,6 +347,16 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     if (!values || values->size() != tags.size())
         return;
 
+    // Write limits (all violations in one warning).
+    QStringList outside;
+    for (qsizetype i = 0; i < tags.size(); ++i)
+        if (std::isfinite(values->at(i)) && !tags.at(i).withinWriteLimits(values->at(i)))
+            outside.append(limitViolationText(tags.at(i), values->at(i)));
+    if (!outside.isEmpty()) {
+        m_warn(tr("Values outside the write limits:\n%1").arg(outside.join(QLatin1Char('\n'))));
+        return;
+    }
+
     QList<quint16> raws;
     QStringList bad;
     for (qsizetype i = 0; i < tags.size(); ++i) {
@@ -276,6 +372,22 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         m_warn(tr("Out of range values:\n%1").arg(bad.join(QLatin1Char('\n'))));
         return;
     }
+
+    QStringList implausible;
+    for (const Tag &tag : tags) {
+        if (tag.type != ValueType::Float32)
+            continue;
+        const auto cur = m_model->goodValue(tag.id);
+        if (cur && implausibleFloat(*cur))
+            implausible.append(QStringLiteral("%1 = %2").arg(tag.name, valueText(*cur)));
+    }
+    if (!implausible.isEmpty()
+        && !m_warnImplausible(
+            tr("The current value of these float tags is implausible. This usually means a wrong "
+               "byte order or register number, so the values you write may also be misinterpreted "
+               "by the device:\n%1\n\nWrite anyway?")
+                .arg(implausible.join(QLatin1Char('\n')))))
+        return;
 
     const quint16 first = tags.first().address;
     const int last = tags.last().address + registerCount(tags.last().type) - 1;

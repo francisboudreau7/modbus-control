@@ -92,6 +92,8 @@ private:
     std::function<bool(const QString &question)> m_confirm;
     std::function<std::optional<QList<double>>(const QList<Tag> &, const QList<double> &current)> m_askValues;
     std::function<void(const QString &)> m_warn;
+    /// Extra warning for an implausible current float value; true = "Write anyway".
+    std::function<bool(const QString &text)> m_warnImplausible;
 
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
