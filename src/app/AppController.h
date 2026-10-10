@@ -4,14 +4,18 @@
 #include "ProjectIO.h"
 #include "Recorder.h"
 
+#include <QMessageBox>
 #include <QObject>
 #include <QString>
 
 #include <functional>
 #include <optional>
 
+class QDialog;
 class QThread;
 class QTimer;
+
+class TstAppController; // test access to the dialog seams
 
 namespace mb {
 
@@ -45,6 +49,9 @@ class WriteController;
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
+/// Every dialog goes through private seams (m_prompts, m_continuePrompt) whose defaults show
+/// the real dialogs; tests (TstAppController) replace them. QSettings keys are written under
+/// the application's organization/application names (tests use their own).
 class AppController : public QObject
 {
     Q_OBJECT
@@ -57,6 +64,33 @@ public:
     bool openProject(const QString &path);
 
 private:
+    friend class ::TstAppController;
+
+    /// Dialog seams; the constructor installs the real dialogs.
+    struct Prompts {
+        std::function<QMessageBox::StandardButton(const QString &title, const QString &text,
+                                                  QMessageBox::StandardButtons buttons,
+                                                  QMessageBox::StandardButton defaultButton)>
+            question;
+        std::function<void(const QString &title, const QString &text)> warning;
+        /// Returns the chosen path or an empty string (cancelled).
+        std::function<QString(const QString &caption, const QString &path, const QString &filter)>
+            saveFileName;
+        std::function<QString(const QString &caption, const QString &dir, const QString &filter)>
+            openFileName;
+        /// Runs a modal dialog (the export dialogs).
+        std::function<void(QDialog &dialog)> exec;
+    };
+    Prompts m_prompts;
+    QMessageBox::StandardButton ask(const QString &title, const QString &text,
+                                    QMessageBox::StandardButtons buttons = QMessageBox::Yes
+                                                                           | QMessageBox::No,
+                                    QMessageBox::StandardButton defaultButton = QMessageBox::NoButton);
+    void warn(const QString &title, const QString &text);
+    QString saveFileName(const QString &caption, const QString &path, const QString &filter);
+    QString openFileName(const QString &caption, const QString &dir, const QString &filter);
+    void runDialog(QDialog &dialog);
+
     void wireConnection();
     void wireData();
     void wireTags();

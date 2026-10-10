@@ -11,7 +11,8 @@
 #include <optional>
 
 class QWidget;
-class TstQuickWrite; // test access to the prompt hooks
+class TstQuickWrite;    // test access to the prompt hooks
+class TstAppController; // idem
 
 namespace mb {
 
@@ -87,6 +88,7 @@ signals:
 
 private:
     friend class ::TstQuickWrite;
+    friend class ::TstAppController;
 
     /// Answer of the quick-write confirmation dialog.
     struct QuickAnswer {

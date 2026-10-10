@@ -224,6 +224,22 @@ columns marks the project modified. Only the tag table (not the Cursors/Analysis
 | T132 | Header context menu in TagTableWidget (checkable columns, Name locked, Show all, Compact view), apply/report hidden columns; offscreen tests | H | T130 | TagTableWidget.cpp, tests/tst_tagtablemodel.cpp | Tests pass |
 | T133 | Wiring in AppController (apply on New/Open/session load, save, modified flag), examples, USER_GUIDE, version 1.2.2, installer; release after the user confirms | O | T131, T132 | AppController, examples, docs, version files | User confirmed |
 
+### Wave 12 — test coverage (requested 2026-10-10; release of 1.2.2 held until done)
+
+Baseline with `tools/coverage.ps1` (OpenCppCoverage 0.9.9.0): 80.2 % of 6 208 lines in src\ and
+server\. Gaps: ExportCsvDialog 0 %, AppController 32 %, PlotCursors 47 %, ServerLoop 67 %, server
+main 67 %, WriteController 72 % (mostly real dialogs), TagTableWidget 73 %, ModbusConnection 78 %.
+Target: ~90 % overall, AppController >= 75 %.
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| T140 | Dialog seams in AppController (m_prompts: question, warning, saveFileName, openFileName, exec; friend TstAppController), tests registered (tst_appcontroller, tst_exportcsvdialog, tst_plotcursors stubs) | O | — | AppController, WriteController private, tests/CMakeLists | Builds, tests pass |
+| T141 | tst_appcontroller: New/Open/Save project + modified flag, session open shows plots, Continue/Start new with the test server, FC06 button reconnect, exports, hidden columns | S | T140 | tests/tst_appcontroller.cpp | Passes 3x; AppController >= 75 % |
+| T142 | tst_exportcsvdialog | H | T140 | tests/tst_exportcsvdialog.cpp | Passes |
+| T143 | tst_plotcursors: place/drag/Esc with in-process QTest mouse/key events | H | T140 | tests/tst_plotcursors.cpp | Passes |
+| T144 | Server CLI errors, verbose and fault-injection output, TagTableWidget editors, ModbusConnection error paths | H | T140 | tests/tst_integration.cpp, tests/tst_tagtablemodel.cpp | Passes |
+| T145 | Measure again, review, release 1.2.2 after the user confirms | O | all | | User confirmed |
+
 ## Status and remaining work
 
 _Last updated: 2026-10-09. Update this section whenever a task is merged or a release ships._
@@ -236,7 +252,7 @@ _Last updated: 2026-10-09. Update this section whenever a task is merged or a re
 - **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
   `..\modbus-control-wt` folder was removed; recreate it for the next wave).
 - **Tests:** 21 ctest targets, all passing; zero warnings in our code.
-- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **In progress: Wave 11 done except the release: T130–T133 merged, FC06 button added, version 1.2.2, installer `out/installer/ModbusControl-1.2.2-setup.exe` (sha256 7781af58…4ff) built; publish after the user confirms.** Quick A/B editor fix already on main (6aa6b15).
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **In progress: Wave 11 done except the release: T130–T133 merged, FC06 button added, version 1.2.2, installer built (sha256 7781af58…4ff) but release held: **Wave 12 (test coverage) in progress, T140 merged.** Quick A/B editor fix already on main (6aa6b15).
 - **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
   server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
   installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,

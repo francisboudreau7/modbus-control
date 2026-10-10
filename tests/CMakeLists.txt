@@ -44,13 +44,25 @@ mc_add_qtest(tst_requestlog LIBS mbsim)
 
 # UI tests run on the offscreen platform plugin from the Qt install.
 foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage tst_analysisview
-             tst_clipboard tst_quickwrite tst_trendplot)
+             tst_clipboard tst_quickwrite tst_trendplot
+             tst_exportcsvdialog tst_plotcursors)
   mc_add_qtest(${name} LIBS mbui)
   set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
     "QT_QPA_PLATFORM=set:offscreen"
     "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts"
     "QT_PLUGIN_PATH=set:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}")
 endforeach()
+
+# AppController + MainWindow, offscreen, with the real test server.
+mc_add_qtest(tst_appcontroller LIBS mbui)
+set_property(TEST tst_appcontroller APPEND PROPERTY ENVIRONMENT_MODIFICATION
+  "QT_QPA_PLATFORM=set:offscreen"
+  "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts"
+  "QT_PLUGIN_PATH=set:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}")
+target_compile_definitions(tst_appcontroller PRIVATE
+  MC_TEST_SERVER_PATH="$<TARGET_FILE:modbus_test_server>"
+  MC_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+add_dependencies(tst_appcontroller modbus_test_server)
 
 # Integration: starts modbus_test_server and talks to it through mbcore.
 mc_add_qtest(tst_integration LIBS mbcore)

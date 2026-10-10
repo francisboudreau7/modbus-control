@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
+#include <QDialog>
 #include <QDir>
 #include <QHash>
 #include <QSaveFile>
@@ -147,6 +148,23 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_writes = new WriteController(m_window->tagModel(), m_window, this);
 
+    // Dialog seams (tests replace them): the real dialogs.
+    m_prompts.question = [this](const QString &title, const QString &text,
+                                QMessageBox::StandardButtons buttons,
+                                QMessageBox::StandardButton defaultButton) {
+        return QMessageBox::question(m_window, title, text, buttons, defaultButton);
+    };
+    m_prompts.warning = [this](const QString &title, const QString &text) {
+        QMessageBox::warning(m_window, title, text);
+    };
+    m_prompts.saveFileName = [this](const QString &caption, const QString &path, const QString &filter) {
+        return QFileDialog::getSaveFileName(m_window, caption, path, filter);
+    };
+    m_prompts.openFileName = [this](const QString &caption, const QString &dir, const QString &filter) {
+        return QFileDialog::getOpenFileName(m_window, caption, dir, filter);
+    };
+    m_prompts.exec = [](QDialog &dialog) { dialog.exec(); };
+
     wireConnection();
     wireData();
     wireTags();
@@ -262,8 +280,7 @@ void AppController::wireData()
 
     connect(m_window->trendPlot(), &TrendPlot::clearDataRequested, this, [this] {
         if (m_recorder.size() > 0) {
-            const auto answer = QMessageBox::question(
-                m_window, QStringLiteral("Clear data"),
+            const auto answer = ask(QStringLiteral("Clear data"),
                 QStringLiteral("Discard all recorded data? This cannot be undone."));
             if (answer != QMessageBox::Yes)
                 return;
@@ -416,8 +433,7 @@ bool AppController::recordingDirty() const
 bool AppController::maybeSave()
 {
     if (recordingDirty()) {
-        const auto answer = QMessageBox::question(
-            m_window, QStringLiteral("Unsaved changes"),
+        const auto answer = ask(QStringLiteral("Unsaved changes"),
             QStringLiteral("The recording has changed. Save the session?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
         if (answer == QMessageBox::Save)
@@ -426,8 +442,7 @@ bool AppController::maybeSave()
     }
     if (!m_modified)
         return true;
-    const auto answer = QMessageBox::question(
-        m_window, QStringLiteral("Unsaved changes"),
+    const auto answer = ask(QStringLiteral("Unsaved changes"),
         QStringLiteral("The project has unsaved changes. Save them?"),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (answer == QMessageBox::Save)
@@ -482,7 +497,7 @@ bool AppController::saveTo(const QString &path)
 {
     QString error;
     if (!saveProject(path, currentProject(), &error)) {
-        QMessageBox::warning(m_window, QStringLiteral("Save project"),
+        warn(QStringLiteral("Save project"),
                              QStringLiteral("Could not save \"%1\":\n%2").arg(path, error));
         return false;
     }
@@ -504,7 +519,7 @@ bool AppController::save()
 bool AppController::saveAs()
 {
     const QString dir = QSettings().value(QStringLiteral("project/dir")).toString();
-    QString path = QFileDialog::getSaveFileName(m_window, QStringLiteral("Save project as"), dir,
+    QString path = saveFileName(QStringLiteral("Save project as"), dir,
                                                 QStringLiteral("Modbus Control project (*.mbproj)"));
     if (path.isEmpty())
         return false;
@@ -534,7 +549,7 @@ void AppController::openDialog()
     if (!maybeSave())
         return;
     const QString dir = QSettings().value(QStringLiteral("project/dir")).toString();
-    const QString path = QFileDialog::getOpenFileName(m_window, QStringLiteral("Open project"), dir,
+    const QString path = openFileName(QStringLiteral("Open project"), dir,
                                                       QStringLiteral("Modbus Control project (*.mbproj)"));
     if (!path.isEmpty())
         loadFrom(path);
@@ -545,7 +560,7 @@ bool AppController::loadFrom(const QString &path)
     QString error;
     const std::optional<Project> project = loadProject(path, &error);
     if (!project) {
-        QMessageBox::warning(m_window, QStringLiteral("Open project"),
+        warn(QStringLiteral("Open project"),
                              QStringLiteral("Could not open \"%1\":\n%2").arg(path, error));
         return false;
     }
@@ -596,8 +611,7 @@ bool AppController::saveSessionDialog()
         name = QFileInfo(m_projectPath).completeBaseName() + QStringLiteral(".mbsession");
     else if (!m_sessionPath.isEmpty())
         name = QFileInfo(m_sessionPath).completeBaseName() + QStringLiteral(".mbsession");
-    QString path = QFileDialog::getSaveFileName(
-        m_window, QStringLiteral("Save session"), dir.isEmpty() ? name : QDir(dir).filePath(name),
+    QString path = saveFileName(QStringLiteral("Save session"), dir.isEmpty() ? name : QDir(dir).filePath(name),
         QStringLiteral("Modbus Control sessions (*.mbsession)"));
     if (path.isEmpty())
         return false;
@@ -618,7 +632,7 @@ bool AppController::saveSessionDialog()
 
     QString error;
     if (!saveSession(path, currentProject(), m_recorder, cursors, &error)) {
-        QMessageBox::warning(m_window, QStringLiteral("Save session"),
+        warn(QStringLiteral("Save session"),
                              QStringLiteral("Could not save \"%1\":\n%2").arg(path, error));
         return false;
     }
@@ -636,16 +650,14 @@ void AppController::openSessionDialog()
     if (!maybeSave())
         return;
     if (!m_sessionLoaded && m_recorder.size() > 0) {
-        const auto answer = QMessageBox::question(
-            m_window, QStringLiteral("Open session"),
+        const auto answer = ask(QStringLiteral("Open session"),
             QStringLiteral("Opening a session replaces the current recording. Save it as a session first?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
         if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveSessionDialog()))
             return;
     }
     const QString dir = QSettings().value(QStringLiteral("session/dir")).toString();
-    const QString path = QFileDialog::getOpenFileName(
-        m_window, QStringLiteral("Open session"), dir,
+    const QString path = openFileName(QStringLiteral("Open session"), dir,
         QStringLiteral("Modbus Control sessions (*.mbsession);;All files (*)"));
     if (!path.isEmpty())
         loadSessionFile(path);
@@ -658,7 +670,7 @@ bool AppController::loadSessionFile(const QString &path)
     SessionCursors cursors;
     QString error;
     if (!loadSession(path, project, recording, cursors, &error)) {
-        QMessageBox::warning(m_window, QStringLiteral("Open session"),
+        warn(QStringLiteral("Open session"),
                              QStringLiteral("Could not open \"%1\":\n%2").arg(path, error));
         return false;
     }
@@ -777,6 +789,33 @@ void AppController::onTimeBaseReset(const QDateTime &wall)
     m_newData = false;
 }
 
+QMessageBox::StandardButton AppController::ask(const QString &title, const QString &text,
+                                               QMessageBox::StandardButtons buttons,
+                                               QMessageBox::StandardButton defaultButton)
+{
+    return m_prompts.question(title, text, buttons, defaultButton);
+}
+
+void AppController::warn(const QString &title, const QString &text)
+{
+    m_prompts.warning(title, text);
+}
+
+QString AppController::saveFileName(const QString &caption, const QString &path, const QString &filter)
+{
+    return m_prompts.saveFileName(caption, path, filter);
+}
+
+QString AppController::openFileName(const QString &caption, const QString &dir, const QString &filter)
+{
+    return m_prompts.openFileName(caption, dir, filter);
+}
+
+void AppController::runDialog(QDialog &dialog)
+{
+    m_prompts.exec(dialog);
+}
+
 bool AppController::openProject(const QString &path)
 {
     return loadFrom(path);
@@ -788,12 +827,12 @@ void AppController::exportImage()
         AnalysisView *view = m_window->analysisView();
         ExportImageDialog dialog(view->trendPlot()->plot(), view->trendPlot()->cursors(),
                                  view->readoutText(), m_window);
-        dialog.exec();
+        runDialog(dialog);
         return;
     }
     TrendPlot *trend = m_window->trendPlot();
     ExportImageDialog dialog(trend->plot(), trend->cursors(), m_window->cursorPanel()->readoutText(), m_window);
-    dialog.exec();
+    runDialog(dialog);
 }
 
 void AppController::exportCsv()
@@ -803,7 +842,7 @@ void AppController::exportCsv()
     if (cursors->hasC1() && cursors->hasC2())
         range = std::make_pair(qMin(cursors->c1(), cursors->c2()), qMax(cursors->c1(), cursors->c2()));
     ExportCsvDialog dialog(m_recorder, m_window->tagModel()->tags(), range, m_window);
-    dialog.exec();
+    runDialog(dialog);
 }
 
 void AppController::exportAnalysisResults()
@@ -819,8 +858,7 @@ void AppController::exportAnalysisResults()
     QString dir = settings.value(QStringLiteral("export/csvDir")).toString();
     if (dir.isEmpty() || !QFileInfo(dir).isDir())
         dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    const QString path = QFileDialog::getSaveFileName(
-        m_window, QStringLiteral("Export analysis results"),
+    const QString path = saveFileName(QStringLiteral("Export analysis results"),
         QDir(dir).filePath(QStringLiteral("analysis.csv")),
         QStringLiteral("CSV files (*.csv);;All files (*)"));
     if (path.isEmpty())
@@ -849,7 +887,7 @@ void AppController::exportAnalysisResults()
     }
     if (error.isEmpty())
         error = QStringLiteral("Unknown error");
-    QMessageBox::warning(m_window, QStringLiteral("Export analysis results"),
+    warn(QStringLiteral("Export analysis results"),
                          QStringLiteral("Could not write \"%1\":\n%2").arg(path, error));
 }
 
