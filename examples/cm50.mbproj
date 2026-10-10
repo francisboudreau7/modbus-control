@@ -1,6 +1,7 @@
 {
   "format": "modbus-control-project",
   "version": 1,
+  "hiddenColumns": ["raw", "gain", "offset", "axis", "color", "quickA", "quickB"],
   "connection": {
     "host": "192.168.1.50",
     "port": 502,

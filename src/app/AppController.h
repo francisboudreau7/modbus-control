@@ -42,6 +42,8 @@ class WriteController;
 ///   incoming batch times are shifted so time continues from the loaded start time) or
 ///   "Start a new recording". New rows after loading make the unsaved-changes prompt ask
 ///   to save the session.
+/// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
+///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
 class AppController : public QObject
 {

@@ -1,6 +1,7 @@
 {
   "format": "modbus-control-project",
   "version": 1,
+  "hiddenColumns": ["raw", "gain", "offset", "byteOrder", "axis", "color", "writeMin", "writeMax"],
   "connection": {
     "host": "127.0.0.1",
     "port": 1502,

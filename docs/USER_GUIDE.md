@@ -90,6 +90,18 @@ Quality values:
 Hover over a Quality cell to see the last failed write for that tag. The tooltip is cleared by the
 next successful write. Read errors are reported in the status bar only.
 
+### Showing and hiding columns
+
+Right-click any column header of the tag table to choose the columns to show: tick or untick a
+column in the menu. **Name** is always shown. **Show all columns** shows everything again, and
+**Compact view** hides the columns that are only needed while setting tags up: Raw, Gain, Offset,
+Byte order, Axis, Color, Min, Max, Quick A and Quick B. Hidden columns keep their values and still
+apply (for example, write limits still protect writes when Min and Max are hidden).
+
+The choice is saved in the project. A new project, and a project saved by an older version, opens
+in the compact view. The example projects keep the columns they rely on visible: Quick A/B in the
+demo, Byte order, Min and Max in the CM50 example.
+
 ### 32-bit values
 
 `int32`, `uint32` and `float32` tags read two consecutive registers, starting at **Address**. The
@@ -552,7 +564,7 @@ In the file, each tag has an `analyzed` key, an `axis` key (`"left"` or `"right"
 `quickA` and `quickB` keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write
 limits; a key is written only when the limit is set). The Analysis settings are in an `analysis` object
 (`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`,
-`showModel`, `guideLines`). All of these are optional: a file without them loads with the defaults.
+`showModel`, `guideLines`). A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|
@@ -652,8 +664,9 @@ controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDA
 **Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single) only,
 so `examples/cm50.mbproj` has **FC06 only** ticked: each 32-bit write is sent as two FC06
 requests. Without it, a 32-bit write uses FC16; a device that doesn't support FC16 rejects the
-whole request (nothing is written), and the error message suggests ticking **FC06 only** and
-reconnecting. The app never switches to FC06 on its own.
+whole request (nothing is written). The app then shows a warning with a **Use FC06 only and
+reconnect** button: it ticks **FC06 only** (saved in the project) and reconnects. The value is not
+written again; write it again yourself. The app never switches to FC06 without you choosing it.
 
 **FC06 mode.** With **FC06 only** ticked, a float is written as two separate single-register writes.
 Between them the controller holds a mix of the old and the new word. For a float, that mixed value

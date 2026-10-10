@@ -165,6 +165,11 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     analysis.deltaCoTagId = 8;
     analysis.showModel = true;
     m_window->analysisView()->setSettings(analysis);
+    // Compact view, but keep the Quick A/B presets of the demo Setpoint visible.
+    QStringList hidden = compactHiddenColumns();
+    hidden.removeAll(QStringLiteral("quickA"));
+    hidden.removeAll(QStringLiteral("quickB"));
+    m_window->tagTable()->setHiddenColumns(hidden);
     m_refreshTimer->start();
     updateTitle();
 }
@@ -310,6 +315,9 @@ void AppController::wireTags()
         pushTags();
         setModified(true);
     });
+    // The visible columns are saved in the project.
+    connect(m_window->tagTable(), &TagTableWidget::hiddenColumnsChanged, this,
+            [this] { setModified(true); });
 }
 
 void AppController::wireWrites()
@@ -435,6 +443,7 @@ Project AppController::currentProject() const
     p.nextTagId = m_window->tagModel()->nextTagId();
     p.addressBase = m_window->tagModel()->addressBase();
     p.analysis = m_window->analysisView()->settings();
+    p.hiddenColumns = m_window->tagTable()->hiddenColumns();
     return p;
 }
 
@@ -455,6 +464,7 @@ void AppController::applyProject(const Project &project)
     setAddressBase(project.addressBase);
     pushTags();
     m_window->analysisView()->setSettings(project.analysis);
+    m_window->tagTable()->setHiddenColumns(project.hiddenColumns);
 }
 
 void AppController::setAddressBase(int base)
@@ -513,6 +523,7 @@ void AppController::newProject()
     setAddressBase(0);
     pushTags();
     m_window->analysisView()->setSettings(AnalysisSettings{});
+    m_window->tagTable()->setHiddenColumns(compactHiddenColumns());
     m_projectPath.clear();
     discardLoadedRecording();
     setModified(false);
