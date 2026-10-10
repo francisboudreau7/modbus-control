@@ -124,9 +124,6 @@ QList<QStringList> parseRows(const QString &text, QChar delimiter)
 
 } // namespace
 
-// Note: the dialog's failure path (file in a missing directory) calls the static
-// QMessageBox::warning(), which runs a modal event loop and would block the test, so it is
-// not covered here. See the report for T142.
 class TstExportCsvDialog : public QObject
 {
     Q_OBJECT
@@ -325,6 +322,26 @@ private slots:
         QCOMPARE(upper.result(), int(QDialog::Accepted));
         QVERIFY(QFile::exists(pathIn(tmp, QStringLiteral("Upper.CSV"))));
         QVERIFY(!QFile::exists(pathIn(tmp, QStringLiteral("Upper.CSV.csv"))));
+    }
+
+    void missingDirectoryWarnsAndStaysOpen()
+    {
+        const Recorder recorder = fourRows();
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        ExportCsvDialog dialog(recorder, testTags(), std::nullopt);
+        QStringList warnings;
+        dialog.m_warn = [&](const QString &text) { warnings << text; };
+        const QString path = pathIn(tmp, QStringLiteral("missing/out.csv"));
+        setPath(dialog, path);
+        dialog.findChild<QComboBox *>()->setCurrentIndex(1);
+        dialog.accept();
+        QCOMPARE(warnings.size(), 1);
+        QVERIFY(warnings.first().contains(QStringLiteral("out.csv")));
+        QCOMPARE(dialog.result(), int(QDialog::Rejected));
+        QVERIFY(!QFile::exists(path));
+        // A failed export remembers nothing.
+        QVERIFY(!QSettings().contains(QStringLiteral("export/csvDelimiter")));
     }
 
     void savedDelimiterIsPreselected()

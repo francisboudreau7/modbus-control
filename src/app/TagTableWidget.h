@@ -4,8 +4,11 @@
 #include <QStringList>
 #include <QWidget>
 
+#include <functional>
+
 class QMenu;
 class QTableView;
+class TstTagTableModel; // test access to the remove confirmation seam
 
 namespace mb {
 
@@ -50,6 +53,9 @@ signals:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    friend class ::TstTagTableModel;
+    /// Asks before removing count (> 1) rows; the constructor installs a QMessageBox question.
+    std::function<bool(int count)> m_confirmRemove;
     TagTableModel *m_model = nullptr;
     QTableView *m_view = nullptr;
 };

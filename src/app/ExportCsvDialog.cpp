@@ -49,6 +49,7 @@ ExportCsvDialog::ExportCsvDialog(const Recorder &recorder, const QList<Tag> &tag
                                  std::optional<std::pair<double, double>> cursorRange, QWidget *parent)
     : QDialog(parent), m_recorder(recorder), m_tags(tags), m_range(cursorRange)
 {
+    m_warn = [this](const QString &text) { QMessageBox::warning(this, windowTitle(), text); };
     setWindowTitle(tr("Export data (CSV)"));
 
     const QList<TagId> recorded = m_recorder.tagIds();
@@ -156,8 +157,7 @@ void ExportCsvDialog::accept()
 
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(this, windowTitle(),
-                             tr("Could not open %1 for writing:\n%2").arg(path, file.errorString()));
+        m_warn(tr("Could not open %1 for writing:\n%2").arg(path, file.errorString()));
         return;
     }
 
@@ -172,13 +172,11 @@ void ExportCsvDialog::accept()
     QString error;
     if (!exportCsv(file, m_recorder, m_columns, options, &error)) {
         file.cancelWriting();
-        QMessageBox::warning(this, windowTitle(),
-                             tr("Could not export to %1:\n%2").arg(path, error));
+        m_warn(tr("Could not export to %1:\n%2").arg(path, error));
         return;
     }
     if (!file.commit()) {
-        QMessageBox::warning(this, windowTitle(),
-                             tr("Could not save %1:\n%2").arg(path, file.errorString()));
+        m_warn(tr("Could not save %1:\n%2").arg(path, file.errorString()));
         return;
     }
 

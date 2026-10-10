@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QList>
 
+#include <functional>
 #include <optional>
 #include <utility>
 
@@ -14,6 +15,7 @@ class QDialogButtonBox;
 class QLabel;
 class QLineEdit;
 class QRadioButton;
+class TstExportCsvDialog; // test access to the warning seam
 
 namespace mb {
 
@@ -36,7 +38,11 @@ public:
     void accept() override;
 
 private:
+    friend class ::TstExportCsvDialog;
     void updateState();
+
+    /// Shows an error message; the constructor installs QMessageBox::warning (tests replace it).
+    std::function<void(const QString &text)> m_warn;
 
     const Recorder &m_recorder;
     QList<Tag> m_tags;

@@ -69,4 +69,5 @@ $rows = foreach ($name in $files.Keys) {
 $rows | Where-Object { $_.File -like '*.cpp' } | Sort-Object Percent | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
 $total = ($rows | Measure-Object Lines -Sum).Sum
 $covered = ($rows | Measure-Object Covered -Sum).Sum
-Write-Host ("Total (all files): {0} / {1} lines = {2:N1} %" -f $covered, $total, (100.0 * $covered / $total))Write-Host "Report: $(Join-Path $out 'html\index.html')"
+Write-Host ("Total (all files): {0} / {1} lines = {2:N1} %" -f $covered, $total, (100.0 * $covered / $total))
+Write-Host "Report: $(Join-Path $out 'html\index.html')"

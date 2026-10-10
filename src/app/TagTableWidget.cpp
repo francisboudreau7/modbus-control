@@ -197,6 +197,11 @@ protected:
 TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     : QWidget(parent), m_model(model)
 {
+    m_confirmRemove = [this](int count) {
+        return QMessageBox::question(this, tr("Remove tags"),
+                                     tr("Remove %n selected tag(s)?", nullptr, count))
+               == QMessageBox::Yes;
+    };
     auto *view = new TagView(this);
     m_view = view;
     m_view->setModel(model);
@@ -267,10 +272,7 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         const QList<int> rows = selectedRows();
         if (rows.isEmpty())
             return;
-        if (rows.size() > 1
-            && QMessageBox::question(this, tr("Remove tags"),
-                                     tr("Remove %n selected tag(s)?", nullptr, int(rows.size())))
-                   != QMessageBox::Yes)
+        if (rows.size() > 1 && !m_confirmRemove(int(rows.size())))
             return;
         // Remove from the bottom so row numbers stay valid.
         for (auto it = rows.crbegin(); it != rows.crend(); ++it)

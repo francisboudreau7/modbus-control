@@ -1286,6 +1286,26 @@ private slots:
         QCOMPARE(m.rowCount(), 4);
         QCOMPARE(m.tagAt(0).name, QString("a"));
 
+        // Several rows: asks first; No keeps them, Yes removes them all.
+        QList<int> asked;
+        bool answer = false;
+        w.m_confirmRemove = [&](int count) {
+            asked << count;
+            return answer;
+        };
+        w.view()->selectRow(1);
+        w.view()->selectionModel()->select(m.index(3, C::Name),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        rem->click();
+        QCOMPARE(asked, QList<int>{2});
+        QCOMPARE(m.rowCount(), 4);
+        answer = true;
+        rem->click();
+        QCOMPARE(asked, (QList<int>{2, 2}));
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(m.tagAt(0).name, QString("a"));
+        QCOMPARE(m.tagAt(1).name, QString("c"));
+
         w.view()->clearSelection();
         QVERIFY(!rem->isEnabled());
         QVERIFY(!dup->isEnabled());
