@@ -29,6 +29,8 @@ simulates signals and can inject delays and dropped connections.
   offline, and continue the recording when connecting again
 - A right Y axis for tags with another unit or range (tag table column Axis); each axis scales separately
 - Quick writes: preset values A and B per writable tag, written with one click from the Quick write dock
+- Write safety: optional Min/Max write limits per tag, a valid reading required before 32-bit writes,
+  a warning for implausible float values (wrong byte order or register), and the current value shown in the confirmation
 - Project files (`.mbproj`, JSON) with New, Open, Save and Save As
 - Test server `modbus_test_server` with simulated signals, a configuration file and fault injection
 
