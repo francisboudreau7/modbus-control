@@ -13,12 +13,9 @@
 class QThread;
 class QTimer;
 
-class TstAppController;
-
 namespace mb {
 
 class MainWindow;
-class QuickWritePanel;
 class WriteController;
 
 /// Application logic. Owns the PollWorker (on its own QThread), the Recorder and the
@@ -82,7 +79,6 @@ private:
     void exportAnalysisResults();
 
     enum class ContinueChoice { Continue, StartNew, Cancel };
-    friend class ::TstAppController; // test access to the prompt hook
 
     void wireQuickWrites();
     bool saveSessionDialog();
