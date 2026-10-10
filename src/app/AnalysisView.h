@@ -23,7 +23,7 @@ namespace mb {
 class Recorder;
 class TrendPlot;
 
-/// Contents of the "Analysis" tab (step-response analysis, see PLAN.md "Analysis mode").
+/// Contents of the "Analysis" tab (step-response analysis; see docs/USER_GUIDE.md).
 ///
 /// Layout: a horizontal QSplitter.
 /// - Left: a TrendPlot of its own showing only the tags with Tag::analyzed (passed to

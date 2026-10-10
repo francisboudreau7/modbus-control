@@ -4,3 +4,7 @@ vcpkg_installed/
 .vs/
 CMakeUserPresets.json
 *.user
+# Local development notes (not published)
+CLAUDE.md
+PLAN.md
+TASKS.md
