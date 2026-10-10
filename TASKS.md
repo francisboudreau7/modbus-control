@@ -205,19 +205,38 @@ or register (also visible as a wrong read) — hence these guards. No real CM50 
 | T122 | WriteController: limits on all paths, Good-read guard, "current → new" text, implausible-float extra confirmation, 32-bit quick writes always confirm; tests with prompt hooks | S | T120 | WriteController.cpp, QuickWritePanel/WriteController private, tst_quickwrite (+ new cases) | Tests pass 3× |
 | T123 | Docs (USER_GUIDE Writing values + CM50 safe first-write procedure), demo/cm50 examples with limits on writable tags; version 1.2.1, installer; release after the user confirms | O/H | T121, T122 | docs, examples, version files | User confirmed |
 
+### Wave 11 — v1.2.2 hideable tag-table columns (planned on request)
+
+Decisions (user, 2026-10-10): right-click on the tag table's header row opens a menu with one
+check box per column, then "Show all columns" and "Compact view". Name is always visible
+(greyed, checked). Saved **per project** as `"hiddenColumns"` (list of stable column keys:
+name area address type byteOrder gain offset unit writable plot analyze axis color raw value
+writeMin writeMax quickA quickB quality; unknown keys ignored, "name" ignored). Default when the
+key is missing (new project, older files) = **compact preset**: hide raw, gain, offset, byteOrder,
+axis, color, writeMin, writeMax, quickA, quickB. examples/cm50.mbproj keeps byteOrder, writeMin and
+writeMax visible; demo.mbproj keeps quickA/quickB visible (the Quick write demo). Changing the
+columns marks the project modified. Only the tag table (not the Cursors/Analysis tables).
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| T130 | Contracts + stubs: `TagTableModel::columnKey/columnFromKey/compactHiddenColumns`; `Project::hiddenColumns`; `TagTableWidget::setHiddenColumns/hiddenColumns/hiddenColumnsChanged` + menu doc | O | — | headers, stubs | Builds, tests pass |
+| T131 | Column keys + ProjectIO "hiddenColumns" (default compact preset when missing, always written, unknown keys dropped); tests | H | T130 | TagTableModel.cpp, ProjectIO.cpp, tests | Tests pass |
+| T132 | Header context menu in TagTableWidget (checkable columns, Name locked, Show all, Compact view), apply/report hidden columns; offscreen tests | H | T130 | TagTableWidget.cpp, tests/tst_tagtablemodel.cpp | Tests pass |
+| T133 | Wiring in AppController (apply on New/Open/session load, save, modified flag), examples, USER_GUIDE, version 1.2.2, installer; release after the user confirms | O | T131, T132 | AppController, examples, docs, version files | User confirmed |
+
 ## Status and remaining work
 
 _Last updated: 2026-10-09. Update this section whenever a task is merged or a release ships._
 
 ### Current state (read this first)
-- **Released:** v1.0.0, v1.1.0 (Analysis mode), v1.2.0, **v1.2.1** (write safety), from (sessions, model curve + Fit RMS,
-  guide lines, copy results, right Y axis, quick writes, logo) — all on
+- **Released:** v1.0.0, v1.1.0 (Analysis mode), v1.2.0 (sessions, model curve + Fit RMS,
+  guide lines, copy results, right Y axis, quick writes, logo), **v1.2.1** (write safety, --log-writes) — all on
   https://github.com/francisboudreau7/modbus-control/releases. Latest installer
-  `ModbusControl-1.2.0-setup.exe`, sha256 8806d004…7f03.
+  `ModbusControl-1.2.1-setup.exe`, sha256 7dd14bf7…bf75.
 - **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
   `..\modbus-control-wt` folder was removed; recreate it for the next wave).
 - **Tests:** 21 ctest targets, all passing; zero warnings in our code.
-- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **Next: v1.2.2 hideable tag-table columns (being planned).** Quick A/B editor fix already on main (6aa6b15).
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **Next: Wave 11 (v1.2.2 hideable columns) planned, waiting for the user to say start.** Quick A/B editor fix already on main (6aa6b15).
 - **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
   server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
   installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,

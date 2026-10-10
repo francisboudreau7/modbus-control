@@ -154,3 +154,10 @@ wrong register can upset the regulator. Analysis in TASKS.md Wave 10. Chosen by 
 | Read-before-write guard | 32-bit writes (int32, uint32, float32) need a Good latest read of that tag; otherwise refused ("no valid reading yet — check the connection, register and byte order"). The confirmation of every write shows "current X → new Y". If the current value of a float32 tag is implausible — not finite, \|x\| > 1e9, or 0 < \|x\| < 1e-6 — an extra warning dialog explains that the byte order or register number is probably wrong and requires an explicit "Write anyway". |
 | Quick writes to 32-bit tags | Always confirmed; "Don't ask again this session" applies to 16-bit tags only (the check box is not shown for 32-bit tags). |
 | Not changed | FC06 word order (in-between value stays within 0.8 % of the old or new value); no read-back check. |
+
+## v1.2.2 hideable tag-table columns (planned on request)
+
+Right-click on the tag table's header opens a menu: one check box per column (Name always
+visible), "Show all columns", "Compact view". The choice is saved per project ("hiddenColumns",
+stable column keys). Projects without the key open in the compact view (Raw, Gain, Offset, Byte
+order, Axis, Color, Min, Max, Quick A/B hidden). Details and tasks: TASKS.md Wave 11.
