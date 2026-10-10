@@ -191,6 +191,26 @@ class TstIntegration : public QObject
     Q_OBJECT
 
 private slots:
+    // A device without FC16 answers a 32-bit write with exception 1: the message says what to do.
+    void fc16IllegalFunctionHint()
+    {
+        mb::ModbusResult r;
+        r.error = mb::ModbusError::Exception;
+        r.exceptionCode = 1;
+        r.message = QStringLiteral("Modbus exception 1: Illegal function");
+        const mb::ModbusResult hinted = mb::PollWorker::withFc16Hint(r);
+        QCOMPARE(hinted.error, mb::ModbusError::Exception);
+        QVERIFY(hinted.message.startsWith(r.message));
+        QVERIFY(hinted.message.contains(QStringLiteral("tick FC06 only")));
+
+        r.exceptionCode = 2; // illegal data address: no hint
+        QCOMPARE(mb::PollWorker::withFc16Hint(r).message, r.message);
+        mb::ModbusResult timeout;
+        timeout.error = mb::ModbusError::Timeout;
+        timeout.message = QStringLiteral("Timeout");
+        QCOMPARE(mb::PollWorker::withFc16Hint(timeout).message, timeout.message);
+    }
+
     void initTestCase() { mb::registerMetaTypes(); }
 
     void init() { m_server = std::make_unique<ServerProcess>(); }

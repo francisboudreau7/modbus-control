@@ -669,7 +669,7 @@ void TstProjectIO::exampleProjectsLoad()
     QCOMPARE(cm50->addressBase, 1);
     QCOMPARE(cm50->connection.host, QStringLiteral("192.168.1.50"));
     QCOMPARE(cm50->connection.port, quint16(502));
-    QCOMPARE(cm50->connection.singleRegisterWrites, false);
+    QCOMPARE(cm50->connection.singleRegisterWrites, true); // CM50 documents FC06 only
     QCOMPARE(cm50->tags.size(), 6);
     // Register 5009 (as printed in the manual) is protocol address 5008.
     QCOMPARE(cm50->tags.at(0).name, QStringLiteral("Loop 1 Process Variable"));

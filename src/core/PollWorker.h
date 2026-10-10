@@ -41,6 +41,12 @@ public:
     explicit PollWorker(QObject *parent = nullptr);
     ~PollWorker() override;
 
+    /// Result of a multi-register (FC16) write as reported to the client: a Modbus exception 1
+    /// (illegal function) gets the hint " This device may not support FC16 (write multiple
+    /// registers): tick FC06 only in the connection bar and reconnect." appended to its message.
+    /// Anything else is returned unchanged. Not used in FC06-only mode (no FC16 is sent there).
+    static ModbusResult withFc16Hint(ModbusResult result);
+
 public slots:
     /// Connects (or reconnects with new settings) and starts polling. Starts a new time
     /// base (emits timeBaseReset) if none exists yet.

@@ -7,7 +7,7 @@
     "unitId": 1,
     "timeoutMs": 1000,
     "pollPeriodMs": 500,
-    "singleRegisterWrites": false
+    "singleRegisterWrites": true
   },
   "addressBase": 1,
   "nextTagId": 7,

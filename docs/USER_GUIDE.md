@@ -649,9 +649,11 @@ process variable). The app sends address 5008.
 **Floating-point values** are IEEE-754 single precision, high word first: byte order `ABCD`. If the
 controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDAB`.
 
-**Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single) only. If
-writing a 32-bit value fails with a Modbus exception, tick **FC06 only** in the connection bar
-before connecting; each 32-bit write is then sent as two FC06 requests.
+**Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single) only,
+so `examples/cm50.mbproj` has **FC06 only** ticked: each 32-bit write is sent as two FC06
+requests. Without it, a 32-bit write uses FC16; a device that doesn't support FC16 rejects the
+whole request (nothing is written), and the error message suggests ticking **FC06 only** and
+reconnecting. The app never switches to FC06 on its own.
 
 **FC06 mode.** With **FC06 only** ticked, a float is written as two separate single-register writes.
 Between them the controller holds a mix of the old and the new word. For a float, that mixed value
@@ -683,7 +685,7 @@ Check the value on the controller, then write the setpoint again.
 | Instrument Type | Input | 3 | uint16 | Read-only. |
 
 `examples/cm50.mbproj` contains these tags, with the 1-based option on, host 192.168.1.50, port 502,
-unit 1, a 500 ms period and FC06 only off. Open it with File > Open, or give its path on the
+unit 1, a 500 ms period and FC06 only on. Open it with File > Open, or give its path on the
 command line, then change the host and unit to match your controller. Setpoint and trip values are
 written with confirmation, but check them against the controller's own limits first.
 

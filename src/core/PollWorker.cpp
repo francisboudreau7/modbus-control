@@ -227,6 +227,16 @@ void PollWorker::drainWrites()
         serveWrites();
 }
 
+ModbusResult PollWorker::withFc16Hint(ModbusResult result)
+{
+    if (result.error == ModbusError::Exception && result.exceptionCode == 1) {
+        result.message += QStringLiteral(
+            " This device may not support FC16 (write multiple registers): tick FC06 only in the "
+            "connection bar and reconnect.");
+    }
+    return result;
+}
+
 void PollWorker::serveWrites()
 {
     while (!m_writes.isEmpty()) {
@@ -253,7 +263,7 @@ void PollWorker::serveWrites()
                 }
             }
         } else
-            r = m_conn->writeMultiple(w.address, w.values);
+            r = withFc16Hint(m_conn->writeMultiple(w.address, w.values));
 
         // Discard anything left in the socket so a late reply is not read as the next answer.
         if (!r.ok() && r.error != ModbusError::Exception)
