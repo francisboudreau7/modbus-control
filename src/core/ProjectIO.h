@@ -51,6 +51,9 @@ inline constexpr int kProjectFormatVersion = 1;
 /// Added in v1.2 (optional, additive): per tag "axis" ("left" default, "right") and
 /// "quickA"/"quickB" (finite numbers; a missing key or null = no value; written only when
 /// set).
+///
+/// Added in v1.2.1 (optional, additive): per tag "writeMin"/"writeMax" (finite numbers; missing
+/// or null = no limit; written only when set; writeMin > writeMax is rejected).
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;

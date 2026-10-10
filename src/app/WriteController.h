@@ -20,23 +20,34 @@ class TagTableModel;
 /// Turns user write requests into PollWorker writes and reports the results.
 /// Register numbers in all texts use TagTableModel::addressBase() (protocol address + base).
 ///
-/// requestWrite: if not connected -> message and stop. Encodes the value with
-/// encodeRegisters() (1 register for 16-bit types, 2 for 32-bit types); out of range ->
-/// warning box. Otherwise asks for confirmation ("Write 12.5 °C (raw 125) to HR 100
-/// 'Setpoint'?"; 32-bit: raw shown as 0x%08X and "HR 6639-6640", type and byte order named)
-/// and emits writeRegisters with those registers.
+/// requestWrite, checks in this order (each failure -> warning box, nothing written):
+/// 1. not connected -> message and stop;
+/// 2. outside the tag's write limits (Tag::withinWriteLimits) -> warning naming the tag and
+///    its limits ("'Setpoint' accepts 0 to 100 °C; 150 was not written.");
+/// 3. 32-bit tags (2 registers) need TagTableModel::goodValue(): without a Good reading ->
+///    warning "No valid reading of 'X' yet. Check the connection, register number and byte
+///    order before writing.";
+/// 4. encodeRegisters() fails (out of the type's range) -> warning;
+/// 5. float32 tag whose current value is implausible (not finite, |x| > 1e9, or
+///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning that
+///    explains this and needs an explicit "Write anyway" (default button: Cancel);
+/// then the confirmation ("Write 12.5 °C (raw 125) to HR 100 'Setpoint'?"; 32-bit: raw as
+/// 0x%08X, "HR 6639-6640", type and byte order named) with an extra line "Current value: X"
+/// (or "Current value: unknown") and, when limits are set, "Limits: min to max". Then
+/// writeRegisters is emitted.
 ///
 /// requestWriteSelection: rows must all be writable holding registers that are contiguous
 /// when sorted by address (each tag starts right after the previous tag's last register;
 /// 16- and 32-bit tags may be mixed; at most 123 registers in total); otherwise explain why
 /// in a warning box. Shows a dialog with one value field per tag (prefilled with the current
-/// value), encodes all, confirms, and emits one writeRegisters with all registers.
+/// value), applies checks 2, 3 and 5 to every tag (limits listed together in one warning),
+/// encodes all, confirms, and emits one writeRegisters with all registers.
 ///
-/// requestQuickWrite: like requestWrite, but while quickConfirm() is on the confirmation is
-/// a dialog with the same question and a check box "Don't ask again this session"; when it
-/// is ticked and the write confirmed, quick confirmation turns off (quickConfirmChanged).
-/// While quickConfirm() is off the write is sent without asking. Range errors and "not
-/// connected" are reported as for requestWrite.
+/// requestQuickWrite: same checks as requestWrite. 16-bit tags: while quickConfirm() is on the
+/// confirmation has a check box "Don't ask again this session"; when it is ticked and the
+/// write confirmed, quick confirmation turns off (quickConfirmChanged); while it is off the
+/// write is sent without asking. 32-bit tags are always confirmed with the normal
+/// confirmation (no check box), whatever quickConfirm() says.
 ///
 /// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
 /// TagTableModel::setStatusText() on the affected tags.

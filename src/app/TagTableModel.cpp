@@ -21,6 +21,7 @@ const char *const kHeaders[TagTableModel::ColumnCount] = {
     QT_TRANSLATE_NOOP("TagTableModel", "Analyze"), QT_TRANSLATE_NOOP("TagTableModel", "Axis"),
     QT_TRANSLATE_NOOP("TagTableModel", "Color"),   QT_TRANSLATE_NOOP("TagTableModel", "Raw"),
     QT_TRANSLATE_NOOP("TagTableModel", "Value"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Min"), QT_TRANSLATE_NOOP("TagTableModel", "Max"),
     QT_TRANSLATE_NOOP("TagTableModel", "Quick A"), QT_TRANSLATE_NOOP("TagTableModel", "Quick B"),
     QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
 };
@@ -489,6 +490,14 @@ int TagTableModel::duplicateTag(int row)
     endInsertRows();
     emit tagsEdited();
     return newRow;
+}
+
+std::optional<double> TagTableModel::goodValue(TagId id) const
+{
+    const auto it = m_live.constFind(id);
+    if (it == m_live.constEnd() || !it->valid)
+        return std::nullopt;
+    return it->value;
 }
 
 void TagTableModel::emitLiveChanged(int firstRow, int lastRow, const QList<int> &roles)

@@ -3,6 +3,7 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <cmath>
 #include <optional>
 
 namespace mb {
@@ -77,8 +78,18 @@ struct Tag {
     /// writable tags (isWritable()).
     std::optional<double> quickA;
     std::optional<double> quickB;
+    /// Write limits (scaled values, inclusive); empty = no limit. Only used for writable tags.
+    /// writeMin <= writeMax when both are set.
+    std::optional<double> writeMin;
+    std::optional<double> writeMax;
 
     bool isWritable() const { return writable && area == Area::HoldingRegister; }
+    /// True when `scaled` is finite and within writeMin/writeMax (unset limits don't apply).
+    bool withinWriteLimits(double scaled) const
+    {
+        return std::isfinite(scaled)
+               && (!writeMin || scaled >= *writeMin) && (!writeMax || scaled <= *writeMax);
+    }
     /// Last register used by the tag; a 2-register tag at address 65535 does not fit.
     bool fitsAddressSpace() const { return int(address) + registerCount(type) <= 65536; }
     friend bool operator==(const Tag &, const Tag &) = default;

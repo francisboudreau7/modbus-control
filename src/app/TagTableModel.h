@@ -7,6 +7,8 @@
 #include <QHash>
 #include <QList>
 
+#include <optional>
+
 namespace mb {
 
 /// Table model over the project's tags plus their live values.
@@ -31,6 +33,12 @@ namespace mb {
 ///   false; emits tagsEdited(). Editable only when the tag isWritable(); for other tags the
 ///   cell is not editable and its ToolTipRole says "Quick writes need a writable holding
 ///   register". Header tooltip: "Preset value for the Quick write dock".
+///   A value outside the tag's write limits is refused (setData returns false).
+/// - WriteMin, WriteMax (headers "Min", "Max"): Tag::writeMin/writeMax, same roles, parsing,
+///   clearing and editability as QuickA/QuickB. setData refuses a Min above the Max (or a Max
+///   below the Min). Header tooltips: "Lowest value that may be written (empty = no limit)" /
+///   "Highest value that may be written (empty = no limit)". Changing a limit does not change
+///   Quick A/B values (writes outside the limits are refused when sent).
 /// - Color: DisplayRole "#RRGGBB", DecorationRole QColor, EditRole "#RRGGBB".
 /// - Raw: read-only, "0x%04X (%u)" for 16-bit tags, "0x%08X" for 32-bit tags, or empty.
 ///   Quality: read-only text, ForegroundRole colour (Good green, Unknown grey, others red);
@@ -45,7 +53,7 @@ class TagTableModel : public QAbstractTableModel
 public:
     enum Column {
         Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Analyze, Axis,
-        Color, Raw, Value, QuickA, QuickB, Quality, ColumnCount
+        Color, Raw, Value, WriteMin, WriteMax, QuickA, QuickB, Quality, ColumnCount
     };
 
     explicit TagTableModel(QObject *parent = nullptr);
@@ -65,6 +73,8 @@ public:
     TagId nextTagId() const;
     const Tag &tagAt(int row) const;
     int rowOf(TagId id) const; ///< -1 if absent
+    /// Latest scaled value of the tag when its last sample was Good, else nullopt.
+    std::optional<double> goodValue(TagId id) const;
 
     /// Appends a copy of `prototype` with a fresh id. An empty name becomes "Tag <id>".
     /// Returns the new row.
