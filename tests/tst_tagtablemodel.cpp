@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QTableView>
 #include <QSignalSpy>
+#include <QLineEdit>
 #include <QtTest>
 
 #include <limits>
@@ -368,8 +369,10 @@ private slots:
         for (const auto &args : changed) {
             const auto tl = args.at(0).value<QModelIndex>();
             const auto br = args.at(1).value<QModelIndex>();
-            QCOMPARE(tl.column(), int(C::Raw));
-            QCOMPARE(br.column(), int(C::Quality));
+            // Live columns only: Raw..Value and Quality, never the editable Quick A/B cells.
+            const bool rawToValue = tl.column() == int(C::Raw) && br.column() == int(C::Value);
+            const bool quality = tl.column() == int(C::Quality) && br.column() == int(C::Quality);
+            QVERIFY(rawToValue || quality);
             for (int r = tl.row(); r <= br.row(); ++r)
                 rows.insert(r);
         }
@@ -855,6 +858,54 @@ private slots:
         QTRY_COMPARE(m.data(type).toString(), QString("uint32"));
         // The closed editor is deleted later; no combo editor may remain.
         QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+    }
+
+    // Regression (user report): live samples arriving while a Quick A cell is being edited
+    // must not reset the editor (the live dataChanged range used to span the Quick columns).
+    void liveSamplesKeepQuickEditorText()
+    {
+        TagTableModel m;
+        mb::Tag t = makeTag(1, "sp", Area::HoldingRegister, 100);
+        t.writable = true;
+        t.quickA = 1000.0;
+        m.setTags({t}, 2);
+
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        mb::SampleBatch batch;
+        mb::TagSample sample;
+        sample.tagId = 1;
+        sample.value = 5.0;
+        sample.quality = mb::Quality::Good;
+        batch.samples = {sample};
+        m.updateSamples(batch);
+        QVERIFY(!changed.isEmpty());
+        for (const QList<QVariant> &args : std::as_const(changed)) {
+            const int first = args.at(0).toModelIndex().column();
+            const int last = args.at(1).toModelIndex().column();
+            QVERIFY2(!(first <= C::QuickA && last >= C::QuickA), "live update covers Quick A");
+            QVERIFY2(!(first <= C::QuickB && last >= C::QuickB), "live update covers Quick B");
+        }
+
+        mb::TagTableWidget w(&m);
+        w.resize(1200, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        const QModelIndex quickA = m.index(0, C::QuickA);
+        w.view()->setCurrentIndex(quickA);
+        w.view()->edit(quickA);
+        auto *editor = w.view()->findChild<QLineEdit *>();
+        QVERIFY(editor);
+        editor->setText(QStringLiteral("2000"));
+        for (int i = 0; i < 5; ++i) {
+            sample.value = 6.0 + i;
+            batch.samples = {sample};
+            m.updateSamples(batch);
+            QCoreApplication::processEvents();
+        }
+        QCOMPARE(editor->text(), QStringLiteral("2000"));
+        m.clearLiveValues();
+        QCoreApplication::processEvents();
+        QCOMPARE(editor->text(), QStringLiteral("2000"));
     }
 };
 

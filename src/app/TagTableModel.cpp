@@ -491,6 +491,14 @@ int TagTableModel::duplicateTag(int row)
     return newRow;
 }
 
+void TagTableModel::emitLiveChanged(int firstRow, int lastRow, const QList<int> &roles)
+{
+    // Only the live columns: an open editor inside a dataChanged range is reset by the view,
+    // so the editable Quick A/B cells between Value and Quality must stay out of it.
+    emit dataChanged(index(firstRow, Raw), index(lastRow, Value), roles);
+    emit dataChanged(index(firstRow, Quality), index(lastRow, Quality), roles);
+}
+
 void TagTableModel::updateSamples(const SampleBatch &batch)
 {
     QList<int> rows;
@@ -516,7 +524,7 @@ void TagTableModel::updateSamples(const SampleBatch &batch)
             prev = rows.at(i);
             continue;
         }
-        emit dataChanged(index(start, Raw), index(prev, Quality), roles);
+        emitLiveChanged(start, prev, roles);
         if (i < rows.size())
             start = prev = rows.at(i);
     }
@@ -527,8 +535,8 @@ void TagTableModel::clearLiveValues()
     m_live.clear();
     if (m_tags.isEmpty())
         return;
-    emit dataChanged(index(0, Raw), index(int(m_tags.size()) - 1, Quality),
-                     {Qt::DisplayRole, Qt::ForegroundRole, Qt::ToolTipRole});
+    emitLiveChanged(0, int(m_tags.size()) - 1,
+                    {Qt::DisplayRole, Qt::ForegroundRole, Qt::ToolTipRole});
 }
 
 void TagTableModel::setStatusText(TagId id, const QString &text)

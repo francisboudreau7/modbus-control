@@ -95,6 +95,8 @@ signals:
     void writeRequested(mb::TagId id, double scaledValue);
 
 private:
+    /// dataChanged for the live columns (Raw..Value, Quality) of rows first..last.
+    void emitLiveChanged(int firstRow, int lastRow, const QList<int> &roles);
     // Implementation-defined; the task may change the private section freely.
     struct Live {
         bool valid = false;
