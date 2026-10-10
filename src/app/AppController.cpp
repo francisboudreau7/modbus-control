@@ -191,7 +191,21 @@ void AppController::wireConnection()
         if (!prepareConnect())
             return;
         storeLastConnection(s);
+        m_writes->setSingleRegisterWrites(s.singleRegisterWrites);
         QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
+    });
+    // "Use FC06 only and reconnect" after a device rejected an FC16 write.
+    connect(m_writes, &WriteController::singleRegisterWritesRequested, this, [this] {
+        ConnectionBar *b = m_window->connectionBar();
+        ConnectionSettings s = b->settings();
+        s.singleRegisterWrites = true;
+        b->setSettings(s);
+        setModified(true);
+        storeLastConnection(s);
+        m_writes->setSingleRegisterWrites(true);
+        // Reconnect with the new setting; the recording and its time base continue.
+        QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
+        m_window->showStatusMessage(tr("FC06 only is on; reconnecting. Write the value again."));
     });
     connect(bar, &ConnectionBar::disconnectRequested, this, [this] {
         QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);

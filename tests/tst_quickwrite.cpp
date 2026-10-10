@@ -611,6 +611,51 @@ private slots:
         r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Gain), 2.0);
         QVERIFY(!r.model.goodValue(2).has_value());
     }
+
+    // A device without FC16 rejects a 32-bit write with exception 1: offer FC06 only.
+    void fc16RejectionOffersSingleWrites()
+    {
+        auto rejected = [](int code) {
+            ModbusResult r;
+            r.error = ModbusError::Exception;
+            r.exceptionCode = code;
+            r.message = QStringLiteral("Modbus exception %1").arg(code);
+            return r;
+        };
+        auto lastRequest = [](Rig &r) { return r.writes->last().at(0).toULongLong(); };
+
+        for (const bool accept : {true, false}) {
+            Rig r;
+            setup(r);
+            int offered = 0;
+            r.wc->m_offerSingleWrites = [&](const QString &text) {
+                ++offered;
+                return accept && text.contains(QStringLiteral("Flow"));
+            };
+            QSignalSpy requested(r.wc.get(), &WriteController::singleRegisterWritesRequested);
+            feed(r, 2, 50.0);
+            r.wc->requestWrite(2, 20.0); // float32: two registers, FC16
+            QCOMPARE(r.writes->size(), 1);
+            r.wc->onWriteFinished(lastRequest(r), rejected(1));
+            QCOMPARE(offered, 1);
+            QCOMPARE(requested.size(), accept ? 1 : 0);
+        }
+
+        // Not offered: other exceptions, single-register writes, or FC06 mode already on.
+        Rig r;
+        setup(r);
+        int offered = 0;
+        r.wc->m_offerSingleWrites = [&](const QString &) { ++offered; return true; };
+        feed(r, 2, 50.0);
+        r.wc->requestWrite(2, 20.0);
+        r.wc->onWriteFinished(lastRequest(r), rejected(2));
+        r.wc->requestWrite(4, 7.0); // 16-bit tag: FC06 anyway
+        r.wc->onWriteFinished(lastRequest(r), rejected(1));
+        r.wc->setSingleRegisterWrites(true);
+        r.wc->requestWrite(2, 20.0);
+        r.wc->onWriteFinished(lastRequest(r), rejected(1));
+        QCOMPARE(offered, 0);
+    }
 };
 
 QTEST_MAIN(TstQuickWrite)

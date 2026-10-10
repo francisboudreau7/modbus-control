@@ -143,6 +143,14 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
                                      QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
                == QMessageBox::Yes;
     };
+    m_offerSingleWrites = [this](const QString &text) {
+        QMessageBox box(QMessageBox::Warning, tr("Write rejected"), text, QMessageBox::NoButton,
+                        m_dialogParent);
+        QPushButton *use = box.addButton(tr("Use FC06 only and reconnect"), QMessageBox::AcceptRole);
+        box.addButton(tr("Close"), QMessageBox::RejectRole);
+        box.exec();
+        return box.clickedButton() == use;
+    };
     m_quickConfirmPrompt = [this](const QString &question) {
         QMessageBox box(QMessageBox::Question, tr("Confirm write"), question,
                         QMessageBox::Yes | QMessageBox::No, m_dialogParent);
@@ -454,8 +462,30 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         for (TagId id : ids)
             m_model->setStatusText(id, text);
         emit message(text);
+
+        // A multi-register write (FC16) rejected as an illegal function: offer FC06 mode.
+        int registers = 0;
+        for (TagId id : ids) {
+            const int row = m_model->rowOf(id);
+            if (row >= 0)
+                registers += registerCount(m_model->tagAt(row).type);
+        }
+        if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1
+            && !m_singleRegisterWrites
+            && m_offerSingleWrites(
+                tr("The device rejected the write of %1 with \"Illegal function\". It probably does "
+                   "not support FC16 (write multiple registers). Nothing was written.\n\n"
+                   "With FC06 only, each register is written with its own FC06 request. The value "
+                   "is not written again automatically: write it again after reconnecting.")
+                    .arg(names.join(QStringLiteral(", "))))) {
+            emit singleRegisterWritesRequested();
+        }
     }
 }
+
+void WriteController::setSingleRegisterWrites(bool on) { m_singleRegisterWrites = on; }
+
+bool WriteController::singleRegisterWrites() const { return m_singleRegisterWrites; }
 
 void WriteController::setConnected(bool connected)
 {

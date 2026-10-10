@@ -50,7 +50,11 @@ class TagTableModel;
 /// confirmation (no check box), whatever quickConfirm() says.
 ///
 /// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
-/// TagTableModel::setStatusText() on the affected tags.
+/// TagTableModel::setStatusText() on the affected tags. Exception: a write of more than one
+/// register that failed with Modbus exception 1 (illegal function) while singleRegisterWrites()
+/// is off also shows a warning (replaceable prompt) explaining that the device probably does
+/// not support FC16 and nothing was written, with the buttons "Use FC06 only and reconnect" and
+/// "Close"; the first emits singleRegisterWritesRequested(). The value is not written again.
 class WriteController : public QObject
 {
     Q_OBJECT
@@ -65,12 +69,17 @@ public slots:
     void requestQuickWrite(mb::TagId id, double scaledValue);
     /// Default true (each application start).
     void setQuickConfirm(bool on);
+    /// Whether the connection uses FC06 for multi-register values (set on every connect).
+    void setSingleRegisterWrites(bool on);
 
 public:
     bool quickConfirm() const;
+    bool singleRegisterWrites() const;
 
 signals:
     void quickConfirmChanged(bool on);
+    /// The user chose "Use FC06 only and reconnect" after an FC16 rejection.
+    void singleRegisterWritesRequested();
     /// Connect to PollWorker::writeRegisters (queued).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
     /// Status bar text.
@@ -100,6 +109,9 @@ private:
     bool m_connected = false;
     bool m_quickConfirm = true;
     quint64 m_connectionGeneration = 0; ///< bumped on every disconnect
+    bool m_singleRegisterWrites = false;
+    /// FC16 rejected: true = "Use FC06 only and reconnect". Replaceable in tests.
+    std::function<bool(const QString &text)> m_offerSingleWrites;
     /// True when the tag still exists with exactly this configuration.
     bool stillSame(const Tag &tag) const;
     quint64 m_nextRequest = 1;
