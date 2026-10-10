@@ -21,6 +21,12 @@ simulates signals and can inject delays and dropped connections.
 - Export of the graph (PNG, SVG, PDF, optional cursors and readout box) and of the data (CSV)
 - Analysis tab for step tests: the times at 0 % and 63.2 % (or other setpoints) between two cursors,
   and the gain K, dead time L and time constant T of a first-order model; results as CSV
+- Analysis extras: the fitted model curve with its Fit RMS, guide lines from each setpoint marker,
+  and copying the result tables to the clipboard (Ctrl+C or Copy results)
+- Sessions (`.mbsession`): save the project, the recording and the cursors, then view and analyse them
+  offline, and continue the recording when connecting again
+- A right Y axis for tags with another unit or range (tag table column Axis); each axis scales separately
+- Quick writes: preset values A and B per writable tag, written with one click from the Quick write dock
 - Project files (`.mbproj`, JSON) with New, Open, Save and Save As
 - Test server `modbus_test_server` with simulated signals, a configuration file and fault injection
 
