@@ -1446,6 +1446,25 @@ private slots:
         delete menu;
     }
 
+    // Menu actions that change nothing do not emit (the project is not marked modified), and
+    // the menu keeps unknown keys.
+    void headerMenuNoOpDoesNotEmit()
+    {
+        TagTableModel m;
+        TagTableWidget w(&m);
+        w.setHiddenColumns(QStringList{} << compactHiddenColumns() << QStringLiteral("future"));
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        QMenu *menu = w.headerMenu();
+        menu->findChild<QAction *>(QStringLiteral("compactViewAction"))->trigger();
+        QCOMPARE(spy.count(), 0);
+        menu->findChild<QAction *>(QStringLiteral("showAllColumnsAction"))->trigger();
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(w.hiddenColumns(), QStringList{QStringLiteral("future")});
+        menu->findChild<QAction *>(QStringLiteral("showAllColumnsAction"))->trigger();
+        QCOMPARE(spy.count(), 1);
+        delete menu;
+    }
+
     // "Compact view" emits once (its column set is checked by the key-dependent test below).
     void headerMenuCompactEmitsOnce()
     {
@@ -1506,7 +1525,9 @@ private slots:
         QVERIFY(w.view()->isColumnHidden(C::Raw));
         QVERIFY(w.view()->isColumnHidden(C::Gain));
         QVERIFY(!w.view()->isColumnHidden(C::Name));
-        QCOMPARE(w.hiddenColumns(), QStringList({QStringLiteral("gain"), QStringLiteral("raw")}));
+        // Unknown keys (a newer version's columns) are kept, last, so saving does not drop them.
+        QCOMPARE(w.hiddenColumns(), QStringList({QStringLiteral("gain"), QStringLiteral("raw"),
+                                                 QStringLiteral("future")}));
 
         w.setHiddenColumns({});
         QVERIFY(!w.view()->isColumnHidden(C::Raw));

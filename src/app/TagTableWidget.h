@@ -23,7 +23,7 @@ class TagTableModel;
 /// action per column, in column order, titled with the header text (checked = visible). The
 /// Name action is checked and disabled (Name is always visible). After a separator: "Show all
 /// columns" and "Compact view" (hides exactly compactHiddenColumns()). Every change made from
-/// the menu emits hiddenColumnsChanged() once. The menu is built by headerMenu() (tests use it
+/// the menu emits hiddenColumnsChanged() once (not when it changes nothing). The menu is built by headerMenu() (tests use it
 /// without showing it).
 class TagTableWidget : public QWidget
 {
@@ -36,10 +36,12 @@ public:
     /// Selected rows, ascending.
     QList<int> selectedRows() const;
 
-    /// Hides exactly the columns whose keys are listed (TagTableModel::columnKey); unknown keys
-    /// and "name" are ignored, every other column is shown. Does not emit hiddenColumnsChanged().
+    /// Hides exactly the columns whose keys are listed (TagTableModel::columnKey); "name" is
+    /// ignored, every other column is shown. Unknown keys (columns of a newer version) hide
+    /// nothing but are kept and returned by hiddenColumns(), so saving does not drop them.
+    /// Does not emit hiddenColumnsChanged().
     void setHiddenColumns(const QStringList &keys);
-    /// Keys of the hidden columns, in column order.
+    /// Keys of the hidden columns, in column order, then the unknown keys last set.
     QStringList hiddenColumns() const;
     /// The header context menu described above (new each call, parented to this widget; the
     /// caller may exec() or delete it).
@@ -56,6 +58,10 @@ private:
     friend class ::TstTagTableModel;
     /// Asks before removing count (> 1) rows; the constructor installs a QMessageBox question.
     std::function<bool(int count)> m_confirmRemove;
+    /// Keys from setHiddenColumns() that name no column of this version.
+    QStringList m_unknownHidden;
+    /// Applies a change made from the header menu; emits hiddenColumnsChanged() if it changed.
+    void changeColumnsFromMenu(const std::function<void()> &change);
     TagTableModel *m_model = nullptr;
     QTableView *m_view = nullptr;
 };

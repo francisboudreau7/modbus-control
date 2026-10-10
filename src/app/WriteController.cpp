@@ -477,7 +477,8 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
                    "not support FC16 (write multiple registers). Nothing was written.\n\n"
                    "With FC06 only, each register is written with its own FC06 request. The value "
                    "is not written again automatically: write it again after reconnecting.")
-                    .arg(names.join(QStringLiteral(", "))))) {
+                    .arg(names.join(QStringLiteral(", "))))
+            && !m_singleRegisterWrites) { // another offer may have switched while this one was open
             emit singleRegisterWritesRequested();
         }
     }

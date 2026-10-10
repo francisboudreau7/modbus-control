@@ -330,11 +330,14 @@ QList<int> TagTableWidget::selectedRows() const
 void TagTableWidget::setHiddenColumns(const QStringList &keys)
 {
     QList<bool> hide(TagTableModel::ColumnCount, false);
+    m_unknownHidden.clear();
     for (const QString &key : keys) {
         const int c = TagTableModel::columnFromKey(key);
         // The Name column is always visible.
         if (c > TagTableModel::Name && c < TagTableModel::ColumnCount)
             hide[c] = true;
+        else if (c < 0 && !m_unknownHidden.contains(key))
+            m_unknownHidden << key;
     }
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnHidden(c, hide[c]);
@@ -347,7 +350,15 @@ QStringList TagTableWidget::hiddenColumns() const
         if (m_view->isColumnHidden(c))
             keys << TagTableModel::columnKey(c);
     }
-    return keys;
+    return keys + m_unknownHidden;
+}
+
+void TagTableWidget::changeColumnsFromMenu(const std::function<void()> &change)
+{
+    const QStringList before = hiddenColumns();
+    change();
+    if (hiddenColumns() != before)
+        emit hiddenColumnsChanged();
 }
 
 QMenu *TagTableWidget::headerMenu()
@@ -366,8 +377,7 @@ QMenu *TagTableWidget::headerMenu()
         }
         action->setChecked(!m_view->isColumnHidden(c));
         connect(action, &QAction::triggered, this, [this, c](bool visible) {
-            m_view->setColumnHidden(c, !visible);
-            emit hiddenColumnsChanged();
+            changeColumnsFromMenu([this, c, visible] { m_view->setColumnHidden(c, !visible); });
         });
     }
 
@@ -376,16 +386,20 @@ QMenu *TagTableWidget::headerMenu()
     QAction *showAll = menu->addAction(tr("Show all columns"));
     showAll->setObjectName(QStringLiteral("showAllColumnsAction"));
     connect(showAll, &QAction::triggered, this, [this] {
-        for (int c = 0; c < TagTableModel::ColumnCount; ++c)
-            m_view->setColumnHidden(c, false);
-        emit hiddenColumnsChanged();
+        changeColumnsFromMenu([this] {
+            for (int c = 0; c < TagTableModel::ColumnCount; ++c)
+                m_view->setColumnHidden(c, false);
+        });
     });
 
     QAction *compact = menu->addAction(tr("Compact view"));
     compact->setObjectName(QStringLiteral("compactViewAction"));
     connect(compact, &QAction::triggered, this, [this] {
-        setHiddenColumns(compactHiddenColumns());
-        emit hiddenColumnsChanged();
+        changeColumnsFromMenu([this] {
+            QStringList keys = compactHiddenColumns();
+            keys += m_unknownHidden; // the menu only changes this version's columns
+            setHiddenColumns(keys);
+        });
     });
 
     return menu;
