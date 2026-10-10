@@ -132,6 +132,14 @@ private slots:
     void writeLimitsRejected_data();
     void writeLimitsRejected();
     void v121KeysDefaultWhenMissing();
+    void hiddenColumnsDefaultToCompact();
+    void hiddenColumnsRoundTrip();
+    void hiddenColumnsMissingIsCompact();
+    void hiddenColumnsEmptyMeansAllVisible();
+    void hiddenColumnsDuplicatesDropped();
+    void hiddenColumnsAlwaysWritten();
+    void hiddenColumnsRejected_data();
+    void hiddenColumnsRejected();
 };
 
 void TstProjectIO::roundTrip()
@@ -999,6 +1007,104 @@ void TstProjectIO::v121KeysDefaultWhenMissing()
     QVERIFY(!tag.writeMin.has_value());
     QVERIFY(!tag.writeMax.has_value());
     QCOMPARE(*tag.quickA, 1.0);
+}
+
+void TstProjectIO::hiddenColumnsDefaultToCompact()
+{
+    const Project p;
+    QCOMPARE(p.hiddenColumns, compactHiddenColumns());
+    QVERIFY(!p.hiddenColumns.isEmpty());
+}
+
+void TstProjectIO::hiddenColumnsRoundTrip()
+{
+    Project p = sampleProject();
+    p.hiddenColumns = {QStringLiteral("raw"), QStringLiteral("analyze"), QStringLiteral("future")};
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(loaded->hiddenColumns, p.hiddenColumns);
+    QCOMPARE(*loaded, p);
+}
+
+void TstProjectIO::hiddenColumnsMissingIsCompact()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->hiddenColumns, compactHiddenColumns());
+}
+
+void TstProjectIO::hiddenColumnsEmptyMeansAllVisible()
+{
+    Project p = sampleProject();
+    p.hiddenColumns.clear();
+
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(p)).object();
+    QVERIFY(root.value(QStringLiteral("hiddenColumns")).isArray());
+    QCOMPARE(root.value(QStringLiteral("hiddenColumns")).toArray().size(), qsizetype(0));
+
+    QString error;
+    const auto loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QVERIFY(loaded->hiddenColumns.isEmpty());
+
+    const auto fromText = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"hiddenColumns":[]
+    })"), &error);
+    QVERIFY2(fromText.has_value(), qPrintable(error));
+    QVERIFY(fromText->hiddenColumns.isEmpty());
+}
+
+void TstProjectIO::hiddenColumnsDuplicatesDropped()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "hiddenColumns":["raw","gain","raw","future","gain"]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->hiddenColumns,
+             (QStringList{QStringLiteral("raw"), QStringLiteral("gain"), QStringLiteral("future")}));
+}
+
+void TstProjectIO::hiddenColumnsAlwaysWritten()
+{
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(Project{})).object();
+    QVERIFY(root.value(QStringLiteral("hiddenColumns")).isArray());
+    const QJsonArray keys = root.value(QStringLiteral("hiddenColumns")).toArray();
+    QCOMPARE(keys.size(), compactHiddenColumns().size());
+    for (const QJsonValue &v : keys)
+        QVERIFY(v.isString());
+}
+
+void TstProjectIO::hiddenColumnsRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("fragment");
+
+    QTest::newRow("not an array")
+        << json(R"({"format":"modbus-control-project","version":1,"hiddenColumns":"raw"})")
+        << QStringLiteral("hiddenColumns");
+    QTest::newRow("number entry")
+        << json(R"({"format":"modbus-control-project","version":1,"hiddenColumns":["raw",3]})")
+        << QStringLiteral("hiddenColumns");
+    QTest::newRow("null entry")
+        << json(R"({"format":"modbus-control-project","version":1,"hiddenColumns":[null]})")
+        << QStringLiteral("hiddenColumns");
+    QTest::newRow("object")
+        << json(R"({"format":"modbus-control-project","version":1,"hiddenColumns":{}})")
+        << QStringLiteral("hiddenColumns");
+}
+
+void TstProjectIO::hiddenColumnsRejected()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, fragment);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QVERIFY2(error.contains(fragment), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

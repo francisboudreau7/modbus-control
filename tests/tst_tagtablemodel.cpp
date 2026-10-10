@@ -1,4 +1,5 @@
-﻿#include "TagTableModel.h"
+﻿#include "ProjectIO.h"
+#include "TagTableModel.h"
 #include "TagTableWidget.h"
 
 #include <QAbstractItemModelTester>
@@ -1094,6 +1095,45 @@ private slots:
             QCOMPARE(spin->value(), 42.0);
         else
             QCOMPARE(line->text(), QStringLiteral("42"));
+    }
+
+    void columnKeys()
+    {
+        // Every column has a non-empty, unique key that maps back to the same column.
+        QSet<QString> seen;
+        for (int c = 0; c < C::ColumnCount; ++c) {
+            const QString key = C::columnKey(c);
+            QVERIFY2(!key.isEmpty(), qPrintable(QStringLiteral("column %1 has no key").arg(c)));
+            QVERIFY2(!seen.contains(key), qPrintable(QStringLiteral("duplicate key %1").arg(key)));
+            seen.insert(key);
+            QCOMPARE(C::columnFromKey(key), c);
+        }
+        QCOMPARE(seen.size(), int(C::ColumnCount));
+
+        // The documented keys, in column order.
+        QCOMPARE(C::columnKey(C::Name), QString("name"));
+        QCOMPARE(C::columnKey(C::ByteOrder), QString("byteOrder"));
+        QCOMPARE(C::columnKey(C::Analyze), QString("analyze"));
+        QCOMPARE(C::columnKey(C::WriteMin), QString("writeMin"));
+        QCOMPARE(C::columnKey(C::QuickB), QString("quickB"));
+        QCOMPARE(C::columnKey(C::Quality), QString("quality"));
+
+        // Invalid columns: no key.
+        QVERIFY(C::columnKey(-1).isEmpty());
+        QVERIFY(C::columnKey(C::ColumnCount).isEmpty());
+
+        // Exact, case-sensitive matches only.
+        QCOMPARE(C::columnFromKey("Name"), -1);
+        QCOMPARE(C::columnFromKey("nope"), -1);
+        QCOMPARE(C::columnFromKey(""), -1);
+        QCOMPARE(C::columnFromKey("bytes"), -1);
+        QCOMPARE(C::columnFromKey("byteorder"), -1);
+
+        // Every preset key names a real column; "name" is never hidden by the preset.
+        for (const QString &key : compactHiddenColumns()) {
+            QVERIFY2(C::columnFromKey(key) >= 0, qPrintable(key));
+            QVERIFY(key != QStringLiteral("name"));
+        }
     }
 };
 

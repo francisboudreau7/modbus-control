@@ -403,6 +403,37 @@ bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error
     return true;
 }
 
+// Optional top-level "hiddenColumns": an array of strings. Missing = compact preset. Duplicates
+// are dropped (first occurrence kept); unknown keys are kept as they are.
+bool readHiddenColumns(const QJsonObject &root, QStringList &out, QString *error)
+{
+    const QString key = QStringLiteral("hiddenColumns");
+    const QJsonValue value = root.value(key);
+    if (value.isUndefined()) {
+        out = compactHiddenColumns();
+        return true;
+    }
+    if (!value.isArray()) {
+        setError(error, QStringLiteral("\"hiddenColumns\" must be an array of strings"));
+        return false;
+    }
+    QStringList list;
+    QSet<QString> seen;
+    for (const QJsonValue &entry : value.toArray()) {
+        if (!entry.isString()) {
+            setError(error, QStringLiteral("\"hiddenColumns\" entries must be strings"));
+            return false;
+        }
+        const QString name = entry.toString();
+        if (!seen.contains(name)) {
+            seen.insert(name);
+            list.append(name);
+        }
+    }
+    out = list;
+    return true;
+}
+
 } // namespace
 
 QByteArray projectToJson(const Project &project)
@@ -466,6 +497,10 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("guideLines"), a.guideLines},
     };
 
+    QJsonArray hiddenColumns;
+    for (const QString &key : project.hiddenColumns)
+        hiddenColumns.append(key);
+
     const QJsonObject root{
         {QStringLiteral("format"), QStringLiteral("modbus-control-project")},
         {QStringLiteral("version"), static_cast<qint64>(kProjectFormatVersion)},
@@ -474,6 +509,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("nextTagId"), static_cast<qint64>(project.nextTagId)},
         {QStringLiteral("tags"), tags},
         {QStringLiteral("analysis"), analysis},
+        {QStringLiteral("hiddenColumns"), hiddenColumns},
     };
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
@@ -560,6 +596,9 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
     if (!readAnalysis(root, project.analysis, error))
         return std::nullopt;
 
+    if (!readHiddenColumns(root, project.hiddenColumns, error))
+        return std::nullopt;
+
     project.nextTagId = static_cast<TagId>(std::max<qint64>(storedNextId, static_cast<qint64>(maxId) + 1));
     return project;
 }
@@ -602,7 +641,6 @@ std::optional<Project> loadProject(const QString &path, QString *error)
     return project;
 }
 
-// T130: the preset is part of the contract; reading/writing "hiddenColumns" is done by T131.
 QStringList compactHiddenColumns()
 {
     return {QStringLiteral("raw"),      QStringLiteral("gain"),     QStringLiteral("offset"),
