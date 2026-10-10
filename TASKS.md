@@ -236,7 +236,7 @@ _Last updated: 2026-10-09. Update this section whenever a task is merged or a re
 - **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
   `..\modbus-control-wt` folder was removed; recreate it for the next wave).
 - **Tests:** 21 ctest targets, all passing; zero warnings in our code.
-- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **In progress: Wave 11 (v1.2.2 hideable columns): T130 merged; T131, T132 running.** Quick A/B editor fix already on main (6aa6b15).
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **In progress: Wave 11 done except the release: T130–T133 merged, FC06 button added, version 1.2.2, installer `out/installer/ModbusControl-1.2.2-setup.exe` (sha256 7781af58…4ff) built; publish after the user confirms.** Quick A/B editor fix already on main (6aa6b15).
 - **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
   server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
   installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,
