@@ -73,6 +73,14 @@ public:
     TagId nextTagId() const;
     const Tag &tagAt(int row) const;
     int rowOf(TagId id) const; ///< -1 if absent
+
+    /// Stable key of a column for project files: "name", "area", "address", "type",
+    /// "byteOrder", "gain", "offset", "unit", "writable", "plot", "analyze", "axis", "color",
+    /// "raw", "value", "writeMin", "writeMax", "quickA", "quickB", "quality". Empty for an
+    /// invalid column.
+    static QString columnKey(int column);
+    /// Column of a key (exact, case-sensitive match), or -1.
+    static int columnFromKey(const QString &key);
     /// Latest scaled value of the tag when its last sample was Good, else nullopt. Editing
     /// Area, Address, Type, ByteOrder, Gain or Offset forgets the tag's live value.
     std::optional<double> goodValue(TagId id) const;

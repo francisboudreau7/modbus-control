@@ -11,6 +11,7 @@
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
@@ -313,6 +314,19 @@ QList<int> TagTableWidget::selectedRows() const
         rows << i.row();
     std::sort(rows.begin(), rows.end());
     return rows;
+}
+
+// Stubs created by T130; implemented by T132.
+void TagTableWidget::setHiddenColumns(const QStringList &) {}
+
+QStringList TagTableWidget::hiddenColumns() const
+{
+    return {};
+}
+
+QMenu *TagTableWidget::headerMenu()
+{
+    return new QMenu(this);
 }
 
 } // namespace mb

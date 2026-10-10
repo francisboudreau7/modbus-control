@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 #include <optional>
 
@@ -54,6 +55,15 @@ inline constexpr int kProjectFormatVersion = 1;
 ///
 /// Added in v1.2.1 (optional, additive): per tag "writeMin"/"writeMax" (finite numbers; missing
 /// or null = no limit; written only when set; writeMin > writeMax is rejected).
+///
+/// Added in v1.2.2 (optional, additive): top-level "hiddenColumns", an array of tag-table column
+/// keys (see TagTableModel::columnKey) hidden in the tag table. Missing -> compactHiddenColumns().
+/// Always written. Entries must be strings (anything else is rejected); unknown keys are kept as
+/// they are (the table ignores them), duplicates are dropped.
+/// Column keys hidden by the tag table's compact view: "raw", "gain", "offset", "byteOrder",
+/// "axis", "color", "writeMin", "writeMax", "quickA", "quickB" (in this order).
+QStringList compactHiddenColumns();
+
 struct Project {
     ConnectionSettings connection;
     QList<Tag> tags;
@@ -64,6 +74,8 @@ struct Project {
     int addressBase = 0;
     /// Analysis tab settings (JSON top-level key "analysis").
     AnalysisSettings analysis;
+    /// Tag-table columns hidden in this project (column keys; JSON "hiddenColumns").
+    QStringList hiddenColumns = compactHiddenColumns();
 
     friend bool operator==(const Project &, const Project &) = default;
 };

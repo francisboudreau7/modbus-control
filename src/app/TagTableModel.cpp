@@ -614,4 +614,15 @@ int TagTableModel::addressBase() const
     return m_addressBase;
 }
 
+// Stubs created by T130; implemented by T131.
+QString TagTableModel::columnKey(int)
+{
+    return {};
+}
+
+int TagTableModel::columnFromKey(const QString &)
+{
+    return -1;
+}
+
 } // namespace mb

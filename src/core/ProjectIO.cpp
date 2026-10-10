@@ -602,4 +602,13 @@ std::optional<Project> loadProject(const QString &path, QString *error)
     return project;
 }
 
+// T130: the preset is part of the contract; reading/writing "hiddenColumns" is done by T131.
+QStringList compactHiddenColumns()
+{
+    return {QStringLiteral("raw"),      QStringLiteral("gain"),     QStringLiteral("offset"),
+            QStringLiteral("byteOrder"), QStringLiteral("axis"),     QStringLiteral("color"),
+            QStringLiteral("writeMin"), QStringLiteral("writeMax"), QStringLiteral("quickA"),
+            QStringLiteral("quickB")};
+}
+
 } // namespace mb
