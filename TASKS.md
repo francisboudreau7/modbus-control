@@ -192,14 +192,47 @@ Parallel groups: T101–T105 and T107 after T100; T106 after T101/T104/T105; T10
 
 ## Status and remaining work
 
-_Last updated: 2026-10-09. Update this section whenever a task is merged._
+_Last updated: 2026-10-09. Update this section whenever a task is merged or a release ships._
 
+### Current state (read this first)
+- **Released:** v1.0.0, v1.1.0 (Analysis mode), **v1.2.0** (sessions, model curve + Fit RMS,
+  guide lines, copy results, right Y axis, quick writes, logo) — all on
+  https://github.com/francisboudreau7/modbus-control/releases. Latest installer
+  `ModbusControl-1.2.0-setup.exe`, sha256 8806d004…7f03.
+- **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
+  `..\modbus-control-wt` folder was removed; recreate it for the next wave).
+- **Tests:** 21 ctest targets, all passing; zero warnings in our code.
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). Nothing in progress.
+- **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
+  server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
+  installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,
+  and `gh release create vX.Y.Z out\installer\ModbusControl-X.Y.Z-setup.exe` **only after the
+  user confirms** (release notes: features, fixes, licences).
+- **Logo:** sources `assets/icon/logo.svg` (48 px+) and `logo-small.svg` (32 px and below);
+  regenerate PNGs and the .ico with `tools\make_icons.ps1`.
+
+### Not verified by automated tests (ask the user to try in the app)
+- v1.2: the Connect prompt "Continue this recording / Start a new recording" after opening a
+  session, the session dialogs and unsaved-recording prompts, the Quick write dock and its
+  "Don't ask again this session" box, the right Y axis on both tabs, Copy results into Excel.
+
+### Backlog (suggested to the user after v1.1, not chosen yet)
+1. Step-test assistant: write a step to a chosen output tag, place C1 at the write, place C2
+   automatically when the response settles.
+6. One-page PDF lab report (graph with markers, both tables, settings, date).
+9. Connection comfort: recent-hosts dropdown, plainer connection error texts.
+10. Warn on close when a live (non-session) recording would be lost.
+11. First launch opens the demo project with a "try it with the test server" hint.
+12. French UI translation (Qt Linguist; most UI strings are tr()-wrapped, some in
+    AppController/WriteController are QStringLiteral and would need wrapping).
+Also possible: Ziegler–Nichols / Cohen-Coon tuning table (the user chose "no tuning table" for
+v1.1; students compute it themselves).
+
+### History
 **Merged into `main` and pushed** (all 14 ctest targets pass): T01, T02, T10–T18, T20–T22, T30–T34,
 T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit contracts and an MIT
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
-
-**In progress:** nothing. **v1.2.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.2.0 (installer `ModbusControl-1.2.0-setup.exe`, sha256 8806d004…7f03; includes the new logo). Wave 9 complete. **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).

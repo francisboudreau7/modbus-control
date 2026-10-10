@@ -44,6 +44,17 @@ Opus orchestrates; Sonnet gets concurrency/libmodbus/model-view/plot work, Haiku
 fully-specified tasks. Each task runs in its own worktree `..\modbus-control-wt\tNN` on branch
 `task/tNN` (created manually with git; the built-in worktree isolation didn't work here),
 commits there, and the orchestrator reviews, merges with `--no-ff`, rebuilds and runs ctest.
+Lessons from waves 8–9:
+- Contract-first works: the orchestrator writes headers + compiling stubs + CMake entries +
+  placeholder tests (T90/T100), then file-disjoint tasks run in parallel.
+- After a hand-back, stop the agent with TaskStop if it still has background work (agents
+  sometimes loop re-sending their report), and kill leftover shells whose command line
+  mentions the worktree before `git worktree remove` (they lock the folder).
+- Run an independent read-only review agent over `git diff vPrev..main` before each release;
+  it found real bugs both times (e.g. opened sessions showed empty plots).
+- The user often runs the debug app or test server; LNK1168 means an exe is open — ask the
+  user to close it (don't kill their processes), or build/test everything but that target.
+- PowerShell `Set-Content -Encoding UTF8` writes a BOM; use Python or .NET without BOM.
 
 ## Safety notes
 - Don't drive the user's desktop with synthetic mouse/keyboard input (an earlier attempt typed
