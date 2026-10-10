@@ -142,3 +142,15 @@ Chosen from the post-1.1 suggestions (numbers refer to that list): 2 model curve
 | 5 | Clipboard | Ctrl+C on the Analysis Setpoints and Model tables copies the selected cells, or the whole table with headers when nothing is selected, as tab-separated text. A **Copy results** button copies both tables (blank line between). |
 | 7 | Second Y axis | Tag-table column **Axis** (Left/Right, `Tag::axis`, JSON `"axis": "left"\|"right"`, default left). Both tabs' TrendPlots attach curves to their axis; each axis auto-scales separately; axis titles list the units of their tags; the right axis is hidden when unused. Analysis markers, guide lines and model curves use their tag's axis. |
 | 8 | Quick writes | Tag-table columns **Quick A** / **Quick B** (scaled values, empty = none; `Tag::quickA/quickB`, JSON `"quickA"`/`"quickB"`, only meaningful for writable tags). New dock **Quick write**: one row per writable tag with A or B set: name, live value, buttons "A: <value>" and "B: <value>". Click → WriteController writes. Confirmation dialog has **Don't ask again this session**; Options menu **Confirm quick writes** (checked by default each launch) re-enables it. Normal table edits always confirm. |
+
+## v1.2.1 write safety (planned on request)
+
+Context: writing float32 setpoints to an ABB CM50; a value written in the wrong format or to the
+wrong register can upset the regulator. Analysis in TASKS.md Wave 10. Chosen by the user:
+
+| Feature | Decisions |
+|---|---|
+| Write limits | Tag-table columns **Min** and **Max** (scaled values, empty = no limit; `Tag::writeMin/writeMax`, JSON `"writeMin"`/`"writeMax"`, written only when set; editable only for writable tags; Min ≤ Max enforced). Every write path (table edit, multi-register write, quick write) refuses a value outside the limits with a warning naming the tag and limits, before any confirmation. A Quick A/B value outside the limits is refused when entered. The confirmation shows the limits. |
+| Read-before-write guard | 32-bit writes (int32, uint32, float32) need a Good latest read of that tag; otherwise refused ("no valid reading yet — check the connection, register and byte order"). The confirmation of every write shows "current X → new Y". If the current value of a float32 tag is implausible — not finite, \|x\| > 1e9, or 0 < \|x\| < 1e-6 — an extra warning dialog explains that the byte order or register number is probably wrong and requires an explicit "Write anyway". |
+| Quick writes to 32-bit tags | Always confirmed; "Don't ask again this session" applies to 16-bit tags only (the check box is not shown for 32-bit tags). |
+| Not changed | FC06 word order (in-between value stays within 0.8 % of the old or new value); no read-back check. |

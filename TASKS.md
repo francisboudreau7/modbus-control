@@ -190,6 +190,21 @@ Parallel groups: T91, T92, T93, T94 run together after T90; T95 after T91; T96 a
 
 Parallel groups: T101–T105 and T107 after T100; T106 after T101/T104/T105; T108 after the rest; T109 after T108.
 
+### Wave 10 — v1.2.1 write safety (planned on request; design in PLAN.md "v1.2.1 write safety")
+
+Already done before this wave: Quick A/B editor reset fix (6aa6b15).
+Float32/CM50 analysis (2026-10-10): encode is the exact inverse of decode (round-trip tests in all
+byte orders + integration writes); NaN/inf/out-of-range refused; FC16 is atomic; FC06 two-step
+writes leave an in-between value within 0.8 % of old or new; main real risk is a wrong byte order
+or register (also visible as a wrong read) — hence these guards. No real CM50 was tested.
+
+| ID | Task | Model | Deps | Files | Acceptance |
+|---|---|---|---|---|---|
+| T120 | Contracts + stubs: `Tag::writeMin/writeMax`; TagTableModel Min/Max columns; WriteController guard docs (limits, Good read for 32-bit, implausible-float warning hook, 32-bit quick writes always confirm); ProjectIO keys | O | — | headers, stubs | Builds, tests pass |
+| T121 | Min/Max columns (+ Quick A/B checked against limits) and ProjectIO keys; tests | H | T120 | TagTableModel.cpp, TagTableWidget.cpp, ProjectIO.cpp, tests | Tests pass |
+| T122 | WriteController: limits on all paths, Good-read guard, "current → new" text, implausible-float extra confirmation, 32-bit quick writes always confirm; tests with prompt hooks | S | T120 | WriteController.cpp, QuickWritePanel/WriteController private, tst_quickwrite (+ new cases) | Tests pass 3× |
+| T123 | Docs (USER_GUIDE Writing values + CM50 safe first-write procedure), demo/cm50 examples with limits on writable tags; version 1.2.1, installer; release after the user confirms | O/H | T121, T122 | docs, examples, version files | User confirmed |
+
 ## Status and remaining work
 
 _Last updated: 2026-10-09. Update this section whenever a task is merged or a release ships._
@@ -202,7 +217,7 @@ _Last updated: 2026-10-09. Update this section whenever a task is merged or a re
 - **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
   `..\modbus-control-wt` folder was removed; recreate it for the next wave).
 - **Tests:** 21 ctest targets, all passing; zero warnings in our code.
-- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). Nothing in progress.
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **Next: Wave 10 (v1.2.1 write safety) planned, waiting for the user to say start.** Quick A/B editor fix already on main (6aa6b15).
 - **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
   server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
   installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,
