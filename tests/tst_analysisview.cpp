@@ -13,6 +13,10 @@
 #include <qwt_text.h>
 
 #include <QCheckBox>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QRegularExpression>
+#include <QShortcut>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QListWidget>
@@ -119,6 +123,13 @@ private slots:
     void loadedPercentsNormalised();
     void editingOneControlKeepsOthers();
     void evictionRecomputes();
+    void modelCurve();
+    void fitRmsCell();
+    void guideLines();
+    void rightAxis();
+    void copyResults();
+    void settingsNewBooleans();
+    void manyRecomputes();
 };
 
 void TstAnalysisView::staleDeltaCoTagMeansTypedValue()
@@ -511,6 +522,206 @@ void TstAnalysisView::refreshRecompute()
         QVERIFY(results.count() >= 1);
         QVERIFY(!v.results().isEmpty() ? !v.results()[0].valid : true);
     }
+}
+
+static QwtPlotCurve *findCurve(AnalysisView &v, const QString &title)
+{
+    const QwtPlotItemList items = v.trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotCurve);
+    for (QwtPlotItem *item : items) {
+        if (item->title().text() == title)
+            return static_cast<QwtPlotCurve *>(item);
+    }
+    return nullptr;
+}
+
+static QwtPlotItemList guideItems(AnalysisView &v)
+{
+    return v.trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotUserItem + 1);
+}
+
+static void setupFopdt(Recorder &rec, AnalysisView &v, const QList<Tag> &tags)
+{
+    appendRows(rec, 0, 600);
+    v.setRecorder(&rec);
+    v.setTags(tags);
+    AnalysisSettings s;
+    s.deltaCoTagId = kCo;
+    v.setSettings(s);
+    v.setCursors(9.0, 40.0);
+}
+
+void TstAnalysisView::modelCurve()
+{
+    Recorder rec;
+    AnalysisView v;
+    setupFopdt(rec, v, standardTags());
+    QVERIFY(!findCurve(v, QStringLiteral("PV model")));
+
+    QSignalSpy changed(&v, &AnalysisView::settingsChanged);
+    child<QCheckBox>(v, "showModelCheck")->setChecked(true);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(v.settings().showModel);
+    QwtPlotCurve *c = findCurve(v, QStringLiteral("PV model"));
+    QVERIFY(c);
+    QVERIFY(!c->testItemAttribute(QwtPlotItem::Legend));
+    QVERIFY(c->dataSize() >= 400);
+    QCOMPARE(c->pen().style(), Qt::DashLine);
+    const StepResult r = v.results().at(0);
+    QVERIFY(r.deadTime && r.timeConstant);
+    const double tq = r.stepTime + *r.deadTime + *r.timeConstant;
+    double best = 1e9;
+    double yAt = 0.0;
+    for (size_t i = 0; i < c->dataSize(); ++i) {
+        const QPointF p = c->sample(int(i));
+        if (std::abs(p.x() - tq) < best) {
+            best = std::abs(p.x() - tq);
+            yAt = p.y();
+        }
+    }
+    QVERIFY(best < 0.1);
+    QVERIFY2(std::abs(yAt - (r.y0 + 0.632 * r.deltaPv)) < 0.2, qPrintable(QString::number(yAt)));
+
+    child<QCheckBox>(v, "showModelCheck")->setChecked(false);
+    QVERIFY(!findCurve(v, QStringLiteral("PV model")));
+
+    // Absent when the model is missing.
+    AnalysisSettings s = v.settings();
+    s.showModel = true;
+    v.setSettings(s);
+    QVERIFY(findCurve(v, QStringLiteral("PV model")));
+    v.setCursors(9.0, 11.0);
+    QVERIFY(!v.results().isEmpty());
+    if (!v.results().at(0).deadTime)
+        QVERIFY(!findCurve(v, QStringLiteral("PV model")));
+    v.setCursors(std::nullopt, std::nullopt);
+    QVERIFY(!findCurve(v, QStringLiteral("PV model")));
+}
+
+void TstAnalysisView::fitRmsCell()
+{
+    Recorder rec;
+    AnalysisView v;
+    setupFopdt(rec, v, standardTags());
+    QTableWidget *t = table(v, "modelTable");
+    QCOMPARE(t->columnCount(), 9);
+    QCOMPARE(t->horizontalHeaderItem(8)->text(), QStringLiteral("Fit RMS"));
+    const QString text = t->item(0, 8)->text();
+    QVERIFY2(QRegularExpression(QStringLiteral(R"(^[0-9.e+-]+ \([0-9.e+-]+ %\)$)"))
+                 .match(text).hasMatch(),
+             qPrintable(text));
+
+    // Invalid result: error text spans the value cells.
+    v.setCursors(9.0, 9.0);
+    QVERIFY(!v.results().at(0).valid);
+    QCOMPARE(t->columnSpan(0, 1), 8);
+}
+
+void TstAnalysisView::guideLines()
+{
+    Recorder rec;
+    AnalysisView v;
+    setupFopdt(rec, v, standardTags());
+    QCOMPARE(guideItems(v).size(), 1);
+    QVERIFY(guideItems(v).at(0)->title().text().contains(QStringLiteral("(2 points)")));
+    QVERIFY(!guideItems(v).at(0)->testItemAttribute(QwtPlotItem::Legend));
+    v.resize(900, 500);
+    v.show();
+    QVERIFY(!v.trendPlot()->grab().isNull());
+
+    QSignalSpy changed(&v, &AnalysisView::settingsChanged);
+    child<QCheckBox>(v, "guideLinesCheck")->setChecked(false);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(guideItems(v).size(), 0);
+    QVERIFY(!v.settings().guideLines);
+    QVERIFY(!v.trendPlot()->grab().isNull());
+    child<QCheckBox>(v, "guideLinesCheck")->setChecked(true);
+    QCOMPARE(guideItems(v).size(), 1);
+}
+
+void TstAnalysisView::rightAxis()
+{
+    Recorder rec;
+    AnalysisView v;
+    QList<Tag> tags = standardTags();
+    tags[1].axis = YAxis::Right;
+    setupFopdt(rec, v, tags);
+    AnalysisSettings s = v.settings();
+    s.showModel = true;
+    v.setSettings(s);
+    int markers = 0;
+    const QwtPlotItemList items = v.trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotMarker);
+    for (QwtPlotItem *item : items) {
+        if (static_cast<QwtPlotMarker *>(item)->symbol()) {
+            ++markers;
+            QVERIFY(item->yAxis() == QwtPlot::yRight);
+        }
+    }
+    QVERIFY(markers >= 2);
+    QVERIFY(findCurve(v, QStringLiteral("PV model"))->yAxis() == QwtPlot::yRight);
+    QCOMPARE(guideItems(v).size(), 1);
+    QVERIFY(guideItems(v).at(0)->yAxis() == QwtPlot::yRight);
+    v.resize(900, 500);
+    v.show();
+    QVERIFY(!v.trendPlot()->grab().isNull());
+}
+
+void TstAnalysisView::copyResults()
+{
+    Recorder rec;
+    AnalysisView v;
+    setupFopdt(rec, v, standardTags());
+    auto *button = child<QPushButton>(v, "copyResultsButton");
+    QVERIFY(button->isEnabled());
+    QGuiApplication::clipboard()->setText(QString());
+    button->click();
+    const QString text = QGuiApplication::clipboard()->text();
+    QVERIFY(text.contains(QStringLiteral("Tag\t%")));
+    QVERIFY(text.contains(QStringLiteral("Tag\ty0")));
+    QVERIFY(text.contains(QStringLiteral("63.2")));
+    QVERIFY(text.contains(QStringLiteral("\r\n\r\n")));
+
+    for (const char *name : {"setpointTable", "modelTable"}) {
+        QTableWidget *t = table(v, name);
+        QCOMPARE(t->selectionMode(), QAbstractItemView::ExtendedSelection);
+        bool found = false;
+        const auto shortcuts = t->findChildren<QShortcut *>();
+        for (QShortcut *sc : shortcuts)
+            found = found || sc->key() == QKeySequence(QKeySequence::Copy);
+        QVERIFY(found);
+    }
+
+    v.setCursors(std::nullopt, std::nullopt);
+    QVERIFY(!button->isEnabled());
+}
+
+void TstAnalysisView::settingsNewBooleans()
+{
+    AnalysisView v;
+    v.setTags(standardTags());
+    QSignalSpy changed(&v, &AnalysisView::settingsChanged);
+    AnalysisSettings s;
+    s.showModel = true;
+    s.guideLines = false;
+    v.setSettings(s);
+    QCOMPARE(changed.count(), 0);
+    QVERIFY(child<QCheckBox>(v, "showModelCheck")->isChecked());
+    QVERIFY(!child<QCheckBox>(v, "guideLinesCheck")->isChecked());
+    QCOMPARE(v.settings(), s);
+}
+
+void TstAnalysisView::manyRecomputes()
+{
+    Recorder rec;
+    auto *v = new AnalysisView;
+    setupFopdt(rec, *v, standardTags());
+    AnalysisSettings s = v->settings();
+    s.showModel = true;
+    v->setSettings(s);
+    for (int i = 0; i < 50; ++i)
+        v->setCursors(9.0 + 0.01 * i, 40.0);
+    QCOMPARE(guideItems(*v).size(), 1);
+    QCOMPARE(v->trendPlot()->plot()->itemList(QwtPlotItem::Rtti_PlotCurve).size(), 2); // PV + model
+    delete v; // no crash / double delete
 }
 
 QTEST_MAIN(TstAnalysisView)

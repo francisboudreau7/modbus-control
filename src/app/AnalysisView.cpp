@@ -1,11 +1,15 @@
 #include "AnalysisView.h"
 
+#include "ClipboardCopy.h"
 #include "PlotCursors.h"
 #include "Recorder.h"
 #include "TrendPlot.h"
 
 #include <qwt_plot.h>
+#include <qwt_plot_curve.h>
+#include <qwt_plot_item.h>
 #include <qwt_plot_marker.h>
+#include <qwt_scale_map.h>
 #include <qwt_symbol.h>
 #include <qwt_text.h>
 
@@ -14,13 +18,17 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QClipboard>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
 #include <QLocale>
+#include <QMap>
+#include <QPainter>
 #include <QPen>
 #include <QPushButton>
 #include <QScrollArea>
@@ -96,6 +104,51 @@ QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, d
     return spin;
 }
 
+constexpr int kGuideRtti = QwtPlotItem::Rtti_PlotUserItem + 1;
+constexpr int kModelPoints = 400;
+
+/// Dashed guide lines from setpoint points down to the bottom and left to the left edge of
+/// the canvas; computed at draw time so they follow zoom and pan.
+struct GuidePoint {
+    QPointF pos;
+    QColor color;
+};
+
+class GuideLineItem : public QwtPlotItem
+{
+public:
+    explicit GuideLineItem(const QList<GuidePoint> &points)
+        : QwtPlotItem(QwtText(QStringLiteral("Guide lines (%1 points)").arg(points.size())))
+        , m_points(points)
+    {
+        setItemAttribute(QwtPlotItem::Legend, false);
+        setZ(15.0);
+    }
+
+    int rtti() const override { return kGuideRtti; }
+
+    void draw(QPainter *painter, const QwtScaleMap &xMap, const QwtScaleMap &yMap,
+              const QRectF &canvasRect) const override
+    {
+        painter->save();
+        for (const GuidePoint &gp : m_points) {
+            QColor c = gp.color;
+            c.setAlpha(160);
+            QPen pen(c, 1);
+            pen.setStyle(Qt::DashLine);
+            painter->setPen(pen);
+            const double px = xMap.transform(gp.pos.x());
+            const double py = yMap.transform(gp.pos.y());
+            painter->drawLine(QPointF(px, py), QPointF(px, canvasRect.bottom()));
+            painter->drawLine(QPointF(px, py), QPointF(canvasRect.left(), py));
+        }
+        painter->restore();
+    }
+
+private:
+    QList<GuidePoint> m_points;
+};
+
 } // namespace
 
 AnalysisView::AnalysisView(QWidget *parent)
@@ -133,8 +186,13 @@ void AnalysisView::buildUi()
     m_exportButton->setObjectName(QStringLiteral("exportResultsButton"));
     m_exportButton->setEnabled(false);
     buttons->addWidget(m_copyCursorsButton);
+    m_copyResultsButton = new QPushButton(tr("Copy results"), panel);
+    m_copyResultsButton->setObjectName(QStringLiteral("copyResultsButton"));
+    m_copyResultsButton->setEnabled(false);
     buttons->addWidget(m_exportButton);
+    buttons->addWidget(m_copyResultsButton);
     col->addLayout(buttons);
+    connect(m_copyResultsButton, &QPushButton::clicked, this, [this] { copyResults(); });
     connect(m_copyCursorsButton, &QPushButton::clicked, this, &AnalysisView::copyCursorsRequested);
     connect(m_exportButton, &QPushButton::clicked, this, &AnalysisView::exportResultsRequested);
 
@@ -206,6 +264,15 @@ void AnalysisView::buildUi()
         m_settings.detailedLabels = on;
         userChangedSettings();
     });
+    m_guideLinesCheck = new QCheckBox(tr("Guide lines"), spBox);
+    m_guideLinesCheck->setObjectName(QStringLiteral("guideLinesCheck"));
+    spGrid->addWidget(m_guideLinesCheck, 4, 0, 1, 2);
+    connect(m_guideLinesCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_settings.guideLines = on;
+        userChangedSettings();
+    });
     col->addWidget(spBox);
     connect(m_addPercentButton, &QPushButton::clicked, this, [this] { onAddPercent(); });
     connect(m_removePercentButton, &QPushButton::clicked, this, [this] { onRemovePercent(); });
@@ -229,6 +296,15 @@ void AnalysisView::buildUi()
     mGrid->addWidget(new QLabel(kDelta + QStringLiteral("CO"), modelBox), 2, 0);
     mGrid->addWidget(m_deltaCoCombo, 2, 1);
     mGrid->addWidget(m_deltaCoSpin, 3, 1);
+    m_showModelCheck = new QCheckBox(tr("Show model curve"), modelBox);
+    m_showModelCheck->setObjectName(QStringLiteral("showModelCheck"));
+    mGrid->addWidget(m_showModelCheck, 4, 0, 1, 2);
+    connect(m_showModelCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_settings.showModel = on;
+        userChangedSettings();
+    });
     col->addWidget(modelBox);
     connect(m_modelFromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
     connect(m_modelToSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
@@ -245,17 +321,21 @@ void AnalysisView::buildUi()
     m_setpointTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_setpointTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_setpointTable->setMinimumHeight(140);
+    m_setpointTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    installCopyShortcut(m_setpointTable);
 
-    m_modelTable = new QTableWidget(0, 8, panel);
+    m_modelTable = new QTableWidget(0, 9, panel);
     m_modelTable->setObjectName(QStringLiteral("modelTable"));
     m_modelTable->setHorizontalHeaderLabels(QStringList{
         tr("Tag"), QStringLiteral("y0"), QStringLiteral("y100"), kDelta + QStringLiteral("PV"),
         kDelta + QStringLiteral("CO"), QStringLiteral("K"), QStringLiteral("L (s)"),
-        QStringLiteral("T (s)")});
+        QStringLiteral("T (s)"), tr("Fit RMS")});
     m_modelTable->verticalHeader()->setVisible(false);
     m_modelTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_modelTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_modelTable->setMinimumHeight(100);
+    m_modelTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    installCopyShortcut(m_modelTable);
 
     col->addWidget(new QLabel(tr("Setpoints"), panel));
     col->addWidget(m_setpointTable);
@@ -333,6 +413,10 @@ void AnalysisView::syncControlsFromSettings()
         const QSignalBlocker b6(m_deltaCoCombo);
         const QSignalBlocker b7(m_deltaCoSpin);
         const QSignalBlocker b8(m_detailedLabelsCheck);
+        const QSignalBlocker b9(m_guideLinesCheck);
+        const QSignalBlocker b10(m_showModelCheck);
+        m_guideLinesCheck->setChecked(m_settings.guideLines);
+        m_showModelCheck->setChecked(m_settings.showModel);
         m_detailedLabelsCheck->setChecked(m_settings.detailedLabels);
         m_referenceCombo->setCurrentIndex(m_settings.reference == ReferenceMode::WindowMean ? 1 : 0);
         m_windowSpin->setValue(m_settings.referenceWindowS);
@@ -480,16 +564,59 @@ void AnalysisView::clearMarkers()
         delete m;
     }
     m_markers.clear();
+    for (QwtPlotItem *g : std::as_const(m_guideItems)) {
+        g->detach();
+        delete g;
+    }
+    m_guideItems.clear();
+    for (QwtPlotCurve *c : std::as_const(m_modelCurves)) {
+        c->detach();
+        delete c;
+    }
+    m_modelCurves.clear();
+}
+
+void AnalysisView::copyResults()
+{
+    const QString text = tableToTsv(m_setpointTable->model(), {})
+                         + QStringLiteral("\r\n") + tableToTsv(m_modelTable->model(), {});
+    QGuiApplication::clipboard()->setText(text);
 }
 
 void AnalysisView::rebuildMarkers()
 {
     clearMarkers();
+    QMap<int, QList<GuidePoint>> guidePoints; // by Y axis (QwtPlot::yLeft / yRight)
     for (const StepResult &r : std::as_const(m_results)) {
         if (!r.valid)
             continue;
         const Tag *tag = tagById(r.tagId);
         const QColor color = tag ? QColor(tag->color) : QColor(Qt::black);
+        const int axis = (tag && tag->axis == YAxis::Right) ? QwtPlot::yRight : QwtPlot::yLeft;
+
+        if (m_settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
+            QVector<QPointF> pts;
+            pts.reserve(kModelPoints + 2);
+            for (int i = 0; i < kModelPoints; ++i) {
+                const double t = r.t1 + (r.t2 - r.t1) * i / (kModelPoints - 1);
+                pts.append(QPointF(t, fopdtModelValue(r, t)));
+            }
+            const double tb = r.stepTime + *r.deadTime;
+            if (tb > r.t1 && tb < r.t2) {
+                const auto it = std::lower_bound(pts.begin(), pts.end(), tb,
+                                                 [](const QPointF &p, double t) { return p.x() < t; });
+                pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
+            }
+            auto *curve = new QwtPlotCurve(tag ? tag->name + QStringLiteral(" model")
+                                               : QStringLiteral("model"));
+            curve->setSamples(pts);
+            curve->setPen(QPen(color, 1.5, Qt::DashLine));
+            curve->setItemAttribute(QwtPlotItem::Legend, false);
+            curve->setYAxis(axis);
+            curve->setZ(12.0);
+            curve->attach(m_plot->plot());
+            m_modelCurves.append(curve);
+        }
         for (const SetpointResult &sp : r.setpoints) {
             if (!sp.found)
                 continue;
@@ -513,8 +640,18 @@ void AnalysisView::rebuildMarkers()
             label.setRenderFlags(Qt::AlignLeft | Qt::AlignVCenter);
             marker->setLabel(label);
             marker->setLabelAlignment(Qt::AlignRight | Qt::AlignTop);
+            marker->setYAxis(axis);
+            guidePoints[axis].append({QPointF(sp.time, sp.target), color});
             marker->attach(m_plot->plot());
             m_markers.append(marker);
+        }
+    }
+    if (m_settings.guideLines) {
+        for (auto it = guidePoints.cbegin(); it != guidePoints.cend(); ++it) {
+            auto *item = new GuideLineItem(it.value());
+            item->setYAxis(it.key());
+            item->attach(m_plot->plot());
+            m_guideItems.append(item);
         }
     }
 }
@@ -540,12 +677,19 @@ void AnalysisView::rebuildTables()
         m_modelTable->setItem(mRow, 0, tagItem);
         if (!r.valid) {
             m_modelTable->setItem(mRow, 1, makeItem(r.error, false));
-            m_modelTable->setSpan(mRow, 1, 1, 7);
+            m_modelTable->setSpan(mRow, 1, 1, 8);
         } else {
-            const QString texts[7] = {fmtNum(r.y0), fmtNum(r.y100), fmtNum(r.deltaPv),
+            QString fit = kDash;
+            if (r.fitRms) {
+                fit = fmtNum(*r.fitRms);
+                if (r.fitRmsPercent)
+                    fit += QStringLiteral(" (") + QString::number(*r.fitRmsPercent, 'g', 3)
+                           + QStringLiteral(" %)");
+            }
+            const QString texts[8] = {fmtNum(r.y0), fmtNum(r.y100), fmtNum(r.deltaPv),
                                       fmtNum(r.deltaCo), fmtNum(r.gain), fmtNum(r.deadTime),
-                                      fmtNum(r.timeConstant)};
-            for (int c = 0; c < 7; ++c)
+                                      fmtNum(r.timeConstant), fit};
+            for (int c = 0; c < 8; ++c)
                 m_modelTable->setItem(mRow, c + 1, makeItem(texts[c], true));
         }
         ++mRow;
@@ -603,6 +747,7 @@ void AnalysisView::recompute()
     const bool anyValid = std::any_of(m_results.cbegin(), m_results.cend(),
                                       [](const StepResult &r) { return r.valid; });
     m_exportButton->setEnabled(anyValid);
+    m_copyResultsButton->setEnabled(anyValid);
     emit resultsChanged();
 }
 

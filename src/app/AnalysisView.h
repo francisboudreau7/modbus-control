@@ -14,6 +14,8 @@ class QDoubleSpinBox;
 class QListWidget;
 class QPushButton;
 class QTableWidget;
+class QwtPlotCurve;
+class QwtPlotItem;
 class QwtPlotMarker;
 
 namespace mb {
@@ -120,6 +122,7 @@ private:
     void rebuildTables();
     void rebuildMarkers();
     void clearMarkers();
+    void copyResults();
     void rebuildPercentList();
     void syncControlsFromSettings();
     void rememberDataState();
@@ -142,6 +145,9 @@ private:
     QDoubleSpinBox *m_smoothingSpin = nullptr;
     QListWidget *m_percentList = nullptr;
     QCheckBox *m_detailedLabelsCheck = nullptr;
+    QCheckBox *m_guideLinesCheck = nullptr;
+    QCheckBox *m_showModelCheck = nullptr;
+    QPushButton *m_copyResultsButton = nullptr;
     QDoubleSpinBox *m_percentSpin = nullptr;
     QPushButton *m_addPercentButton = nullptr;
     QPushButton *m_removePercentButton = nullptr;
@@ -154,6 +160,8 @@ private:
     QTableWidget *m_setpointTable = nullptr;
     QTableWidget *m_modelTable = nullptr;
     QList<QwtPlotMarker *> m_markers;
+    QList<QwtPlotItem *> m_guideItems;   ///< one guide-line item per Y axis in use
+    QList<QwtPlotCurve *> m_modelCurves;
 
     bool m_updating = false;      ///< programmatic control changes: no user handling
     bool m_settingCursors = false; ///< setCursors() in progress: recompute once at the end
