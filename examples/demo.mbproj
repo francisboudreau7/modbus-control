@@ -138,7 +138,9 @@
       "analyzed": false,
       "axis": "right",
       "quickA": 0,
-      "quickB": 1000
+      "quickB": 1000,
+      "writeMin": 0,
+      "writeMax": 2000
     },
     {
       "id": 9,

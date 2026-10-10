@@ -119,6 +119,8 @@ QList<Tag> demoTags()
         if (t.id == 8) {          // Setpoint (HR 100): quick-write presets and the right Y axis
             t.quickA = 0.0;
             t.quickB = 1000.0;
+            t.writeMin = 0.0;
+            t.writeMax = 2000.0;
             t.axis = YAxis::Right;
         }
     }

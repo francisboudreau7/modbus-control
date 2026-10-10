@@ -52,7 +52,9 @@
       "unit": "°C",
       "color": "#ff7f0e",
       "plotted": true,
-      "writable": true
+      "writable": true,
+      "writeMin": 0,
+      "writeMax": 100
     },
     {
       "id": 4,
@@ -66,7 +68,9 @@
       "unit": "",
       "color": "#d62728",
       "plotted": false,
-      "writable": true
+      "writable": true,
+      "writeMin": 0,
+      "writeMax": 100
     },
     {
       "id": 5,
