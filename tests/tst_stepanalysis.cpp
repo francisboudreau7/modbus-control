@@ -204,7 +204,9 @@ private slots:
         }
         const auto v = referenceLevel(rec, kPv, 4.5, ReferenceMode::CursorValue, 1.0);
         QVERIFY(v.has_value());
-        QCOMPARE(*v, 40.0);
+        QCOMPARE(*v, 45.0); // interpolated between 40 (t = 4) and 50 (t = 5)
+        QCOMPARE(*referenceLevel(rec, kPv, 4.0, ReferenceMode::CursorValue, 1.0), 40.0);
+        QCOMPARE(*referenceLevel(rec, kPv, 20.0, ReferenceMode::CursorValue, 1.0), 90.0); // after the last row
         QVERIFY(!referenceLevel(rec, kPv, -1.0, ReferenceMode::CursorValue, 1.0).has_value());
         QVERIFY(!referenceLevel(rec, 99, 4.0, ReferenceMode::CursorValue, 1.0).has_value());
     }
@@ -681,9 +683,8 @@ private slots:
         QVERIFY(near(in2->delta, 10.0, 1e-12));
     }
 
-    // Regression: with "Value at cursor" the 0 % level is the sample at or before C1. When
-    // every later baseline sample sits slightly above it (noise, drift), 0 % must still be
-    // found — at that sample — instead of "not found".
+    // Regression: when every baseline sample after C1 sits slightly above the 0 % level
+    // (noise, drift), 0 % must still be found — at C1 — instead of "not found".
     void analyze_zeroPercentWhenBaselineStaysAboveCursorSample()
     {
         Recorder rec;
@@ -697,9 +698,9 @@ private slots:
         s.percents = {0.0};
         StepResult r = analyzeStep(rec, kPv, 0.05, 4.0, s);
         QVERIFY(r.valid);
-        QCOMPARE(r.y0, 0.0);
+        QCOMPARE(r.y0, 0.1); // interpolated between 0 (t = 0) and 0.2 (t = 0.1)
         QVERIFY(r.setpoints.at(0).found);
-        QCOMPARE(r.setpoints.at(0).time, 0.0);
+        QCOMPARE(r.setpoints.at(0).time, 0.05);
 
         // Mean before cursor: the window before C1 is searched too.
         s.reference = ReferenceMode::WindowMean;
@@ -707,7 +708,34 @@ private slots:
         r = analyzeStep(rec, kPv, 0.25, 4.0, s); // y0 = mean(0, 0.2, 0.2) ≈ 0.133
         QVERIFY(r.valid);
         QVERIFY(r.setpoints.at(0).found);
-        QVERIFY(r.setpoints.at(0).time <= 0.1 + 1e-9);
+        QCOMPARE(r.setpoints.at(0).time, 0.25);
+    }
+
+    // Regression (user report): C1 placed on a rising part of the response, between two
+    // samples. 0 % must be C1 itself, never the earlier sample; every time stays in [C1, C2].
+    void analyze_timesStayBetweenCursors()
+    {
+        Recorder rec;
+        for (int i = 0; i <= 20; ++i)
+            rec.append(batch(i * 0.2, {good(kPv, i * 0.2 * 100.0)})); // ramp 100/s, 0.2 s apart
+        AnalysisSettings s;
+        s.percents = {0.0, 28.3, 63.2, 100.0};
+        for (const ReferenceMode mode : {ReferenceMode::CursorValue, ReferenceMode::WindowMean}) {
+            s.reference = mode;
+            const StepResult r = analyzeStep(rec, kPv, 1.1, 3.0, s);
+            QVERIFY(r.valid);
+            for (const SetpointResult &sp : r.setpoints) {
+                QVERIFY2(sp.found, qPrintable(QString::number(sp.percent)));
+                QVERIFY2(sp.time >= 1.1 - 1e-12 && sp.time <= 3.0 + 1e-12,
+                         qPrintable(QStringLiteral("%1 %% at %2").arg(sp.percent).arg(sp.time)));
+            }
+            QCOMPARE(r.setpoints.at(0).time, 1.1);
+            if (mode == ReferenceMode::CursorValue) {
+                QCOMPARE(r.y0, 110.0); // interpolated at C1
+                QCOMPARE(r.setpoints.at(0).measured, 110.0);
+                QCOMPARE(r.setpoints.at(3).time, 3.0);
+            }
+        }
     }
 
     void analyze_modelNeedsValidPercents()

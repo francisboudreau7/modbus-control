@@ -13,7 +13,7 @@ namespace mb {
 
 /// How the 0 % (y0) and 100 % (y100) levels of a step response are taken.
 enum class ReferenceMode : quint8 {
-    CursorValue, ///< Recorder::sampleAt(tag, cursor time)
+    CursorValue, ///< recorded value at the cursor time, interpolated between the neighbouring rows
     WindowMean,  ///< mean of the non-NaN samples with time in [cursor - W, cursor]
 };
 
@@ -123,11 +123,12 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
                                           double t2, const AnalysisSettings &settings);
 
 /// Full analysis of `pvTag` between the cursors t1 and t2 (any order):
-/// - y0/y100 from referenceLevel() at t1/t2. The searched rows start at the samples that
-///   define y0 (CursorValue: the row at or before t1; WindowMean: t1 - W) and end at t2, so
-///   0 % is always found (at worst at the C1 sample, possibly slightly before t1). They are
-///   smoothed with settings.smoothingS, then findCrossingTime() runs for every percent.
-///   analyzeStepInput() searches the same way.
+/// - y0/y100 from referenceLevel() at t1/t2. The rows of [t1, t2] are smoothed with
+///   settings.smoothingS; findCrossingTime() then runs for every percent on the series
+///   (t1, y0), the smoothed rows, (t2, y100). So every time found lies in [t1, t2]: 0 % is
+///   at or after C1 (C1 itself when the signal never comes back to y0 after C1) and 100 % at
+///   or before C2. analyzeStepInput() searches the same way (without smoothing).
+///   `measured` interpolates the recorded rows, with the interpolated values at t1 and t2.
 /// - ΔCO: analyzeStepInput() when settings.deltaCoTagId != 0 and != pvTag (if that gives
 ///   nullopt there is no ΔCO; it does not fall back to manualDeltaCo); when deltaCoTagId == 0,
 ///   manualDeltaCo if nonzero. stepTime as documented in StepResult.

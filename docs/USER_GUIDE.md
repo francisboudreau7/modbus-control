@@ -334,7 +334,8 @@ the Cursors dock shows only the Trend's cursors.
 
 The 0 % level is taken at C1 and the 100 % level at C2. **Reference** selects how:
 
-- **Value at cursor** (default): the recorded value at the cursor.
+- **Value at cursor** (default): the recorded value at the cursor, interpolated between the two
+  samples around it.
 - **Mean before cursor**: the mean of the recorded values in the **Window** W seconds before the
   cursor (0.1 to 3600 s, default 1 s). Use it when the signal is noisy.
 
@@ -372,15 +373,10 @@ For each setpoint, the recorded samples between the cursors are searched as foll
 
 Missing samples are skipped. When the level is never reached, the time shows "—".
 
-The search also includes the samples that set the 0 % level: the sample at C1 (Value at cursor)
-or the window before C1 (Mean before cursor). So 0 % is always found. If the signal never comes
-back to the starting level after C1, 0 % is the C1 sample itself, which can be a few milliseconds
-before C1 (t − C1 slightly negative).
-
-The search starts at the samples that define the 0 % level: the sample at or before C1 (Value at
-cursor), or the window of W seconds before C1 (Mean before cursor). So 0 % is always found. If the
-signal never returns to its starting value after C1, the 0 % time is the C1 sample itself, which can
-be a few milliseconds before C1, so t − C1 can be slightly negative.
+The search never leaves the cursors: it starts at C1 with the 0 % level and ends at C2 with the
+100 % level. So 0 % is always found and is never before C1: if the signal does not come back to
+the starting level after C1 (noise, or C1 placed on a part that is already rising), 0 % is C1
+itself. Likewise 100 % is never after C2.
 
 ### Results tables
 
