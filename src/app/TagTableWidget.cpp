@@ -1,10 +1,13 @@
 #include "TagTableWidget.h"
 
+#include "ProjectIO.h"
 #include "TagTableModel.h"
 
 #include <QAbstractItemView>
+#include <QAction>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QCursor>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -202,6 +205,12 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_view->horizontalHeader()->setStretchLastSection(true);
     m_view->verticalHeader()->setVisible(false);
+    m_view->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_view->horizontalHeader(), &QWidget::customContextMenuRequested, this, [this] {
+        QMenu *menu = headerMenu();
+        menu->exec(QCursor::pos());
+        delete menu;
+    });
     m_view->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed
                             | QAbstractItemView::SelectedClicked);
 
@@ -316,17 +325,68 @@ QList<int> TagTableWidget::selectedRows() const
     return rows;
 }
 
-// Stubs created by T130; implemented by T132.
-void TagTableWidget::setHiddenColumns(const QStringList &) {}
+void TagTableWidget::setHiddenColumns(const QStringList &keys)
+{
+    QList<bool> hide(TagTableModel::ColumnCount, false);
+    for (const QString &key : keys) {
+        const int c = TagTableModel::columnFromKey(key);
+        // The Name column is always visible.
+        if (c > TagTableModel::Name && c < TagTableModel::ColumnCount)
+            hide[c] = true;
+    }
+    for (int c = 0; c < TagTableModel::ColumnCount; ++c)
+        m_view->setColumnHidden(c, hide[c]);
+}
 
 QStringList TagTableWidget::hiddenColumns() const
 {
-    return {};
+    QStringList keys;
+    for (int c = 0; c < TagTableModel::ColumnCount; ++c) {
+        if (m_view->isColumnHidden(c))
+            keys << TagTableModel::columnKey(c);
+    }
+    return keys;
 }
 
 QMenu *TagTableWidget::headerMenu()
 {
-    return new QMenu(this);
+    auto *menu = new QMenu(this);
+
+    for (int c = 0; c < TagTableModel::ColumnCount; ++c) {
+        const QString title = m_model->headerData(c, Qt::Horizontal, Qt::DisplayRole).toString();
+        QAction *action = menu->addAction(title);
+        action->setObjectName(QStringLiteral("columnAction_%1").arg(c));
+        action->setCheckable(true);
+        if (c == TagTableModel::Name) {
+            action->setChecked(true);
+            action->setEnabled(false);
+            continue;
+        }
+        action->setChecked(!m_view->isColumnHidden(c));
+        connect(action, &QAction::triggered, this, [this, c](bool visible) {
+            m_view->setColumnHidden(c, !visible);
+            emit hiddenColumnsChanged();
+        });
+    }
+
+    menu->addSeparator();
+
+    QAction *showAll = menu->addAction(tr("Show all columns"));
+    showAll->setObjectName(QStringLiteral("showAllColumnsAction"));
+    connect(showAll, &QAction::triggered, this, [this] {
+        for (int c = 0; c < TagTableModel::ColumnCount; ++c)
+            m_view->setColumnHidden(c, false);
+        emit hiddenColumnsChanged();
+    });
+
+    QAction *compact = menu->addAction(tr("Compact view"));
+    compact->setObjectName(QStringLiteral("compactViewAction"));
+    connect(compact, &QAction::triggered, this, [this] {
+        setHiddenColumns(compactHiddenColumns());
+        emit hiddenColumnsChanged();
+    });
+
+    return menu;
 }
 
 } // namespace mb

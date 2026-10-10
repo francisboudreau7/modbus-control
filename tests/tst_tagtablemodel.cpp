@@ -3,9 +3,12 @@
 #include "TagTableWidget.h"
 
 #include <QAbstractItemModelTester>
+#include <QAction>
 #include <QBrush>
 #include <QColor>
 #include <QComboBox>
+#include <QHeaderView>
+#include <QMenu>
 #include <QTableView>
 #include <QSignalSpy>
 #include <QDoubleSpinBox>
@@ -1134,6 +1137,169 @@ private slots:
             QVERIFY2(C::columnFromKey(key) >= 0, qPrintable(key));
             QVERIFY(key != QStringLiteral("name"));
         }
+    }
+
+    // Header menu (T132): one checkable action per column, Name locked, titles = header text.
+    void headerMenuListsColumns()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a")}, 2);
+        TagTableWidget w(&m);
+        QVERIFY(w.view()->horizontalHeader()->contextMenuPolicy() == Qt::CustomContextMenu);
+
+        QMenu *menu = w.headerMenu();
+        QVERIFY(menu);
+        int nonSeparator = 0;
+        for (QAction *a : menu->actions()) {
+            if (!a->isSeparator())
+                ++nonSeparator;
+        }
+        QCOMPARE(nonSeparator, int(C::ColumnCount) + 2);
+        QVERIFY(menu->findChild<QAction *>(QStringLiteral("showAllColumnsAction")));
+        QVERIFY(menu->findChild<QAction *>(QStringLiteral("compactViewAction")));
+
+        for (int c = 0; c < C::ColumnCount; ++c) {
+            QAction *a = menu->findChild<QAction *>(QStringLiteral("columnAction_%1").arg(c));
+            QVERIFY2(a, qPrintable(QStringLiteral("no action for column %1").arg(c)));
+            QVERIFY(a->isCheckable());
+            QCOMPARE(a->text(), m.headerData(c, Qt::Horizontal, Qt::DisplayRole).toString());
+            QVERIFY(a->isChecked());
+            if (c == C::Name)
+                QVERIFY(!a->isEnabled());
+            else
+                QVERIFY(a->isEnabled());
+        }
+        QCOMPARE(menu->findChild<QAction *>(QStringLiteral("columnAction_0"))->text(), QStringLiteral("Name"));
+        delete menu;
+    }
+
+    // Toggling a column action hides/shows the column and emits hiddenColumnsChanged once.
+    void headerMenuTogglesColumn()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a")}, 2);
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        QMenu *menu = w.headerMenu();
+        QAction *gain = menu->findChild<QAction *>(QStringLiteral("columnAction_%1").arg(C::Gain));
+        QVERIFY(gain);
+
+        gain->trigger();
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(w.view()->isColumnHidden(C::Gain));
+        QVERIFY(!gain->isChecked());
+
+        gain->trigger();
+        QCOMPARE(spy.count(), 2);
+        QVERIFY(!w.view()->isColumnHidden(C::Gain));
+        QVERIFY(gain->isChecked());
+        delete menu;
+    }
+
+    // The Name action is disabled: triggering it changes nothing and emits nothing.
+    void headerMenuNameIsLocked()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a")}, 2);
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        QMenu *menu = w.headerMenu();
+        QAction *name = menu->findChild<QAction *>(QStringLiteral("columnAction_0"));
+        QVERIFY(name);
+        name->trigger();
+        QCOMPARE(spy.count(), 0);
+        QVERIFY(!w.view()->isColumnHidden(C::Name));
+        QVERIFY(name->isChecked());
+        delete menu;
+    }
+
+    // "Show all columns" shows every column and emits once.
+    void headerMenuShowAll()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a")}, 2);
+        TagTableWidget w(&m);
+        QMenu *menu = w.headerMenu();
+        menu->findChild<QAction *>(QStringLiteral("columnAction_%1").arg(C::Area))->trigger();
+        menu->findChild<QAction *>(QStringLiteral("columnAction_%1").arg(C::Raw))->trigger();
+        QVERIFY(w.view()->isColumnHidden(C::Area));
+        QVERIFY(w.view()->isColumnHidden(C::Raw));
+        delete menu;
+
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        menu = w.headerMenu();
+        menu->findChild<QAction *>(QStringLiteral("showAllColumnsAction"))->trigger();
+        QCOMPARE(spy.count(), 1);
+        for (int c = 0; c < C::ColumnCount; ++c)
+            QVERIFY2(!w.view()->isColumnHidden(c), qPrintable(QStringLiteral("column %1 hidden").arg(c)));
+        delete menu;
+    }
+
+    // "Compact view" emits once (its column set is checked by the key-dependent test below).
+    void headerMenuCompactEmitsOnce()
+    {
+        TagTableModel m;
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        QMenu *menu = w.headerMenu();
+        menu->findChild<QAction *>(QStringLiteral("compactViewAction"))->trigger();
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(!w.view()->isColumnHidden(C::Name));
+        delete menu;
+    }
+
+    // Key-dependent: needs TagTableModel::columnFromKey (T131).
+    void headerMenuCompactHidesPreset()
+    {
+        if (TagTableModel::columnFromKey(QStringLiteral("raw")) < 0)
+            QSKIP("column keys not implemented yet (T131)");
+        TagTableModel m;
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        QMenu *menu = w.headerMenu();
+        menu->findChild<QAction *>(QStringLiteral("compactViewAction"))->trigger();
+        QCOMPARE(spy.count(), 1);
+        // hiddenColumns() is in column order, the preset is not: compare sorted.
+        QStringList got = w.hiddenColumns();
+        QStringList want = compactHiddenColumns();
+        got.sort();
+        want.sort();
+        QCOMPARE(got, want);
+        delete menu;
+    }
+
+    // setHiddenColumns never emits and never hides Name; unknown keys are ignored.
+    void setHiddenColumnsRules()
+    {
+        TagTableModel m;
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        w.setHiddenColumns({QStringLiteral("name"), QStringLiteral("no-such-column")});
+        QCOMPARE(spy.count(), 0);
+        QVERIFY(!w.view()->isColumnHidden(C::Name));
+        for (int c = 0; c < C::ColumnCount; ++c)
+            QVERIFY2(!w.view()->isColumnHidden(c), qPrintable(QStringLiteral("column %1 hidden").arg(c)));
+    }
+
+    // Key-dependent: needs TagTableModel::columnFromKey (T131).
+    void setHiddenColumnsByKey()
+    {
+        if (TagTableModel::columnFromKey(QStringLiteral("raw")) < 0)
+            QSKIP("column keys not implemented yet (T131)");
+        TagTableModel m;
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::hiddenColumnsChanged);
+        w.setHiddenColumns({QStringLiteral("raw"), QStringLiteral("gain"), QStringLiteral("name"),
+                            QStringLiteral("future")});
+        QCOMPARE(spy.count(), 0);
+        QVERIFY(w.view()->isColumnHidden(C::Raw));
+        QVERIFY(w.view()->isColumnHidden(C::Gain));
+        QVERIFY(!w.view()->isColumnHidden(C::Name));
+        QCOMPARE(w.hiddenColumns(), QStringList({QStringLiteral("gain"), QStringLiteral("raw")}));
+
+        w.setHiddenColumns({});
+        QVERIFY(!w.view()->isColumnHidden(C::Raw));
+        QVERIFY(w.hiddenColumns().isEmpty());
     }
 };
 
