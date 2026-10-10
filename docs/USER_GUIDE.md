@@ -72,7 +72,8 @@ Each row is one register value that the application reads. Columns:
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
 | Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
 | Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
-| Quick A, Quick B | Preset values for the Quick write dock, in scaled units. Empty means no button. Only writable tags can have them. See [Quick writes](#quick-writes). |
+| Min, Max | Write limits, in scaled units: the lowest and highest value that may be written. Empty means no limit. Editable only for writable tags; Min cannot be above Max. Every write, including quick writes, is refused outside the limits. See [Write safety](#write-safety). |
+| Quick A, Quick B | Preset values for the Quick write dock, in scaled units. Empty means no button. Only writable tags can have them, and a preset must be within the Min and Max limits. See [Quick writes](#quick-writes). |
 | Quality | State of the last read. Read-only. |
 
 Quality values:
@@ -190,7 +191,8 @@ a "run" and a "stop" value).
 
 1. Set the presets in the tag table: type a value in the **Quick A** and/or **Quick B** cell of a
    writable tag, in scaled units. Clear the cell to remove the preset. Quick A and Quick B are
-   read-only for tags that are not writable.
+   read-only for tags that are not writable. A preset outside the tag's **Min**/**Max** limits is
+   refused when you type it.
 2. Open the **Quick write** dock (right side, tabbed with Cursors; reopen it from the View menu).
    It lists each writable tag that has a preset, with its name, live value and one button per
    preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
@@ -198,13 +200,42 @@ a "run" and a "stop" value).
    'Setpoint'?". The write is then sent like a single-register write (range check, and the
    **FC06 only** setting for 32-bit tags).
 
-The confirmation has a check box **Don't ask again this session**. Ticking it and confirming
-sends the write, and later quick writes go without a question until the application is restarted.
-To ask again, tick **Options > Confirm quick writes**, which is ticked when the application starts.
-Unticking that option sends quick writes without asking.
+For 16-bit tags the confirmation has a check box **Don't ask again this session**. Ticking it and
+confirming sends the write, and later quick writes to 16-bit tags go without a question until the
+application is restarted. To ask again, tick **Options > Confirm quick writes**, which is ticked when
+the application starts. Unticking that option sends 16-bit quick writes without asking.
+
+Quick writes to **32-bit** tags (`int32`, `uint32`, `float32`) always ask for confirmation, whatever
+the Options setting; the check box is not shown for them.
 
 Writes from the Value column and **Write selected...** always ask for confirmation. The
 **Don't ask again** check box does not affect them.
+
+### Write safety
+
+Before a write is sent, the application runs these checks, in this order. A failed check shows a
+warning and nothing is sent:
+
+1. **Connected.** Without a connection nothing is sent.
+2. **Limits.** If the tag has a **Min** and/or **Max**, the value must lie within them. The warning
+   names the tag and its limits, for example "'Setpoint' accepts 0 to 100 °C; 150 was not written."
+3. **Valid reading (32-bit tags only).** A 32-bit write needs a current good reading of that tag. If
+   the last read was not Good, or there is none yet, the write is refused. Check the connection,
+   the register number and the byte order first: a wrong setting usually makes reads fail or look wrong.
+4. **Range.** The value must fit the tag's type (for example -32768..32767 for `int16`).
+5. **Plausibility (float32 only).** If the current value of a `float32` tag is implausible (not a
+   finite number, larger than 1e9 in size, or smaller than 1e-6 but not zero), an extra warning
+   appears. It explains that the byte order or the register number is probably wrong, and the write
+   goes ahead only if you click **Write anyway**. Cancel is the default button. A wrong byte order
+   or register makes the reading look absurd, so this warning often catches the mistake before a
+   write.
+
+Then the confirmation shows the new value and, on a new line, **Current value** (the last good
+reading, or "unknown"). When the tag has limits, it also shows **Limits**, for example "Limits: 0 to
+2000". Read the current value before you confirm: if it is not what you expect, click **No**.
+
+Limits are a safety net, not a substitute for checking the controller's own ranges. Set them to the
+ranges your controller accepts for that parameter (see the CM50 section below).
 
 ## Trend
 
@@ -511,7 +542,8 @@ Projects are saved as `.mbproj` files. A project holds the connection settings (
 (1-based or not), the tag list, including tag colours, the **Analyze** flags, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
 
 In the file, each tag has an `analyzed` key, an `axis` key (`"left"` or `"right"`) and optional
-`quickA` and `quickB` keys (the quick-write presets). The Analysis settings are in an `analysis` object
+`quickA` and `quickB` keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write
+limits; a key is written only when the limit is set). The Analysis settings are in an `analysis` object
 (`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`,
 `showModel`, `guideLines`). All of these are optional: a file without them loads with the defaults.
 
@@ -614,14 +646,32 @@ controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDA
 writing a 32-bit value fails with a Modbus exception, tick **FC06 only** in the connection bar
 before connecting; each 32-bit write is then sent as two FC06 requests.
 
+**FC06 mode.** With **FC06 only** ticked, a float is written as two separate single-register writes.
+Between them the controller holds a mix of the old and the new word. For a float, that mixed value
+stays within 0.8 % of the old or the new value, so it is never far off, but the regulator sees it.
+If the second write fails, the status bar reports "Write failed" with the text "value partially
+applied" and names the registers already written: the first word is then new and the second is old.
+Check the value on the controller, then write the setpoint again.
+
+**First writes to a real controller**
+
+1. Connect with every tag read-only (Writable unticked). Compare each value with the controller's
+   display. Byte order and register numbers are right only if the values match.
+2. On each writable tag, set **Min** and **Max** to the controller's allowed range for that
+   parameter.
+3. Tick **Writable** on the tag.
+4. Write the setpoint's current value back unchanged, and check that it reads back identically.
+5. Then make one small change, and check the controller's display and the trend.
+6. Keep quick-write confirmation on (**Options > Confirm quick writes**) until you know the tags.
+
 **Example tags** (register numbers as printed, with the 1-based option on):
 
 | Name | Area | Register | Type | Notes |
 |---|---|---|---|---|
 | Loop 1 Process Variable | Input | 5009 | float32, `ABCD` | Read-only. |
 | Loop 1 Control Output | Input | 5013 | float32, `ABCD` | Read-only. |
-| Loop 1 Local Setpoint 1 | Holding | 6639 | float32, `ABCD` | Writable. |
-| Alarm 1 Trip | Holding | 6591 | float32, `ABCD` | Writable. |
+| Loop 1 Local Setpoint 1 | Holding | 6639 | float32, `ABCD` | Writable. Example limits Min 0, Max 100 (placeholders). |
+| Alarm 1 Trip | Holding | 6591 | float32, `ABCD` | Writable. Example limits Min 0, Max 100 (placeholders). |
 | Totalizer 1 Batch Total | Input | 4001 | uint32, `ABCD` | The manual does not state the signedness; try `int32` if the value looks wrong. |
 | Instrument Type | Input | 3 | uint16 | Read-only. |
 
@@ -629,6 +679,10 @@ before connecting; each 32-bit write is then sent as two FC06 requests.
 unit 1, a 500 ms period and FC06 only off. Open it with File > Open, or give its path on the
 command line, then change the host and unit to match your controller. Setpoint and trip values are
 written with confirmation, but check them against the controller's own limits first.
+
+The example file has **Min** and **Max** limits of 0 and 100 on **Loop 1 Local Setpoint 1** and
+**Alarm 1 Trip**. These are placeholder values, not the controller's real ranges. Replace them with
+the allowed range of each parameter from your controller before you write to it.
 
 **Not supported by this app:** coils and discrete inputs (alarm states, auto/manual mode) and
 Modbus RTU (serial). Use the controller's front panel or another tool for those.
