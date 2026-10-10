@@ -210,14 +210,14 @@ or register (also visible as a wrong read) — hence these guards. No real CM50 
 _Last updated: 2026-10-09. Update this section whenever a task is merged or a release ships._
 
 ### Current state (read this first)
-- **Released:** v1.0.0, v1.1.0 (Analysis mode), **v1.2.0** (sessions, model curve + Fit RMS,
+- **Released:** v1.0.0, v1.1.0 (Analysis mode), v1.2.0, **v1.2.1** (write safety), from (sessions, model curve + Fit RMS,
   guide lines, copy results, right Y axis, quick writes, logo) — all on
   https://github.com/francisboudreau7/modbus-control/releases. Latest installer
   `ModbusControl-1.2.0-setup.exe`, sha256 8806d004…7f03.
 - **Code:** `main` = `origin/main`, clean, no task worktrees or branches (the
   `..\modbus-control-wt` folder was removed; recreate it for the next wave).
 - **Tests:** 21 ctest targets, all passing; zero warnings in our code.
-- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **In progress: Wave 10 done except the release: T120–T123 merged, review fixes (803e26e), version 1.2.1, plus --log-writes and the FC16 hint; installer `out/installer/ModbusControl-1.2.1-setup.exe` (sha256 7dd14bf7…bf75) built; publish after the user confirms.** Quick A/B editor fix already on main (6aa6b15).
+- **Waves done:** 0–7 (v1.0), 8 (Analysis mode, v1.1), 9 (UX features, v1.2). **v1.2.1 released** 2026-10-10 (write safety, --log-writes, FC16 hint; sha256 7dd14bf7…bf75). **Next: v1.2.2 hideable tag-table columns (being planned).** Quick A/B editor fix already on main (6aa6b15).
 - **Version strings** to bump for a release: CMakeLists.txt `project(VERSION)`, vcpkg.json,
   server/main.cpp, tests/tst_smoke.cpp, installer/modbus_control.iss (2 places),
   installer/README.md. Then `installer\build_installer.ps1`, smoke-test `out\install\bin`,
