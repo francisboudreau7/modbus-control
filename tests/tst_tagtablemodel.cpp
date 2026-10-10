@@ -797,6 +797,149 @@ private slots:
         QCOMPARE(edited.size(), 5);
     }
 
+    void writeLimitColumns()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = makeTag(1, "w", Area::HoldingRegister, 0, true);
+        Tag ro = makeTag(2, "ro", Area::HoldingRegister, 1, false);
+        Tag in = makeTag(3, "in", Area::InputRegister, 2, false);
+        m.setTags({w, ro, in}, 4);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QCOMPARE(m.headerData(C::WriteMin, Qt::Horizontal).toString(), QString("Min"));
+        QCOMPARE(m.headerData(C::WriteMax, Qt::Horizontal).toString(), QString("Max"));
+        QCOMPARE(m.headerData(C::WriteMin, Qt::Horizontal, Qt::ToolTipRole).toString(),
+                 QString("Lowest value that may be written (empty = no limit)"));
+        QCOMPARE(m.headerData(C::WriteMax, Qt::Horizontal, Qt::ToolTipRole).toString(),
+                 QString("Highest value that may be written (empty = no limit)"));
+
+        // Empty = no limit; set from text and from a number, read back.
+        QVERIFY(m.data(ix(m, 0, C::WriteMin)).toString().isEmpty());
+        QVERIFY(!m.data(ix(m, 0, C::WriteMax), Qt::EditRole).isValid());
+        QVERIFY(m.setData(ix(m, 0, C::WriteMin), " -10.5 "));
+        QVERIFY(m.setData(ix(m, 0, C::WriteMax), 1234.5678));
+        QCOMPARE(*m.tagAt(0).writeMin, -10.5);
+        QCOMPARE(*m.tagAt(0).writeMax, 1234.5678);
+        QCOMPARE(m.data(ix(m, 0, C::WriteMax)).toString(), QString("1234.57"));
+        QCOMPARE(m.data(ix(m, 0, C::WriteMax), Qt::EditRole).toDouble(), 1234.5678);
+        QCOMPARE(edited.size(), 2);
+
+        // Clear with an empty or blank string.
+        QVERIFY(m.setData(ix(m, 0, C::WriteMin), ""));
+        QVERIFY(!m.tagAt(0).writeMin.has_value());
+        QVERIFY(m.setData(ix(m, 0, C::WriteMax), "  "));
+        QVERIFY(!m.tagAt(0).writeMax.has_value());
+        QCOMPARE(edited.size(), 4);
+
+        // Rejected text, NaN and infinity leave the limit and the signal alone.
+        QVERIFY(m.setData(ix(m, 0, C::WriteMin), 1.0));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), "abc"));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), std::numeric_limits<double>::quiet_NaN()));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), std::numeric_limits<double>::infinity()));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), "NaN"));
+        QCOMPARE(*m.tagAt(0).writeMin, 1.0);
+        QCOMPARE(edited.size(), 5);
+
+        // Min above Max and Max below Min are refused; equal limits are allowed.
+        QVERIFY(m.setData(ix(m, 0, C::WriteMax), 5.0));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), 6.0));
+        QCOMPARE(*m.tagAt(0).writeMin, 1.0);
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMax), 0.5));
+        QCOMPARE(*m.tagAt(0).writeMax, 5.0);
+        QVERIFY(m.setData(ix(m, 0, C::WriteMin), 5.0));
+        QVERIFY(m.setData(ix(m, 0, C::WriteMax), 5.0));
+
+        // Not writable: not editable, explained by a tooltip, and setData refuses.
+        QVERIFY(m.flags(ix(m, 0, C::WriteMin)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::WriteMax)) & Qt::ItemIsEditable);
+        QVERIFY(!(m.flags(ix(m, 1, C::WriteMin)) & Qt::ItemIsEditable));
+        QVERIFY(!(m.flags(ix(m, 2, C::WriteMax)) & Qt::ItemIsEditable));
+        QCOMPARE(m.data(ix(m, 1, C::WriteMin), Qt::ToolTipRole).toString(),
+                 QString("Write limits need a writable holding register"));
+        QCOMPARE(m.data(ix(m, 2, C::WriteMax), Qt::ToolTipRole).toString(),
+                 QString("Write limits need a writable holding register"));
+        QVERIFY(m.data(ix(m, 0, C::WriteMin), Qt::ToolTipRole).toString().isEmpty());
+        QVERIFY(!m.setData(ix(m, 1, C::WriteMin), 1.0));
+        QVERIFY(!m.setData(ix(m, 2, C::WriteMax), 1.0));
+        QVERIFY(!m.tagAt(1).writeMin.has_value());
+        QVERIFY(!m.tagAt(2).writeMax.has_value());
+    }
+
+    void quickRefusedOutsideWriteLimits()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = makeTag(1, "w", Area::HoldingRegister, 0, true);
+        w.writeMin = 0.0;
+        w.writeMax = 100.0;
+        m.setTags({w}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), 150.0));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickB), -0.5));
+        QVERIFY(!m.tagAt(0).quickA.has_value());
+        QVERIFY(!m.tagAt(0).quickB.has_value());
+        QCOMPARE(edited.size(), 0);
+
+        // Both limits are inclusive.
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), 100.0));
+        QVERIFY(m.setData(ix(m, 0, C::QuickB), " 0 "));
+        QCOMPARE(*m.tagAt(0).quickA, 100.0);
+        QCOMPARE(*m.tagAt(0).quickB, 0.0);
+        QCOMPARE(edited.size(), 2);
+
+        // Clearing is always allowed, and an open Max lets a large preset through.
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), ""));
+        QVERIFY(!m.tagAt(0).quickA.has_value());
+        QVERIFY(m.setData(ix(m, 0, C::WriteMax), ""));
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), 1e6));
+        QCOMPARE(*m.tagAt(0).quickA, 1e6);
+    }
+
+    // Unchecking Writable (or moving the tag to an input register) must refresh Min..Quick B.
+    void writeCellsRefreshWithWritable()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = makeTag(1, "w", Area::HoldingRegister, 0, true);
+        w.writeMin = 1.0;
+        w.writeMax = 9.0;
+        m.setTags({w}, 2);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+
+        // True when some dataChanged covers row 0 from WriteMin through QuickB.
+        auto coversWriteCells = [&changed] {
+            for (const auto &args : changed) {
+                const auto tl = args.at(0).value<QModelIndex>();
+                const auto br = args.at(1).value<QModelIndex>();
+                if (tl.row() == 0 && br.row() == 0 && tl.column() <= int(C::WriteMin)
+                    && br.column() >= int(C::QuickB))
+                    return true;
+            }
+            return false;
+        };
+
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(coversWriteCells());
+        QVERIFY(!(m.flags(ix(m, 0, C::WriteMin)) & Qt::ItemIsEditable));
+        QVERIFY(!(m.flags(ix(m, 0, C::WriteMax)) & Qt::ItemIsEditable));
+        // The limits stay stored; they are just not editable any more.
+        QCOMPARE(*m.tagAt(0).writeMin, 1.0);
+        QCOMPARE(m.data(ix(m, 0, C::WriteMax)).toString(), QString("9"));
+
+        changed.clear();
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(coversWriteCells());
+        QVERIFY(m.flags(ix(m, 0, C::WriteMin)) & Qt::ItemIsEditable);
+
+        changed.clear();
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(coversWriteCells());
+        QVERIFY(!(m.flags(ix(m, 0, C::WriteMax)) & Qt::ItemIsEditable));
+    }
+
     void quickCellsRefreshWithWritable()
     {
         TagTableModel m;
@@ -884,6 +1027,8 @@ private slots:
             const int last = args.at(1).toModelIndex().column();
             QVERIFY2(!(first <= C::QuickA && last >= C::QuickA), "live update covers Quick A");
             QVERIFY2(!(first <= C::QuickB && last >= C::QuickB), "live update covers Quick B");
+            QVERIFY2(!(first <= C::WriteMin && last >= C::WriteMin), "live update covers Min");
+            QVERIFY2(!(first <= C::WriteMax && last >= C::WriteMax), "live update covers Max");
         }
 
         mb::TagTableWidget w(&m);
