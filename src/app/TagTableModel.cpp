@@ -369,6 +369,13 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         return false;
     }
 
+    // The last reading was decoded with the old configuration: it must not vouch for a write
+    // (TagTableModel::goodValue) or show as current until the next poll with the new one.
+    const bool decodingChanged = col == Area || col == Address || col == Type || col == ByteOrder
+                                 || col == Gain || col == Offset;
+    if (decodingChanged && m_live.remove(t.id))
+        emitLiveChanged(index.row(), index.row(),
+                        {Qt::DisplayRole, Qt::ForegroundRole, Qt::ToolTipRole});
     if (rowChanged)
         emit dataChanged(this->index(index.row(), 0), this->index(index.row(), ColumnCount - 1));
     else

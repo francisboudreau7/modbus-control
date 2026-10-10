@@ -112,6 +112,8 @@ private:
     bool m_dropSamples = false;      ///< a session load is waiting for the worker to disconnect
     bool m_continuePending = false;  ///< the next timeBaseReset continues the loaded recording
     double m_timeOffset = 0.0;       ///< added to incoming batch times while continuing
+    quint64 m_tagsGeneration = 0;    ///< bumped by every pushTags()
+    quint64 m_tagsApplied = 0;       ///< last generation the worker has applied
     std::function<ContinueChoice()> m_continuePrompt;
 };
 

@@ -73,7 +73,8 @@ public:
     TagId nextTagId() const;
     const Tag &tagAt(int row) const;
     int rowOf(TagId id) const; ///< -1 if absent
-    /// Latest scaled value of the tag when its last sample was Good, else nullopt.
+    /// Latest scaled value of the tag when its last sample was Good, else nullopt. Editing
+    /// Area, Address, Type, ByteOrder, Gain or Offset forgets the tag's live value.
     std::optional<double> goodValue(TagId id) const;
 
     /// Appends a copy of `prototype` with a fresh id. An empty name becomes "Tag <id>".

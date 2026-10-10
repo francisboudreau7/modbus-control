@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QTableView>
 #include <QSignalSpy>
+#include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QtTest>
 
@@ -1051,6 +1052,48 @@ private slots:
         m.clearLiveValues();
         QCoreApplication::processEvents();
         QCOMPARE(editor->text(), QStringLiteral("2000"));
+    }
+
+    // Review fix: the Value column is editable (write a value) and is in the live update
+    // range; an open Value editor must keep what the user typed.
+    void liveSamplesKeepValueEditor()
+    {
+        TagTableModel m;
+        mb::Tag t = makeTag(1, "sp", Area::HoldingRegister, 100);
+        t.writable = true;
+        m.setTags({t}, 2);
+        mb::SampleBatch batch;
+        mb::TagSample sample;
+        sample.tagId = 1;
+        sample.value = 5.0;
+        sample.quality = mb::Quality::Good;
+        batch.samples = {sample};
+        m.updateSamples(batch);
+
+        mb::TagTableWidget w(&m);
+        w.resize(1200, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        const QModelIndex value = m.index(0, C::Value);
+        w.view()->setCurrentIndex(value);
+        w.view()->edit(value);
+        auto *spin = w.view()->findChild<QDoubleSpinBox *>();
+        auto *line = w.view()->findChild<QLineEdit *>();
+        QVERIFY(spin || line);
+        if (spin)
+            spin->setValue(42.0);
+        else
+            line->setText(QStringLiteral("42"));
+        for (int i = 0; i < 5; ++i) {
+            sample.value = 6.0 + i;
+            batch.samples = {sample};
+            m.updateSamples(batch);
+            QCoreApplication::processEvents();
+        }
+        if (spin)
+            QCOMPARE(spin->value(), 42.0);
+        else
+            QCOMPARE(line->text(), QStringLiteral("42"));
     }
 };
 

@@ -99,6 +99,9 @@ private:
     QWidget *m_dialogParent = nullptr;
     bool m_connected = false;
     bool m_quickConfirm = true;
+    quint64 m_connectionGeneration = 0; ///< bumped on every disconnect
+    /// True when the tag still exists with exactly this configuration.
+    bool stillSame(const Tag &tag) const;
     quint64 m_nextRequest = 1;
     QHash<quint64, QList<TagId>> m_pending;
 };

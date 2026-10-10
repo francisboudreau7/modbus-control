@@ -521,6 +521,96 @@ private slots:
         r.wc->requestQuickWrite(4, 5.0);
         QCOMPARE(r.quickCalls, 1);
     }
+
+    // Review fix: the confirmation runs an event loop; what was checked before it must still
+    // hold when the write is sent.
+    void recheckAfterConfirmation()
+    {
+        // Tag configuration changed while the dialog was open (byte order of the float tag).
+        {
+            Rig r;
+            setup(r);
+            feed(r, 2, 50.0);
+            r.wc->m_confirm = [&r](const QString &) {
+                r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::ByteOrder),
+                                QStringLiteral("CDAB"));
+                return true;
+            };
+            r.wc->requestWrite(2, 20.0);
+            QCOMPARE(r.writes->size(), 0);
+            QVERIFY(!r.warns.isEmpty() && r.warns.last().contains("changed"));
+        }
+        // Disconnected and reconnected while the dialog was open.
+        {
+            Rig r;
+            setup(r);
+            feed(r, 2, 50.0);
+            r.wc->m_confirm = [&r](const QString &) {
+                r.wc->setConnected(false);
+                r.wc->setConnected(true);
+                feed(r, 2, 50.0);
+                return true;
+            };
+            r.wc->requestWrite(2, 20.0);
+            QCOMPARE(r.writes->size(), 0);
+        }
+        // The 32-bit reading was lost while the dialog was open.
+        {
+            Rig r;
+            setup(r);
+            feed(r, 2, 50.0);
+            r.wc->m_confirm = [&r](const QString &) {
+                r.model.clearLiveValues();
+                return true;
+            };
+            r.wc->requestWrite(2, 20.0);
+            QCOMPARE(r.writes->size(), 0);
+        }
+        // Selection path: a tag edited while the confirmation was open.
+        {
+            Rig r;
+            setup(r);
+            feed(r, 2, 50.0);
+            r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+                return std::optional<QList<double>>(QList<double>{1.0, 20.0, 1.0});
+            };
+            r.wc->m_confirm = [&r](const QString &) {
+                r.model.setData(r.model.index(r.model.rowOf(3), TagTableModel::Unit),
+                                QStringLiteral("kg"));
+                return true;
+            };
+            r.wc->requestWriteSelection({0, 1, 2});
+            QCOMPARE(r.writes->size(), 0);
+            QVERIFY(!r.warns.isEmpty() && r.warns.last().contains("changed"));
+        }
+        // Nothing changes: written.
+        {
+            Rig r;
+            setup(r);
+            feed(r, 2, 50.0);
+            r.wc->requestWrite(2, 20.0);
+            QCOMPARE(r.writes->size(), 1);
+        }
+    }
+
+    // Review fix: a reading decoded with the old configuration must not vouch for a write.
+    void configEditForgetsReading()
+    {
+        Rig r;
+        setup(r);
+        feed(r, 2, 50.0);
+        QVERIFY(r.model.goodValue(2).has_value());
+        r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Unit), QStringLiteral("m3/h"));
+        QVERIFY(r.model.goodValue(2).has_value()); // unit does not change decoding
+        r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::ByteOrder), QStringLiteral("CDAB"));
+        QVERIFY(!r.model.goodValue(2).has_value());
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.warns.last().contains("No valid reading of 'Flow'"));
+        feed(r, 2, 50.0);
+        r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Gain), 2.0);
+        QVERIFY(!r.model.goodValue(2).has_value());
+    }
 };
 
 QTEST_MAIN(TstQuickWrite)

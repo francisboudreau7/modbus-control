@@ -24,6 +24,7 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QPointer>
 #include <QDir>
 #include <QHash>
 #include <QSaveFile>
@@ -221,7 +222,10 @@ void AppController::wireData()
         SampleBatch shifted = batch;
         shifted.t += m_timeOffset; // continuing a loaded recording
         m_recorder.append(shifted);
-        m_window->tagModel()->updateSamples(shifted);
+        // A batch decoded with the previous tag configuration must not refresh the table's
+        // live values (they vouch for 32-bit writes): wait until the worker has the new tags.
+        if (m_tagsApplied == m_tagsGeneration)
+            m_window->tagModel()->updateSamples(shifted);
         if (m_sessionLoaded)
             m_sessionDirty = true;
         m_newData = true;
@@ -349,7 +353,18 @@ void AppController::wireQuickWrites()
 void AppController::pushTags()
 {
     const QList<Tag> tags = m_window->tagModel()->tags();
-    QMetaObject::invokeMethod(m_worker, [w = m_worker, tags] { w->setTags(tags); }, Qt::QueuedConnection);
+    const quint64 generation = ++m_tagsGeneration;
+    QMetaObject::invokeMethod(
+        m_worker,
+        [w = m_worker, tags, generation, self = QPointer<AppController>(this)] {
+            w->setTags(tags);
+            // Queued after every batch the worker emitted with the old tags.
+            QMetaObject::invokeMethod(self, [self, generation] {
+                if (self && generation > self->m_tagsApplied)
+                    self->m_tagsApplied = generation;
+            }, Qt::QueuedConnection);
+        },
+        Qt::QueuedConnection);
     m_window->trendPlot()->setTags(tags);
     m_window->cursorPanel()->setTags(tags);
     m_window->analysisView()->setTags(tags);

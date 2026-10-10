@@ -96,6 +96,21 @@ public:
     }
 };
 
+/// Value cells: the default editor, loaded once. Live updates send dataChanged for the Value
+/// column and the view would otherwise reset an open editor at every poll.
+class ValueDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        if (editor->property("mcLoaded").toBool())
+            return;
+        editor->setProperty("mcLoaded", true);
+        QStyledItemDelegate::setEditorData(editor, index);
+    }
+};
+
 /// Quick A/B cells: a text editor, so an empty entry can clear the value (a spin box cannot
 /// show "no value"). The model parses the text and refuses anything that is not a number.
 class QuickDelegate : public QStyledItemDelegate
@@ -111,6 +126,9 @@ public:
     }
     void setEditorData(QWidget *editor, const QModelIndex &index) const override
     {
+        if (editor->property("mcLoaded").toBool())
+            return; // loaded once: never reset what the user is typing
+        editor->setProperty("mcLoaded", true);
         static_cast<QLineEdit *>(editor)->setText(index.data(Qt::EditRole).toString());
     }
     void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
@@ -212,6 +230,7 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         new ComboDelegate({toString(YAxis::Left), toString(YAxis::Right)}, this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::Value, new ValueDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::WriteMin, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::WriteMax, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::QuickA, new QuickDelegate(this));

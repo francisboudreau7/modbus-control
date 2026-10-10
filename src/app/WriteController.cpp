@@ -180,6 +180,12 @@ void WriteController::requestWrite(TagId id, double scaledValue)
     writeValue(id, scaledValue, false);
 }
 
+bool WriteController::stillSame(const Tag &tag) const
+{
+    const int row = m_model->rowOf(tag.id);
+    return row >= 0 && m_model->tagAt(row) == tag;
+}
+
 void WriteController::writeValue(TagId id, double scaledValue, bool quick)
 {
     if (!m_connected) {
@@ -193,6 +199,7 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     const int base = m_model->addressBase();
     if (!tag.isWritable())
         return;
+    const quint64 generation = m_connectionGeneration;
 
     // 2. write limits
     if (std::isfinite(scaledValue) && !tag.withinWriteLimits(scaledValue)) {
@@ -252,9 +259,14 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     }
 
-    // The connection may have dropped while the dialog was open.
-    if (!m_connected) {
+    // The dialogs run an event loop: the connection, the tag or its reading may have changed.
+    if (!m_connected || generation != m_connectionGeneration) {
         emit message(tr("Not connected — cannot write."));
+        return;
+    }
+    if (!stillSame(tag) || (wide && !m_model->goodValue(id))) {
+        m_warn(tr("'%1' changed or lost its reading while the confirmation was open. Nothing "
+                  "was written.").arg(tag.name));
         return;
     }
     const quint64 reqId = m_nextRequest++;
@@ -271,6 +283,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     }
 
     const int base = m_model->addressBase();
+    const quint64 generation = m_connectionGeneration;
     QList<Tag> tags;
     for (int row : rows) {
         if (row < 0 || row >= m_model->rowCount())
@@ -396,9 +409,17 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(totalRegisters).arg(shownFirst).arg(shownLast)))
         return;
 
-    if (!m_connected) {
+    // The dialogs run an event loop: the connection, the tags or their readings may have changed.
+    if (!m_connected || generation != m_connectionGeneration) {
         emit message(tr("Not connected — cannot write."));
         return;
+    }
+    for (const Tag &tag : std::as_const(tags)) {
+        if (!stillSame(tag) || (registerCount(tag.type) == 2 && !m_model->goodValue(tag.id))) {
+            m_warn(tr("'%1' changed or lost its reading while the dialog was open. Nothing was "
+                      "written.").arg(tag.name));
+            return;
+        }
     }
     QList<TagId> ids;
     for (const Tag &tag : tags)
@@ -438,6 +459,8 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
 
 void WriteController::setConnected(bool connected)
 {
+    if (!connected)
+        ++m_connectionGeneration; // a write prepared before a disconnect must not be sent
     m_connected = connected;
     if (!connected)
         m_pending.clear();
