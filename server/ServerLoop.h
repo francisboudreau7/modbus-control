@@ -1,5 +1,9 @@
 #pragma once
 
+#include <utility>
+
+#include <QHash>
+
 #include "ServerConfig.h"
 #include "SignalGen.h"
 
@@ -46,7 +50,9 @@ private:
 
     void tick(double t, double dt);
     void closeClient(int fd, const char *why);
+    /// Prints describeRequest() with a time stamp; pairs consecutive FC06 writes (see RequestLog.h).
     void logRequest(int fd, const unsigned char *query, int length);
+    QHash<int, std::pair<unsigned, quint16>> m_lastSingleWrite; ///< per client: last FC06 address, value
     void shutdown();
 };
 

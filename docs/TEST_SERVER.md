@@ -27,6 +27,7 @@ At start-up it prints a banner, the unit id, the register ranges, the bound sign
 | `--delay <ms>` | Delay every reply by this many ms (fault injection). 0..600000. |
 | `--drop <percent>` | Chance (0..100) per request to drop the client instead of replying. |
 | `-v`, `--verbose` | Log every request and connection to stdout. |
+| `--log-writes` | Log only write requests, with time stamps, registers in hex and 32-bit values decoded in every byte order (see below). |
 
 Command-line options override the same settings in the configuration file. Positional arguments
 are not accepted.
@@ -125,6 +126,7 @@ The same content is in [`server/server.example.json`](../server/server.example.j
   "delayMs": 0,
   "dropPercent": 0,
   "verbose": false,
+  "logWrites": false,
   "signals": [
     { "input": 0,  "kind": "sine",     "amplitude": 1000, "offset": 0, "periodS": 5 },
     { "input": 1,  "kind": "triangle", "amplitude": 1000, "offset": 0, "periodS": 10 },
@@ -148,7 +150,7 @@ Keys:
 | `holdingCount` | 1..65536 | Holding registers HR 0..count-1. |
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |
-| `delayMs`, `dropPercent`, `verbose` | 0 or more; 0..100; true/false | Fault injection and logging. |
+| `delayMs`, `dropPercent`, `verbose`, `logWrites` | 0 or more; 0..100; true/false; true/false | Fault injection and logging. |
 | `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS`, `deadTimeS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
 
 If `signals` is present it replaces the default bindings completely. Each binding's `input` must be
@@ -186,6 +188,30 @@ With `-v` each request is logged as one line, for example:
 ```
 
 The number in brackets is the socket. The server accepts at most 60 clients at a time.
+
+### Checking writes with `--log-writes`
+
+`--log-writes` logs only the write requests, so polling does not hide them. Each line has a time
+stamp and the registers in hex. A write of two registers is also decoded as a float in all four
+byte orders, so you can see which order the client sent:
+
+```
+12:08:53.539 [576] unit=1 fc=0x10 write addr=110 count=2 values=0x42F7,0x0000 | float ABCD=123.5 CDAB=2.40224596e-41 BADC=-3.93478746e+33 DCBA=8.86993902e-41
+```
+
+Here the client wrote 123.5 in `ABCD` order. With **FC06 only**, a 32-bit value arrives as two
+single-register writes; two consecutive FC06 writes to neighbouring addresses are decoded
+together on an extra line:
+
+```
+12:08:53.541 [576] unit=1 fc=0x06 write addr=120 value=0x0000 (0)
+12:08:53.543 [576] unit=1 fc=0x06 write addr=121 value=0x42F7 (17143)
+12:08:53.543 [576]   FC06 pair addr=120-121 values=0x0000,0x42F7 | float ABCD=2.40224596e-41 CDAB=123.5 BADC=8.86993902e-41 DCBA=-3.93478746e+33
+```
+
+`addr` is always the zero-based protocol address (register 6639 in a 1-based manual is
+`addr=6638`). Holding registers 0..199 are plain storage, so a value written there reads back
+unchanged: a writable float32 holding tag at, say, address 110 lets you test writes end to end.
 
 ## Stopping
 

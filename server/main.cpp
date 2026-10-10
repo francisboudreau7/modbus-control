@@ -111,8 +111,9 @@ int main(int argc, char *argv[])
     const QCommandLineOption delayOption(QStringLiteral("delay"), QStringLiteral("Delay every reply by this many ms (fault injection)."), QStringLiteral("ms"));
     const QCommandLineOption dropOption(QStringLiteral("drop"), QStringLiteral("Percent chance (0..100) to drop the client instead of replying."), QStringLiteral("percent"));
     const QCommandLineOption verboseOption({QStringLiteral("v"), QStringLiteral("verbose")}, QStringLiteral("Log every request to stdout."));
+    const QCommandLineOption logWritesOption(QStringLiteral("log-writes"), QStringLiteral("Log only write requests, with registers in hex and 32-bit values decoded in every byte order."));
     parser.addOptions({helpOption, versionOption, configOption, hostOption, portOption, unitOption, tickOption,
-                       delayOption, dropOption, verboseOption});
+                       delayOption, dropOption, verboseOption, logWritesOption});
 
     if (!parser.parse(QCoreApplication::arguments())) {
         return usageError(parser.errorText());
@@ -177,6 +178,9 @@ int main(int argc, char *argv[])
     }
     if (parser.isSet(verboseOption)) {
         config.verbose = true;
+    }
+    if (parser.isSet(logWritesOption)) {
+        config.logWrites = true;
     }
 
 #ifdef _WIN32

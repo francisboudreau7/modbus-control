@@ -234,6 +234,13 @@ Then the confirmation shows the new value and, on a new line, **Current value** 
 reading, or "unknown"). When the tag has limits, it also shows **Limits**, for example "Limits: 0 to
 2000". Read the current value before you confirm: if it is not what you expect, click **No**.
 
+**Checking writes before using a real device.** Start the test server with `--log-writes` (see
+the Test server guide): it prints every write it receives, with the registers in hex and the
+value decoded in each byte order. Add a writable float32 holding tag at address 110 with the byte
+order you plan to use, write a value, and check that the log shows that value under the same byte
+order, that refused writes (outside the limits, no reading) produce no line, and, with **FC06
+only**, that the pair line decodes to the same value.
+
 Limits are a safety net, not a substitute for checking the controller's own ranges. Set them to the
 ranges your controller accepts for that parameter (see the CM50 section below).
 

@@ -40,6 +40,7 @@ mc_add_qtest(tst_sessionio LIBS mbcore)
 # Test server unit tests
 mc_add_qtest(tst_signalgen LIBS mbsim)
 mc_add_qtest(tst_serverconfig LIBS mbsim)
+mc_add_qtest(tst_requestlog LIBS mbsim)
 
 # UI tests run on the offscreen platform plugin from the Qt install.
 foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage tst_analysisview

@@ -253,6 +253,7 @@ bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
         && r.readInt("delayMs", 0, std::numeric_limits<int>::max(), cfg.delayMs)
         && r.readInRange("dropPercent", cfg.dropPercent, 0.0, 100.0)
         && r.readBool("verbose", cfg.verbose)
+        && r.readBool("logWrites", cfg.logWrites)
         && readSignals(r, cfg);
     if (!ok)
         return false;

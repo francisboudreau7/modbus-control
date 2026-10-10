@@ -1,5 +1,7 @@
 #include "ServerLoop.h"
 
+#include "RequestLog.h"
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -13,6 +15,8 @@
 #endif
 
 #include <modbus.h>
+
+#include <QTime>
 
 #include <algorithm>
 #include <chrono>
@@ -47,11 +51,6 @@ void closeSocket(int fd)
 #else
     ::close(fd);
 #endif
-}
-
-unsigned fromBE16(const unsigned char *p)
-{
-    return (static_cast<unsigned>(p[0]) << 8) | p[1];
 }
 
 } // namespace
@@ -228,49 +227,25 @@ void ServerLoop::logRequest(int fd, const unsigned char *query, int length)
     const unsigned fc = query[hl];
     const unsigned char *pdu = query + hl + 1; // after function code
     const int pduLen = length - hl - 1;
+    const QByteArray stamp = QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")).toLatin1();
+    std::printf("%s %s\n", stamp.constData(), describeRequest(fd, unit, fc, pdu, pduLen).c_str());
 
-    char text[512];
-    int n = std::snprintf(text, sizeof(text), "[%d] unit=%u fc=0x%02X", fd, unit, fc);
-    auto append = [&](const char *format, auto... args) {
-        if (n > 0 && n < static_cast<int>(sizeof(text))) {
-            n += std::snprintf(text + n, sizeof(text) - static_cast<size_t>(n), format, args...);
+    // FC06 mode writes a 32-bit value as two single writes: decode a consecutive pair together.
+    if (fc == MODBUS_FC_WRITE_SINGLE_REGISTER && pduLen >= 4) {
+        const unsigned addr = (unsigned(pdu[0]) << 8) | pdu[1];
+        const quint16 value = quint16((unsigned(pdu[2]) << 8) | pdu[3]);
+        const auto last = m_lastSingleWrite.constFind(fd);
+        if (last != m_lastSingleWrite.constEnd() && addr == last->first + 1) {
+            std::printf("%s [%d]   FC06 pair addr=%u-%u values=0x%04X,0x%04X | %s\n", stamp.constData(), fd,
+                        last->first, addr, unsigned(last->second), unsigned(value),
+                        describe32(last->second, value).c_str());
+            m_lastSingleWrite.remove(fd);
+        } else {
+            m_lastSingleWrite.insert(fd, {addr, value});
         }
-    };
-
-    switch (fc) {
-    case MODBUS_FC_READ_COILS:
-    case MODBUS_FC_READ_DISCRETE_INPUTS:
-    case MODBUS_FC_READ_HOLDING_REGISTERS:
-    case MODBUS_FC_READ_INPUT_REGISTERS:
-        if (pduLen >= 4) {
-            append(" read addr=%u count=%u", fromBE16(pdu), fromBE16(pdu + 2));
-        }
-        break;
-    case MODBUS_FC_WRITE_SINGLE_REGISTER:
-    case MODBUS_FC_WRITE_SINGLE_COIL:
-        if (pduLen >= 4) {
-            append(" write addr=%u value=%u", fromBE16(pdu), fromBE16(pdu + 2));
-        }
-        break;
-    case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-        if (pduLen >= 5) {
-            const unsigned count = fromBE16(pdu + 2);
-            append(" write addr=%u count=%u values=", fromBE16(pdu), count);
-            for (unsigned i = 0; i < count && i < 16 && pduLen >= static_cast<int>(5 + 2 * (i + 1)); ++i) {
-                append(i ? ",%u" : "%u", fromBE16(pdu + 5 + 2 * i));
-            }
-        }
-        break;
-    case MODBUS_FC_WRITE_AND_READ_REGISTERS:
-        if (pduLen >= 9) {
-            append(" readwrite read addr=%u count=%u write addr=%u count=%u", fromBE16(pdu), fromBE16(pdu + 2),
-                   fromBE16(pdu + 4), fromBE16(pdu + 6));
-        }
-        break;
-    default:
-        break;
+    } else if (isWriteFunction(fc)) {
+        m_lastSingleWrite.remove(fd);
     }
-    std::printf("%s\n", text);
     std::fflush(stdout);
 }
 
@@ -354,7 +329,9 @@ int ServerLoop::run(const std::atomic<bool> &stop)
                 continue; // request for another unit id
             }
 
-            if (m_config.verbose) {
+            if (m_config.verbose
+                || (m_config.logWrites && rc > modbus_get_header_length(m_ctx)
+                    && isWriteFunction(query[modbus_get_header_length(m_ctx)]))) {
                 logRequest(fd, query.data(), rc);
             }
             if (m_config.delayMs > 0) {

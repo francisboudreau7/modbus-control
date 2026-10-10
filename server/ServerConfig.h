@@ -23,7 +23,7 @@ struct SignalBinding {
 /// {
 ///   "host": "127.0.0.1", "port": 1502, "unitId": 1,
 ///   "holdingCount": 200, "inputCount": 64, "tickMs": 50,
-///   "delayMs": 0, "dropPercent": 0, "verbose": false,
+///   "delayMs": 0, "dropPercent": 0, "verbose": false, "logWrites": false,
 ///   "signals": [ { "input": 0, "kind": "sine"|"triangle"|"sawtooth"|"square"|"counter"|
 ///                  "noise"|"lag"|"constant", "amplitude": 1000, "offset": 0,
 ///                  "periodS": 5, "tauS": 2, "deadTimeS": 0, "source": 100,
@@ -43,6 +43,7 @@ struct ServerConfig {
     int delayMs = 0;        ///< fault injection: delay before every reply
     double dropPercent = 0; ///< fault injection: chance (0..100) to drop a client per request
     bool verbose = false;   ///< log each request to stdout
+    bool logWrites = false; ///< log only write requests (hex registers, 32-bit decodings)
     QList<SignalBinding> signalBindings;
 
     /// Defaults: IR0 sine(1000, 5 s), IR1 triangle(1000, 10 s), IR2 counter,
