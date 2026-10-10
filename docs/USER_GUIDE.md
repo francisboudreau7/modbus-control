@@ -12,6 +12,8 @@ This guide describes the application as built from this repository. For building
   [Analysis](#analysis-step-response)).
 - **Tags** (bottom dock): the tag table with Add, Duplicate, Remove and Write selected buttons.
 - **Cursors** (right dock): cursor times and the readout table of the Trend.
+- **Quick write** (right dock, tabbed with Cursors): one button per preset value of the writable
+  tags (see [Quick writes](#quick-writes)).
 - **Menus**: File, Export, View, Options and Help.
 - **Status bar**: short messages (left) and the connection state (right).
 
@@ -66,9 +68,11 @@ Each row is one register value that the application reads. Columns:
 | Writable | Allows writes from the Value column. Holding registers only, of any type. The box is disabled for input registers, and changing Area to Input clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
 | Analyze | Shows the tag on the Analysis tab and includes it in the step-response results. See [Analysis](#analysis-step-response). |
+| Axis | `Left` or `Right`: the Y axis the tag's curve uses on the Trend and the Analysis plot. See [Trend](#trend). |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
 | Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
 | Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
+| Quick A, Quick B | Preset values for the Quick write dock, in scaled units. Empty means no button. Only writable tags can have them. See [Quick writes](#quick-writes). |
 | Quality | State of the last read. Read-only. |
 
 Quality values:
@@ -179,10 +183,46 @@ polled value, so it changes only when the next read returns the new value.
    FC06 request per register (ascending, stopping at the first failure) when **FC06 only** is ticked.
    16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.
 
+### Quick writes
+
+Quick writes are one-click writes of preset values, for setpoints you change often (for example
+a "run" and a "stop" value).
+
+1. Set the presets in the tag table: type a value in the **Quick A** and/or **Quick B** cell of a
+   writable tag, in scaled units. Clear the cell to remove the preset. Quick A and Quick B are
+   read-only for tags that are not writable.
+2. Open the **Quick write** dock (right side, tabbed with Cursors; reopen it from the View menu).
+   It lists each writable tag that has a preset, with its name, live value and one button per
+   preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
+3. Click a button. A question asks for confirmation, for example "Write 1000 to HR 100
+   'Setpoint'?". The write is then sent like a single-register write (range check, and the
+   **FC06 only** setting for 32-bit tags).
+
+The confirmation has a check box **Don't ask again this session**. Ticking it and confirming
+sends the write, and later quick writes go without a question until the application is restarted.
+To ask again, tick **Options > Confirm quick writes**, which is ticked when the application starts.
+Unticking that option sends quick writes without asking.
+
+Writes from the Value column and **Write selected...** always ask for confirmation. The
+**Don't ask again** check box does not affect them.
+
 ## Trend
 
 The trend shows each plotted tag as one curve, in the tag's colour. The X axis is time in seconds,
-since the first connection in this run (see Recording). The Y axis is the scaled value.
+since the first connection in this run (see Recording). The left Y axis shows the scaled value of
+the tags with **Axis** set to `Left`.
+
+### Right Y axis
+
+Tags with **Axis** set to `Right` (tag table) are drawn against a second Y axis on the right of the
+plot. Use it for a tag whose unit or range differs from the others, for example a temperature next
+to a valve position.
+
+- The two Y axes scale separately. Each one fits only its own curves, so a tag on the right does not
+  change the left axis, and the reverse.
+- Each axis title lists the units of its tags. The right axis is shown only while at least one
+  plotted tag uses it.
+- **Fit Y** fits each axis to its own tags.
 
 Controls above the plot:
 
@@ -200,7 +240,7 @@ Mouse:
 | Action | Effect |
 |---|---|
 | Mouse wheel | Zooms the time (X) axis. |
-| Shift + mouse wheel | Zooms the value (Y) axis. Auto-scaling stops until Run or Fit Y. |
+| Shift + mouse wheel | Zooms both Y axes. Auto-scaling stops until Run or Fit Y. |
 | Right-button drag | Pans. |
 
 Zooming and panning pause the trend.
@@ -364,6 +404,7 @@ be a few milliseconds before C1, so t − C1 can be slightly negative.
 | ΔPV | y100 − y0. |
 | ΔCO | The change of the controller output (see Model). |
 | K, L (s), T (s) | The model values. |
+| Fit RMS | How well the model follows the data (see Model curve). Shown as the value and, in brackets, as a percentage of ΔPV, for example `0.12 (0.6 %)`. |
 
 A tag without a valid result shows its error text across the value columns. A value that cannot be
 computed shows "—". Numbers use 6 significant digits.
@@ -403,6 +444,38 @@ open-loop (reaction curve) tuning, apply these rules yourself:
 | PI | 0.9 · T / (K · L) | L / 0.3 (about 3.33 · L) | — |
 | PID | 1.2 · T / (K · L) | 2 · L | 0.5 · L |
 
+### Model curve
+
+Tick **Show model curve** in the Model group to draw the fitted model over the response. It is a
+dashed line in the tag's colour, from C1 to C2. It starts at the 0 % level, stays there until the
+step time plus the dead time L, and then rises towards the 100 % level with the time constant T.
+It is drawn only when L and T are valid for the tag. The option is saved in the project.
+
+Compare the curve with the measured curve. If they lie on top of each other, the first-order model
+with dead time describes the process well.
+
+**Fit RMS** in the Model table is the root-mean-square of the difference between the recorded values
+and the model, over the samples between C1 and C2. It is in the units of the tag. The percentage is
+Fit RMS as a share of |ΔPV|. A small value means a good fit: a few percent of ΔPV or less is a
+close match. A large value means the response is not first order, or the times were read from
+a noisy or badly placed step. Fit RMS shows "—" when no model is valid.
+
+### Guide lines
+
+**Guide lines** (under Setpoints, on by default) draws, for every found setpoint, a dashed line from
+the marker straight down to the bottom of the plot and a dashed line from the marker straight left
+to the left edge. They show the time and the level of each setpoint. The lines follow zoom and pan,
+and are included in the graph image. Untick the box to hide them.
+
+### Copying results
+
+- **Ctrl+C** on the Setpoints or Model table copies the selected cells. With nothing selected it copies
+  the whole table, with its header row.
+- **Copy results** (below the buttons at the top of the Analysis tab) copies both tables, with a blank
+  line between them.
+
+The text is tab-separated. Pasting it into Excel or Word puts each value in its own cell.
+
 ### Exporting results
 
 - **Export > Analysis results (CSV)...**, or **Export results (CSV)...** on the Analysis tab, is
@@ -410,35 +483,41 @@ open-loop (reaction curve) tuning, apply these rules yourself:
   export folder, or in Documents.
 - The file is UTF-8 with CRLF line endings and comma separators. It has two sections, separated by an
   empty line. The first has one row per setpoint (`tag,percent,target,measured,time_s,time_from_c1_s`).
-  The second has one row per tag (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,note`).
-  A missing value is an empty cell. For an invalid result, `note` holds the error text.
+  The second has one row per tag (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note`).
+  A missing value is an empty cell, so `fit_rms` and `fit_rms_percent` are empty when no model is valid.
+  For an invalid result, `note` holds the error text.
 - **Export > Graph image...** while the Analysis tab is active exports the Analysis plot, including the
   setpoint markers. With **Include cursor readout** ticked, the box shows the results summary.
 
 ### Saving
 
-The Analysis settings (reference, window, smoothing, setpoints, model and ΔCO) and the **Analyze**
-flags are saved in the project. The cursors are not.
+The Analysis settings (reference, window, smoothing, setpoints, model and ΔCO, plot labels, model
+curve and guide lines) and the **Analyze** flags are saved in the project. The cursors are not.
+A session also keeps the cursors (see [Sessions](#sessions)).
 
 ### Try it with the test server
 
 1. Start the test server in a console: `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
 2. Start the application with `examples\demo.mbproj` (or open it with File > Open), then click **Connect**.
-3. Double-click the **Value** cell of **Setpoint** (HR 100), type 0 and confirm. Wait a few seconds.
+3. Double-click the **Value** cell of **Setpoint** (HR 100), type 0 and confirm. Or click **A: 0** in
+   the Quick write dock. Wait a few seconds.
 4. Open the **Analysis** tab and place C1 now, before the step.
-5. Write 1000 to **Setpoint** the same way and wait about 10 s. The **Lag** signal (IR 10) starts to
+5. Write 1000 to **Setpoint** the same way, or click **B: 1000** in the Quick write dock, and wait about 10 s. The **Lag** signal (IR 10) starts to
    rise after its 1 s dead time, with a time constant of 2 s. When it has settled, place C2.
-6. In **Model**, select **Setpoint** as the ΔCO tag.
-7. The Lag row shows K ≈ 1, L ≈ 1 s and T ≈ 2 s.
+6. In **Model**, select **Setpoint** as the ΔCO tag. Tick **Show model curve** to draw the fitted
+   model over the Lag response between the cursors.
+7. The Lag row shows K ≈ 1, L ≈ 1 s and T ≈ 2 s. Its **Fit RMS** should be small compared with ΔPV,
+   and the dashed model curve should follow the measured curve.
 
 ## Projects
 
 Projects are saved as `.mbproj` files. A project holds the connection settings (including FC06 only), the register numbering
-(1-based or not), the tag list, including tag colours and the **Analyze** flags, and the Analysis settings. Recorded data, cursors and the trend window are not saved.
+(1-based or not), the tag list, including tag colours, the **Analyze** flags, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
 
-In the file, each tag has an `analyzed` key, and the Analysis settings are in an `analysis` object
-(`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`).
-Both are optional: a file without them loads with the defaults.
+In the file, each tag has an `analyzed` key, an `axis` key (`"left"` or `"right"`) and optional
+`quickA` and `quickB` keys (the quick-write presets). The Analysis settings are in an `analysis` object
+(`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`,
+`showModel`, `guideLines`). All of these are optional: a file without them loads with the defaults.
 
 | Menu item | Shortcut | Action |
 |---|---|---|
@@ -463,6 +542,55 @@ build\msvc-debug\bin\modbus_control.exe examples\demo.mbproj
 server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 [`examples/cm50.mbproj`](../examples/cm50.mbproj) is a starting point for an ABB CM50 (see the next
 section).
+
+## Sessions
+
+A session file (`.mbsession`) keeps a recording so that you can look at it later, without a
+connection. It holds:
+
+- the project: connection settings, tags and Analysis settings,
+- the recording: the trend history with its start time,
+- the cursors of the Trend and of the Analysis tab.
+
+| Menu item | Action |
+|---|---|
+| File > Save session... | Save the project, the recording and the cursors to a `.mbsession` file. `.mbsession` is added when missing. |
+| File > Open session... | Open a session. Connection is closed first, if it is open. |
+
+### Offline viewing and analysis
+
+After **Open session...** the Trend, the Cursors panel and the Analysis tab show the recorded data
+and the saved cursors. Nothing is polled. The Analysis works as usual, and so do the graph image
+and CSV exports. Writes are not possible until you connect.
+
+The window title shows the session file name. The project inside a session is not a `.mbproj` file
+yet: use File > Save As... to keep it as one.
+
+This is the way to analyse a lab recording at home: save the session at the lab, copy the file, and
+open it with File > Open session... at home.
+
+### Connecting after opening a session
+
+When you click **Connect** with a session loaded, a question asks what to do with the recording:
+
+- **Continue this recording**: the new samples are added after the loaded data. A gap is drawn in the
+  trend, and the time keeps going from the loaded start time.
+- **Start a new recording**: the loaded data is removed from the view and the time starts again at
+  0. The session file on disk is not changed.
+- **Cancel**: nothing is connected.
+
+### Unsaved changes
+
+Once a session is loaded, new samples recorded while connected make the recording "changed".
+New, Open, Open session and Quit then ask "The recording has changed. Save the session?" with
+**Save**, **Discard** and **Cancel**. Save opens the Save session dialog. Without a loaded session,
+the project prompt is used, as before.
+
+### File size
+
+The session file holds the whole recording in memory, so its size follows the length of the
+recording and the number of tags. The history is limited to 72 000 rows (about 2 hours at a 100 ms
+period). For 2 hours at 100 ms with 20 tags, the file is about 14 MB.
 
 ## Connecting to an ABB ControlMaster CM50
 
@@ -525,4 +653,5 @@ Modbus RTU (serial). Use the controller's front panel or another tool for those.
 - Holding and input registers only, with `int16` and `uint16` (one register) or `int32`,
   `uint32` and `float32` (two registers) types. There are no coils or discrete inputs.
 - Some TCP servers ignore the unit id. It is still sent with each request.
-- The history is in memory only, and the project file does not store it.
+- The history is in memory only. A project file does not store it; a session file does (see
+  [Sessions](#sessions)).

@@ -114,8 +114,14 @@ QList<Tag> demoTags()
         makeTag(11, QStringLiteral("Int32 saw"), ir, 24, ValueType::Int32, QStringLiteral("#393b79"),
                 true, false, ByteOrder::ABCD),
     };
-    for (Tag &t : tags)
+    for (Tag &t : tags) {
         t.analyzed = (t.id == 7); // Lag (IR 10): the step-response demo
+        if (t.id == 8) {          // Setpoint (HR 100): quick-write presets and the right Y axis
+            t.quickA = 0.0;
+            t.quickB = 1000.0;
+            t.axis = YAxis::Right;
+        }
+    }
     return tags;
 }
 
@@ -154,6 +160,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     // Analysis of the Lag step: the controller output step (deltaCo) is the Setpoint (HR 100, id 8).
     AnalysisSettings analysis;
     analysis.deltaCoTagId = 8;
+    analysis.showModel = true;
     m_window->analysisView()->setSettings(analysis);
     m_refreshTimer->start();
     updateTitle();
