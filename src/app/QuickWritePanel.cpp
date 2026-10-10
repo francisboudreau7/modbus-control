@@ -70,9 +70,12 @@ void QuickWritePanel::updateValue(int row)
 
 void QuickWritePanel::rebuild()
 {
-    // Replace the whole content widget; the old one goes away immediately.
+    // Replace the whole content widget. deleteLater: a rebuild can happen while one of the
+    // old buttons is still inside its clicked() handler (the confirmation dialog's loop).
     m_valueLabels.clear();
-    delete m_content;
+    m_content->hide();
+    m_content->setParent(nullptr);
+    m_content->deleteLater();
     m_content = new QWidget(this);
     static_cast<QVBoxLayout *>(layout())->insertWidget(0, m_content);
 

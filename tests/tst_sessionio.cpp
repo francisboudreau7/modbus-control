@@ -206,12 +206,12 @@ void Test::capacityRaisedNeverLowered()
     Recorder small(10);
     QVERIFY(sessionFromJson(json, p, small, c));
     QCOMPARE(small.size(), qsizetype(50));
-    QVERIFY(small.capacity() >= 50);
+    QCOMPARE(small.capacity(), qsizetype(50 + 72000)); // room to continue for 2 h
 
-    Recorder big(5000);
+    Recorder big(200000);
     QVERIFY(sessionFromJson(json, p, big, c));
     QCOMPARE(big.size(), qsizetype(50));
-    QCOMPARE(big.capacity(), qsizetype(5000));
+    QCOMPARE(big.capacity(), qsizetype(200000)); // never lowered
 }
 
 void Test::failures_data()

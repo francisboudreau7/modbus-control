@@ -84,6 +84,7 @@ class TestTrendPlot : public QObject
 {
     Q_OBJECT
 private slots:
+    void resetDataReloadsReplacedRecording();
     void init()
     {
         m_rec = std::make_unique<Recorder>();
@@ -187,6 +188,28 @@ private slots:
 private:
     std::unique_ptr<Recorder> m_rec;
 };
+
+// Regression: opening a session replaces the recorder's contents and then calls resetData();
+// the curves must show the loaded rows, not start empty after them.
+void TestTrendPlot::resetDataReloadsReplacedRecording()
+{
+    Recorder rec;
+    for (int i = 0; i < 10; ++i)
+        addRow(rec, i * 0.1, {good(1, i)});
+    TrendPlot plot;
+    plot.setRecorder(&rec);
+    plot.setTags({makeTag(1, QStringLiteral("A"), QStringLiteral("V"), YAxis::Left)});
+    plot.refresh();
+    QCOMPARE(curves(plot.plot()).at(0)->dataSize(), size_t(10));
+
+    Recorder loaded;
+    for (int i = 0; i < 25; ++i)
+        addRow(loaded, 100.0 + i * 0.1, {good(1, -i)});
+    rec = std::move(loaded);
+    plot.resetData();
+    plot.refresh();
+    QCOMPARE(curves(plot.plot()).at(0)->dataSize(), size_t(25));
+}
 
 QTEST_MAIN(TestTrendPlot)
 #include "tst_trendplot.moc"

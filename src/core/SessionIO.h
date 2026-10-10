@@ -48,9 +48,9 @@ struct SessionCursors {
 QByteArray sessionToJson(const Project &project, const Recorder &recording,
                          const SessionCursors &cursors);
 
-/// On success replaces `recording` completely: clear(), capacity raised to at least `rows`
-/// (Recorder::setCapacity, never lowered), start time set, then one append() per row with a
-/// sample per column (quality Good for finite values, Timeout for NaN, so NaN survives).
+/// On success replaces `recording` completely: clear(), capacity raised to at least
+/// rows + 72 000 (room to continue recording for 2 h at 100 ms; never lowered), start time
+/// set, then one append() per row with a sample per column (quality Good for finite values, Timeout for NaN, so NaN survives).
 /// On failure `project`, `recording` and `cursors` are unchanged.
 bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recording,
                      SessionCursors &cursors, QString *error = nullptr);

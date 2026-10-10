@@ -518,11 +518,13 @@ void TrendPlot::setPaused(bool paused)
 
 void TrendPlot::resetData()
 {
-    const quint64 mark = m_recorder ? m_recorder->evictedCount() + quint64(m_recorder->size()) : 0;
+    // Start at the oldest row still held, so pull() reloads everything the recorder has.
+    const quint64 mark = m_recorder ? m_recorder->evictedCount() : 0;
     for (CurveEntry *e : std::as_const(m_entries)) {
         e->curve->series()->clear();
         e->curve->firstAbs = e->curve->nextAbs = mark;
     }
+    pull();
     m_plot->replot();
 }
 

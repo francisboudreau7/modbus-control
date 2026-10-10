@@ -88,6 +88,10 @@ private:
     bool prepareConnect();
     void onTimeBaseReset(const QDateTime &wall);
     void clearSessionState();
+    /// If a session's recording is loaded: clears it (default capacity), resets the plots
+    /// and the worker's time base. Always clears the session state.
+    void discardLoadedRecording();
+    static constexpr qsizetype kDefaultRecorderRows = 72000; ///< 2 h at 100 ms
     bool recordingDirty() const;
     std::optional<double> lastRowTime() const;
 

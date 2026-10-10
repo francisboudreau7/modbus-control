@@ -56,7 +56,8 @@ public slots:
     void refresh();
     void setWindowSeconds(double seconds);
     void setPaused(bool paused);
-    /// Forgets all curve data (call after the Recorder was cleared).
+    /// Forgets the curve data and reloads every row the Recorder holds now (call after the
+    /// Recorder was cleared or replaced, e.g. by an opened session).
     void resetData();
 
 signals:

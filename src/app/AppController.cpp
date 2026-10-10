@@ -483,7 +483,7 @@ void AppController::newProject()
     pushTags();
     m_window->analysisView()->setSettings(AnalysisSettings{});
     m_projectPath.clear();
-    clearSessionState();
+    discardLoadedRecording();
     setModified(false);
 }
 
@@ -509,7 +509,7 @@ bool AppController::loadFrom(const QString &path)
     }
     applyProject(*project);
     m_projectPath = path;
-    clearSessionState();
+    discardLoadedRecording();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);
     return true;
@@ -522,6 +522,20 @@ void AppController::clearSessionState()
     m_sessionDirty = false;
     m_continuePending = false;
     m_timeOffset = 0.0;
+}
+
+void AppController::discardLoadedRecording()
+{
+    // A loaded session's times do not come from the worker clock; live samples would be
+    // older than its last row and silently ignored. Start over with the default capacity.
+    if (m_sessionLoaded) {
+        m_recorder.setCapacity(kDefaultRecorderRows); // also clears
+        m_window->trendPlot()->resetData();
+        m_window->analysisView()->resetData();
+        m_window->cursorPanel()->refresh();
+        QMetaObject::invokeMethod(m_worker, &PollWorker::resetTimeBase, Qt::QueuedConnection);
+    }
+    clearSessionState();
 }
 
 std::optional<double> AppController::lastRowTime() const
@@ -567,6 +581,7 @@ bool AppController::saveSessionDialog()
         return false;
     }
     settings.setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
+    m_sessionPath = path; // title (when no project file) and next default name
     if (m_sessionLoaded)
         m_sessionDirty = false;
     updateTitle();
@@ -578,6 +593,14 @@ void AppController::openSessionDialog()
 {
     if (!maybeSave())
         return;
+    if (!m_sessionLoaded && m_recorder.size() > 0) {
+        const auto answer = QMessageBox::question(
+            m_window, QStringLiteral("Open session"),
+            QStringLiteral("Opening a session replaces the current recording. Save it as a session first?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveSessionDialog()))
+            return;
+    }
     const QString dir = QSettings().value(QStringLiteral("session/dir")).toString();
     const QString path = QFileDialog::getOpenFileName(
         m_window, QStringLiteral("Open session"), dir,
@@ -656,6 +679,8 @@ bool AppController::prepareConnect()
     }
     if (choice == ContinueChoice::Cancel)
         return false;
+    if (choice == ContinueChoice::StartNew && recordingDirty() && !maybeSave())
+        return false;
     if (choice == ContinueChoice::Continue) {
         m_continuePending = true;
     } else {
@@ -700,6 +725,8 @@ void AppController::onTimeBaseReset(const QDateTime &wall)
         m_sessionPath.clear();
         updateTitle();
     }
+    if (m_recorder.capacity() != kDefaultRecorderRows)
+        m_recorder.setCapacity(kDefaultRecorderRows); // a loaded session may have raised it
     m_recorder.clear();
     m_recorder.setStartTime(wall);
     m_window->trendPlot()->resetData();

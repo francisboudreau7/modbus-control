@@ -254,7 +254,8 @@ bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recordi
         return fail(err);
 
     // Build the recorder in a temporary, then swap everything in.
-    Recorder tmp(std::max(recording.capacity(), rows));
+    constexpr qsizetype kContinueRows = 72000; // 2 h at 100 ms after the loaded rows
+    Recorder tmp(std::max(recording.capacity(), rows + kContinueRows));
     tmp.setStartTime(start);
     const qsizetype ncols = ids.size();
     for (qsizetype r = 0; r < rows; ++r) {
