@@ -614,14 +614,41 @@ int TagTableModel::addressBase() const
     return m_addressBase;
 }
 
-// Stubs created by T130; implemented by T131.
-QString TagTableModel::columnKey(int)
+namespace {
+
+// Stable project-file keys, indexed by TagTableModel::Column. Never rename a key: project files
+// store them. The array size is ColumnCount, and the check below catches a missing entry.
+constexpr const char *kColumnKeys[TagTableModel::ColumnCount] = {
+    "name", "area", "address", "type", "byteOrder", "gain", "offset", "unit", "writable", "plot",
+    "analyze", "axis", "color", "raw", "value", "writeMin", "writeMax", "quickA", "quickB",
+    "quality",
+};
+
+constexpr bool allColumnKeysSet()
 {
-    return {};
+    for (const char *key : kColumnKeys) {
+        if (!key)
+            return false;
+    }
+    return true;
+}
+static_assert(allColumnKeysSet(), "every TagTableModel column needs a project-file key");
+
+} // namespace
+
+QString TagTableModel::columnKey(int column)
+{
+    if (column < 0 || column >= ColumnCount)
+        return {};
+    return QString::fromLatin1(kColumnKeys[column]);
 }
 
-int TagTableModel::columnFromKey(const QString &)
+int TagTableModel::columnFromKey(const QString &key)
 {
+    for (int c = 0; c < ColumnCount; ++c) {
+        if (key == QLatin1StringView(kColumnKeys[c]))
+            return c;
+    }
     return -1;
 }
 
