@@ -350,11 +350,7 @@ private slots:
         // Hover away from both lines: the resize cursor is dropped.
         QTest::mouseMove(canvas(), at(45.0));
         QVERIFY(canvas()->cursor().shape() != Qt::SizeHorCursor);
-        // Known bug: updateHoverCursor() calls unsetCursor(), so the canvas falls back to
-        // the widget default (ArrowCursor) instead of the CrossCursor it set itself
-        // (QwtPlotAbstractCanvas). Remove this expected failure once that is fixed.
-        QEXPECT_FAIL("", "unsetCursor() drops the canvas's own CrossCursor (should restore it)",
-                     Continue);
+        // The canvas's own shape (Qwt's CrossCursor) comes back, not the widget default.
         QCOMPARE(canvas()->cursor().shape(), base);
 
         // Near C2 as well.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QCursor>
 #include <QPointer>
 #include <QWidget>
 
@@ -67,6 +68,7 @@ private:
     int m_drag = 0; ///< 0 none, 1 = C1, 2 = C2
     bool m_swallowRelease = false;
     bool m_cursorShown = false;
+    QCursor m_savedCursor; ///< canvas cursor to restore after the hover shape
 };
 
 } // namespace mb

@@ -137,10 +137,11 @@ void PlotCursors::updateHoverCursor(bool near)
 {
     QWidget *canvas = m_plot->canvas();
     if (near && !m_cursorShown) {
+        m_savedCursor = canvas->cursor(); // Qwt's canvas sets its own CrossCursor
         canvas->setCursor(Qt::SizeHorCursor);
         m_cursorShown = true;
     } else if (!near && m_cursorShown) {
-        canvas->unsetCursor();
+        canvas->setCursor(m_savedCursor);
         m_cursorShown = false;
     }
 }
