@@ -10,7 +10,7 @@ if(WIN32)
   target_link_libraries(mbsim PUBLIC ws2_32)
 endif()
 
-add_executable(modbus_test_server main.cpp)
+add_executable(modbus_test_server main.cpp modbus_test_server.rc)
 target_link_libraries(modbus_test_server PRIVATE mbsim mc_warnings)
 
 # Install: the test server to bin/ and its example configuration to share/modbus-control/.

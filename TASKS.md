@@ -199,7 +199,7 @@ T40–T44, T50–T52, T53a (polish fixes), T60–T63, T70, T71, plus the 32-bit 
 LICENSE. T64 is covered by T71's tests. 32-bit holding tags are already writable in the tag
 table (orchestrator fix after merging T63).
 
-**In progress:** Wave 9 (v1.2) done except the GitHub release: T100–T109 merged, review fixes (68275dc), 0 % never before C1 (5f3386a), version 1.2.0 (9c5ba99), installer `out/installer/ModbusControl-1.2.0-setup.exe` (sha256 4c9f2d90…55e8) built; release after the user confirms. **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
+**In progress:** Wave 9 (v1.2) done except the GitHub release: T100–T109 merged, review fixes (68275dc), 0 % never before C1 (5f3386a), version 1.2.0 (9c5ba99), logo + icons (assets/icon, tools/make_icons.ps1), installer `out/installer/ModbusControl-1.2.0-setup.exe` (sha256 8806d004…7f03) built; release after the user confirms. **v1.1.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.1.0 (installer `ModbusControl-1.1.0-setup.exe`, sha256 6d96c9f1…e14d). **v1.0.0 released** on 2026-10-09: https://github.com/francisboudreau7/modbus-control/releases/tag/v1.0.0 (tag v1.0.0 = 42edcd6, installer `ModbusControl-1.0.0-setup.exe`, sha256 bf4a07b4…14eb). The user confirmed the tag-table editor fix in the real app.
 
 **Remaining, in order**
 1. ~~Merge T63~~ (done).

@@ -45,5 +45,9 @@ add_subdirectory(src/app)
 add_subdirectory(server)
 add_subdirectory(tests)
 
+# Icon renderer for tools/make_icons.ps1; not built by default.
+add_executable(render_icon EXCLUDE_FROM_ALL tools/render_icon.cpp)
+target_link_libraries(render_icon PRIVATE Qt6::Gui Qt6::Svg mc_warnings)
+
 # Install rules: `cmake --install build/<preset> --prefix <dir>` produces a self-contained folder.
 include(cmake/Deploy.cmake)

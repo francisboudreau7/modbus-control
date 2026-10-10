@@ -28,6 +28,7 @@ AppVersion={#AppVersion}
 AppVerName={#MyAppName} {#AppVersion}
 DefaultDirName={autopf}\Modbus Control
 DefaultGroupName={#MyAppName}
+SetupIconFile={#RepoDir}\assets\icon\modbus_control.ico
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=ModbusControl-{#AppVersion}-setup

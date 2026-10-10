@@ -19,8 +19,18 @@ target_include_directories(mbui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qwt::Qwt
                            PRIVATE mc_warnings)
 
-add_executable(modbus_control WIN32 main.cpp)
+add_executable(modbus_control WIN32 main.cpp modbus_control.rc)
 target_link_libraries(modbus_control PRIVATE mbui mc_warnings)
+# Window icon images (regenerate with tools/make_icons.ps1).
+qt_add_resources(modbus_control "icons" PREFIX "/icons" BASE "${PROJECT_SOURCE_DIR}/assets/icon/png"
+  FILES
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-16.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-24.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-32.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-48.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-64.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-128.png"
+    "${PROJECT_SOURCE_DIR}/assets/icon/png/logo-256.png")
 
 # Make the exe runnable in place: deploy Qt DLLs and plugins next to it.
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_ROOT}/bin" "${Qt6_DIR}/../../../bin")

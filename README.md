@@ -1,3 +1,5 @@
+<img src="assets/icon/png/logo-128.png" alt="Modbus Control logo" width="96" align="right">
+
 # Modbus Control
 
 Modbus Control is a Windows desktop client for reading and writing Modbus TCP registers. It polls

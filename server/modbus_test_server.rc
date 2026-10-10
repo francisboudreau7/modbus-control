@@ -1,0 +1,2 @@
+// Windows resources of modbus_test_server.exe: the same icon as the client.
+IDI_ICON1 ICON "../assets/icon/modbus_control.ico"

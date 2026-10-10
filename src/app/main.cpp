@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 
 int main(int argc, char *argv[])
 {
@@ -13,6 +14,12 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("Modbus Control"));
     QApplication::setApplicationVersion(mb::versionString());
     mb::registerMetaTypes();
+
+    // Small sizes use the text-free variant of the logo (see assets/icon).
+    QIcon icon;
+    for (int size : {16, 24, 32, 48, 64, 128, 256})
+        icon.addFile(QStringLiteral(":/icons/logo-%1.png").arg(size), QSize(size, size));
+    QApplication::setWindowIcon(icon);
 
     QCommandLineParser parser;
     parser.addHelpOption();
