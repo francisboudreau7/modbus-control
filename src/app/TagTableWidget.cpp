@@ -187,9 +187,9 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
                             | QAbstractItemView::SelectedClicked);
 
     // Column order: Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot,
-    // Analyze, Axis, Color, Raw, Value, QuickA, QuickB, Quality.
+    // Analyze, Axis, Color, Raw, Value, Min, Max, QuickA, QuickB, Quality.
     const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 80, 70, 60, 60, 60, 70, 50,
-                                                    60, 60, 100, 90, 90, 70, 70, 90};
+                                                    60, 60, 100, 90, 90, 70, 70, 70, 70, 90};
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnWidth(c, widths[c]);
 
@@ -212,6 +212,8 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         new ComboDelegate({toString(YAxis::Left), toString(YAxis::Right)}, this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::WriteMin, new QuickDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::WriteMax, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::QuickA, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::QuickB, new QuickDelegate(this));
 

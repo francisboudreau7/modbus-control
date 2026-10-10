@@ -149,6 +149,15 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case Axis:
         if (disp || edit) return toString(t.axis);
         break;
+    case WriteMin:
+    case WriteMax: {
+        const std::optional<double> &limit = index.column() == WriteMin ? t.writeMin : t.writeMax;
+        if (role == Qt::ToolTipRole && !t.isWritable())
+            return tr("Write limits need a writable holding register");
+        if (disp) return limit ? QString::number(*limit, 'g', 6) : QString();
+        if (edit) return limit ? QVariant(*limit) : QVariant();
+        break;
+    }
     case QuickA:
     case QuickB: {
         const std::optional<double> &quick = index.column() == QuickA ? t.quickA : t.quickB;
@@ -204,9 +213,10 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     Tag &t = m_tags[index.row()];
     const int col = index.column();
 
-    // Quick A/B editability depends on isWritable(); refresh both cells when it may change.
-    const auto emitQuickChanged = [this](int row) {
-        emit dataChanged(this->index(row, QuickA), this->index(row, QuickB),
+    // Min/Max and Quick A/B editability depends on isWritable(); refresh those cells when it
+    // may change.
+    const auto emitWriteCellsChanged = [this](int row) {
+        emit dataChanged(this->index(row, WriteMin), this->index(row, QuickB),
                          {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
     };
 
@@ -225,7 +235,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         }
         emit dataChanged(index, index, {Qt::CheckStateRole});
         if (col == Writable)
-            emitQuickChanged(index.row());
+            emitWriteCellsChanged(index.row());
         emit tagsEdited();
         return true;
     }
@@ -309,6 +319,22 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             return false;
         break;
     }
+    case WriteMin:
+    case WriteMax: {
+        if (!t.isWritable()) return false;
+        std::optional<double> limit;
+        if (!value.toString().trimmed().isEmpty()) {
+            double l = 0.0;
+            if (!parseDouble(value, l)) return false;
+            limit = l;
+        }
+        // Min must not exceed Max; the other limit is the one currently stored.
+        const std::optional<double> lo = col == WriteMin ? limit : t.writeMin;
+        const std::optional<double> hi = col == WriteMax ? limit : t.writeMax;
+        if (lo && hi && *lo > *hi) return false;
+        (col == WriteMin ? t.writeMin : t.writeMax) = limit;
+        break;
+    }
     case QuickA:
     case QuickB: {
         if (!t.isWritable()) return false;
@@ -317,7 +343,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             quick.reset();
         } else {
             double q = 0.0;
-            if (!parseDouble(value, q)) return false;
+            // A preset outside the write limits would be refused when sent; refuse it here.
+            if (!parseDouble(value, q) || !t.withinWriteLimits(q)) return false;
             quick = q;
         }
         break;
@@ -349,7 +376,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     if (writableCleared) {
         const QModelIndex i = this->index(index.row(), Writable);
         emit dataChanged(i, i, {Qt::CheckStateRole});
-        emitQuickChanged(index.row());
+        emitWriteCellsChanged(index.row());
     }
     emit tagsEdited();
     return true;
@@ -379,6 +406,8 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     case Quality:
         break;
     case Value:
+    case WriteMin:
+    case WriteMax:
     case QuickA:
     case QuickB:
         if (t.isWritable())
@@ -411,6 +440,10 @@ QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) con
             return tr("Show this tag in the Analysis tab");
         if (role == Qt::ToolTipRole && (section == QuickA || section == QuickB))
             return tr("Preset value for the Quick write dock");
+        if (role == Qt::ToolTipRole && section == WriteMin)
+            return tr("Lowest value that may be written (empty = no limit)");
+        if (role == Qt::ToolTipRole && section == WriteMax)
+            return tr("Highest value that may be written (empty = no limit)");
         if (role == Qt::ToolTipRole && section == ByteOrder)
             return tr("Byte order of 32-bit values. A is the most significant byte. ABCD is big "
                       "endian: register n holds A B and register n+1 holds C D. Only used by "

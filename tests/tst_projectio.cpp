@@ -126,6 +126,12 @@ private slots:
     void quickWrittenOnlyWhenSet();
     void quickNullMeansNoValue();
     void v12KeysDefaultWhenMissing();
+    void writeLimitsRoundTrip();
+    void writeLimitsWrittenOnlyWhenSet();
+    void writeLimitsNullAndMissingMeanNoLimit();
+    void writeLimitsRejected_data();
+    void writeLimitsRejected();
+    void v121KeysDefaultWhenMissing();
 };
 
 void TstProjectIO::roundTrip()
@@ -900,6 +906,99 @@ void TstProjectIO::v12KeysDefaultWhenMissing()
     QVERIFY(!project->analysis.showModel);
     QVERIFY(project->analysis.guideLines);
     QCOMPARE(project->analysis, AnalysisSettings{});
+}
+
+void TstProjectIO::writeLimitsRoundTrip()
+{
+    Project p = sampleProject();
+    p.tags[0].writeMin = -5.5;
+    p.tags[0].writeMax = 80.0;
+    p.tags[0].quickA = 42.0; // inside the limits
+    p.tags[1].writeMax = 0.0; // a limit on a non-writable tag is kept as stored
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QCOMPARE(*loaded->tags[0].writeMin, -5.5);
+    QCOMPARE(*loaded->tags[0].writeMax, 80.0);
+    QVERIFY(!loaded->tags[1].writeMin.has_value());
+    QCOMPARE(*loaded->tags[1].writeMax, 0.0);
+}
+
+void TstProjectIO::writeLimitsWrittenOnlyWhenSet()
+{
+    Project p;
+    Tag onlyMax;
+    onlyMax.id = 1;
+    onlyMax.writeMax = 3.0;
+    Tag none;
+    none.id = 2;
+    p.tags = {onlyMax, none};
+    p.nextTagId = 3;
+
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    const QJsonObject first = tags.at(0).toObject();
+    QVERIFY(!first.contains(QStringLiteral("writeMin")));
+    QCOMPARE(first.value(QStringLiteral("writeMax")).toDouble(), 3.0);
+
+    const QJsonObject second = tags.at(1).toObject();
+    QVERIFY(!second.contains(QStringLiteral("writeMin")));
+    QVERIFY(!second.contains(QStringLiteral("writeMax")));
+}
+
+void TstProjectIO::writeLimitsNullAndMissingMeanNoLimit()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"writeMin":null,"writeMax":7},{"id":2,"writeMin":-1}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(!project->tags.at(0).writeMin.has_value());
+    QCOMPARE(*project->tags.at(0).writeMax, 7.0);
+    QCOMPARE(*project->tags.at(1).writeMin, -1.0);
+    QVERIFY(!project->tags.at(1).writeMax.has_value());
+}
+
+void TstProjectIO::writeLimitsRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("key");
+    QTest::newRow("writeMin string")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"writeMin":"x"}]})")
+        << QStringLiteral("writeMin");
+    QTest::newRow("writeMax boolean")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"writeMax":true}]})")
+        << QStringLiteral("writeMax");
+    QTest::newRow("writeMin above writeMax")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"writeMin":5,"writeMax":4}]})")
+        << QStringLiteral("writeMin");
+}
+
+void TstProjectIO::writeLimitsRejected()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, key);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QVERIFY2(error.contains(key), qPrintable(error));
+}
+
+void TstProjectIO::v121KeysDefaultWhenMissing()
+{
+    // A v1.2 file: no write limits.
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"writable":true,"quickA":1}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    const Tag &tag = project->tags.at(0);
+    QVERIFY(!tag.writeMin.has_value());
+    QVERIFY(!tag.writeMax.has_value());
+    QCOMPARE(*tag.quickA, 1.0);
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

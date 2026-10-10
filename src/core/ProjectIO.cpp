@@ -277,7 +277,16 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         || !readBool(obj, QStringLiteral("analyzed"), prefix, tag.analyzed, error)
         || !readAxis(obj, prefix, tag.axis, error)
         || !readOptionalNumber(obj, QStringLiteral("quickA"), prefix, tag.quickA, error)
-        || !readOptionalNumber(obj, QStringLiteral("quickB"), prefix, tag.quickB, error)) {
+        || !readOptionalNumber(obj, QStringLiteral("quickB"), prefix, tag.quickB, error)
+        || !readOptionalNumber(obj, QStringLiteral("writeMin"), prefix, tag.writeMin, error)
+        || !readOptionalNumber(obj, QStringLiteral("writeMax"), prefix, tag.writeMax, error)) {
+        return false;
+    }
+    if (tag.writeMin && tag.writeMax && *tag.writeMin > *tag.writeMax) {
+        setError(error, QStringLiteral("\"%1writeMin\" (%2) is above \"%1writeMax\" (%3)")
+                            .arg(prefix)
+                            .arg(*tag.writeMin)
+                            .arg(*tag.writeMax));
         return false;
     }
     tag.address = static_cast<quint16>(address);
@@ -431,6 +440,11 @@ QByteArray projectToJson(const Project &project)
             obj.insert(QStringLiteral("quickA"), *tag.quickA);
         if (tag.quickB)
             obj.insert(QStringLiteral("quickB"), *tag.quickB);
+        // Write limits follow the same rule: written only when set.
+        if (tag.writeMin)
+            obj.insert(QStringLiteral("writeMin"), *tag.writeMin);
+        if (tag.writeMax)
+            obj.insert(QStringLiteral("writeMax"), *tag.writeMax);
         tags.append(obj);
     }
 
