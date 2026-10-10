@@ -8,11 +8,14 @@
 #include <QColor>
 #include <QComboBox>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QMenu>
+#include <QPushButton>
 #include <QTableView>
 #include <QSignalSpy>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
+#include <QSpinBox>
 #include <QtTest>
 
 #include <limits>
@@ -32,6 +35,47 @@ Tag makeTag(TagId id, const QString &name, Area area = Area::HoldingRegister, qu
     t.address = addr;
     t.writable = writable;
     return t;
+}
+
+QPushButton *buttonNamed(QWidget *parent, const QString &text)
+{
+    for (QPushButton *b : parent->findChildren<QPushButton *>()) {
+        if (b->text() == text)
+            return b;
+    }
+    return nullptr;
+}
+
+/// Opens the editor of `idx` through the view (the same call a double-click makes) and
+/// returns the editor of type T, or nullptr.
+template <typename T>
+T *openEditor(TagTableWidget &w, const QModelIndex &idx)
+{
+    w.view()->setCurrentIndex(idx);
+    w.view()->edit(idx);
+    return w.view()->findChild<T *>();
+}
+
+/// Picks `item` in the combo editor of `idx` the way the delegate expects: the pick is
+/// applied through the activated signal, which commits and closes the editor.
+void pickComboItem(TagTableWidget &w, const QModelIndex &idx, const QString &item)
+{
+    auto *combo = openEditor<QComboBox>(w, idx);
+    QVERIFY(combo);
+    combo->hidePopup();
+    combo->setCurrentIndex(combo->findText(item));
+    QVERIFY(combo->currentIndex() >= 0);
+    emit combo->activated(combo->currentIndex());
+    QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+}
+
+/// Types into a line edit or spin box editor of `idx` and commits with Enter.
+template <typename T>
+void commitWithEnter(TagTableWidget &w, T *editor)
+{
+    QVERIFY(editor);
+    QTest::keyClick(editor, Qt::Key_Return);
+    QTRY_VERIFY(w.view()->findChild<T *>() == nullptr);
 }
 
 } // namespace
@@ -1098,6 +1142,153 @@ private slots:
             QCOMPARE(spin->value(), 42.0);
         else
             QCOMPARE(line->text(), QStringLiteral("42"));
+    }
+
+    // Table editors, opened through the view and committed the way a user does it: a combo
+    // pick, Enter in a spin box or line edit. Escape must leave the value alone. The colour
+    // editor is not opened here (QColorDialog is modal).
+    void editorsCommitToModel()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 10, true)}, 2);
+        TagTableWidget w(&m);
+        w.resize(1400, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+
+        pickComboItem(w, m.index(0, C::Type), QStringLiteral("uint32"));
+        QCOMPARE(m.data(m.index(0, C::Type)).toString(), QString("uint32"));
+        pickComboItem(w, m.index(0, C::ByteOrder), QStringLiteral("CDAB"));
+        QCOMPARE(m.data(m.index(0, C::ByteOrder)).toString(), QString("CDAB"));
+        pickComboItem(w, m.index(0, C::Axis), QStringLiteral("Right"));
+        QCOMPARE(m.data(m.index(0, C::Axis)).toString(), QString("Right"));
+
+        const QModelIndex addr = m.index(0, C::Address);
+        auto *spin = openEditor<QSpinBox>(w, addr);
+        QVERIFY(spin);
+        spin->setValue(1234);
+        commitWithEnter(w, spin);
+        QCOMPARE(m.tagAt(0).address, quint16(1234));
+
+        spin = openEditor<QSpinBox>(w, addr);
+        QVERIFY(spin);
+        spin->setValue(5555);
+        QTest::keyClick(spin, Qt::Key_Escape);
+        QTRY_VERIFY(w.view()->findChild<QSpinBox *>() == nullptr);
+        QCOMPARE(m.tagAt(0).address, quint16(1234));
+
+        // Min / Max / Quick A / Quick B: order matters, a Quick value must lie within the limits.
+        const QModelIndex wmin = m.index(0, C::WriteMin);
+        auto *edit = openEditor<QLineEdit>(w, wmin);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("5"));
+        commitWithEnter(w, edit);
+        QCOMPARE(m.data(wmin).toString(), QString("5"));
+
+        const QModelIndex wmax = m.index(0, C::WriteMax);
+        edit = openEditor<QLineEdit>(w, wmax);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("100"));
+        commitWithEnter(w, edit);
+        QCOMPARE(m.data(wmax).toString(), QString("100"));
+
+        const QModelIndex qa = m.index(0, C::QuickA);
+        edit = openEditor<QLineEdit>(w, qa);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("50"));
+        commitWithEnter(w, edit);
+        QCOMPARE(m.data(qa).toString(), QString("50"));
+
+        const QModelIndex qb = m.index(0, C::QuickB);
+        edit = openEditor<QLineEdit>(w, qb);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("abc")); // refused by the model
+        commitWithEnter(w, edit);
+        QVERIFY(m.data(qb).toString().isEmpty());
+        edit = openEditor<QLineEdit>(w, qb);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("7.25"));
+        commitWithEnter(w, edit);
+        QCOMPARE(m.data(qb).toString(), QString("7.25"));
+
+        edit = openEditor<QLineEdit>(w, qa);
+        QVERIFY(edit);
+        edit->setText(QString());
+        commitWithEnter(w, edit);
+        QVERIFY(m.data(qa).toString().isEmpty());
+
+        // Area last: switching to Input makes the tag read-only.
+        pickComboItem(w, m.index(0, C::Area), QStringLiteral("Input"));
+        QCOMPARE(m.data(m.index(0, C::Area)).toString(), QString("Input"));
+        QVERIFY(!m.tagAt(0).writable);
+    }
+
+    void tableButtons()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 0, true),
+                   makeTag(2, "b", Area::HoldingRegister, 1, true),
+                   makeTag(3, "c", Area::InputRegister, 2, false)},
+                  4);
+        TagTableWidget w(&m);
+        QPushButton *add = buttonNamed(&w, QStringLiteral("Add"));
+        QPushButton *dup = buttonNamed(&w, QStringLiteral("Duplicate"));
+        QPushButton *rem = buttonNamed(&w, QStringLiteral("Remove"));
+        QPushButton *write = buttonNamed(&w, QStringLiteral("Write selected..."));
+        QVERIFY(add && dup && rem && write);
+        QVERIFY(!dup->isEnabled());
+        QVERIFY(!rem->isEnabled());
+        QVERIFY(!write->isEnabled());
+
+        QList<int> requested;
+        int requests = 0;
+        connect(&w, &TagTableWidget::writeSelectionRequested, this, [&](const QList<int> &rows) {
+            requested = rows;
+            ++requests;
+        });
+
+        add->click();
+        QCOMPARE(m.rowCount(), 4);
+        QCOMPARE(m.tagAt(3).name, QString("Tag 4"));
+
+        // One selected row: Duplicate and Remove work, Write selected needs two writable rows.
+        w.view()->selectRow(0);
+        QCOMPARE(w.selectedRows(), QList<int>{0});
+        QVERIFY(dup->isEnabled());
+        QVERIFY(rem->isEnabled());
+        QVERIFY(!write->isEnabled());
+
+        w.view()->selectionModel()->select(m.index(1, C::Name),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        QCOMPARE(w.selectedRows(), (QList<int>{0, 1}));
+        QVERIFY(write->isEnabled());
+        write->click();
+        QCOMPARE(requests, 1);
+        QCOMPARE(requested, (QList<int>{0, 1}));
+
+        // A read-only row in the selection disables Write selected again.
+        w.view()->selectionModel()->select(m.index(2, C::Name),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        QVERIFY(!write->isEnabled());
+
+        // Duplicate appends a copy of the selected row.
+        w.view()->selectRow(0);
+        dup->click();
+        QCOMPARE(m.rowCount(), 5);
+        QCOMPARE(m.tagAt(4).name, QString("a (copy)"));
+
+        // Remove a single row: no confirmation dialog for one row.
+        w.view()->selectRow(4);
+        QVERIFY(rem->isEnabled());
+        rem->click();
+        QCOMPARE(m.rowCount(), 4);
+        QCOMPARE(m.tagAt(0).name, QString("a"));
+
+        w.view()->clearSelection();
+        QVERIFY(!rem->isEnabled());
+        QVERIFY(!dup->isEnabled());
     }
 
     void columnKeys()
