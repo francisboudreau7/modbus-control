@@ -7,12 +7,18 @@
 #include <QObject>
 #include <QString>
 
+#include <functional>
+#include <optional>
+
 class QThread;
 class QTimer;
+
+class TstAppController;
 
 namespace mb {
 
 class MainWindow;
+class QuickWritePanel;
 class WriteController;
 
 /// Application logic. Owns the PollWorker (on its own QThread), the Recorder and the
@@ -30,6 +36,15 @@ class WriteController;
 ///   modified); "Copy cursors from Trend" copies the Trend's cursors; the results export
 ///   (button and Export menu action, enabled while a valid result exists) writes
 ///   exportAnalysisCsv(); the image export uses the Analysis plot while its tab is active.
+/// - Quick writes: QuickWritePanel -> WriteController::requestQuickWrite; the Options action
+///   "Confirm quick writes" mirrors WriteController::quickConfirm().
+/// - Sessions (.mbsession): Save/Open session. Opening disconnects, replaces the recording and
+///   the project (no project path; the title shows the session file) and restores both tabs'
+///   cursors. Connecting while a loaded recording exists asks "Continue this recording" (the
+///   worker's time base is restarted, the recording is kept, a NaN gap row is appended and
+///   incoming batch times are shifted so time continues from the loaded start time) or
+///   "Start a new recording". New rows after loading make the unsaved-changes prompt ask
+///   to save the session.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
 class AppController : public QObject
 {
@@ -66,6 +81,20 @@ private:
     void exportCsv();
     void exportAnalysisResults();
 
+    enum class ContinueChoice { Continue, StartNew, Cancel };
+    friend class ::TstAppController; // test access to the prompt hook
+
+    void wireQuickWrites();
+    bool saveSessionDialog();
+    void openSessionDialog();
+    bool loadSessionFile(const QString &path);
+    /// Asks what to do on Connect with a loaded recording; true = go on connecting.
+    bool prepareConnect();
+    void onTimeBaseReset(const QDateTime &wall);
+    void clearSessionState();
+    bool recordingDirty() const;
+    std::optional<double> lastRowTime() const;
+
     MainWindow *m_window = nullptr;
     QThread *m_thread = nullptr;
     PollWorker *m_worker = nullptr;
@@ -76,6 +105,14 @@ private:
     bool m_modified = false;
     bool m_newData = false;
     ConnectionState m_state = ConnectionState::Disconnected;
+
+    QString m_sessionPath;           ///< file of the opened/saved session (title when no project path)
+    bool m_sessionLoaded = false;    ///< a session was opened (or its recording is still the loaded one)
+    bool m_sessionDirty = false;     ///< rows were appended after loading / saving
+    bool m_dropSamples = false;      ///< a session load is waiting for the worker to disconnect
+    bool m_continuePending = false;  ///< the next timeBaseReset continues the loaded recording
+    double m_timeOffset = 0.0;       ///< added to incoming batch times while continuing
+    std::function<ContinueChoice()> m_continuePrompt;
 };
 
 } // namespace mb

@@ -10,12 +10,16 @@
 #include "ModbusConnection.h"
 #include "PlotCursors.h"
 #include "PollWorker.h"
+#include "QuickWritePanel.h"
+#include "SessionIO.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
 #include "WriteController.h"
 
 #include <QAction>
+#include <QDateTime>
+#include <QPushButton>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -29,6 +33,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
@@ -138,6 +143,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     wireTags();
     wireWrites();
     wireActions();
+    wireQuickWrites();
 
     m_window->setCloseHandler([this] { return maybeSave(); });
 
@@ -172,6 +178,8 @@ void AppController::wireConnection()
 {
     ConnectionBar *bar = m_window->connectionBar();
     connect(bar, &ConnectionBar::connectRequested, this, [this](const ConnectionSettings &s) {
+        if (!prepareConnect())
+            return;
         storeLastConnection(s);
         QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
     });
@@ -185,8 +193,12 @@ void AppController::wireConnection()
         m_window->connectionBar()->setState(state, detail);
         m_window->setConnectionStatus(state, detail);
         m_writes->setConnected(state == ConnectionState::Connected);
-        if (state == ConnectionState::Disconnected)
+        if (QuickWritePanel *panel = m_window->quickWritePanel())
+            panel->setConnected(state == ConnectionState::Connected);
+        if (state == ConnectionState::Disconnected) {
+            m_dropSamples = false;
             m_window->tagModel()->clearLiveValues();
+        }
     });
     connect(m_worker, &PollWorker::message, this,
             [this](const QString &text) { m_window->showStatusMessage(text); });
@@ -195,18 +207,18 @@ void AppController::wireConnection()
 void AppController::wireData()
 {
     connect(m_worker, &PollWorker::samplesReady, this, [this](const SampleBatch &batch) {
-        m_recorder.append(batch);
-        m_window->tagModel()->updateSamples(batch);
+        if (m_dropSamples)
+            return; // in flight while a session is being loaded
+        SampleBatch shifted = batch;
+        shifted.t += m_timeOffset; // continuing a loaded recording
+        m_recorder.append(shifted);
+        m_window->tagModel()->updateSamples(shifted);
+        if (m_sessionLoaded)
+            m_sessionDirty = true;
         m_newData = true;
     });
-    connect(m_worker, &PollWorker::timeBaseReset, this, [this](const QDateTime &wall) {
-        m_recorder.clear();
-        m_recorder.setStartTime(wall);
-        m_window->trendPlot()->resetData();
-        m_window->analysisView()->resetData();
-        m_window->cursorPanel()->refresh();
-        m_newData = false;
-    });
+    connect(m_worker, &PollWorker::timeBaseReset, this,
+            [this](const QDateTime &wall) { onTimeBaseReset(wall); });
     connect(m_refreshTimer, &QTimer::timeout, this, [this] {
         if (!m_newData)
             return;
@@ -292,6 +304,8 @@ void AppController::wireActions()
     connect(a.openProject, &QAction::triggered, this, [this] { openDialog(); });
     connect(a.saveProject, &QAction::triggered, this, [this] { save(); });
     connect(a.saveProjectAs, &QAction::triggered, this, [this] { saveAs(); });
+    connect(a.saveSession, &QAction::triggered, this, [this] { saveSessionDialog(); });
+    connect(a.openSession, &QAction::triggered, this, [this] { openSessionDialog(); });
     connect(a.exportImage, &QAction::triggered, this, [this] { exportImage(); });
     connect(a.exportCsv, &QAction::triggered, this, [this] { exportCsv(); });
     connect(a.exportAnalysisCsv, &QAction::triggered, this, [this] { exportAnalysisResults(); });
@@ -300,6 +314,26 @@ void AppController::wireActions()
         QMetaObject::invokeMethod(m_worker, [w = m_worker, on] { w->setAddressBase(on ? 1 : 0); },
                                   Qt::QueuedConnection);
         setModified(true);
+    });
+}
+
+void AppController::wireQuickWrites()
+{
+    if (QuickWritePanel *panel = m_window->quickWritePanel()) {
+        connect(panel, &QuickWritePanel::quickWriteRequested, m_writes, &WriteController::requestQuickWrite);
+        panel->setConnected(m_state == ConnectionState::Connected);
+    }
+    QAction *action = m_window->actions().confirmQuickWrites;
+    if (!action)
+        return;
+    {
+        const QSignalBlocker blocker(action);
+        action->setChecked(m_writes->quickConfirm());
+    }
+    connect(action, &QAction::toggled, m_writes, &WriteController::setQuickConfirm);
+    connect(m_writes, &WriteController::quickConfirmChanged, this, [action](bool on) {
+        const QSignalBlocker blocker(action);
+        action->setChecked(on);
     });
 }
 
@@ -320,13 +354,30 @@ void AppController::setModified(bool modified)
 
 void AppController::updateTitle()
 {
-    const QString name = m_projectPath.isEmpty() ? QStringLiteral("Untitled")
-                                                 : QFileInfo(m_projectPath).completeBaseName();
-    m_window->setDocumentTitle(name, m_modified);
+    QString name = QStringLiteral("Untitled");
+    if (!m_projectPath.isEmpty())
+        name = QFileInfo(m_projectPath).completeBaseName();
+    else if (!m_sessionPath.isEmpty())
+        name = QFileInfo(m_sessionPath).fileName();
+    m_window->setDocumentTitle(name, m_modified || recordingDirty());
+}
+
+bool AppController::recordingDirty() const
+{
+    return m_sessionLoaded && m_sessionDirty;
 }
 
 bool AppController::maybeSave()
 {
+    if (recordingDirty()) {
+        const auto answer = QMessageBox::question(
+            m_window, QStringLiteral("Unsaved changes"),
+            QStringLiteral("The recording has changed. Save the session?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer == QMessageBox::Save)
+            return saveSessionDialog();
+        return answer == QMessageBox::Discard;
+    }
     if (!m_modified)
         return true;
     const auto answer = QMessageBox::question(
@@ -388,6 +439,7 @@ bool AppController::saveTo(const QString &path)
         return false;
     }
     m_projectPath = path;
+    m_sessionPath.clear();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);
     m_window->showStatusMessage(QStringLiteral("Saved %1").arg(QFileInfo(path).fileName()));
@@ -424,6 +476,7 @@ void AppController::newProject()
     pushTags();
     m_window->analysisView()->setSettings(AnalysisSettings{});
     m_projectPath.clear();
+    clearSessionState();
     setModified(false);
 }
 
@@ -449,9 +502,203 @@ bool AppController::loadFrom(const QString &path)
     }
     applyProject(*project);
     m_projectPath = path;
+    clearSessionState();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);
     return true;
+}
+
+void AppController::clearSessionState()
+{
+    m_sessionPath.clear();
+    m_sessionLoaded = false;
+    m_sessionDirty = false;
+    m_continuePending = false;
+    m_timeOffset = 0.0;
+}
+
+std::optional<double> AppController::lastRowTime() const
+{
+    if (m_recorder.size() == 0)
+        return std::nullopt;
+    return m_recorder.timeAt(m_recorder.size() - 1);
+}
+
+bool AppController::saveSessionDialog()
+{
+    QSettings settings;
+    const QString dir = settings.value(QStringLiteral("session/dir")).toString();
+    QString name = QStringLiteral("session.mbsession");
+    if (!m_projectPath.isEmpty())
+        name = QFileInfo(m_projectPath).completeBaseName() + QStringLiteral(".mbsession");
+    else if (!m_sessionPath.isEmpty())
+        name = QFileInfo(m_sessionPath).completeBaseName() + QStringLiteral(".mbsession");
+    QString path = QFileDialog::getSaveFileName(
+        m_window, QStringLiteral("Save session"), dir.isEmpty() ? name : QDir(dir).filePath(name),
+        QStringLiteral("Modbus Control sessions (*.mbsession)"));
+    if (path.isEmpty())
+        return false;
+    if (QFileInfo(path).suffix().compare(QStringLiteral("mbsession"), Qt::CaseInsensitive) != 0)
+        path += QStringLiteral(".mbsession");
+
+    SessionCursors cursors;
+    const PlotCursors *tc = m_window->trendPlot()->cursors();
+    if (tc->hasC1())
+        cursors.trendC1 = tc->c1();
+    if (tc->hasC2())
+        cursors.trendC2 = tc->c2();
+    const PlotCursors *ac = m_window->analysisView()->trendPlot()->cursors();
+    if (ac->hasC1())
+        cursors.analysisC1 = ac->c1();
+    if (ac->hasC2())
+        cursors.analysisC2 = ac->c2();
+
+    QString error;
+    if (!saveSession(path, currentProject(), m_recorder, cursors, &error)) {
+        QMessageBox::warning(m_window, QStringLiteral("Save session"),
+                             QStringLiteral("Could not save \"%1\":\n%2").arg(path, error));
+        return false;
+    }
+    settings.setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
+    if (m_sessionLoaded)
+        m_sessionDirty = false;
+    updateTitle();
+    m_window->showStatusMessage(QStringLiteral("Session saved to %1").arg(QFileInfo(path).fileName()));
+    return true;
+}
+
+void AppController::openSessionDialog()
+{
+    if (!maybeSave())
+        return;
+    const QString dir = QSettings().value(QStringLiteral("session/dir")).toString();
+    const QString path = QFileDialog::getOpenFileName(
+        m_window, QStringLiteral("Open session"), dir,
+        QStringLiteral("Modbus Control sessions (*.mbsession);;All files (*)"));
+    if (!path.isEmpty())
+        loadSessionFile(path);
+}
+
+bool AppController::loadSessionFile(const QString &path)
+{
+    Project project;
+    Recorder recording;
+    SessionCursors cursors;
+    QString error;
+    if (!loadSession(path, project, recording, cursors, &error)) {
+        QMessageBox::warning(m_window, QStringLiteral("Open session"),
+                             QStringLiteral("Could not open \"%1\":\n%2").arg(path, error));
+        return false;
+    }
+    QSettings().setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
+
+    // Samples already queued by the worker must not land in the loaded recording.
+    if (m_state != ConnectionState::Disconnected)
+        m_dropSamples = true;
+    applyProject(project); // also disconnects
+    m_recorder = std::move(recording);
+    m_continuePending = false;
+    m_timeOffset = 0.0;
+    m_sessionLoaded = true;
+    m_sessionDirty = false;
+    m_sessionPath = path;
+    m_projectPath.clear();
+
+    TrendPlot *trend = m_window->trendPlot();
+    trend->resetData();
+    trend->setWindowSeconds(0.0); // All
+    trend->refresh();
+    m_window->analysisView()->resetData();
+    m_window->analysisView()->refresh();
+    m_window->cursorPanel()->refresh();
+    m_newData = false;
+
+    trend->cursors()->clear();
+    if (cursors.trendC1)
+        trend->cursors()->setC1(*cursors.trendC1);
+    if (cursors.trendC2)
+        trend->cursors()->setC2(*cursors.trendC2);
+    m_window->analysisView()->setCursors(cursors.analysisC1, cursors.analysisC2);
+
+    setModified(false);
+    m_window->showStatusMessage(
+        QStringLiteral("Session loaded: %1 rows (offline)").arg(m_recorder.size()));
+    return true;
+}
+
+bool AppController::prepareConnect()
+{
+    if (!m_sessionLoaded || m_recorder.size() == 0)
+        return true;
+    ContinueChoice choice = ContinueChoice::Cancel;
+    if (m_continuePrompt) {
+        choice = m_continuePrompt();
+    } else {
+        QMessageBox box(QMessageBox::Question, QStringLiteral("Connect"),
+                        QStringLiteral("A recording from a session is loaded. Continue it or start a new one?"),
+                        QMessageBox::NoButton, m_window);
+        QPushButton *cont = box.addButton(QStringLiteral("Continue this recording"), QMessageBox::AcceptRole);
+        QPushButton *fresh = box.addButton(QStringLiteral("Start a new recording"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(cont);
+        box.exec();
+        if (box.clickedButton() == cont)
+            choice = ContinueChoice::Continue;
+        else if (box.clickedButton() == fresh)
+            choice = ContinueChoice::StartNew;
+    }
+    if (choice == ContinueChoice::Cancel)
+        return false;
+    if (choice == ContinueChoice::Continue) {
+        m_continuePending = true;
+    } else {
+        m_sessionLoaded = false;
+        m_sessionDirty = false;
+        m_sessionPath.clear();
+        m_timeOffset = 0.0;
+        updateTitle();
+    }
+    // Make sure a time base reset (with its wall-clock time) follows even if the worker
+    // already has a running clock; it is queued ahead of the connect request.
+    QMetaObject::invokeMethod(m_worker, &PollWorker::resetTimeBase, Qt::QueuedConnection);
+    return true;
+}
+
+void AppController::onTimeBaseReset(const QDateTime &wall)
+{
+    if (m_continuePending && m_recorder.size() > 0) {
+        m_continuePending = false;
+        const double last = *lastRowTime();
+        double offset = last + 1.0;
+        const QDateTime start = m_recorder.startTime();
+        if (start.isValid() && wall.isValid())
+            offset = static_cast<double>(start.msecsTo(wall)) / 1000.0;
+        constexpr double kGap = 1.0e-3;
+        offset = std::max(offset, last + 2.0 * kGap);
+        m_timeOffset = offset;
+        // One all-NaN row breaks the trace between the old and the new samples.
+        SampleBatch gap;
+        gap.t = last + kGap;
+        m_recorder.append(gap);
+        m_sessionDirty = true;
+        m_newData = true;
+        updateTitle();
+        return;
+    }
+    m_continuePending = false;
+    m_timeOffset = 0.0;
+    if (m_sessionLoaded) { // the loaded recording is being discarded (Clear data)
+        m_sessionLoaded = false;
+        m_sessionDirty = false;
+        m_sessionPath.clear();
+        updateTitle();
+    }
+    m_recorder.clear();
+    m_recorder.setStartTime(wall);
+    m_window->trendPlot()->resetData();
+    m_window->analysisView()->resetData();
+    m_window->cursorPanel()->refresh();
+    m_newData = false;
 }
 
 bool AppController::openProject(const QString &path)

@@ -3,6 +3,7 @@
 #include "AnalysisView.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
+#include "QuickWritePanel.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
@@ -64,6 +65,15 @@ MainWindow::MainWindow(QWidget *parent)
     cursorsDock->setWidget(m_cursorPanel);
     addDockWidget(Qt::RightDockWidgetArea, cursorsDock);
 
+    m_quickWritePanel = new QuickWritePanel(m_tagModel, this);
+    auto *quickDock = new QDockWidget(tr("Quick write"), this);
+    quickDock->setObjectName(QStringLiteral("quickWriteDock"));
+    quickDock->setFeatures(dockFeatures);
+    quickDock->setWidget(m_quickWritePanel);
+    addDockWidget(Qt::RightDockWidgetArea, quickDock);
+    tabifyDockWidget(cursorsDock, quickDock);
+    cursorsDock->raise();
+
     // File menu
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     m_actions.newProject = fileMenu->addAction(tr("&New"));
@@ -74,6 +84,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.saveProject->setShortcut(QKeySequence::Save);
     m_actions.saveProjectAs = fileMenu->addAction(tr("Save &As..."));
     m_actions.saveProjectAs->setShortcut(QKeySequence::SaveAs);
+    m_actions.saveSession = fileMenu->addAction(tr("Save &session..."));
+    m_actions.openSession = fileMenu->addAction(tr("Open s&ession..."));
     fileMenu->addSeparator();
     m_actions.quit = fileMenu->addAction(tr("&Quit"));
     m_actions.quit->setShortcut(QKeySequence::Quit);
@@ -92,6 +104,7 @@ MainWindow::MainWindow(QWidget *parent)
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->addAction(tagsDock->toggleViewAction());
     viewMenu->addAction(cursorsDock->toggleViewAction());
+    viewMenu->addAction(quickDock->toggleViewAction());
 
     // Options menu
     auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
@@ -99,6 +112,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.oneBasedAddresses->setCheckable(true);
     m_actions.oneBasedAddresses->setToolTip(
         tr("Show and enter register numbers as printed in device manuals (first register = 1)"));
+    m_actions.confirmQuickWrites = optionsMenu->addAction(tr("Confirm &quick writes"));
+    m_actions.confirmQuickWrites->setCheckable(true);
+    m_actions.confirmQuickWrites->setChecked(true);
 
     // Help menu
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -132,7 +148,7 @@ TrendPlot *MainWindow::trendPlot() const { return m_trendPlot; }
 CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
 AnalysisView *MainWindow::analysisView() const { return m_analysisView; }
-QuickWritePanel *MainWindow::quickWritePanel() const { return m_quickWritePanel; } // T108 creates it
+QuickWritePanel *MainWindow::quickWritePanel() const { return m_quickWritePanel; }
 
 bool MainWindow::isAnalysisTabActive() const
 {

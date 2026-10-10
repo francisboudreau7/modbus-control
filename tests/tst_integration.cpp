@@ -1,6 +1,7 @@
 ﻿#include "MetaTypes.h"
 #include "ModbusConnection.h"
 #include "PollWorker.h"
+#include "SessionIO.h"
 #include "Recorder.h"
 #include "StepAnalysis.h"
 #include "TagCodec.h"
@@ -10,6 +11,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QThread>
 #include <QtTest>
 
@@ -433,6 +435,72 @@ private slots:
         QVERIFY2(std::abs(*r.deadTime - 1.0) <= 0.3, qPrintable(QString::number(*r.deadTime)));
         QCOMPARE(r.setpoints.size(), 2);
         QVERIFY(r.setpoints.at(1).found);
+    }
+
+    void session_roundTripKeepsAnalysis()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        const TagId coId = 1;
+        const TagId pvId = 2;
+        const QList<Tag> tags{makeTag(coId, Area::HoldingRegister, 100, ValueType::Int16),
+                              makeTag(pvId, Area::InputRegister, 10, ValueType::Int16)};
+        m_harness->setTags(tags);
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 2, 5000);
+        QTest::qWait(2000);
+
+        const double tBeforeStep = m_harness->batches.last().t;
+        m_harness->write(79, 100, {1000});
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->writes.contains(79), 3000);
+        QVERIFY2(m_harness->writes.value(79).ok(), qPrintable(m_harness->writes.value(79).message));
+        QTest::qWait(10000);
+        const double tEnd = m_harness->batches.last().t;
+
+        Recorder recorder;
+        recorder.setStartTime(QDateTime::currentDateTime());
+        for (const SampleBatch &b : std::as_const(m_harness->batches))
+            recorder.append(b);
+
+        AnalysisSettings settings;
+        settings.percents = {0.0, 63.2};
+        settings.reference = ReferenceMode::CursorValue;
+        settings.modelPercentA = 0.0;
+        settings.modelPercentB = 63.2;
+        settings.deltaCoTagId = coId;
+        const double c1 = tBeforeStep - 0.5;
+        const StepResult before = analyzeStep(recorder, pvId, c1, tEnd, settings);
+        QVERIFY2(before.valid, qPrintable(before.error));
+        QVERIFY(before.gain && before.deadTime && before.timeConstant);
+
+        Project project;
+        project.tags = tags;
+        project.nextTagId = 3;
+        project.analysis = settings;
+        SessionCursors cursors;
+        cursors.analysisC1 = c1;
+        cursors.analysisC2 = tEnd;
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("lag.mbsession"));
+        QString error;
+        QVERIFY2(saveSession(path, project, recorder, cursors, &error), qPrintable(error));
+
+        Project loadedProject;
+        Recorder loaded;
+        SessionCursors loadedCursors;
+        QVERIFY2(loadSession(path, loadedProject, loaded, loadedCursors, &error), qPrintable(error));
+        QCOMPARE(loaded.size(), recorder.size());
+        QCOMPARE(loadedCursors, cursors);
+        QVERIFY(loadedProject == project);
+
+        const StepResult after = analyzeStep(loaded, pvId, *loadedCursors.analysisC1, *loadedCursors.analysisC2,
+                                             loadedProject.analysis);
+        QVERIFY2(after.valid, qPrintable(after.error));
+        QVERIFY(after.gain && after.deadTime && after.timeConstant);
+        QCOMPARE(*after.gain, *before.gain);
+        QCOMPARE(*after.deadTime, *before.deadTime);
+        QCOMPARE(*after.timeConstant, *before.timeConstant);
     }
 
     void worker_outOfMapBlockIsException()
