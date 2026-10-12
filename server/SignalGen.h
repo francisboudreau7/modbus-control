@@ -65,6 +65,8 @@ enum class RegisterFormat : quint8 {
     Int16,   ///< 1 register: rounded, clamped to int16, two's complement
     Int32,   ///< 2 registers: rounded, clamped to int32, two's complement
     Float32, ///< 2 registers: IEEE-754 single precision
+    UInt16,  ///< 1 register: rounded, clamped to 0..65535 (holding values only)
+    UInt32,  ///< 2 registers: rounded, clamped to 0..4294967295 (holding values only)
 };
 
 /// Order of the 4 bytes A (most significant) .. D of a 2-register value; same meaning as
@@ -74,11 +76,11 @@ enum class WordOrder : quint8 { ABCD, CDAB, BADC, DCBA };
 
 inline int registerCount(RegisterFormat format)
 {
-    return format == RegisterFormat::Int16 ? 1 : 2;
+    return (format == RegisterFormat::Int16 || format == RegisterFormat::UInt16) ? 1 : 2;
 }
 
 /// Encodes `value` into registerCount(format) registers written to out[0] (lower address)
-/// and, for 2-register formats, out[1]. Int16 ignores `order`.
+/// and, for 2-register formats, out[1]. The 16-bit formats ignore `order`.
 void encodeRegisters(double value, RegisterFormat format, WordOrder order, quint16 out[2]);
 
 } // namespace mbsim

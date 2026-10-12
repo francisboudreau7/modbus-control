@@ -42,7 +42,8 @@ The server listens on all network interfaces by default and has no authenticatio
 
 Without a configuration file the server has:
 
-- Holding registers HR 0..199 (`holdingCount` 200). All are read/write and start at 0.
+- Holding registers HR 0..199 (`holdingCount` 200). All are read/write and start at 0, except the
+  initial values listed below.
 - Input registers IR 0..63 (`inputCount` 64). Unbound ones stay at 0.
 - Coils and discrete inputs are not mapped.
 
@@ -62,6 +63,13 @@ Default signal bindings:
 | IR 20-21 | sine, float32 ABCD | amplitude 123.456, period 5 s |
 | IR 22-23 | sine, float32 CDAB | amplitude 123.456, period 5 s |
 | IR 24-25 | sawtooth, int32 ABCD | amplitude 100000, period 8 s |
+
+Default initial holding values (written when the server starts; they stay writable):
+
+| Holding register | Value | Purpose |
+|---|---|---|
+| HR 110-111 | float32 CDAB, 52.3 | a CM50-like setpoint, for trying encoding detection |
+| HR 120-121 | int32 ABCD, 100 | a 32-bit value that is ambiguous when read in the wrong order |
 
 Writing HR 100 changes the lag output on IR 10, so a setpoint step shows as a first-order response.
 
@@ -138,6 +146,10 @@ The same content is in [`server/server.example.json`](../server/server.example.j
     { "input": 20, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "ABCD" },
     { "input": 22, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "CDAB" },
     { "input": 24, "kind": "sawtooth", "amplitude": 100000, "offset": 0, "periodS": 8, "format": "int32", "byteOrder": "ABCD" }
+  ],
+  "holding": [
+    { "address": 110, "value": 52.3, "format": "float32", "byteOrder": "CDAB" },
+    { "address": 120, "value": 100,  "format": "int32",   "byteOrder": "ABCD" }
   ]
 }
 ```
@@ -152,10 +164,42 @@ Keys:
 | `tickMs` | 1 or more | Simulation tick. |
 | `delayMs`, `dropPercent`, `verbose`, `logWrites` | 0 or more; 0..100; true/false; true/false | Fault injection and logging. |
 | `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS`, `deadTimeS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
+| `holding` | array | Initial holding register values, see below. Each entry has `address` (HR), `value`, and optionally `format` (`int16` default, `uint16`, `int32`, `uint32`, `float32`) and `byteOrder` (default `ABCD`, used by the 32-bit formats). |
 
 If `signals` is present it replaces the default bindings completely. Each binding's `input` must be
 within `inputCount` (a 2-register format also uses `input + 1`). A `lag` binding's `source` must be below `holdingCount`. `periodS` and `tauS`
 must be greater than 0. `deadTimeS` (lag only, default 0) must be from 0 to 60 seconds; the lag input is taken that many seconds late, so a step on the source shows up on the output after the dead time and then rises with time constant `tauS`.
+
+### Initial holding values
+
+`holding` sets the value of holding registers when the server starts. Each `address` is a holding
+register (zero-based, like everywhere else); a 2-register format also uses `address + 1`. The value
+is encoded like the signal formats, and the registers stay writable afterwards, so a lag binding
+whose `source` is one of these registers sees the initial value at once.
+
+| `format` | Registers | Value range |
+|---|---|---|
+| `int16` (default) | 1 | -32768..32767, whole number |
+| `uint16` | 1 | 0..65535, whole number |
+| `int32` | 2 | -2147483648..2147483647, whole number |
+| `uint32` | 2 | 0..4294967295, whole number |
+| `float32` | 2 | finite, within the single-precision range |
+
+`byteOrder` works as in Value formats and is ignored for the 16-bit formats. Entries must fit below
+`holdingCount`, must not overlap each other, and may only use the keys above. Unknown keys and
+strings are rejected with the message `invalid config: "holding[n].<key>" ...`.
+
+```json
+"holding": [
+  { "address": 110, "value": 52.3, "format": "float32", "byteOrder": "CDAB" },
+  { "address": 120, "value": 100,  "format": "int32",   "byteOrder": "ABCD" },
+  { "address": 5,   "value": 65535, "format": "uint16" }
+]
+```
+
+If `holding` is present it replaces the default initial values completely (`"holding": []` starts
+every holding register at 0). Without the key the defaults stay, except that default entries that do
+not fit below a smaller `holdingCount` are dropped, so older configuration files still load.
 
 ## Fault injection
 

@@ -256,6 +256,113 @@ only**, that the pair line decodes to the same value.
 Limits are a safety net, not a substitute for checking the controller's own ranges. Set them to the
 ranges your controller accepts for that parameter (see the CM50 section below).
 
+## Encoding detection
+
+A 32-bit value can be read in 12 ways: `int32`, `uint32` or `float32`, each with one of four byte
+orders. If the type or byte order is wrong, the value is nonsense. A float read as an integer is a
+large random number, and a float with its words swapped is usually of the wrong size.
+
+A write has the same problem in reverse. A value written with the wrong encoding reaches the device
+as a different number, and the device accepts it. Encoding detection compares the device's readings
+with the 12 encodings and works out which one fits. It decides by itself in the clear cases and asks
+you when the answer is not clear.
+
+### Automatic detection
+
+When you add a 32-bit tag, or change its register number while the application is connected, it
+waits for three good readings and then ranks the 12 encodings. The result is one of three kinds:
+
+- **Clear.** The tag is changed to the encoding that fits, for example `float32 CDAB`, and the
+  status bar says so. The change is applied but **not confirmed**: the tag's Name cell shows a
+  warning icon, and its tooltip says what to do. Check the value against the device before you
+  write. If the encoding you already had is the one found, nothing changes.
+- **Ambiguous.** The Detect encoding dialog opens, so you can decide (see below).
+- **Undecidable.** The app keeps the latest three readings and waits for a result that is clear or
+  ambiguous.
+
+Changing the type or byte order yourself does not start detection. That is your choice, and it
+confirms the encoding (see What confirms an encoding).
+
+### The Detect encoding dialog
+
+Right-click the tag in the tag table and choose **Detect encoding...**. The item is available for
+32-bit tags only. The dialog has these parts:
+
+- **The latest registers**, in hex and with their register numbers, for example
+  `HR 110-111: 0x3333 0x4251`.
+- **Value shown on the device (optional).** Type the number shown on the device's display, for
+  example `52.3`. The dialog then marks the encodings that give that value. A match allows for the
+  last digit you typed, or 0.5 % of the value, whichever is larger. Typing the display value is the
+  surest way to decide.
+- **The verdict**, one sentence, for example "float32 CDAB fits best." or "Several encodings are
+  possible: type the value shown on the device to decide."
+- **The table.** One row per group of encodings that read the same values, best first. The columns
+  are **Encoding** (the encoding to use; the tooltip lists the others that read the same),
+  **Value** (the latest reading), **Plausibility** (Good, Possible, Unlikely or Implausible) and
+  **Match** (a check mark or No, once you have typed a display value).
+
+Select a row and click **Apply**. Apply sets the tag's type and byte order and confirms the
+encoding. If other 32-bit tags use a different byte order, the dialog also offers **Also use
+<order> for the other 32-bit tags**, which is ticked by default. That check box changes only their
+byte order, not their types, and it leaves their confirmation as it was.
+
+### When the result cannot be decided
+
+Some readings do not tell the encodings apart:
+
+- **Registers at 0.** Every encoding reads 0. Wait for a value, or type the value shown on the
+  device.
+- **Small integers.** The same two registers can mean two different numbers. As an example, the
+  test server holds `int32` 100 at HR 120-121 in `ABCD` order (registers `0x0000`, `0x0064`). Read
+  in `CDAB` order, the same registers give 6553600. If the app cannot tell which is right, the
+  dialog lists both and asks for the display value. Type 100, and only the `int32 ABCD` row
+  matches (`uint32 ABCD` reads the same value and is listed with it).
+
+### The check on connect
+
+When you connect, the app checks the 32-bit tags that have enough good readings. If a tag's current
+encoding gives implausible values and another encoding fits far better, the tag is marked **not
+confirmed**. One message lists these tags, with two buttons: **Review...** opens the dialog for each
+listed tag in turn, and **Close** leaves them as they are. Tags that never read good are skipped.
+
+### Writes to an unconfirmed tag
+
+Before a write to a 32-bit tag whose encoding is not confirmed, the application asks first. The
+prompt says, for example, "The encoding of 'Setpoint' is not confirmed: it reads 52.3 °C as float32
+CDAB. Writing with a wrong encoding sends a wrong value." It has three buttons:
+
+- **Confirm and continue** confirms the encoding and carries on with the other write checks and the
+  usual confirmation.
+- **Detect encoding...** opens the dialog. Nothing is written.
+- **Cancel** is the default. Nothing is written.
+
+If you write several tags at once and some of them are unconfirmed, one prompt lists them all, and
+**Confirm and continue** confirms all of them.
+
+### What confirms an encoding
+
+An encoding is confirmed when:
+
+- you click **Apply** in the Detect encoding dialog;
+- you click **Confirm and continue** in the write prompt;
+- you change the tag's **Type** or **Byte order** yourself.
+
+A tag that automatic detection changed stays unconfirmed, with its warning icon, until one of these
+happens.
+
+### Try it with the test server
+
+1. Start the test server and connect the application to it.
+2. Add a **Holding** tag at address 110 with type `float32` and byte order `ABCD`. The test server
+   holds `float32` 52.3 in `CDAB` order at HR 110-111.
+3. After three readings the app detects `float32 CDAB`, changes the tag to it, and shows the warning
+   icon on the Name cell.
+4. Right-click the tag, choose **Detect encoding...**, type `52.3` in **Value shown on the device**,
+   and click **Apply**. The float32 CDAB row matches, and the warning icon goes away.
+
+If you add the tag with `CDAB` already set, detection finds the same encoding and changes nothing.
+The dialog is still available from the right-click menu, and typing 52.3 shows the same match.
+
 ## Trend
 
 The trend shows each plotted tag as one curve, in the tag's colour. The X axis is time in seconds,
@@ -678,7 +785,9 @@ Check the value on the controller, then write the setpoint again.
 **First writes to a real controller**
 
 1. Connect with every tag read-only (Writable unticked). Compare each value with the controller's
-   display. Byte order and register numbers are right only if the values match.
+   display. Byte order and register numbers are right only if the values match. A tag with the
+   warning icon has an unconfirmed encoding: confirm it with **Detect encoding...** (see Encoding
+   detection) before you write to it.
 2. On each writable tag, set **Min** and **Max** to the controller's allowed range for that
    parameter.
 3. Tick **Writable** on the tag.

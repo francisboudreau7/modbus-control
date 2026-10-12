@@ -17,6 +17,15 @@ struct SignalBinding {
     WordOrder byteOrder = WordOrder::ABCD; ///< 2-register formats only
 };
 
+/// Initial value written into holding registers `address` (and address + 1 for 2-register
+/// formats) when the server starts. The registers stay writable like every holding register.
+struct HoldingValue {
+    quint16 address = 0; ///< first register; 2-register formats also use address + 1
+    double value = 0.0;
+    RegisterFormat format = RegisterFormat::Int16;
+    WordOrder byteOrder = WordOrder::ABCD; ///< 2-register formats only
+};
+
 /// Test server configuration. Registers are mapped from address 0.
 ///
 /// server.json (every key optional; missing keys keep the defaults below):
@@ -28,11 +37,16 @@ struct SignalBinding {
 ///                  "noise"|"lag"|"constant", "amplitude": 1000, "offset": 0,
 ///                  "periodS": 5, "tauS": 2, "deadTimeS": 0, "source": 100,
 ///                  "format": "int16"|"int32"|"float32", "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA" },
+///                ... ],
+///   "holding": [ { "address": 110, "value": 52.3,
+///                  "format": "int16"|"uint16"|"int32"|"uint32"|"float32", "byteOrder": "ABCD"|... },
 ///                ... ]
 /// }
 /// "host" defaults to loopback because the server has no authentication; use "0.0.0.0" to
 /// accept remote clients.
-/// If "signals" is present it replaces the default bindings entirely.
+/// If "signals" is present it replaces the default bindings entirely. If "holding" is present
+/// it replaces the default initial values; without it, default values that do not fit below
+/// holdingCount are dropped (so files written before "holding" existed still load).
 struct ServerConfig {
     QString host = QStringLiteral("127.0.0.1");
     quint16 port = 1502;
@@ -45,12 +59,14 @@ struct ServerConfig {
     bool verbose = false;   ///< log each request to stdout
     bool logWrites = false; ///< log only write requests (hex registers, 32-bit decodings)
     QList<SignalBinding> signalBindings;
+    QList<HoldingValue> holdingValues; ///< written into the holding registers at start
 
     /// Defaults: IR0 sine(1000, 5 s), IR1 triangle(1000, 10 s), IR2 counter,
     /// IR3 square(1000, 4 s), IR4 noise(100), IR5 sawtooth(1000, 8 s),
     /// IR10 lag following HR100 (tau 2 s, dead time 1 s),
     /// IR20-21 float32 ABCD sine(123.456, 5 s), IR22-23 float32 CDAB sine(123.456, 5 s),
     /// IR24-25 int32 ABCD sawtooth(100000, 8 s).
+    /// Holding: HR110-111 float32 CDAB 52.3 (CM50-like setpoint), HR120-121 int32 ABCD 100.
     static ServerConfig defaults();
 };
 
@@ -58,7 +74,10 @@ struct ServerConfig {
 /// JSON, wrong value types, unknown signal kind, out-of-range values (port 0, counts
 /// outside 1..65536, binding address + registerCount(format) > inputCount, Lag source >=
 /// holdingCount, unknown format/byteOrder strings,
-/// periodS/tauS <= 0, deadTimeS outside 0..60, tickMs < 1, dropPercent outside 0..100).
+/// periodS/tauS <= 0, deadTimeS outside 0..60, tickMs < 1, dropPercent outside 0..100,
+/// holding entries that do not fit below holdingCount, overlap each other, have an
+/// unknown key, a missing address/value, a non-finite value, or a value outside the
+/// format's range (integer formats also need a whole number)).
 std::optional<ServerConfig> parseServerConfig(const QByteArray &json, QString *error = nullptr);
 std::optional<ServerConfig> loadServerConfig(const QString &path, QString *error = nullptr);
 
