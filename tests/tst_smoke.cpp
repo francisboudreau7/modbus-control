@@ -9,7 +9,7 @@ private slots:
     void versionIsNotEmpty()
     {
         QVERIFY(!mb::versionString().isEmpty());
-        QCOMPARE(mb::versionString(), QStringLiteral("1.3.0"));
+        QCOMPARE(mb::versionString(), QStringLiteral("1.2.3"));
     }
 };
 
