@@ -1,7 +1,11 @@
 #include "TagTableModel.h"
 
+#include "EncodingDetect.h"
+
+#include <QApplication>
 #include <QBrush>
 #include <QColor>
+#include <QStyle>
 
 #include <algorithm>
 #include <cmath>
@@ -110,6 +114,14 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     switch (index.column()) {
     case Name:
         if (disp || edit) return t.name;
+        if (is32 && !t.encodingVerified) {
+            if (role == Qt::DecorationRole)
+                return QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning);
+            if (role == Qt::ToolTipRole)
+                return tr("Encoding not confirmed (%1). Right-click > Detect encoding... to check it; "
+                          "writes are blocked until it is confirmed.")
+                    .arg(toString(encodingOf(t)));
+        }
         break;
     case Area:
         if (disp || edit) return toString(t.area);
@@ -285,6 +297,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         probe.type = nt;
         if (!probe.fitsAddressSpace()) return false;
         t.type = nt;
+        t.encodingVerified = true; // the user chose the type
         rowChanged = true; // Raw, Value, ByteOrder and Writable all depend on the type
         break;
     }
@@ -292,6 +305,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         mb::ByteOrder order = mb::ByteOrder::ABCD;
         if (registerCount(t.type) != 2 || !parseByteOrder(value.toString(), order)) return false;
         t.byteOrder = order;
+        t.encodingVerified = true; // the user chose the byte order
         break;
     }
     case Gain: {
@@ -384,6 +398,11 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         const QModelIndex i = this->index(index.row(), Writable);
         emit dataChanged(i, i, {Qt::CheckStateRole});
         emitWriteCellsChanged(index.row());
+    }
+    if (col == ByteOrder) {
+        // Setting the byte order confirms the encoding: the Name cell's warning may go.
+        const QModelIndex n = this->index(index.row(), Name);
+        emit dataChanged(n, n, {Qt::DecorationRole, Qt::ToolTipRole});
     }
     emit tagsEdited();
     return true;
@@ -532,6 +551,44 @@ int TagTableModel::duplicateTag(int row)
     return newRow;
 }
 
+bool TagTableModel::setEncoding(TagId id, ValueType type, mb::ByteOrder order, bool verified)
+{
+    const int row = rowOf(id);
+    if (row < 0 || registerCount(type) != 2)
+        return false;
+    Tag &t = m_tags[row];
+    if (registerCount(t.type) != 2)
+        return false;
+    const bool encodingChanged = t.type != type || t.byteOrder != order;
+    const bool verifiedChanged = t.encodingVerified != verified;
+    if (!encodingChanged && !verifiedChanged)
+        return true;
+    t.type = type;
+    t.byteOrder = order;
+    t.encodingVerified = verified;
+    // Decoding changed: the last reading must not vouch for a write (see setData).
+    if (encodingChanged)
+        m_live.remove(t.id);
+    emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+    emit tagsEdited();
+    return true;
+}
+
+bool TagTableModel::setEncodingVerified(TagId id, bool verified)
+{
+    const int row = rowOf(id);
+    if (row < 0)
+        return false;
+    Tag &t = m_tags[row];
+    if (t.encodingVerified == verified)
+        return true;
+    t.encodingVerified = verified;
+    const QModelIndex name = index(row, Name);
+    emit dataChanged(name, name, {Qt::DecorationRole, Qt::ToolTipRole});
+    emit tagsEdited();
+    return true;
+}
+
 std::optional<double> TagTableModel::goodValue(TagId id) const
 {
     const auto it = m_live.constFind(id);
@@ -653,14 +710,3 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
-
-// Stubs created by T150; implemented by T154.
-bool mb::TagTableModel::setEncoding(TagId, ValueType, mb::ByteOrder, bool)
-{
-    return false;
-}
-
-bool mb::TagTableModel::setEncodingVerified(TagId, bool)
-{
-    return false;
-}

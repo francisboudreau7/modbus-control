@@ -140,6 +140,11 @@ private slots:
     void hiddenColumnsAlwaysWritten();
     void hiddenColumnsRejected_data();
     void hiddenColumnsRejected();
+    void encodingVerifiedRoundTrip();
+    void encodingVerifiedWrittenOnlyWhenFalse();
+    void encodingVerifiedMissingIsTrue();
+    void encodingVerifiedRejected_data();
+    void encodingVerifiedRejected();
 };
 
 void TstProjectIO::roundTrip()
@@ -1105,6 +1110,70 @@ void TstProjectIO::hiddenColumnsRejected()
     QString error;
     QVERIFY(!projectFromJson(text, &error).has_value());
     QVERIFY2(error.contains(fragment), qPrintable(error));
+}
+
+void TstProjectIO::encodingVerifiedRoundTrip()
+{
+    Project p = sampleProject();
+    p.tags[0].encodingVerified = false;
+    p.tags[1].encodingVerified = true;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QVERIFY(!loaded->tags[0].encodingVerified);
+    QVERIFY(loaded->tags[1].encodingVerified);
+}
+
+void TstProjectIO::encodingVerifiedWrittenOnlyWhenFalse()
+{
+    Project p;
+    Tag unverified;
+    unverified.id = 1;
+    unverified.encodingVerified = false;
+    Tag verified;
+    verified.id = 2;
+    p.tags = {unverified, verified};
+    p.nextTagId = 3;
+
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    const QJsonObject first = tags.at(0).toObject();
+    QVERIFY(first.contains(QStringLiteral("encodingVerified")));
+    QCOMPARE(first.value(QStringLiteral("encodingVerified")).toBool(true), false);
+    QVERIFY(!tags.at(1).toObject().contains(QStringLiteral("encodingVerified")));
+}
+
+void TstProjectIO::encodingVerifiedMissingIsTrue()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"type":"float32"},{"id":2,"encodingVerified":false}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(project->tags.at(0).encodingVerified);
+    QVERIFY(!project->tags.at(1).encodingVerified);
+}
+
+void TstProjectIO::encodingVerifiedRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::newRow("number")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"encodingVerified":1}]})");
+    QTest::newRow("string")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"encodingVerified":"yes"}]})");
+    QTest::newRow("null")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"encodingVerified":null}]})");
+}
+
+void TstProjectIO::encodingVerifiedRejected()
+{
+    QFETCH(QByteArray, text);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QVERIFY2(error.contains(QStringLiteral("encodingVerified")), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)
