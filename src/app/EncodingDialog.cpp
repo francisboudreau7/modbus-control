@@ -300,12 +300,13 @@ void EncodingDialog::rerank()
     }
     if (selectRow >= 0)
         m_table->selectRow(selectRow);
-    m_rebuilding = false;
 
     // The user's choice is dropped once its encoding is in no group any more.
     if (previous && !keptPrevious)
         m_userChoice.reset();
+    // Still rebuilding: this automatic selection must not count as the user's choice.
     onSelectionChanged();
+    m_rebuilding = false;
 }
 
 } // namespace mb
