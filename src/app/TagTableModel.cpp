@@ -785,3 +785,9 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
+
+// Stub; implemented with the review fixes.
+bool mb::TagTableModel::setConfirmed16Bit(TagId, bool)
+{
+    return false;
+}

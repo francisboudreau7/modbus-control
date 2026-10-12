@@ -65,21 +65,38 @@ class TagTableModel;
 /// marked unverified). While connected, on its first Good sample the monitor probes its
 /// neighbourhood: emits readRequested(id, area, address - 1, 3) (clipped at 0 and 65535: 2
 /// registers), and when that fails, one 2-register read per side; a side that fails counts as
-/// absent. Probes run one at a time (request ids are the monitor's own, increasing); a result for
-/// a tag that was removed, moved or retyped since, or from before a disconnect, is dropped. With
-/// the registers, detectSplitValue(tag, own, below, above):
-/// - nullopt: nothing to do (a flagged tag checked again by detectNow becomes verified, note
-///   cleared, message "'X' (HR 110) looks like a 16-bit value: no float32 found around it.").
+/// absent. A neighbour register used by another tag of the project counts as absent too (that
+/// register is mapped as something else; and a Change there would make one tag overwrite another).
+/// Probes run one at a time (request ids are the monitor's own, increasing); a result for
+/// a tag that was removed, moved or retyped since, or from before a disconnect, is dropped. A probe
+/// that ends in Timeout or ConnectionLost stops all split probes until onTagsReplaced() (some
+/// devices drop the connection on reads outside their map), with the message "Stopped checking
+/// 16-bit tags: the device did not answer a read next to 'X'." Tags with confirmed16Bit are not
+/// checked automatically (pending or on connect). With the registers,
+/// detectSplitValue(tag, own, below, above):
+/// - nullopt: an automatic check of a 16-bit tag that is unverified without a note (a stale flag,
+///   e.g. a flagged tag that was moved, or a float32 tag changed to int16) sets it verified. A
+///   detectNow check of a flagged tag keeps the flag ("No float32 found around 'X' (HR 110) right
+///   now; it stays flagged. Choose Keep int16 when it is 16-bit." through the split prompt with
+///   only Keep and Later: changeLabel empty); of an unflagged tag: message "'X' (HR 110) looks like
+///   a 16-bit value: no float32 found around it."
 /// - a SplitValue: setEncodingVerified(false), setEncodingNote("HR 110-111 read as float32 CDAB
 ///   give 52.3") (value: 7 significant digits), then the split prompt (seam; one prompt or
 ///   dialog open at a time, others wait in the same queue): "'Setpoint' (HR 110, int16) reads
 ///   13107, but HR 110-111 read as float32 CDAB give 52.3: this tag is probably half of a float32
 ///   value." with the answers Change ("Change to float32 CDAB at HR 110": setLayout(id, start,
-///   Float32, order, verified = true)), Keep ("Keep int16": setEncodingVerified(true), note cleared)
-///   and Later ("Decide later": stays flagged). Register numbers use the model's address base;
-///   the type name is the tag's (int16/uint16).
-/// On connect, every 16-bit tag is split-checked once after its first Good sample (tags that never
-/// read Good are skipped after 10 batches); the tags found suspicious are flagged as above and
+///   Float32, order, verified = true)), Keep ("Keep int16": setEncodingVerified(true) and
+///   setConfirmed16Bit(true), note cleared) and Later ("Decide later": stays flagged). When the tag
+///   has gain != 1, offset != 0 or quick values, the text adds " Change also resets its gain and
+///   offset to 1 and 0 and clears its quick values." Register numbers use the model's address
+///   base; the type name is the tag's (int16/uint16). An empty changeLabel means "no Change
+///   button".
+/// On connect, every 16-bit tag that was not checked yet in this session (since the last
+/// onTagsReplaced(); a moved tag is re-checked by the pending path) is split-checked once after its
+/// first Good sample (tags that never read Good are skipped after 10 batches); reconnects do not
+/// check the same tags again. The same once-per-session rule applies to the 32-bit on-connect
+/// check. Both on-connect prompts wait while a prompt or dialog is open, and are shown when it
+/// closes. The tags found suspicious are flagged as above and
 /// listed in one prompt through the review seam: "These 16-bit tags are probably half of a 32-bit
 /// value: 'X' (HR 110-111 read as float32 CDAB give 52.3). Writes to them ask first." with
 /// "Review..." (the split prompt for each, in turn) and "Close". detectNow on a 16-bit tag runs the

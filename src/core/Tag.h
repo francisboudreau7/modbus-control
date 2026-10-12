@@ -87,6 +87,9 @@ struct Tag {
     /// nobody confirmed it yet; writes then ask first. True for 16-bit tags and for encodings the
     /// user set or confirmed, or that the readings confirmed.
     bool encodingVerified = true;
+    /// The user answered "Keep int16" (or uint16) to the half-of-a-float32 check: this 16-bit tag
+    /// is not checked again automatically. Cleared when its area, address or type changes.
+    bool confirmed16Bit = false;
 
     bool isWritable() const { return writable && area == Area::HoldingRegister; }
     /// True when `scaled` is finite and within writeMin/writeMax (unset limits don't apply).

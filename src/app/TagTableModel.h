@@ -118,6 +118,9 @@ public:
     /// Sets only encodingVerified (the live value is kept: decoding is unchanged). Emits
     /// dataChanged for the Name cell and tagsEdited() when it changed. False for an unknown id.
     bool setEncodingVerified(TagId id, bool verified);
+    /// Sets Tag::confirmed16Bit (saved; tagsEdited() when it changed). setData edits of Area,
+    /// Address or Type clear it. False for an unknown id.
+    bool setConfirmed16Bit(TagId id, bool confirmed);
     /// What a flagged 16-bit tag was found to be part of, as a phrase without a final period
     /// ("HR 110-111 read as float32 CDAB give 52.3"; not saved; empty = none). Setting
     /// encodingVerified to true, or any edit of the tag's Area/Address/Type, clears it. Emits
@@ -126,6 +129,8 @@ public:
     QString encodingNote(TagId id) const;
     /// Moves and retypes a tag in one step (the "Change to float32 CDAB at HR 110" fix): sets
     /// address, type, byte order and encodingVerified, clears the note and forgets the live value.
+    /// Also resets gain to 1 and offset to 0, clears quickA/quickB (they were meant for the 16-bit
+    /// reading) and confirmed16Bit; write limits are kept.
     /// False (nothing changes) for an unknown id or when the tag would not fit the address space.
     /// Emits dataChanged for the row and tagsEdited() when anything changed.
     bool setLayout(TagId id, quint16 address, ValueType type, mb::ByteOrder order, bool verified);

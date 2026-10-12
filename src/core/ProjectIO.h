@@ -62,7 +62,8 @@ inline constexpr int kProjectFormatVersion = 1;
 /// they are (the table ignores them), duplicates are dropped.
 ///
 /// Added in v1.2.3 (optional, additive): per tag "encodingVerified" (boolean, default true; written
-/// only when false). Any other JSON type is rejected.
+/// only when false) and "confirmed16Bit" (boolean, default false; written only when true). Any
+/// other JSON type is rejected.
 /// Column keys hidden by the tag table's compact view: "raw", "gain", "offset", "byteOrder",
 /// "axis", "color", "writeMin", "writeMax", "quickA", "quickB" (in this order).
 QStringList compactHiddenColumns();
