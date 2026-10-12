@@ -368,11 +368,53 @@ bool currentEncodingSuspicious(const Tag &tag, const EncodingResult &result)
     return false;
 }
 
-} // namespace mb
+// Contract: "at most 5 significant digits", with 1013.25 (6 digits) listed as clean; see report.
+constexpr int kSplitMaxDigits = 6;
 
-// Stub created by T160; implemented by T161.
-std::optional<mb::SplitValue> mb::detectSplitValue(const Tag &, quint16, std::optional<quint16>,
-                                                   std::optional<quint16>)
+std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
+                                           std::optional<quint16> below,
+                                           std::optional<quint16> above)
 {
-    return std::nullopt;
+    if (registerCount(tag.type) != 1)
+        return std::nullopt;
+
+    // Pairs in preference order: the one starting at tag.address first.
+    struct Pair {
+        quint16 address;
+        quint16 r0;
+        quint16 r1;
+    };
+    std::array<Pair, 2> pairs{};
+    int n = 0;
+    if (above && tag.address < 0xFFFF)
+        pairs[n++] = {tag.address, own, *above};
+    if (below && tag.address > 0)
+        pairs[n++] = {static_cast<quint16>(tag.address - 1), *below, own};
+
+    std::optional<SplitValue> best;
+    for (int i = 0; i < n; ++i) {
+        const Pair &p = pairs[i];
+        if (p.r0 == 0 && p.r1 == 0)
+            continue;
+        for (ByteOrder order : kOrders) {
+            Tag t;
+            t.type = ValueType::Float32;
+            t.byteOrder = order;
+            const float f = std::bit_cast<float>(combineRegisters(t, p.r0, p.r1));
+            if (!std::isfinite(f))
+                continue;
+            const double a = std::fabs(static_cast<double>(f));
+            if (a < 1e-3 || a > 1e7)
+                continue;
+            const int digits = significantDigits(f);
+            if (digits > kSplitMaxDigits)
+                continue;
+            if (!best || digits < best->digits)
+                best = SplitValue{p.address, {ValueType::Float32, order}, static_cast<double>(f),
+                                  digits};
+        }
+    }
+    return best;
 }
+
+} // namespace mb
