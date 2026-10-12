@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QList>
 
+#include <functional>
 #include <optional>
 
 class QCheckBox;
@@ -13,6 +14,7 @@ class QDialogButtonBox;
 class QLabel;
 class QLineEdit;
 class QTableWidget;
+class TstEncodingDialog;
 
 namespace mb {
 
@@ -65,8 +67,19 @@ public:
     QList<TagId> applyOrderTo() const;
 
 private:
-    // Implementation-defined; the task may change the private section freely.
+    friend class ::TstEncodingDialog;
+
+    using DetectFn = std::function<EncodingResult(const Tag &, const QList<RegisterPair> &,
+                                                  const EncodingOptions &)>;
+
+    /// Re-runs m_detect and rebuilds the labels, the table and the selection.
     void rerank();
+    void onSelectionChanged();
+    void updateApplyOthers();
+    /// Index into m_result.candidates of the selected row's preferred member, or -1.
+    int selectedCandidate() const;
+    /// Other tags whose byte order differs from the chosen one.
+    QList<const Tag *> othersToChange() const;
 
     Tag m_tag;
     QList<RegisterPair> m_readings;
@@ -74,6 +87,20 @@ private:
     std::optional<ByteOrder> m_deviceOrder;
     int m_addressBase = 0;
     EncodingResult m_result;
+
+    /// Test seam: the ranking function, detectEncoding by default. A test replaces it and then
+    /// calls setDisplayValue()/addReading() to apply it (the constructor has already ranked once
+    /// with the default).
+    DetectFn m_detect = [](const Tag &tag, const QList<RegisterPair> &readings,
+                           const EncodingOptions &options) {
+        return detectEncoding(tag, readings, options);
+    };
+    /// One entry per table row: index of the group's preferred member in m_result.candidates.
+    QList<int> m_rowCandidate;
+    /// Preferred encoding of the group the user selected; kept across re-ranks while some group
+    /// still contains that encoding (groups are identified by membership).
+    std::optional<Encoding> m_userChoice;
+    bool m_rebuilding = false;
 
     QLabel *m_registers = nullptr;
     QLineEdit *m_display = nullptr;
