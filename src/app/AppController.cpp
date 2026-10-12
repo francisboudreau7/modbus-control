@@ -366,6 +366,9 @@ void AppController::wireWrites()
             &EncodingMonitor::detectNow);
     connect(m_encoding, &EncodingMonitor::message, this,
             [this](const QString &text) { m_window->showStatusMessage(text); });
+    connect(m_encoding, &EncodingMonitor::readRequested, m_worker, &PollWorker::readRegisters,
+            Qt::QueuedConnection);
+    connect(m_worker, &PollWorker::readFinished, m_encoding, &EncodingMonitor::onReadFinished);
 }
 
 void AppController::wireActions()

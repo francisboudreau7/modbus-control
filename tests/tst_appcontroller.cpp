@@ -161,6 +161,10 @@ class TstAppController : public QObject
         std::function<bool(EncodingDialog &)> onEncodingDialog; ///< unset: unexpected, cancelled
         QStringList encodingReviews;                ///< EncodingMonitor::m_reviewPrompt texts
         bool allowEncodingReview = false;           ///< otherwise a review prompt is unexpected
+        QStringList splitTexts;                     ///< EncodingMonitor::m_splitPrompt texts
+        QStringList splitChanges;                   ///< ... the Change labels
+        QStringList splitKeeps;                     ///< ... the Keep labels
+        QList<EncodingMonitor::SplitAnswer> splitAnswers; ///< empty: unexpected, Later
 
         QStringList unexpected;                     ///< a seam was called without an answer ready
     };
@@ -285,6 +289,17 @@ class TstAppController : public QObject
             if (!d.allowEncodingReview)
                 d.unexpected << QStringLiteral("encoding review: ") + text;
             return false;
+        };
+        ctl->m_encoding->m_splitPrompt = [this](const QString &text, const QString &change,
+                                                const QString &keep) {
+            d.splitTexts << text;
+            d.splitChanges << change;
+            d.splitKeeps << keep;
+            if (d.splitAnswers.isEmpty()) {
+                d.unexpected << QStringLiteral("split prompt: ") + text;
+                return EncodingMonitor::SplitAnswer::Later;
+            }
+            return d.splitAnswers.takeFirst();
         };
     }
 
@@ -739,6 +754,101 @@ private slots:
         QVERIFY(now.byteOrder == ByteOrder::ABCD); // only flagged, not changed
         QCOMPARE(d.encodingReviews.size(), 1);
         QVERIFY(d.encodingDialogs.isEmpty());
+        noUnexpected();
+    }
+
+    /// An int16 tag at `address` added while connected to the default server (float32 52.3 CDAB at
+    /// HR 110-111).
+    TagId addInt16(const QString &name, quint16 address)
+    {
+        Tag t;
+        t.name = name;
+        t.area = Area::HoldingRegister;
+        t.address = address;
+        t.type = ValueType::Int16;
+        return model()->tagAt(model()->addTag(t)).id;
+    }
+
+    void splitCheckChangesToFloat()
+    {
+        connectLive();
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Change;
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QVERIFY(model()->tagAt(model()->rowOf(id)).encodingVerified); // not flagged while waiting
+        QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
+        QCOMPARE(d.splitTexts.first(),
+                 QStringLiteral("'Setpoint' (HR 110, int16) reads 13107, but HR 110-111 read as "
+                                "float32 CDAB give 52.3: this tag is probably half of a float32 "
+                                "value."));
+        QCOMPARE(d.splitChanges.first(), QStringLiteral("Change to float32 CDAB at HR 110"));
+        QCOMPARE(d.splitKeeps.first(), QStringLiteral("Keep int16"));
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QVERIFY(now.type == ValueType::Float32);
+        QVERIFY(now.byteOrder == ByteOrder::CDAB);
+        QCOMPARE(now.address, quint16(110));
+        QVERIFY(now.encodingVerified);
+        QVERIFY(model()->encodingNote(id).isEmpty());
+        QVERIFY(!ctl->m_encoding->isPending(id));
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - 52.3) < 0.01,
+                                 8000);
+        QCOMPARE(d.splitTexts.size(), 1);
+        QVERIFY(d.encodingDialogs.isEmpty());
+        noUnexpected();
+    }
+
+    void splitCheckFlagsAndKeeps()
+    {
+        connectLive();
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Later;
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
+        QVERIFY(!model()->tagAt(model()->rowOf(id)).encodingVerified);
+        QCOMPARE(model()->encodingNote(id), QStringLiteral("HR 110-111 read as float32 CDAB give 52.3"));
+        QVERIFY(model()->tagAt(model()->rowOf(id)).type == ValueType::Int16);
+        // "Detect encoding..." on the flagged tag asks again; Keep verifies it.
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Keep;
+        emit win->tagTable()->detectEncodingRequested(id);
+        QTRY_COMPARE_WITH_TIMEOUT(d.splitTexts.size(), 2, 8000);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->tagAt(model()->rowOf(id)).encodingVerified, 8000);
+        QVERIFY(model()->encodingNote(id).isEmpty());
+        QVERIFY(model()->tagAt(model()->rowOf(id)).type == ValueType::Int16);
+        noUnexpected();
+    }
+
+    void splitCheckUpperHalfMovesDown()
+    {
+        connectLive();
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Change;
+        const TagId id = addInt16(QStringLiteral("Hi"), 111);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
+        QCOMPARE(d.splitChanges.first(), QStringLiteral("Change to float32 CDAB at HR 110"));
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QCOMPARE(now.address, quint16(110));
+        QVERIFY(now.type == ValueType::Float32);
+        QVERIFY(now.byteOrder == ByteOrder::CDAB);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - 52.3) < 0.01,
+                                 8000);
+        noUnexpected();
+    }
+
+    void exampleProjectsRaiseNoSplitPrompt()
+    {
+        for (const QString &file : {QStringLiteral(MC_EXAMPLES_DIR "/demo.mbproj"),
+                                    QStringLiteral(MC_EXAMPLES_DIR "/cm50.mbproj")}) {
+            QVERIFY(ctl->openProject(file));
+            const QList<Tag> before = model()->tags();
+            connectLive();
+            // Let every tag read a few times: the on-connect pass is over after 10 batches.
+            QTest::qWait(1500);
+            QVERIFY2(d.splitTexts.isEmpty(), qPrintable(d.splitTexts.join(QLatin1Char('\n'))));
+            QVERIFY2(d.encodingReviews.isEmpty(), qPrintable(d.encodingReviews.join(QLatin1Char('\n'))));
+            for (const Tag &tag : model()->tags()) {
+                QVERIFY2(tag.encodingVerified, qPrintable(tag.name));
+                QVERIFY2(model()->encodingNote(tag.id).isEmpty(), qPrintable(tag.name));
+            }
+            QVERIFY(model()->tags() == before);
+            disconnectLive();
+        }
         noUnexpected();
     }
 
