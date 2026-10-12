@@ -1638,7 +1638,7 @@ private slots:
         verified.encodingVerified = true;
         Tag small = makeTag(3, "c");
         small.type = ValueType::Int16;
-        small.encodingVerified = false; // 16-bit: no warning
+        small.encodingVerified = true; // verified 16-bit: no warning
         TagTableModel m;
         m.setTags({unverified, verified, small}, 4);
 
@@ -1709,6 +1709,165 @@ private slots:
 
         QVERIFY(w.rowMenu(-1) == nullptr);
         QVERIFY(w.rowMenu(2) == nullptr);
+    }
+
+    // Notes are per tag and not saved: they clear when the tag's verification, placement or type
+    // changes, and when the tag goes away.
+    void encodingNoteRules()
+    {
+        TagTableModel m;
+        Tag s = makeTag(1, "s", Area::HoldingRegister, 110);
+        s.encodingVerified = false;
+        m.setTags({s, makeTag(2, "t")}, 3);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QVERIFY(!m.setEncodingNote(99, QStringLiteral("x")));
+        QCOMPARE(m.encodingNote(99), QString());
+        QVERIFY(m.setEncodingNote(1, QStringLiteral("Next to HR 111.")));
+        QCOMPARE(m.encodingNote(1), QStringLiteral("Next to HR 111."));
+        QCOMPARE(edited.size(), 0); // notes are not configuration
+        QVERIFY(m.setEncodingNote(1, QString()));
+        QCOMPARE(m.encodingNote(1), QString());
+
+        // Unit keeps the note; a verified flag clears it.
+        m.setEncodingNote(1, QStringLiteral("n"));
+        QVERIFY(m.setData(m.index(0, C::Unit), QStringLiteral("C")));
+        QCOMPARE(m.encodingNote(1), QStringLiteral("n"));
+        QVERIFY(m.setEncodingVerified(1, true));
+        QCOMPARE(m.encodingNote(1), QString());
+
+        // Edits of Address, Area or Type clear it.
+        m.setEncodingVerified(1, false);
+        m.setEncodingNote(1, QStringLiteral("n"));
+        QVERIFY(m.setData(m.index(0, C::Address), 111));
+        QCOMPARE(m.encodingNote(1), QString());
+        m.setEncodingNote(1, QStringLiteral("n"));
+        QVERIFY(m.setData(m.index(0, C::Area), QStringLiteral("Input")));
+        QCOMPARE(m.encodingNote(1), QString());
+        m.setData(m.index(0, C::Area), QStringLiteral("Holding"));
+        m.setEncodingNote(1, QStringLiteral("n"));
+        QVERIFY(m.setData(m.index(0, C::Type), QStringLiteral("int32")));
+        QCOMPARE(m.encodingNote(1), QString());
+
+        // A refused setLayout keeps the note.
+        m.setData(m.index(0, C::Type), QStringLiteral("int16"));
+        m.setEncodingNote(1, QStringLiteral("n"));
+        QVERIFY(!m.setLayout(1, 65535, ValueType::Float32, ByteOrder::CDAB, true));
+        QCOMPARE(m.encodingNote(1), QStringLiteral("n"));
+
+        // Removal and setTags drop notes.
+        m.setEncodingNote(2, QStringLiteral("other"));
+        QVERIFY(m.removeRows(1, 1));
+        QCOMPARE(m.encodingNote(2), QString());
+        m.setEncodingNote(1, QStringLiteral("n"));
+        m.setTags({s}, 2);
+        QCOMPARE(m.encodingNote(1), QString());
+    }
+
+    // The Name cell of an unverified 16-bit tag: warning icon, the note or the default text.
+    void encodingNote16BitTooltip()
+    {
+        Tag h = makeTag(1, "h", Area::HoldingRegister, 110);
+        h.encodingVerified = false;
+        Tag v = makeTag(2, "v", Area::HoldingRegister, 111);
+        Tag f = makeTag(3, "f", Area::HoldingRegister, 120);
+        f.type = ValueType::Float32;
+        f.encodingVerified = false;
+        TagTableModel m;
+        m.setTags({h, v, f}, 4);
+
+        QVERIFY(!m.data(ix(m, 0, C::Name), Qt::DecorationRole).value<QIcon>().isNull());
+        QCOMPARE(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString(),
+                 QStringLiteral("This register may be half of a 32-bit value. Right-click > Detect "
+                                "encoding... to check it; writes ask first."));
+        QVERIFY(m.setEncodingNote(1, QStringLiteral("Reads 0x4120 with HR 111.")));
+        QCOMPARE(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Reads 0x4120 with HR 111."));
+
+        // Verified 16-bit tag: no icon, no tooltip.
+        QVERIFY(!m.data(ix(m, 1, C::Name), Qt::DecorationRole).isValid());
+        QVERIFY(!m.data(ix(m, 1, C::Name), Qt::ToolTipRole).isValid());
+
+        // A note on a 32-bit tag does not replace its text.
+        m.setEncodingNote(3, QStringLiteral("ignored"));
+        QVERIFY(m.data(ix(m, 2, C::Name), Qt::ToolTipRole).toString().startsWith(
+            QStringLiteral("Encoding not confirmed (float32 ABCD)")));
+    }
+
+    // setLayout moves and retypes a tag in one step.
+    void setLayoutRules()
+    {
+        TagTableModel m;
+        Tag s = makeTag(1, "s", Area::HoldingRegister, 111);
+        s.encodingVerified = false;
+        m.setTags({s, makeTag(2, "t", Area::HoldingRegister, 65535)}, 3);
+        SampleBatch b;
+        b.samples << TagSample{1, 0x0u, 1.0, Quality::Good};
+        m.updateSamples(b);
+        QVERIFY(m.goodValue(1).has_value());
+        m.setEncodingNote(1, QStringLiteral("n"));
+
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+
+        // Refused: unknown id, or a float32 that would run past 65535
+        QVERIFY(!m.setLayout(99, 110, ValueType::Float32, ByteOrder::CDAB, true));
+        QVERIFY(!m.setLayout(1, 65535, ValueType::Float32, ByteOrder::CDAB, true));
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+        QCOMPARE(int(m.tagAt(0).address), 111);
+        QVERIFY(m.goodValue(1).has_value());
+
+        // The fix: HR 110 as float32 CDAB, verified
+        QVERIFY(m.setLayout(1, 110, ValueType::Float32, ByteOrder::CDAB, true));
+        QCOMPARE(int(m.tagAt(0).address), 110);
+        QVERIFY(m.tagAt(0).type == ValueType::Float32);
+        QVERIFY(m.tagAt(0).byteOrder == ByteOrder::CDAB);
+        QVERIFY(m.tagAt(0).encodingVerified);
+        QVERIFY(!m.goodValue(1).has_value());
+        QCOMPARE(m.encodingNote(1), QString());
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(changed.at(0).at(0).value<QModelIndex>().row(), 0);
+        QCOMPARE(changed.at(0).at(1).value<QModelIndex>().column(), int(C::ColumnCount) - 1);
+
+        // Unchanged: true, no signal
+        edited.clear();
+        changed.clear();
+        QVERIFY(m.setLayout(1, 110, ValueType::Float32, ByteOrder::CDAB, true));
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+
+        // Only the flag changes: tagsEdited, the live value is kept (no decoding change)
+        m.updateSamples(b);
+        QVERIFY(m.setLayout(1, 110, ValueType::Float32, ByteOrder::CDAB, false));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+        QVERIFY(m.goodValue(1).has_value());
+        QCOMPARE(edited.size(), 1);
+    }
+
+    // rowMenu: enabled for an unverified 16-bit tag, disabled for a verified one.
+    void rowMenuFlagged16Bit()
+    {
+        TagTableModel m;
+        Tag s = makeTag(1, "s", Area::HoldingRegister, 110);
+        s.encodingVerified = false;
+        m.setTags({s, makeTag(2, "t", Area::HoldingRegister, 111)}, 3);
+        TagTableWidget w(&m);
+
+        QMenu *menu = w.rowMenu(0);
+        QVERIFY(menu);
+        QAction *action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
+        QVERIFY(action);
+        QVERIFY(action->isEnabled());
+        delete menu;
+
+        menu = w.rowMenu(1);
+        QVERIFY(menu);
+        action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
+        QVERIFY(action);
+        QVERIFY(!action->isEnabled());
+        delete menu;
     }
 };
 

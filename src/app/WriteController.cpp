@@ -210,10 +210,10 @@ bool WriteController::stillSame(const Tag &tag) const
     if (row < 0)
         return false;
     // encodingVerified is not part of the configuration: confirming it must not abort a write.
-    // But a 32-bit tag that became unconfirmed meanwhile (e.g. the on-connect check flagged it
+    // But a tag that became unconfirmed meanwhile (any width: e.g. the on-connect check flagged it
     // while a confirmation was open) must not be written.
     Tag current = m_model->tagAt(row);
-    if (registerCount(current.type) == 2 && !current.encodingVerified)
+    if (!current.encodingVerified)
         return false;
     current.encodingVerified = tag.encodingVerified;
     return current == tag;
@@ -250,12 +250,26 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     }
 
-    // 3b. 32-bit tag whose encoding is not confirmed yet
-    if (wide && !tag.encodingVerified) {
-        const QString text = tr("The encoding of '%1' is not confirmed: it reads %2 as %3. Writing "
-                                "with a wrong encoding sends a wrong value.")
-                                 .arg(tag.name, valueText(*current) + unitSuffix(tag),
-                                      toString(encodingOf(tag)));
+    // 3b. tag whose encoding is not confirmed yet (32-bit), or a 16-bit tag flagged as probably
+    // half of a 32-bit value
+    if (!tag.encodingVerified) {
+        QString text;
+        if (wide) {
+            text = tr("The encoding of '%1' is not confirmed: it reads %2 as %3. Writing "
+                      "with a wrong encoding sends a wrong value.")
+                       .arg(tag.name, valueText(*current) + unitSuffix(tag),
+                            toString(encodingOf(tag)));
+        } else {
+            const QString note = m_model->encodingNote(id);
+            const QString regNo = QStringLiteral("%1 %2")
+                                      .arg(tag.area == Area::InputRegister ? QStringLiteral("IR")
+                                                                           : QStringLiteral("HR"))
+                                      .arg(tag.address + base);
+            text = tr("'%1' is probably half of a 32-bit value: %2 Writing a 16-bit value there "
+                      "changes half of that value, and the device then reads a wrong number.")
+                       .arg(tag.name, note.isEmpty() ? tr("%1 may be half of a 32-bit value.").arg(regNo)
+                                                     : note);
+        }
         switch (m_confirmEncoding(text)) {
         case EncodingAnswer::Confirm:
             m_model->setEncodingVerified(id, true);
@@ -421,16 +435,20 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         return;
     }
 
-    // 3b. unconfirmed encodings of the 32-bit tags: one prompt for all of them
+    // 3b. unconfirmed encodings (32-bit tags, and 16-bit tags flagged as half of one): one prompt
+    // for all of them
     QStringList unconfirmed;
     QList<TagId> unconfirmedIds;
     for (const Tag &tag : std::as_const(tags)) {
-        if (registerCount(tag.type) != 2 || tag.encodingVerified)
+        if (tag.encodingVerified)
             continue;
-        unconfirmed.append(tr("'%1' (reads %2 as %3)")
-                               .arg(tag.name, valueText(m_model->goodValue(tag.id).value_or(0.0))
-                                                  + unitSuffix(tag),
-                                    toString(encodingOf(tag))));
+        if (registerCount(tag.type) == 2)
+            unconfirmed.append(tr("'%1' (reads %2 as %3)")
+                                   .arg(tag.name, valueText(m_model->goodValue(tag.id).value_or(0.0))
+                                                      + unitSuffix(tag),
+                                        toString(encodingOf(tag))));
+        else
+            unconfirmed.append(tr("'%1' (probably half of a 32-bit value)").arg(tag.name));
         unconfirmedIds.append(tag.id);
     }
     if (!unconfirmed.isEmpty()) {
