@@ -508,7 +508,7 @@ private slots:
         QTest::addColumn<ByteOrder>("order");
         QTest::addColumn<bool>("first");
         for (double v : {52.3, 0.5, 100.0, -17.5, 1013.25, 2.0, 0.001, 9999.5, 1e6}) {
-            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA}) {
+            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB}) { // word orders only
                 for (bool first : {true, false}) {
                     QTest::newRow(qPrintable(QStringLiteral("%1 %2 %3")
                                                  .arg(v).arg(toString(o), first ? "first" : "second")))
@@ -534,6 +534,26 @@ private slots:
         QCOMPARE(static_cast<float>(sv->value), static_cast<float>(value));
         QCOMPARE_ENC(sv->encoding, (Encoding{ValueType::Float32, order}));
     }
+    // Byte-swapped orders are not checked: they would flag ordinary small integers (63 next to 0
+    // reads as 0.5 in BADC).
+    void splitByteSwappedNotChecked()
+    {
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 5;
+        QVERIFY(!detectSplitValue(tag, 63, 0, 0));
+        for (ByteOrder o : {ByteOrder::BADC, ByteOrder::DCBA}) {
+            const RegisterPair r = regsFor(makeTag(ValueType::Float32, o), 52.3);
+            const auto sv = detectSplitValue(tag, r.r0, std::nullopt, r.r1);
+            QVERIFY(!sv || sv->encoding.order == ByteOrder::ABCD || sv->encoding.order == ByteOrder::CDAB);
+        }
+        // 6 digits need at most 2 decimals: 1013.25 is clean, 1.01325 (6 digits, 5 decimals) is not.
+        const RegisterPair ok = regsFor(makeTag(ValueType::Float32, ByteOrder::ABCD), 1013.25);
+        QVERIFY(detectSplitValue(tag, ok.r0, std::nullopt, ok.r1));
+        const RegisterPair no = regsFor(makeTag(ValueType::Float32, ByteOrder::ABCD), 1.01325);
+        const auto sv = detectSplitValue(tag, no.r0, std::nullopt, no.r1);
+        QVERIFY(!sv || static_cast<float>(sv->value) != 1.01325f);
+    }
+
     void splitNeighbourAbsent()
     {
         // 52.3 as float32 CDAB: HR 110 = 0x3333, HR 111 = 0x4251.
@@ -612,8 +632,8 @@ private slots:
         QCOMPARE(fewer->digits, 1);
         QCOMPARE(fewer->address, quint16(49));
         QCOMPARE(fewer->value, 100.0);
-        // Within one pair: when several orders are clean with the same digits, the first order
-        // in ABCD > CDAB > BADC > DCBA wins. Scan some register pairs and verify.
+        // Within one pair: when both word orders are clean with the same digits, ABCD wins. Scan
+        // some register pairs and verify (byte-swapped orders are not considered).
         int checked = 0, multi = 0;
         for (int k = 1; k <= 4000; ++k) {
             const RegisterPair rp = regsFor(makeTag(ValueType::Float32, ByteOrder::ABCD), k * 0.5);
@@ -625,7 +645,7 @@ private slots:
             ++checked;
             int cleanAtMin = 0;
             std::optional<ByteOrder> firstAtMin;
-            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA}) {
+            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB}) {
                 const float f = std::bit_cast<float>(
                     combineRegisters(makeTag(ValueType::Float32, o), r0, r1));
                 if (!std::isfinite(f) || std::fabs(double(f)) < 1e-3 || std::fabs(double(f)) > 1e7)
@@ -635,7 +655,7 @@ private slots:
                 int d = 0;
                 for (const char *c = buf; c != res.ptr && *c != 'e'; ++c)
                     d += (*c >= '0' && *c <= '9') ? 1 : 0;
-                QVERIFY(d >= sv->digits || d > 6);
+                QVERIFY(d >= sv->digits);
                 if (d == sv->digits) {
                     ++cleanAtMin;
                     if (!firstAtMin)
@@ -656,10 +676,10 @@ private slots:
     }
 
     // False positives: how often do two separate int16 registers look like half of a clean
-    // float32? Measured with clean = at most 6 significant digits (so that 1013.25 counts):
-    //   (a) 27151/1002001 = 2.71 %, (b) 1653/81796 = 2.02 %, (c) 5957/200000 = 2.98 %.
-    // With a limit of 5 digits: 0.96 %, 0.28 %, 0.83 %. The rates are printed (qInfo); the
-    // ceilings (4 %, 3 %, 4 %) catch a regression.
+    // float32? With word orders only and clean = at most 5 digits, or 6 with at most 2 decimals:
+    // (a) and (c) about 0 %, (b) about 0.5 %, (d) 0 %. (All four orders with up to 6 digits gave
+    // 2.7 %, 2.0 %, 3.0 % and 8.6 % for (d).) The rates are printed (qInfo); the ceilings catch a
+    // regression.
     void splitFalsePositives()
     {
         Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
@@ -695,12 +715,20 @@ private slots:
             const quint16 above = small();
             hitsC += detectSplitValue(tag, own, below, above) ? 1 : 0;
         }
-        qInfo("split false positives: (a) %ld/%ld = %.4f %%, (b) %ld/%ld = %.4f %%, (c) %ld/%ld = %.4f %%",
+        // (d) a small value next to empty registers (an unused part of the register map).
+        long hitsD = 0, totalD = 0;
+        for (quint16 v = 1; v <= 1000; ++v) {
+            ++totalD;
+            hitsD += detectSplitValue(tag, v, 0, 0) ? 1 : 0;
+        }
+        qInfo("split false positives: (a) %ld/%ld = %.4f %%, (b) %ld/%ld = %.4f %%, (c) %ld/%ld = %.4f %%, "
+              "(d) %ld/%ld",
               hitsA, totalA, 100.0 * hitsA / totalA, hitsB, totalB, 100.0 * hitsB / totalB,
-              hitsC, totalC, 100.0 * hitsC / totalC);
-        QVERIFY(hitsA * 100 < totalA * 4);
-        QVERIFY(hitsB * 100 < totalB * 3);
-        QVERIFY(hitsC * 100 < totalC * 4);
+              hitsC, totalC, 100.0 * hitsC / totalC, hitsD, totalD);
+        QVERIFY(hitsA * 10000 < totalA * 5); // < 0.05 %
+        QVERIFY(hitsB * 100 < totalB * 1);   // < 1 %
+        QVERIFY(hitsC * 10000 < totalC * 5); // < 0.05 %
+        QCOMPARE(hitsD, 0L);
     }
 };
 

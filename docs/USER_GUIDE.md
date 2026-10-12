@@ -356,8 +356,9 @@ The app checks a 16-bit tag in these cases:
 Each check reads the register below and the register above the tag, once. It does not repeat on
 every poll.
 
-The check looks for a "clean" float32: two neighbouring registers that read as a float of a sensible
-size, with at most 5 significant digits, such as 52.3, 0.5 or 100.
+The check looks for a "clean" float32: two neighbouring registers that read, in `ABCD` or `CDAB`
+order, as a float of a sensible size with at most 5 significant digits, or 6 with at most 2
+decimals, such as 52.3, 0.5, 100 or 1013.25.
 
 When the check finds one, the tag is flagged. Its Name cell shows the warning icon, and its tooltip
 names the 32-bit reading, for example "HR 110-111 read as float32 CDAB give 52.3". The app then asks
@@ -385,6 +386,9 @@ The check has limits:
   detected.
 - Halves of an `int32` value cannot be told apart from two separate 16-bit registers, so they are
   not detected.
+- Only the word orders `ABCD` and `CDAB` are checked. With the byte-swapped orders (`BADC`, `DCBA`),
+  ordinary small numbers next to an empty register would read as clean floats (63 and 0 read as
+  0.5), so a device that byte-swaps its floats is not checked.
 
 Tags that were never checked write normally.
 

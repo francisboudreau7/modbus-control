@@ -124,7 +124,9 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
             if (role == Qt::ToolTipRole) {
                 const QString note = m_encodingNotes.value(t.id);
                 if (!note.isEmpty())
-                    return note;
+                    return tr("%1: this register is probably half of a 32-bit value. Right-click > "
+                              "Detect encoding... to fix it; writes ask first.")
+                        .arg(note);
                 return tr("This register may be half of a 32-bit value. Right-click > Detect encoding... "
                           "to check it; writes ask first.");
             }

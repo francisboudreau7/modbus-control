@@ -1780,9 +1780,11 @@ private slots:
         QCOMPARE(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString(),
                  QStringLiteral("This register may be half of a 32-bit value. Right-click > Detect "
                                 "encoding... to check it; writes ask first."));
-        QVERIFY(m.setEncodingNote(1, QStringLiteral("Reads 0x4120 with HR 111.")));
+        QVERIFY(m.setEncodingNote(1, QStringLiteral("HR 110-111 read as float32 CDAB give 52.3")));
         QCOMPARE(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString(),
-                 QStringLiteral("Reads 0x4120 with HR 111."));
+                 QStringLiteral("HR 110-111 read as float32 CDAB give 52.3: this register is probably half "
+                                "of a 32-bit value. Right-click > Detect encoding... to fix it; writes ask "
+                                "first."));
 
         // Verified 16-bit tag: no icon, no tooltip.
         QVERIFY(!m.data(ix(m, 1, C::Name), Qt::DecorationRole).isValid());

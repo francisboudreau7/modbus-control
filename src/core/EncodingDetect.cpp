@@ -368,8 +368,20 @@ bool currentEncodingSuspicious(const Tag &tag, const EncodingResult &result)
     return false;
 }
 
-// Contract: "at most 5 significant digits", with 1013.25 (6 digits) listed as clean; see report.
-constexpr int kSplitMaxDigits = 6;
+// A "clean" float for the split check: at most 5 significant digits, or 6 with at most 2
+// decimals (1013.25). Measured on separate int16 neighbours (word orders only): 0 % for small or
+// signed values and for a value next to an empty register, about 0.5 % for Siemens-style raw
+// values 0..27648 (6 digits with any decimals: 1 %; all four orders: up to 8.6 %).
+bool cleanForSplit(float f, int digits)
+{
+    if (digits <= 5)
+        return true;
+    if (digits > 6)
+        return false;
+    // Decimals of the shortest form: digits after the decimal point = digits - 1 - exponent.
+    const int exponent = static_cast<int>(std::floor(std::log10(std::fabs(static_cast<double>(f)))));
+    return digits - 1 - exponent <= 2;
+}
 
 std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
                                            std::optional<quint16> below,
@@ -396,7 +408,7 @@ std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
         const Pair &p = pairs[i];
         if (p.r0 == 0 && p.r1 == 0)
             continue;
-        for (ByteOrder order : kOrders) {
+        for (ByteOrder order : {ByteOrder::ABCD, ByteOrder::CDAB}) {
             Tag t;
             t.type = ValueType::Float32;
             t.byteOrder = order;
@@ -407,7 +419,7 @@ std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
             if (a < 1e-3 || a > 1e7)
                 continue;
             const int digits = significantDigits(f);
-            if (digits > kSplitMaxDigits)
+            if (!cleanForSplit(f, digits))
                 continue;
             if (!best || digits < best->digits)
                 best = SplitValue{p.address, {ValueType::Float32, order}, static_cast<double>(f),

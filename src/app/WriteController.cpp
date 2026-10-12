@@ -265,10 +265,11 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
                                       .arg(tag.area == Area::InputRegister ? QStringLiteral("IR")
                                                                            : QStringLiteral("HR"))
                                       .arg(tag.address + base);
-            text = tr("'%1' is probably half of a 32-bit value: %2 Writing a 16-bit value there "
-                      "changes half of that value, and the device then reads a wrong number.")
-                       .arg(tag.name, note.isEmpty() ? tr("%1 may be half of a 32-bit value.").arg(regNo)
-                                                     : note);
+            const QString risk = tr("Writing a 16-bit value there changes half of that value, and "
+                                    "the device then reads a wrong number.");
+            text = note.isEmpty()
+                       ? tr("'%1' (%2) may be half of a 32-bit value. %3").arg(tag.name, regNo, risk)
+                       : tr("'%1' is probably half of a 32-bit value: %2. %3").arg(tag.name, note, risk);
         }
         switch (m_confirmEncoding(text)) {
         case EncodingAnswer::Confirm:

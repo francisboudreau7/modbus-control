@@ -71,8 +71,7 @@ class TagTableModel;
 /// - nullopt: nothing to do (a flagged tag checked again by detectNow becomes verified, note
 ///   cleared, message "'X' (HR 110) looks like a 16-bit value: no float32 found around it.").
 /// - a SplitValue: setEncodingVerified(false), setEncodingNote("HR 110-111 read as float32 CDAB
-///   give 52.3: this register is probably half of a 32-bit value. Right-click > Detect
-///   encoding... to fix it; writes ask first."), then the split prompt (seam; one prompt or
+///   give 52.3") (value: 7 significant digits), then the split prompt (seam; one prompt or
 ///   dialog open at a time, others wait in the same queue): "'Setpoint' (HR 110, int16) reads
 ///   13107, but HR 110-111 read as float32 CDAB give 52.3: this tag is probably half of a float32
 ///   value." with the answers Change ("Change to float32 CDAB at HR 110": setLayout(id, start,

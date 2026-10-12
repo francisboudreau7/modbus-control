@@ -53,7 +53,9 @@ namespace mb {
 /// are blocked until it is confirmed." Changing ByteOrder by hand to a different value (setData)
 /// sets encodingVerified to true (the user chose it); editing Type leaves it as it is.
 /// A 16-bit tag with encodingVerified false (flagged as probably half of a 32-bit value) shows the
-/// same icon; its Name ToolTipRole is its encoding note (setEncodingNote) or, without one, "This
+/// same icon; its Name ToolTipRole is "<note>: this register is probably half of a 32-bit value.
+/// Right-click > Detect encoding... to fix it; writes ask first." with its encoding note
+/// (setEncodingNote, e.g. "HR 110-111 read as float32 CDAB give 52.3"), or without one "This
 /// register may be half of a 32-bit value. Right-click > Detect encoding... to check it; writes
 /// ask first."
 class TagTableModel : public QAbstractTableModel
@@ -116,7 +118,8 @@ public:
     /// Sets only encodingVerified (the live value is kept: decoding is unchanged). Emits
     /// dataChanged for the Name cell and tagsEdited() when it changed. False for an unknown id.
     bool setEncodingVerified(TagId id, bool verified);
-    /// Tooltip note of a flagged tag (not saved; empty = the default text). Setting
+    /// What a flagged 16-bit tag was found to be part of, as a phrase without a final period
+    /// ("HR 110-111 read as float32 CDAB give 52.3"; not saved; empty = none). Setting
     /// encodingVerified to true, or any edit of the tag's Area/Address/Type, clears it. Emits
     /// dataChanged for the Name cell only. False for an unknown id.
     bool setEncodingNote(TagId id, const QString &note);

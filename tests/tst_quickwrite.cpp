@@ -825,14 +825,14 @@ private slots:
         Rig r;
         setup(r);
         r.model.setEncodingVerified(4, false);
-        r.model.setEncodingNote(4, QStringLiteral("Reads 0x4120 next to HR 201."));
+        r.model.setEncodingNote(4, QStringLiteral("HR 200-201 read as float32 ABCD give 10"));
         r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 1);
         QCOMPARE(r.encodingPrompts.at(0),
-                 QStringLiteral("'Plain' is probably half of a 32-bit value: Reads 0x4120 next to HR 201. "
-                                "Writing a 16-bit value there changes half of that value, and the device "
-                                "then reads a wrong number."));
+                 QStringLiteral("'Plain' is probably half of a 32-bit value: HR 200-201 read as float32 "
+                                "ABCD give 10. Writing a 16-bit value there changes half of that value, and "
+                                "the device then reads a wrong number."));
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.confirms.isEmpty());
         QVERIFY(r.warns.isEmpty());
@@ -843,15 +843,15 @@ private slots:
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 2);
         QCOMPARE(r.encodingPrompts.at(1),
-                 QStringLiteral("'Plain' is probably half of a 32-bit value: HR 200 may be half of a 32-bit "
-                                "value. Writing a 16-bit value there changes half of that value, and the "
-                                "device then reads a wrong number."));
+                 QStringLiteral("'Plain' (HR 200) may be half of a 32-bit value. Writing a 16-bit value "
+                                "there changes half of that value, and the device then reads a wrong "
+                                "number."));
 
         // Address base 1: the register is shown as HR 201
         r.model.setAddressBase(1);
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 3);
-        QVERIFY(r.encodingPrompts.at(2).contains(QStringLiteral("HR 201 may be half of a 32-bit value.")));
+        QVERIFY(r.encodingPrompts.at(2).contains(QStringLiteral("'Plain' (HR 201) may be half of a 32-bit value.")));
         QCOMPARE(r.writes->size(), 0);
     }
 

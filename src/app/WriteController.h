@@ -36,11 +36,12 @@ class TagTableModel;
 ///    stops (nothing written). Cancel: stops. requestWriteSelection asks once for all
 ///    unverified tags of the selection (one prompt listing them; Confirm marks them all).
 ///    A 16-bit tag with encodingVerified false (flagged as probably half of a 32-bit value) gets
-///    the same prompt and buttons with the text "'X' is probably half of a 32-bit value: <note>
+///    the same prompt and buttons with the text "'X' is probably half of a 32-bit value: <note>.
 ///    Writing a 16-bit value there changes half of that value, and the device then reads a wrong
-///    number." where <note> is TagTableModel::encodingNote(id), or "HR 110 may be half of a 32-bit
-///    value." without one. "Confirm and continue" here means "it really is 16-bit". After the
-///    dialogs, a tag that became unverified meanwhile (any width) is not written;
+///    number." where <note> is TagTableModel::encodingNote(id); without a note: "'X' (HR 110) may
+///    be half of a 32-bit value. Writing ..." (same ending). "Confirm and continue" here means "it
+///    really is 16-bit". After the dialogs, a tag that became unverified meanwhile (any width) is
+///    not written;
 /// 4. encodeRegisters() fails (out of the type's range) -> warning;
 /// 5. float32 tag whose current value is implausible (not finite, |x| > 1e9, or
 ///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning that
@@ -133,7 +134,7 @@ private:
     /// FC16 rejected: true = "Use FC06 only and reconnect". Replaceable in tests.
     std::function<bool(const QString &text)> m_offerSingleWrites;
     /// True when the tag still exists with exactly this configuration (encodingVerified aside),
-    /// and, for a 32-bit tag, its encoding is confirmed now.
+    /// and its encoding is confirmed now (encodingVerified true, any width).
     bool stillSame(const Tag &tag) const;
     quint64 m_nextRequest = 1;
     QHash<quint64, QList<TagId>> m_pending;
