@@ -19,11 +19,12 @@ class TstAppController; // test access to the dialog seams
 
 namespace mb {
 
+class EncodingMonitor;
 class MainWindow;
 class WriteController;
 
-/// Application logic. Owns the PollWorker (on its own QThread), the Recorder and the
-/// WriteController, and wires them to the MainWindow:
+/// Application logic. Owns the PollWorker (on its own QThread), the Recorder, the
+/// WriteController and the EncodingMonitor (32-bit encoding detection), and wires them to the MainWindow:
 /// - ConnectionBar connect/disconnect -> PollWorker; state -> bar, status label, writes.
 /// - samplesReady -> Recorder::append + TagTableModel::updateSamples; a 10 Hz timer calls
 ///   TrendPlot::refresh and CursorPanel::refresh (only when new rows arrived).
@@ -135,6 +136,7 @@ private:
     QThread *m_thread = nullptr;
     PollWorker *m_worker = nullptr;
     WriteController *m_writes = nullptr;
+    EncodingMonitor *m_encoding = nullptr;
     Recorder m_recorder;
     QTimer *m_refreshTimer = nullptr;
     QString m_projectPath;

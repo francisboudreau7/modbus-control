@@ -94,12 +94,44 @@ private:
     std::function<bool(const QString &text)> m_reviewPrompt;
 
     // Implementation-defined; the task may change the private section freely.
+    static constexpr int kMaxReadings = 10; ///< recent readings kept per 32-bit tag
+    static constexpr int kCheckBatches = 10; ///< on-connect check gives up on silent tags after this
+
+    /// An encoding dialog to run. `tag` is the configuration when it was requested.
+    struct Request {
+        TagId id = 0;
+        Tag tag;
+        quint64 epoch = 0;
+        friend bool operator==(const Request &a, const Request &b) { return a.id == b.id; }
+    };
+
+    const Tag *findTag(TagId id) const;
+    /// The tag still exists, is 32-bit and sits at the same area/address as `request.tag`.
+    bool stillValid(const Request &request) const;
+    bool awaitingDialog(TagId id) const;
+    void enqueue(TagId id);
+    void pump();
+    void runRequest(const Request &request);
+    void applyChoice(const Request &request, const EncodingDialog &dialog);
+    void evaluatePending(TagId id);
+    void runConnectCheck();
+    void finishPending(TagId id);
+    QList<RegisterPair> recent(TagId id, int count) const;
+    static QString valueText(double value, const Tag &tag);
+
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
     bool m_connected = false;
+    quint64 m_epoch = 0; ///< bumped when the whole tag list is replaced
     QHash<TagId, Tag> m_snapshot;
     QSet<TagId> m_pending;
+    QHash<TagId, int> m_collected; ///< Good readings of a pending tag since it became pending
     QHash<TagId, QList<RegisterPair>> m_readings;
+    QList<Request> m_queue;
+    EncodingDialog *m_openDialog = nullptr;
+    TagId m_openId = 0;
+    bool m_checkActive = false;
+    int m_checkBatches = 0;
 };
 
 } // namespace mb

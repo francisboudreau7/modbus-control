@@ -4,6 +4,7 @@
 #include "AnalysisView.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
+#include "EncodingMonitor.h"
 #include "ExportCsvDialog.h"
 #include "ExportImageDialog.h"
 #include "MainWindow.h"
@@ -147,6 +148,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     m_window->analysisView()->setRecorder(&m_recorder);
 
     m_writes = new WriteController(m_window->tagModel(), m_window, this);
+    m_encoding = new EncodingMonitor(m_window->tagModel(), m_window, this);
 
     // Dialog seams (tests replace them): the real dialogs.
     m_prompts.question = [this](const QString &title, const QString &text,
@@ -177,6 +179,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     // Every start: last connection settings and the demo tags, as an unmodified Untitled project.
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags(demoTags(), 12);
+    m_encoding->onTagsReplaced();
     pushTags();
     // Analysis of the Lag step: the controller output step (deltaCo) is the Setpoint (HR 100, id 8).
     AnalysisSettings analysis;
@@ -236,6 +239,7 @@ void AppController::wireConnection()
     connect(bar, &ConnectionBar::settingsEdited, this, [this] { setModified(true); });
 
     connect(m_worker, &PollWorker::stateChanged, this, [this](ConnectionState state, const QString &detail) {
+        const bool wasConnected = m_state == ConnectionState::Connected;
         m_state = state;
         m_window->connectionBar()->setState(state, detail);
         m_window->setConnectionStatus(state, detail);
@@ -246,6 +250,10 @@ void AppController::wireConnection()
             m_dropSamples = false;
             m_window->tagModel()->clearLiveValues();
         }
+        if (state == ConnectionState::Connected)
+            m_encoding->onConnected();
+        else if (wasConnected)
+            m_encoding->onDisconnected();
     });
     connect(m_worker, &PollWorker::message, this,
             [this](const QString &text) { m_window->showStatusMessage(text); });
@@ -261,11 +269,15 @@ void AppController::wireData()
         m_recorder.append(shifted);
         // A batch decoded with the previous tag configuration must not refresh the table's
         // live values (they vouch for 32-bit writes): wait until the worker has the new tags.
-        if (m_tagsApplied == m_tagsGeneration)
+        const bool accepted = m_tagsApplied == m_tagsGeneration;
+        if (accepted)
             m_window->tagModel()->updateSamples(shifted);
         if (m_sessionLoaded)
             m_sessionDirty = true;
         m_newData = true;
+        // Last: it may open a modal dialog (the event loop then keeps delivering samples).
+        if (accepted)
+            m_encoding->onSamples(batch);
     });
     connect(m_worker, &PollWorker::timeBaseReset, this,
             [this](const QDateTime &wall) { onTimeBaseReset(wall); });
@@ -331,6 +343,7 @@ void AppController::wireTags()
     connect(m_window->tagModel(), &TagTableModel::tagsEdited, this, [this] {
         pushTags();
         setModified(true);
+        m_encoding->onTagsChanged();
     });
     // The visible columns are saved in the project.
     connect(m_window->tagTable(), &TagTableWidget::hiddenColumnsChanged, this,
@@ -346,6 +359,12 @@ void AppController::wireWrites()
             Qt::QueuedConnection);
     connect(m_worker, &PollWorker::writeFinished, m_writes, &WriteController::onWriteFinished);
     connect(m_writes, &WriteController::message, this,
+            [this](const QString &text) { m_window->showStatusMessage(text); });
+    connect(m_window->tagTable(), &TagTableWidget::detectEncodingRequested, m_encoding,
+            &EncodingMonitor::detectNow);
+    connect(m_writes, &WriteController::detectEncodingRequested, m_encoding,
+            &EncodingMonitor::detectNow);
+    connect(m_encoding, &EncodingMonitor::message, this,
             [this](const QString &text) { m_window->showStatusMessage(text); });
 }
 
@@ -476,6 +495,7 @@ void AppController::applyProject(const Project &project)
     disconnectForProjectChange();
     m_window->connectionBar()->setSettings(project.connection);
     m_window->tagModel()->setTags(project.tags, project.nextTagId);
+    m_encoding->onTagsReplaced();
     setAddressBase(project.addressBase);
     pushTags();
     m_window->analysisView()->setSettings(project.analysis);
@@ -535,6 +555,7 @@ void AppController::newProject()
     disconnectForProjectChange();
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags({}, 1);
+    m_encoding->onTagsReplaced();
     setAddressBase(0);
     pushTags();
     m_window->analysisView()->setSettings(AnalysisSettings{});
