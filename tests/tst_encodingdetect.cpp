@@ -198,6 +198,44 @@ private slots:
         QVERIFY(!currentEncodingSuspicious(truth, detectEncoding(truth, readings)));
     }
 
+    // A fast signal around 0 (the test server's float sine: amplitude 123.456, period 5 s), seen
+    // through only 3 readings at the poll period, from every phase of a period and in every byte
+    // order: the right encoding is Clear, and a wrong float order is flagged on connect.
+    void fastSineThreeReadings_data()
+    {
+        QTest::addColumn<int>("order");
+        QTest::addColumn<double>("pollS");
+        const char *names[] = {"ABCD", "CDAB", "BADC", "DCBA"};
+        for (int o = 0; o < 4; ++o) {
+            QTest::newRow(qPrintable(QStringLiteral("%1 100ms").arg(names[o]))) << o << 0.1;
+            QTest::newRow(qPrintable(QStringLiteral("%1 200ms").arg(names[o]))) << o << 0.2;
+        }
+    }
+
+    void fastSineThreeReadings()
+    {
+        QFETCH(int, order);
+        QFETCH(double, pollS);
+        const Encoding truthEnc{ValueType::Float32, ByteOrder(order)};
+        const Tag truth = makeTag(ValueType::Float32, ByteOrder(order));
+        const Tag wrong = makeTag(ValueType::Float32, ByteOrder((order + 1) % 4));
+        constexpr double kPi = 3.14159265358979323846;
+        for (int start = 0; start < 50; ++start) {
+            QList<RegisterPair> readings;
+            for (int i = 0; i < 3; ++i) {
+                const double t = 0.013 + (start + i) * pollS; // never exactly on a zero crossing
+                readings.append(regsFor(truth, 123.456 * std::sin(2 * kPi * t / 5.0)));
+            }
+            const EncodingResult res = detectEncoding(wrong, readings);
+            const QString where = QStringLiteral("start %1").arg(start);
+            if (res.verdict == EncodingVerdict::Undecidable)
+                continue; // all three readings exactly 0 cannot happen, but be safe
+            QVERIFY2(res.verdict == EncodingVerdict::Clear, qPrintable(where));
+            QVERIFY2(*res.best == truthEnc, qPrintable(where + QStringLiteral(": ") + toString(*res.best)));
+            QVERIFY2(currentEncodingSuspicious(wrong, res), qPrintable(where));
+        }
+    }
+
     // 3. int32 100 in ABCD.
     void int32Ambiguous()
     {

@@ -35,10 +35,12 @@ quint16 swapBytes(quint16 r)
 // reads all the time (the high word of a float is often 0), so a "nice" float must beat them
 // by the 0.25 margin required for a Clear verdict.
 // The base score is the mean of the non-neutral readings. It is multiplied by a smoothness
-// factor: for each pair of consecutive non-neutral readings that differ, the relative jump
-// r = |a - b| / max(|a|, |b|) gives f = 1 for r <= 0.25, falling linearly to 0 at r >= 1; the
-// factor is the mean of f over those pairs (1 when no pair differs). A wrong word order makes
-// the low word dominate and the series jumps about, so it is crushed here.
+// factor: for each pair of consecutive non-neutral readings that differ, the change of
+// magnitude q = |log10(|b| / |a|)| gives f = 1 for q <= 1 (within a factor of 10), falling
+// linearly to 0 at q >= 3 (a factor of 1000); the factor is the mean of f over those pairs (1 when
+// no pair differs). A wrong byte order puts low-order bits in the exponent or the high word, so
+// its magnitude jumps by orders of magnitude and it is crushed here. A real signal may change
+// sign or swing widely around zero (5 -> -10 is a 150 % change), so relative change is not used.
 // A candidate whose readings are all neutral (all zero) scores 0.5.
 // A group's score is the best score of its members.
 
@@ -86,9 +88,8 @@ double smoothness(const QList<double> &v)
         const double b = v[i];
         if (a == 0.0 || b == 0.0 || !std::isfinite(a) || !std::isfinite(b) || a == b)
             continue;
-        const double m = std::max(std::fabs(a), std::fabs(b));
-        const double r = std::fabs(a - b) / m;
-        sum += r <= 0.25 ? 1.0 : std::max(0.0, 1.0 - (r - 0.25) / 0.75);
+        const double q = std::fabs(std::log10(std::fabs(b) / std::fabs(a)));
+        sum += q <= 1.0 ? 1.0 : std::max(0.0, 1.0 - (q - 1.0) / 2.0);
         ++n;
     }
     return n == 0 ? 1.0 : sum / n;

@@ -57,8 +57,9 @@ struct EncodingCandidate {
     /// float32: not finite, |x| > 1e9 or 0 < |x| < 1e-6 (decoded value before scaling) makes a
     /// reading implausible; 1e-3 <= |x| <= 1e6 is good; a short shortest-round-trip decimal
     /// (<= 4 significant digits) adds a small bonus. int32/uint32: |x| <= 1e6 good, up to 1e9
-    /// weak, beyond implausible. Across readings: values that change must change smoothly (a
-    /// wrong word order makes the low word dominate: large relative jumps lower the score).
+    /// weak, beyond implausible. Across readings: consecutive values whose magnitude changes by
+    /// more than a factor of 10 lower the score (to 0 at a factor of 1000): a wrong byte order puts
+    /// low-order bits in the exponent or high word. Sign changes and swings around 0 are fine.
     /// A value of exactly 0 is neutral.
     double score = 0.0;
     /// Set only when a display value was given: whether a value of this candidate (the latest
