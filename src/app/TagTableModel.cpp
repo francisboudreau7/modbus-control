@@ -114,13 +114,20 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     switch (index.column()) {
     case Name:
         if (disp || edit) return t.name;
-        if (is32 && !t.encodingVerified) {
+        if (!t.encodingVerified) {
             if (role == Qt::DecorationRole)
                 return QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning);
-            if (role == Qt::ToolTipRole)
+            if (role == Qt::ToolTipRole && is32)
                 return tr("Encoding not confirmed (%1). Right-click > Detect encoding... to check it; "
                           "writes are blocked until it is confirmed.")
                     .arg(toString(encodingOf(t)));
+            if (role == Qt::ToolTipRole) {
+                const QString note = m_encodingNotes.value(t.id);
+                if (!note.isEmpty())
+                    return note;
+                return tr("This register may be half of a 32-bit value. Right-click > Detect encoding... "
+                          "to check it; writes ask first.");
+            }
         }
         break;
     case Area:
@@ -256,6 +263,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
 
     bool writableCleared = false;
     bool rowChanged = false;
+    // A note describes the register's current use: any edit of where it is or what it is clears it.
+    const bool placementChanged = col == Area || col == Address || col == Type;
     switch (col) {
     case Name: {
         const QString n = value.toString().trimmed();
@@ -303,8 +312,10 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     case ByteOrder: {
         mb::ByteOrder order = mb::ByteOrder::ABCD;
         if (registerCount(t.type) != 2 || !parseByteOrder(value.toString(), order)) return false;
-        if (order != t.byteOrder)
+        if (order != t.byteOrder) {
             t.encodingVerified = true; // the user chose another byte order
+            m_encodingNotes.remove(t.id);
+        }
         t.byteOrder = order;
         break;
     }
@@ -390,10 +401,15 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     if (decodingChanged && m_live.remove(t.id))
         emitLiveChanged(index.row(), index.row(),
                         {Qt::DisplayRole, Qt::ForegroundRole, Qt::ToolTipRole});
+    const bool noteCleared = placementChanged && m_encodingNotes.remove(t.id);
     if (rowChanged)
         emit dataChanged(this->index(index.row(), 0), this->index(index.row(), ColumnCount - 1));
     else
         emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole, Qt::DecorationRole});
+    if (noteCleared) {
+        const QModelIndex n = this->index(index.row(), Name);
+        emit dataChanged(n, n, {Qt::DecorationRole, Qt::ToolTipRole});
+    }
     if (writableCleared) {
         const QModelIndex i = this->index(index.row(), Writable);
         emit dataChanged(i, i, {Qt::CheckStateRole});
@@ -483,8 +499,10 @@ bool TagTableModel::removeRows(int row, int count, const QModelIndex &parent)
     if (parent.isValid() || count <= 0 || row < 0 || row + count > m_tags.size())
         return false;
     beginRemoveRows(QModelIndex(), row, row + count - 1);
-    for (int i = row; i < row + count; ++i)
+    for (int i = row; i < row + count; ++i) {
         m_live.remove(m_tags.at(i).id);
+        m_encodingNotes.remove(m_tags.at(i).id);
+    }
     m_tags.remove(row, count);
     endRemoveRows();
     emit tagsEdited();
@@ -496,6 +514,7 @@ void TagTableModel::setTags(const QList<Tag> &tags, TagId nextTagId)
     beginResetModel();
     m_tags = tags;
     m_live.clear();
+    m_encodingNotes.clear();
     TagId next = nextTagId;
     for (const Tag &t : tags)
         next = std::max<TagId>(next, t.id + 1);
@@ -566,6 +585,8 @@ bool TagTableModel::setEncoding(TagId id, ValueType type, mb::ByteOrder order, b
     t.type = type;
     t.byteOrder = order;
     t.encodingVerified = verified;
+    if (verified)
+        m_encodingNotes.remove(t.id);
     // Decoding changed: the last reading must not vouch for a write (see setData).
     if (encodingChanged)
         m_live.remove(t.id);
@@ -580,12 +601,64 @@ bool TagTableModel::setEncodingVerified(TagId id, bool verified)
     if (row < 0)
         return false;
     Tag &t = m_tags[row];
+    if (verified)
+        m_encodingNotes.remove(id);
     if (t.encodingVerified == verified)
         return true;
     t.encodingVerified = verified;
     const QModelIndex name = index(row, Name);
     emit dataChanged(name, name, {Qt::DecorationRole, Qt::ToolTipRole});
     emit tagsEdited();
+    return true;
+}
+
+bool TagTableModel::setEncodingNote(TagId id, const QString &note)
+{
+    const int row = rowOf(id);
+    if (row < 0)
+        return false;
+    if (note.isEmpty())
+        m_encodingNotes.remove(id);
+    else
+        m_encodingNotes.insert(id, note);
+    const QModelIndex name = index(row, Name);
+    emit dataChanged(name, name, {Qt::DecorationRole, Qt::ToolTipRole});
+    return true;
+}
+
+QString TagTableModel::encodingNote(TagId id) const
+{
+    return m_encodingNotes.value(id);
+}
+
+bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::ByteOrder order, bool verified)
+{
+    const int row = rowOf(id);
+    if (row < 0)
+        return false;
+    Tag &t = m_tags[row];
+    Tag probe = t;
+    probe.address = address;
+    probe.type = type;
+    if (!probe.fitsAddressSpace())
+        return false;
+
+    const bool decodingChanged = t.address != address || t.type != type || t.byteOrder != order;
+    const bool verifiedChanged = t.encodingVerified != verified;
+    const bool noteRemoved = m_encodingNotes.remove(id);
+    if (!decodingChanged && !verifiedChanged && !noteRemoved)
+        return true;
+
+    t.address = address;
+    t.type = type;
+    t.byteOrder = order;
+    t.encodingVerified = verified;
+    // The last reading was decoded with the old layout (see setData).
+    if (decodingChanged)
+        m_live.remove(id);
+    emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+    if (decodingChanged || verifiedChanged)
+        emit tagsEdited();
     return true;
 }
 
@@ -710,19 +783,3 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
-
-// Stubs created by T160; implemented by T164.
-bool mb::TagTableModel::setEncodingNote(TagId, const QString &)
-{
-    return false;
-}
-
-QString mb::TagTableModel::encodingNote(TagId) const
-{
-    return {};
-}
-
-bool mb::TagTableModel::setLayout(TagId, quint16, ValueType, mb::ByteOrder, bool)
-{
-    return false;
-}

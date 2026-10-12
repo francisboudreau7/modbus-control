@@ -691,11 +691,12 @@ private slots:
         QCOMPARE(r.encodingPrompts.size(), 0);
         QCOMPARE(r.writes->size(), 1);
 
-        // 16-bit tag with encodingVerified false (should not happen): no prompt
+        // 16-bit tag flagged as half of a 32-bit value: prompt (see flagged16Bit*)
         Rig n;
         setup(n, false);
+        n.encodingAnswer = WriteController::EncodingAnswer::Confirm;
         n.wc->requestWrite(4, 12.0);
-        QCOMPARE(n.encodingPrompts.size(), 0);
+        QCOMPARE(n.encodingPrompts.size(), 1);
         QCOMPARE(n.writes->size(), 1);
     }
 
@@ -814,6 +815,171 @@ private slots:
         QVERIFY(r.warns.at(0).contains("Setpoint"));
         QCOMPARE(r.encodingPrompts.size(), 0);
         QCOMPARE(r.writes->size(), 0);
+    }
+
+    // ---- check 3b for 16-bit tags flagged as probably half of a 32-bit value ----
+
+    // "Plain" (UInt16 HR 200, no limits) flagged: the prompt names the note, else the default.
+    void flagged16BitPromptText()
+    {
+        Rig r;
+        setup(r);
+        r.model.setEncodingVerified(4, false);
+        r.model.setEncodingNote(4, QStringLiteral("Reads 0x4120 next to HR 201."));
+        r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QCOMPARE(r.encodingPrompts.at(0),
+                 QStringLiteral("'Plain' is probably half of a 32-bit value: Reads 0x4120 next to HR 201. "
+                                "Writing a 16-bit value there changes half of that value, and the device "
+                                "then reads a wrong number."));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+        QVERIFY(r.warns.isEmpty());
+        QVERIFY(!r.model.tagAt(r.model.rowOf(4)).encodingVerified);
+
+        // No note: the default text with the register number
+        r.model.setEncodingNote(4, QString());
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QCOMPARE(r.encodingPrompts.at(1),
+                 QStringLiteral("'Plain' is probably half of a 32-bit value: HR 200 may be half of a 32-bit "
+                                "value. Writing a 16-bit value there changes half of that value, and the "
+                                "device then reads a wrong number."));
+
+        // Address base 1: the register is shown as HR 201
+        r.model.setAddressBase(1);
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 3);
+        QVERIFY(r.encodingPrompts.at(2).contains(QStringLiteral("HR 201 may be half of a 32-bit value.")));
+        QCOMPARE(r.writes->size(), 0);
+    }
+
+    // Cancel writes nothing, Detect emits once and writes nothing, Confirm verifies and writes.
+    void flagged16BitCancelDetectConfirm()
+    {
+        Rig r;
+        setup(r);
+        r.model.setEncodingVerified(4, false);
+        QSignalSpy detects(r.wc.get(), &WriteController::detectEncodingRequested);
+
+        r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(detects.size(), 0);
+
+        r.encodingAnswer = WriteController::EncodingAnswer::Detect;
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QCOMPARE(detects.size(), 1);
+        QCOMPARE(detects.at(0).at(0).value<TagId>(), TagId(4));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+        QVERIFY(r.warns.isEmpty());
+
+        r.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 3);
+        QCOMPARE(r.confirms.size(), 1); // the normal confirmation follows
+        QCOMPARE(r.writes->size(), 1);
+        QCOMPARE(detects.size(), 1);
+        QVERIFY(r.model.tagAt(r.model.rowOf(4)).encodingVerified);
+
+        // Now verified: no more prompt
+        r.wc->requestWrite(4, 13.0);
+        QCOMPARE(r.encodingPrompts.size(), 3);
+        QCOMPARE(r.writes->size(), 2);
+    }
+
+    // An unflagged 16-bit tag gets no prompt.
+    void unflagged16BitNoPrompt()
+    {
+        Rig r;
+        setup(r);
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.encodingPrompts.size(), 0);
+        QCOMPARE(r.writes->size(), 1);
+    }
+
+    // A selection with a flagged 16-bit tag gets one prompt that names it.
+    void flagged16BitSelectionOnePrompt()
+    {
+        Rig r;
+        setup(r); // Setpoint HR 101 (16-bit), Flow HR 102-103 (float32), Next HR 104 (16-bit)
+        r.model.setEncodingVerified(1, false);
+        feed(r, 2, 52.3);
+        int asked = 0;
+        r.wc->m_askValues = [&](const QList<Tag> &, const QList<double> &) {
+            ++asked;
+            return std::optional<QList<double>>(QList<double>{50.0, 20.0, 7.0});
+        };
+
+        r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(asked, 1);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QVERIFY(r.encodingPrompts.at(0).contains(QStringLiteral("'Setpoint' (probably half of a 32-bit value)")));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+
+        r.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QCOMPARE(r.confirms.size(), 1);
+        QCOMPARE(r.writes->size(), 1);
+        QVERIFY(r.model.tagAt(r.model.rowOf(1)).encodingVerified);
+        QVERIFY(r.warns.isEmpty());
+    }
+
+    // A tag that becomes unverified while the confirmation is open is not written (any width).
+    void unverifiedDuringConfirmationNotWritten()
+    {
+        // 16-bit, single write
+        Rig r;
+        setup(r);
+        r.model.setEncodingVerified(4, false);
+        r.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        r.wc->m_confirm = [&r](const QString &) {
+            r.model.setEncodingVerified(4, false); // flagged again while the dialog is open
+            return true;
+        };
+        r.wc->requestWrite(4, 12.0);
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("'Plain'")));
+
+        // 32-bit, single write
+        Rig w;
+        setup(w);
+        feed(w, 2, 52.3);
+        w.model.setEncodingVerified(2, false);
+        w.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        w.wc->m_confirm = [&w](const QString &) {
+            w.model.setEncodingVerified(2, false);
+            return true;
+        };
+        w.wc->requestWrite(2, 20.0);
+        QCOMPARE(w.writes->size(), 0);
+        QCOMPARE(w.warns.size(), 1);
+        QVERIFY(w.warns.at(0).contains(QStringLiteral("'Flow'")));
+
+        // 16-bit, selection
+        Rig s;
+        setup(s);
+        s.model.setEncodingVerified(1, false);
+        feed(s, 2, 52.3);
+        s.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{50.0, 20.0, 7.0});
+        };
+        s.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        s.wc->m_confirm = [&s](const QString &) {
+            s.model.setEncodingVerified(1, false);
+            return true;
+        };
+        s.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(s.writes->size(), 0);
+        QCOMPARE(s.warns.size(), 1);
     }
 
     // A device without FC16 rejects a 32-bit write with exception 1: offer FC06 only.

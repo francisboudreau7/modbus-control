@@ -154,6 +154,7 @@ private:
     };
     QList<Tag> m_tags;
     QHash<TagId, Live> m_live;
+    QHash<TagId, QString> m_encodingNotes; ///< see setEncodingNote
     TagId m_nextId = 1;
     int m_addressBase = 0;
 };
