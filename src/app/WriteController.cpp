@@ -210,7 +210,11 @@ bool WriteController::stillSame(const Tag &tag) const
     if (row < 0)
         return false;
     // encodingVerified is not part of the configuration: confirming it must not abort a write.
+    // But a 32-bit tag that became unconfirmed meanwhile (e.g. the on-connect check flagged it
+    // while a confirmation was open) must not be written.
     Tag current = m_model->tagAt(row);
+    if (registerCount(current.type) == 2 && !current.encodingVerified)
+        return false;
     current.encodingVerified = tag.encodingVerified;
     return current == tag;
 }

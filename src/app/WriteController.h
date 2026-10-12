@@ -126,7 +126,8 @@ private:
     bool m_singleRegisterWrites = false;
     /// FC16 rejected: true = "Use FC06 only and reconnect". Replaceable in tests.
     std::function<bool(const QString &text)> m_offerSingleWrites;
-    /// True when the tag still exists with exactly this configuration.
+    /// True when the tag still exists with exactly this configuration (encodingVerified aside),
+    /// and, for a 32-bit tag, its encoding is confirmed now.
     bool stillSame(const Tag &tag) const;
     quint64 m_nextRequest = 1;
     QHash<quint64, QList<TagId>> m_pending;

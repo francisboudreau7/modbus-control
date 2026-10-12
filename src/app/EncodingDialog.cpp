@@ -149,8 +149,9 @@ QList<const Tag *> EncodingDialog::othersToChange() const
     const auto chosen = chosenEncoding();
     if (!chosen)
         return out;
+    // Only tags whose encoding is not confirmed: never change what the user set or confirmed.
     for (const Tag &t : m_others)
-        if (t.byteOrder != chosen->order)
+        if (!t.encodingVerified && t.byteOrder != chosen->order)
             out.append(&t);
     return out;
 }
@@ -180,7 +181,7 @@ void EncodingDialog::updateApplyOthers()
     if (todo.size() > kMaxNames)
         list += tr(" and %1 more").arg(todo.size() - kMaxNames);
     m_applyOthers->setText(
-        tr("Also use %1 for the other 32-bit tags: %2").arg(toString(chosen->order), list));
+        tr("Also use %1 for the other unconfirmed 32-bit tags: %2").arg(toString(chosen->order), list));
     m_applyOthers->setVisible(true);
 }
 
@@ -191,7 +192,11 @@ void EncodingDialog::onSelectionChanged()
         if (chosen)
             m_userChoice = chosen;
     }
-    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(selectedCandidate() >= 0);
+    // With a display value, only a matching row can be applied (NoMatch: none).
+    const int c = selectedCandidate();
+    const bool displayGiven = c >= 0 && m_result.candidates.at(c).matchesDisplay.has_value();
+    m_buttons->button(QDialogButtonBox::Ok)
+        ->setEnabled(c >= 0 && (!displayGiven || matchedDisplayValue()));
     updateApplyOthers();
 }
 
@@ -219,7 +224,10 @@ void EncodingDialog::rerank()
                 QStringLiteral("%1 %2: %3").arg(prefix).arg(first).arg(hex16(p.r0)));
     }
 
-    switch (m_result.verdict) {
+    const QString typed = m_display->text().trimmed();
+    if (!typed.isEmpty() && !parseDisplayValue(typed)) {
+        m_verdict->setText(tr("Can't read \"%1\" as a number: type it like 52.3.").arg(typed));
+    } else switch (m_result.verdict) {
     case EncodingVerdict::Clear:
         m_verdict->setText(
             m_result.best ? tr("%1 fits best.").arg(toString(*m_result.best)) : QString());

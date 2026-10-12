@@ -37,10 +37,13 @@ namespace mb {
 ///   value). With a display value, groups that do not match are listed after the matching ones.
 ///   Selection: single row; the best group is selected after each re-ranking unless the user
 ///   picked a row since (that choice is kept while its group exists).
-/// - "applyOthersCheck": "Also use <order> for the other 32-bit tags: A, B" (checked by default,
-///   hidden when there are no other 32-bit tags or they already all use that order); <order>
-///   follows the selected row.
-/// - OK ("Apply") enabled when a row is selected; Cancel.
+/// - "applyOthersCheck": "Also use <order> for the other unconfirmed 32-bit tags: A, B" (checked
+///   by default; lists only other tags whose encodingVerified is false and whose order differs;
+///   hidden when there are none); <order> follows the selected row.
+/// - OK ("Apply") enabled when a row is selected and, when a display value was given, that row
+///   matches it (so never on NoMatch); Cancel.
+/// - A display value that cannot be read as a number replaces the verdict sentence with
+///   "Can't read "<text>" as a number: type it like 52.3."
 class EncodingDialog : public QDialog
 {
     Q_OBJECT

@@ -176,7 +176,24 @@ std::optional<std::pair<double, double>> parseDisplayValue(const QString &text)
 {
     static const QRegularExpression re(
         QStringLiteral("^[+-]?(?:\\d+(?:[.,](\\d*))?|[.,](\\d+))(?:[eE]([+-]?\\d+))?$"));
-    const QString trimmed = text.trimmed();
+    QString trimmed = text.trimmed();
+    // Drop what follows the last digit (a unit), then spaces between digits ("1 013,25").
+    qsizetype last = trimmed.size() - 1;
+    while (last >= 0 && !trimmed.at(last).isDigit())
+        --last;
+    // A suffix that continues the number ("1e", "5.", "3-") is an incomplete number, not a unit.
+    const QString suffix = trimmed.mid(last + 1).trimmed();
+    if (!suffix.isEmpty() && QStringLiteral("eE+-.,").contains(suffix.at(0)))
+        return std::nullopt;
+    trimmed = trimmed.left(last + 1);
+    trimmed.remove(QLatin1Char(' '));
+    trimmed.remove(QChar(0x00A0));
+    trimmed.remove(QChar(0x202F));
+    // Both separators: the first one is for thousands.
+    const qsizetype dot = trimmed.indexOf(QLatin1Char('.'));
+    const qsizetype comma = trimmed.indexOf(QLatin1Char(','));
+    if (dot >= 0 && comma >= 0)
+        trimmed.remove(comma < dot ? QLatin1Char(',') : QLatin1Char('.'));
     const QRegularExpressionMatch m = re.match(trimmed);
     if (!m.hasMatch())
         return std::nullopt;

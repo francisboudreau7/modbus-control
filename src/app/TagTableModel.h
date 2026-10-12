@@ -50,8 +50,8 @@ namespace mb {
 /// Encoding: a 32-bit tag with encodingVerified false shows a warning icon (DecorationRole,
 /// QIcon from the style's SP_MessageBoxWarning) on its Name cell, and the Name ToolTipRole reads
 /// "Encoding not confirmed (float32 CDAB). Right-click > Detect encoding... to check it; writes
-/// are blocked until it is confirmed." Editing Type or ByteOrder by hand (setData) sets
-/// encodingVerified to true (the user chose it).
+/// are blocked until it is confirmed." Changing ByteOrder by hand to a different value (setData)
+/// sets encodingVerified to true (the user chose it); editing Type leaves it as it is.
 class TagTableModel : public QAbstractTableModel
 {
     Q_OBJECT

@@ -95,7 +95,10 @@ struct EncodingResult {
 };
 
 /// Parses a value typed from a device display: optional sign, digits, '.' or ',' as decimal
-/// separator, optional exponent; surrounding spaces allowed. Returns (value, tolerance) where
+/// separator, optional exponent; surrounding spaces allowed. Text after the last digit (a unit
+/// such as "°C" or "%") and spaces between digits are ignored; when both '.' and ',' appear, the
+/// one that comes first is a thousands separator ("1,013.25" and "1.013,25" are 1013.25; "1,013"
+/// alone is 1.013). Returns (value, tolerance) where
 /// tolerance = max(half a unit of the last typed digit, 0.5 % of |value|): "52.3" -> (52.3, 0.2615),
 /// "1013" -> (1013, 5.065), "0.05" -> (0.05, 0.005). nullopt if not a finite number.
 std::optional<std::pair<double, double>> parseDisplayValue(const QString &text);

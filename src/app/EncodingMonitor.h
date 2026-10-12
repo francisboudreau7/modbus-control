@@ -27,18 +27,23 @@ class TagTableModel;
 /// model emits tagsEdited() (the project becomes modified and the worker gets the new tags).
 ///
 /// Pending tags: after onTagsChanged(), a tag is pending when it is 32-bit and is new, was
-/// 16-bit before, or its area or address changed. A change of type among the 32-bit types or of
+/// 16-bit before, or its area or address changed. A tag becoming pending is marked unverified
+/// (setEncodingVerified(false)): its encoding is not confirmed until detection or the user
+/// confirms it, so writes to it ask first. A change of type among the 32-bit types or of
 /// byte order alone does not make it pending (that is the user's choice, or the monitor's own
 /// change), and removes it from the pending set. While connected, a pending tag collects its Good
 /// readings (deviceRegisters of each TagSample); after kReadings of them it runs detectEncoding
 /// with deviceOrder():
-/// - Clear: if the best encoding differs from the tag's, setEncoding(best, verified = false) and
-///   message "Detected float32 CDAB for 'X' (reads 52.3 °C). Confirm it before writing."; if it
-///   is the same, nothing changes. The tag stops being pending.
+/// - Clear, best == the tag's encoding: setEncodingVerified(true) (the readings confirm it).
+///   Clear, best differs and currentEncodingSuspicious(): setEncoding(best, verified = false) and
+///   message "Detected float32 CDAB for 'X' (reads 52.3 °C). Confirm it before writing.".
+///   Clear, best differs but the current encoding reads plausibly: handled as Ambiguous (ask).
+///   The tag stops being pending (except when asking, until the dialog closes).
 /// - Ambiguous: opens the EncodingDialog through the dialog seam (one dialog at a time; other
 ///   tags that become ambiguous meanwhile wait in a queue). Accepted: applies the chosen encoding
-///   (verified = true) and the byte order to applyOrderTo() tags (their encodingVerified is left
-///   as it is). Cancelled: the tag's encoding is kept; it stops being pending.
+///   (verified = true) and the byte order to applyOrderTo() tags (only unconfirmed tags are
+///   offered; they stay unverified). Cancelled: the tag's encoding is kept, still unverified; it
+///   stops being pending. NoMatch (only with a display value) ends pending the same way.
 /// - Undecidable: stays pending, keeps only the latest kReadings readings, and decides on the first
 ///   reading set that is not Undecidable.
 ///

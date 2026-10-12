@@ -296,16 +296,16 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         Tag probe = t;
         probe.type = nt;
         if (!probe.fitsAddressSpace()) return false;
-        t.type = nt;
-        t.encodingVerified = true; // the user chose the type
+        t.type = nt; // a guessed byte order stays to be confirmed
         rowChanged = true; // Raw, Value, ByteOrder and Writable all depend on the type
         break;
     }
     case ByteOrder: {
         mb::ByteOrder order = mb::ByteOrder::ABCD;
         if (registerCount(t.type) != 2 || !parseByteOrder(value.toString(), order)) return false;
+        if (order != t.byteOrder)
+            t.encodingVerified = true; // the user chose another byte order
         t.byteOrder = order;
-        t.encodingVerified = true; // the user chose the byte order
         break;
     }
     case Gain: {

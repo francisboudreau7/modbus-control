@@ -213,6 +213,46 @@ private slots:
         QCOMPARE(dialogs.size(), 1);
     }
 
+    // A new 32-bit tag is unconfirmed until detection has a result; readings that fit its own
+    // encoding confirm it.
+    void newTagUnconfirmedUntilReadingsAgree()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Sp"), 110, ValueType::Float32, ByteOrder::CDAB));
+        QVERIFY(mon->isPending(id));
+        QVERIFY(!tagOf(id).encodingVerified);
+        feedThree(id, kF_CDAB);
+        QVERIFY(!mon->isPending(id));
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(tagOf(id).byteOrder == ByteOrder::CDAB);
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(messages->isEmpty());
+    }
+
+    // Registers at 0 never decide: the tag stays pending and unconfirmed (writes ask first).
+    void zerosKeepTagUnconfirmed()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Sp"), 110, ValueType::Float32, ByteOrder::ABCD));
+        for (int i = 0; i < 6; ++i)
+            feedOne(id, kF_CDAB, 0.0);
+        QVERIFY(mon->isPending(id));
+        QVERIFY(!tagOf(id).encodingVerified);
+        QVERIFY(dialogs.isEmpty());
+    }
+
+    // A plausible current reading is not overridden: int32 17000 (0x0000 0x4268) also reads as
+    // float32 58.0 in CDAB order; the user decides.
+    void plausibleCurrentEncodingAsks()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Count"), 110, ValueType::Int32, ByteOrder::ABCD));
+        onDialog = [](EncodingDialog &) { return false; };
+        for (int i = 0; i < 3; ++i)
+            feedOne(id, kI_ABCD, 17000);
+        QCOMPARE(dialogs.size(), 1);
+        QVERIFY(tagOf(id).type == ValueType::Int32);
+        QVERIFY(tagOf(id).byteOrder == ByteOrder::ABCD);
+        QVERIFY(messages->isEmpty());
+    }
+
     void ambiguousCancelled()
     {
         const TagId id = add(mkTag(QStringLiteral("Counter"), 110, ValueType::Float32, ByteOrder::CDAB));
@@ -222,7 +262,7 @@ private slots:
         QCOMPARE(dialogs.size(), 1);
         QVERIFY(tagOf(id).type == ValueType::Float32);
         QVERIFY(tagOf(id).byteOrder == ByteOrder::CDAB);
-        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(!tagOf(id).encodingVerified); // still to be confirmed
         QVERIFY(!mon->isPending(id));
         for (int i = 0; i < 3; ++i)
             feedOne(id, kI_ABCD, 100);
@@ -467,14 +507,14 @@ private slots:
             return dlg.chosenEncoding() == std::optional<Encoding>(kF_CDAB);
         };
         mon->detectNow(1);
-        QCOMPARE(others.size(), 2);
+        QCOMPARE(others, QList<TagId>{2}); // only the unconfirmed tag is offered
         QVERIFY(tagOf(1).byteOrder == ByteOrder::CDAB);
         QVERIFY(tagOf(1).type == ValueType::Float32);
         QVERIFY(tagOf(1).encodingVerified);
         QVERIFY(tagOf(2).byteOrder == ByteOrder::CDAB);
         QVERIFY(tagOf(2).type == ValueType::Int32);
-        QVERIFY(!tagOf(2).encodingVerified); // left as it was
-        QVERIFY(tagOf(3).byteOrder == ByteOrder::CDAB);
+        QVERIFY(!tagOf(2).encodingVerified); // its order was chosen for it: still to be confirmed
+        QVERIFY(tagOf(3).byteOrder == ByteOrder::ABCD); // confirmed: never changed
         QVERIFY(tagOf(3).type == ValueType::Float32);
         QVERIFY(tagOf(3).encodingVerified);
         QVERIFY(tagOf(4).byteOrder == ByteOrder::ABCD);
@@ -547,7 +587,7 @@ private slots:
         QCOMPARE(dialogs.size(), 1);
         QVERIFY(chosen);
         QVERIFY(tagOf(1).byteOrder == ByteOrder::ABCD); // not applied to the new address
-        QVERIFY(tagOf(1).encodingVerified);
+        QVERIFY(!tagOf(1).encodingVerified);             // re-addressed: to be confirmed
         QVERIFY(mon->isPending(1));
     }
 };

@@ -154,6 +154,8 @@ class TstAppController : public QObject
         QList<WriteController::QuickAnswer> quickAnswers;
         QList<bool> offers;                         ///< m_offerSingleWrites
         QList<bool> implausible;                    ///< m_warnImplausible
+        QList<WriteController::EncodingAnswer> encodingAnswers; ///< m_confirmEncoding
+        QStringList encodingPrompts;
 
         QStringList encodingDialogs;                ///< EncodingMonitor::m_runDialog (window titles)
         std::function<bool(EncodingDialog &)> onEncodingDialog; ///< unset: unexpected, cancelled
@@ -248,6 +250,14 @@ class TstAppController : public QObject
                 return false;
             }
             return d.implausible.takeFirst();
+        };
+        w->m_confirmEncoding = [this](const QString &text) {
+            d.encodingPrompts << text;
+            if (d.encodingAnswers.isEmpty()) {
+                d.unexpected << QStringLiteral("confirm encoding: ") + text;
+                return WriteController::EncodingAnswer::Cancel;
+            }
+            return d.encodingAnswers.takeFirst();
         };
         w->m_offerSingleWrites = [this](const QString &text) {
             if (d.offers.isEmpty()) {
@@ -661,6 +671,10 @@ private slots:
         if (idOut)
             *idOut = id;
         QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id).has_value(), 8000); // a 32-bit write needs a live value
+        // A new tag on registers that read 0 cannot be detected: it stays unconfirmed, and the
+        // write asks to confirm its encoding first.
+        QVERIFY(!model()->tagAt(model()->rowOf(id)).encodingVerified);
+        d.encodingAnswers << WriteController::EncodingAnswer::Confirm;
         d.confirms << true;
         QVERIFY(model()->setData(model()->index(model()->rowOf(id), TagTableModel::Value), value));
         QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - value) < 0.01,

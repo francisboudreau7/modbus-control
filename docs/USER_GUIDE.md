@@ -269,19 +269,26 @@ you when the answer is not clear.
 
 ### Automatic detection
 
-When you add a 32-bit tag, or change its register number while the application is connected, it
-waits for three good readings and then ranks the 12 encodings. The result is one of three kinds:
+When you add a 32-bit tag, make a tag 32-bit, or change a 32-bit tag's register number, the tag is
+**not confirmed** until detection has a result: its Name cell shows a warning icon, and writes to it
+ask first (see Writes to an unconfirmed tag). While the application is connected, it waits for
+three good readings of the tag and then ranks the 12 encodings. The result is one of these:
 
-- **Clear.** The tag is changed to the encoding that fits, for example `float32 CDAB`, and the
-  status bar says so. The change is applied but **not confirmed**: the tag's Name cell shows a
-  warning icon, and its tooltip says what to do. Check the value against the device before you
-  write. If the encoding you already had is the one found, nothing changes.
-- **Ambiguous.** The Detect encoding dialog opens, so you can decide (see below).
+- **Clear, and it is the encoding the tag already has.** The readings confirm it: the warning icon
+  goes away.
+- **Clear, and another encoding fits while the tag's own encoding reads nonsense.** The tag is
+  changed to the encoding that fits, for example `float32 CDAB`, and the status bar says so. The
+  change is applied but stays **not confirmed**. Check the value against the device before you
+  write.
+- **Clear, but the tag's own encoding also reads a sensible value**, or **ambiguous.** The Detect
+  encoding dialog opens, so you decide (see below). For example, `int32` 17000 is also `float32`
+  58.0 in another byte order: only you know which one the device sends.
 - **Undecidable.** The app keeps the latest three readings and waits for a result that is clear or
-  ambiguous.
+  ambiguous. The tag stays not confirmed meanwhile.
 
-Changing the type or byte order yourself does not start detection. That is your choice, and it
-confirms the encoding (see What confirms an encoding).
+Changing only the type, or only the byte order, of a 32-bit tag does not start detection.
+Choosing another byte order yourself confirms the encoding; changing the type keeps the tag's
+confirmation as it was.
 
 ### The Detect encoding dialog
 
@@ -291,9 +298,10 @@ Right-click the tag in the tag table and choose **Detect encoding...**. The item
 - **The latest registers**, in hex and with their register numbers, for example
   `HR 110-111: 0x3333 0x4251`.
 - **Value shown on the device (optional).** Type the number shown on the device's display, for
-  example `52.3`. The dialog then marks the encodings that give that value. A match allows for the
-  last digit you typed, or 0.5 % of the value, whichever is larger. Typing the display value is the
-  surest way to decide.
+  example `52.3`. A unit after the number (`52.3 °C`), spaces and a thousands separator
+  (`1,013.25`) are fine. The dialog then marks the encodings that give that value. A match allows
+  for the last digit you typed, or 0.5 % of the value, whichever is larger. Typing the display
+  value is the surest way to decide. If the text is not a number, the dialog says so.
 - **The verdict**, one sentence, for example "float32 CDAB fits best." or "Several encodings are
   possible: type the value shown on the device to decide."
 - **The table.** One row per group of encodings that read the same values, best first. The columns
@@ -302,9 +310,11 @@ Right-click the tag in the tag table and choose **Detect encoding...**. The item
   **Match** (a check mark or No, once you have typed a display value).
 
 Select a row and click **Apply**. Apply sets the tag's type and byte order and confirms the
-encoding. If other 32-bit tags use a different byte order, the dialog also offers **Also use
-<order> for the other 32-bit tags**, which is ticked by default. That check box changes only their
-byte order, not their types, and it leaves their confirmation as it was.
+encoding. When you typed a display value, only a row that matches it can be applied. If other
+32-bit tags are not confirmed yet and use a different byte order, the dialog also offers **Also use
+<order> for the other unconfirmed 32-bit tags**, which is ticked by default. That check box changes
+only their byte order, not their types, and they stay not confirmed. Tags you set or confirmed are
+never changed by it.
 
 ### When the result cannot be decided
 
@@ -314,7 +324,7 @@ Some readings do not tell the encodings apart:
   device.
 - **Small integers.** The same two registers can mean two different numbers. As an example, the
   test server holds `int32` 100 at HR 120-121 in `ABCD` order (registers `0x0000`, `0x0064`). Read
-  in `CDAB` order, the same registers give 6553600. If the app cannot tell which is right, the
+  in `BADC` order, the same registers give 25600. If the app cannot tell which is right, the
   dialog lists both and asks for the display value. Type 100, and only the `int32 ABCD` row
   matches (`uint32 ABCD` reads the same value and is listed with it).
 
@@ -345,7 +355,8 @@ An encoding is confirmed when:
 
 - you click **Apply** in the Detect encoding dialog;
 - you click **Confirm and continue** in the write prompt;
-- you change the tag's **Type** or **Byte order** yourself.
+- you choose another **Byte order** for the tag yourself;
+- automatic detection finds that the readings fit the encoding the tag already has.
 
 A tag that automatic detection changed stays unconfirmed, with its warning icon, until one of these
 happens.
@@ -360,8 +371,9 @@ happens.
 4. Right-click the tag, choose **Detect encoding...**, type `52.3` in **Value shown on the device**,
    and click **Apply**. The float32 CDAB row matches, and the warning icon goes away.
 
-If you add the tag with `CDAB` already set, detection finds the same encoding and changes nothing.
-The dialog is still available from the right-click menu, and typing 52.3 shows the same match.
+If you choose `CDAB` yourself instead, your choice confirms the encoding and detection stops for
+that tag. The dialog is still available from the right-click menu, and typing 52.3 shows the same
+match.
 
 ## Trend
 

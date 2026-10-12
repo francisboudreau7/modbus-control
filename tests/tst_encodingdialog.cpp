@@ -27,13 +27,15 @@ Tag floatTag()
     return t;
 }
 
-Tag otherTag(TagId id, const QString &name, ByteOrder order)
+/// Another 32-bit tag; unconfirmed unless `verified` (only unconfirmed ones are offered).
+Tag otherTag(TagId id, const QString &name, ByteOrder order, bool verified = false)
 {
     Tag t = floatTag();
     t.id = id;
     t.name = name;
     t.address = quint16(200 + 2 * id);
     t.byteOrder = order;
+    t.encodingVerified = verified;
     return t;
 }
 
@@ -361,6 +363,39 @@ private slots:
         QCOMPARE(d2->QDialog::result(), int(QDialog::Rejected));
     }
 
+    void applyNeedsMatchingRowWithDisplayValue()
+    {
+        auto spy = std::make_shared<Spy>();
+        auto d = make(makeResult(EncodingVerdict::Ambiguous,
+                                 {G{{kF_CDAB}, 0.9, 52.3, true}, G{{kU_CDAB}, 0.4, 7, false}},
+                                 kF_CDAB),
+                      spy);
+        QPushButton *ok = d->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+        QVERIFY(ok->isEnabled());
+        table(*d)->selectRow(1); // does not match the display value
+        QVERIFY(!ok->isEnabled());
+        table(*d)->selectRow(0);
+        QVERIFY(ok->isEnabled());
+
+        auto none = make(makeResult(EncodingVerdict::NoMatch,
+                                    {G{{kF_CDAB}, 0.9, 52.3, false}, G{{kU_CDAB}, 0.4, 7, false}},
+                                    std::nullopt),
+                         spy);
+        QVERIFY(!none->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled());
+    }
+
+    void unreadableDisplayValueIsReported()
+    {
+        const Tag tag = floatTag();
+        EncodingDialog d(tag, {{0x4251, 0x3333}}, {}, std::nullopt);
+        d.setDisplayValue(QStringLiteral("abc"));
+        QCOMPARE(d.findChild<QLabel *>(QStringLiteral("verdictLabel"))->text(),
+                 QStringLiteral("Can't read \"abc\" as a number: type it like 52.3."));
+        d.setDisplayValue(QStringLiteral("52.3 °C"));
+        QVERIFY(!d.findChild<QLabel *>(QStringLiteral("verdictLabel"))->text().startsWith(
+            QStringLiteral("Can't read")));
+    }
+
     void matchedDisplayValueFollowsSelection()
     {
         auto spy = std::make_shared<Spy>();
@@ -383,7 +418,7 @@ private slots:
         QVERIFY(!others(*d)->isHidden());
         QVERIFY(others(*d)->isChecked());
         QCOMPARE(others(*d)->text(),
-                 QStringLiteral("Also use CDAB for the other 32-bit tags: A, B"));
+                 QStringLiteral("Also use CDAB for the other unconfirmed 32-bit tags: A, B"));
         QCOMPARE(d->applyOrderTo(), (QList<TagId>{2, 3}));
         others(*d)->setChecked(false);
         QVERIFY(d->applyOrderTo().isEmpty());
@@ -391,7 +426,7 @@ private slots:
         // The order follows the selected row.
         table(*d)->selectRow(1);
         QCOMPARE(others(*d)->text(),
-                 QStringLiteral("Also use ABCD for the other 32-bit tags: B"));
+                 QStringLiteral("Also use ABCD for the other unconfirmed 32-bit tags: B"));
         QCOMPARE(d->applyOrderTo(), (QList<TagId>{3}));
     }
 
@@ -406,6 +441,17 @@ private slots:
         auto all = make(twoGroups(), spy, {{1, 2}}, same);
         QVERIFY(others(*all)->isHidden());
         QVERIFY(all->applyOrderTo().isEmpty());
+
+        // Tags the user set or confirmed are never offered.
+        const QList<Tag> confirmed = {otherTag(2, "A", ByteOrder::ABCD, true),
+                                      otherTag(3, "B", ByteOrder::BADC, true)};
+        auto conf = make(twoGroups(), spy, {{1, 2}}, confirmed);
+        QVERIFY(others(*conf)->isHidden());
+        QVERIFY(conf->applyOrderTo().isEmpty());
+        const QList<Tag> mixed = {otherTag(2, "A", ByteOrder::ABCD, true),
+                                  otherTag(3, "B", ByteOrder::BADC)};
+        auto mix = make(twoGroups(), spy, {{1, 2}}, mixed);
+        QCOMPARE(mix->applyOrderTo(), QList<TagId>{3});
     }
 
     void applyOthersManyNames()
@@ -416,13 +462,13 @@ private slots:
             oth.append(otherTag(TagId(10 + i), QString(QChar('A' + i)), ByteOrder::ABCD));
         auto d = make(twoGroups(), spy, {{1, 2}}, oth);
         QCOMPARE(others(*d)->text(),
-                 QStringLiteral("Also use CDAB for the other 32-bit tags: A, B, C, D, E and 3 more"));
+                 QStringLiteral("Also use CDAB for the other unconfirmed 32-bit tags: A, B, C, D, E and 3 more"));
         QCOMPARE(d->applyOrderTo().size(), 8);
 
         QList<Tag> five = oth.mid(0, 5);
         auto d5 = make(twoGroups(), spy, {{1, 2}}, five);
         QCOMPARE(others(*d5)->text(),
-                 QStringLiteral("Also use CDAB for the other 32-bit tags: A, B, C, D, E"));
+                 QStringLiteral("Also use CDAB for the other unconfirmed 32-bit tags: A, B, C, D, E"));
     }
 
     void keepsLastTenReadings()

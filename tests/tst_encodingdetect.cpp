@@ -122,8 +122,28 @@ private slots:
         QCOMPARE(p->first, 0.0);
         QCOMPARE(p->second, 50000.0);
 
-        for (const char *bad : {"abc", "inf", "-inf", "nan", "", "  ", "1.2.3", "1e", "--1", "1e999", "5 3",
-                                "0x10", "."})
+        // A unit after the number, spaces between digits and a thousands separator are fine.
+        p = parseDisplayValue(QString::fromUtf8("52.3 °C"));
+        QVERIFY(p);
+        QCOMPARE(p->first, 52.3);
+        p = parseDisplayValue(QStringLiteral("75%"));
+        QVERIFY(p);
+        QCOMPARE(p->first, 75.0);
+        p = parseDisplayValue(QStringLiteral("1 013,25"));
+        QVERIFY(p);
+        QCOMPARE(p->first, 1013.25);
+        p = parseDisplayValue(QStringLiteral("1,013.25"));
+        QVERIFY(p);
+        QCOMPARE(p->first, 1013.25);
+        p = parseDisplayValue(QStringLiteral("1.013,25"));
+        QVERIFY(p);
+        QCOMPARE(p->first, 1013.25);
+        p = parseDisplayValue(QStringLiteral("1,013")); // one separator: decimal
+        QVERIFY(p);
+        QCOMPARE(p->first, 1.013);
+
+        for (const char *bad : {"abc", "inf", "-inf", "nan", "", "  ", "1.2.3", "1e", "5.", "3-", "--1",
+                                "1e999", "0x10", ".", "°C"})
             QVERIFY2(!parseDisplayValue(QString::fromLatin1(bad)), bad);
     }
 

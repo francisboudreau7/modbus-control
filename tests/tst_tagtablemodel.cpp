@@ -1656,7 +1656,8 @@ private slots:
         QVERIFY(!m.data(ix(m, 2, C::Name), Qt::ToolTipRole).isValid());
     }
 
-    // Typing a type or byte order by hand confirms the encoding.
+    // Choosing another byte order by hand confirms the encoding; re-committing the same order or
+    // editing the type does not (a guessed byte order stays to be confirmed).
     void typeAndByteOrderEditConfirmEncoding()
     {
         TagTableModel m;
@@ -1666,11 +1667,14 @@ private slots:
         f.encodingVerified = false;
         m.setTags({f}, 2);
 
+        QVERIFY(m.setData(ix(m, 0, C::ByteOrder), QString("CDAB")));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+        QVERIFY(m.setData(ix(m, 0, C::Type), QString("int32")));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+
         QVERIFY(m.setData(ix(m, 0, C::ByteOrder), QString("ABCD")));
         QVERIFY(m.tagAt(0).encodingVerified);
-
-        QVERIFY(m.setEncodingVerified(1, false));
-        QVERIFY(m.setData(ix(m, 0, C::Type), QString("int32")));
+        QVERIFY(m.setData(ix(m, 0, C::Type), QString("uint32")));
         QVERIFY(m.tagAt(0).encodingVerified);
     }
 

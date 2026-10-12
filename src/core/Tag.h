@@ -82,9 +82,10 @@ struct Tag {
     /// writeMin <= writeMax when both are set.
     std::optional<double> writeMin;
     std::optional<double> writeMax;
-    /// False when the 32-bit encoding (type, byte order) was guessed by encoding detection or
-    /// flagged as implausible, and the user has not confirmed it yet; writes are then blocked
-    /// until confirmed. True for 16-bit tags and for encodings the user set or confirmed.
+    /// False when the 32-bit encoding (type, byte order) was guessed by encoding detection, is
+    /// still being detected (a new or re-addressed 32-bit tag), or was flagged as implausible, and
+    /// nobody confirmed it yet; writes then ask first. True for 16-bit tags and for encodings the
+    /// user set or confirmed, or that the readings confirmed.
     bool encodingVerified = true;
 
     bool isWritable() const { return writable && area == Area::HoldingRegister; }

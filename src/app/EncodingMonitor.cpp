@@ -140,9 +140,26 @@ void EncodingMonitor::evaluatePending(TagId id)
     const EncodingResult result = detectEncoding(tag, recent(id, kReadings), options);
     switch (result.verdict) {
     case EncodingVerdict::Clear: {
-        finishPending(id);
-        if (!result.best || *result.best == encodingOf(tag))
+        if (!result.best) {
+            finishPending(id);
             break;
+        }
+        if (*result.best == encodingOf(tag)) {
+            // The readings agree with the encoding the tag was given.
+            finishPending(id);
+            m_model->setEncodingVerified(id, true);
+            if (const Tag *now = findTag(id))
+                m_snapshot.insert(id, *now);
+            break;
+        }
+        // Change the encoding on its own only when the current one reads implausibly; a
+        // plausible current reading (e.g. an int32 17000 that also reads as float 58.0) is the
+        // user's call.
+        if (!currentEncodingSuspicious(tag, result)) {
+            enqueue(id);
+            break;
+        }
+        finishPending(id);
         const Encoding best = *result.best;
         QString shown;
         for (const EncodingCandidate &c : result.candidates) {
@@ -240,6 +257,7 @@ void EncodingMonitor::runConnectCheck()
 void EncodingMonitor::onTagsChanged()
 {
     const QList<Tag> tags = m_model->tags();
+    QList<TagId> unverify; // newly pending tags: not confirmed until detection or the user says so
     QSet<TagId> present;
     QHash<TagId, Tag> snapshot;
     for (const Tag &tag : tags) {
@@ -254,6 +272,8 @@ void EncodingMonitor::onTagsChanged()
         const bool moved = it == m_snapshot.constEnd() || !wide(*it) || it->area != tag.area
                            || it->address != tag.address;
         if (moved) {
+            if (tag.encodingVerified)
+                unverify.append(tag.id);
             m_pending.insert(tag.id);
             m_collected[tag.id] = 0;
             m_readings.remove(tag.id);
@@ -270,6 +290,12 @@ void EncodingMonitor::onTagsChanged()
         m_queue.removeAll(Request{it.key(), {}, 0});
     }
     m_snapshot = snapshot;
+    // After the snapshot: the nested tagsEdited -> onTagsChanged sees only the flag change.
+    for (TagId id : std::as_const(unverify)) {
+        m_model->setEncodingVerified(id, false);
+        if (const Tag *now = findTag(id))
+            m_snapshot.insert(id, *now);
+    }
 }
 
 void EncodingMonitor::onTagsReplaced()
@@ -353,7 +379,8 @@ void EncodingMonitor::applyChoice(const Request &request, const EncodingDialog &
         if (!other || !wide(*other))
             continue;
         const Tag copy = *other;
-        m_model->setEncoding(otherId, copy.type, chosen->order, copy.encodingVerified);
+        // Only the byte order was chosen for them: their encoding stays to be confirmed.
+        m_model->setEncoding(otherId, copy.type, chosen->order, false);
         if (const Tag *now = findTag(otherId))
             m_snapshot.insert(otherId, *now);
     }
