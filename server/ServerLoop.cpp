@@ -124,6 +124,16 @@ bool ServerLoop::start(QString *error)
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
     }
 
+    // Initial holding values; the config parser has checked that they fit holdingCount.
+    for (const HoldingValue &entry : std::as_const(m_config.holdingValues)) {
+        quint16 regs[2] = {0, 0};
+        encodeRegisters(entry.value, entry.format, entry.byteOrder, regs);
+        m_mapping->tab_registers[entry.address] = regs[0];
+        if (registerCount(entry.format) == 2) {
+            m_mapping->tab_registers[entry.address + 1] = regs[1];
+        }
+    }
+
 #ifdef _WIN32
     // libmodbus sets SO_REUSEADDR, which on Windows lets a second process bind the same
     // port silently. Probe with an exclusive bind first so "port in use" is reported.

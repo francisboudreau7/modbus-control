@@ -311,6 +311,45 @@ private slots:
         QCOMPARE(static_cast<qint16>(v.value(0)), qint16(-1000));
     }
 
+    // Default config: CM50-like initial values, HR110-111 float32 CDAB 52.3, HR120-121 int32 ABCD 100.
+    void conn_defaultHoldingValues()
+    {
+        QVERIFY(m_server->start());
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 110, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x3333, 0x4251}));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 120, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x0000, 0x0064}));
+    }
+
+    // "holding" values from a config file are written at start and stay writable.
+    void conn_configHoldingValuesWritable()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("server.json"));
+        QVERIFY(writeTextFile(path, R"({
+  "holdingCount": 16, "signals": [],
+  "holding": [
+    {"address": 5, "value": 65535, "format": "uint16"},
+    {"address": 8, "value": 305419896, "format": "uint32", "byteOrder": "CDAB"}
+  ]
+})"));
+        QVERIFY(m_server->start({QStringLiteral("--config"), path}));
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 5, 1, v).ok());
+        QCOMPARE(v.value(0), quint16(0xFFFF));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 8, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x5678, 0x1234})); // 0x12345678 CDAB
+        QVERIFY(c.writeSingle(5, 1234).ok());
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 5, 1, v).ok());
+        QCOMPARE(v.value(0), quint16(1234));
+    }
+
     void conn_exceptionHoldingOutOfMap()
     {
         QVERIFY(m_server->start());

@@ -56,6 +56,15 @@ void compareConfigs(const ServerConfig &a, const ServerConfig &b)
     QCOMPARE(a.dropPercent, b.dropPercent);
     QCOMPARE(a.verbose, b.verbose);
     compareBindings(a.signalBindings, b.signalBindings);
+    QCOMPARE(a.holdingValues.size(), b.holdingValues.size());
+    for (qsizetype i = 0; i < a.holdingValues.size(); ++i) {
+        const HoldingValue &x = a.holdingValues.at(i);
+        const HoldingValue &y = b.holdingValues.at(i);
+        QCOMPARE(x.address, y.address);
+        QCOMPARE(x.value, y.value);
+        QCOMPARE(static_cast<int>(x.format), static_cast<int>(y.format));
+        QCOMPARE(static_cast<int>(x.byteOrder), static_cast<int>(y.byteOrder));
+    }
 }
 
 } // namespace
@@ -81,6 +90,16 @@ private slots:
     void rejects();
     void loadMissingFileFails();
     void loadTemporaryFileWorks();
+    void holdingKeysAndDefaults();
+    void holdingFormats_data();
+    void holdingFormats();
+    void holdingBoundaryValues_data();
+    void holdingBoundaryValues();
+    void holdingRejects_data();
+    void holdingRejects();
+    void defaultHoldingDroppedWhenItDoesNotFit();
+    void defaultHoldingEncoding();
+    void unsignedEncoding();
 };
 
 void TstServerConfig::defaultsMatchSpec()
@@ -118,6 +137,19 @@ void TstServerConfig::defaultsMatchSpec()
     QCOMPARE(ir24.inputAddress, quint16(24));
     QCOMPARE(static_cast<int>(ir24.format), static_cast<int>(RegisterFormat::Int32));
     QCOMPARE(static_cast<int>(ir24.byteOrder), static_cast<int>(WordOrder::ABCD));
+
+    // The CM50-like default holding values: HR110-111 float32 CDAB 52.3, HR120-121 int32 ABCD 100.
+    QCOMPARE(cfg.holdingValues.size(), 2);
+    const HoldingValue &setpoint = cfg.holdingValues.at(0);
+    QCOMPARE(setpoint.address, quint16(110));
+    QCOMPARE(setpoint.value, 52.3);
+    QCOMPARE(static_cast<int>(setpoint.format), static_cast<int>(RegisterFormat::Float32));
+    QCOMPARE(static_cast<int>(setpoint.byteOrder), static_cast<int>(WordOrder::CDAB));
+    const HoldingValue &int32Value = cfg.holdingValues.at(1);
+    QCOMPARE(int32Value.address, quint16(120));
+    QCOMPARE(int32Value.value, 100.0);
+    QCOMPARE(static_cast<int>(int32Value.format), static_cast<int>(RegisterFormat::Int32));
+    QCOMPARE(static_cast<int>(int32Value.byteOrder), static_cast<int>(WordOrder::ABCD));
 }
 
 void TstServerConfig::emptyObjectGivesDefaults()
@@ -389,6 +421,210 @@ void TstServerConfig::loadTemporaryFileWorks()
     QVERIFY2(cfg.has_value(), qPrintable(error));
     QCOMPARE(cfg->port, quint16(2000));
     QCOMPARE(cfg->holdingCount, 120);
+}
+
+void TstServerConfig::holdingKeysAndDefaults()
+{
+    QString error;
+    const auto cfg = parseServerConfig(R"JSON({"holding":[{"address":5,"value":7}]})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    // "holding" replaces the default initial values; format and byteOrder default to int16 ABCD.
+    QCOMPARE(cfg->holdingValues.size(), 1);
+    const HoldingValue &entry = cfg->holdingValues.at(0);
+    QCOMPARE(entry.address, quint16(5));
+    QCOMPARE(entry.value, 7.0);
+    QCOMPARE(static_cast<int>(entry.format), static_cast<int>(RegisterFormat::Int16));
+    QCOMPARE(static_cast<int>(entry.byteOrder), static_cast<int>(WordOrder::ABCD));
+
+    const auto empty = parseServerConfig(R"JSON({"holding":[]})JSON", &error);
+    QVERIFY2(empty.has_value(), qPrintable(error));
+    QVERIFY(empty->holdingValues.isEmpty());
+}
+
+void TstServerConfig::holdingFormats_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::addColumn<int>("format");
+    QTest::addColumn<int>("order");
+    QTest::addColumn<double>("value");
+    const int int16 = static_cast<int>(RegisterFormat::Int16);
+    const int uint16 = static_cast<int>(RegisterFormat::UInt16);
+    const int int32 = static_cast<int>(RegisterFormat::Int32);
+    const int uint32 = static_cast<int>(RegisterFormat::UInt32);
+    const int float32 = static_cast<int>(RegisterFormat::Float32);
+    const int abcd = static_cast<int>(WordOrder::ABCD);
+    const int cdab = static_cast<int>(WordOrder::CDAB);
+    const int badc = static_cast<int>(WordOrder::BADC);
+    const int dcba = static_cast<int>(WordOrder::DCBA);
+    QTest::newRow("int16 negative") << QByteArray(R"({"holding":[{"address":0,"value":-5}]})") << int16 << abcd << -5.0;
+    QTest::newRow("uint16 max") << QByteArray(R"({"holding":[{"address":0,"value":65535,"format":"uint16"}]})")
+                                << uint16 << abcd << 65535.0;
+    QTest::newRow("int32 CDAB") << QByteArray(R"({"holding":[{"address":0,"value":-100,"format":"int32","byteOrder":"CDAB"}]})")
+                                << int32 << cdab << -100.0;
+    QTest::newRow("uint32 BADC") << QByteArray(R"({"holding":[{"address":0,"value":3000000000,"format":"uint32","byteOrder":"BADC"}]})")
+                                 << uint32 << badc << 3000000000.0;
+    QTest::newRow("float32 DCBA") << QByteArray(R"({"holding":[{"address":0,"value":52.3,"format":"float32","byteOrder":"DCBA"}]})")
+                                  << float32 << dcba << 52.3;
+    QTest::newRow("16-bit ignores byteOrder") << QByteArray(R"({"holding":[{"address":0,"value":1,"byteOrder":"DCBA"}]})")
+                                              << int16 << dcba << 1.0;
+}
+
+void TstServerConfig::holdingFormats()
+{
+    QFETCH(QByteArray, json);
+    QFETCH(int, format);
+    QFETCH(int, order);
+    QFETCH(double, value);
+    QString error;
+    const auto cfg = parseServerConfig(json, &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->holdingValues.size(), 1);
+    QCOMPARE(static_cast<int>(cfg->holdingValues.at(0).format), format);
+    QCOMPARE(static_cast<int>(cfg->holdingValues.at(0).byteOrder), order);
+    QCOMPARE(cfg->holdingValues.at(0).value, value);
+}
+
+void TstServerConfig::holdingBoundaryValues_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::newRow("int16 min") << QByteArray(R"({"holding":[{"address":0,"value":-32768}]})");
+    QTest::newRow("int16 max") << QByteArray(R"({"holding":[{"address":0,"value":32767}]})");
+    QTest::newRow("uint16 max")
+        << QByteArray(R"({"holdingCount":65536,"holding":[{"address":65535,"value":65535,"format":"uint16"}]})");
+    QTest::newRow("int32 min") << QByteArray(R"({"holding":[{"address":0,"value":-2147483648,"format":"int32"}]})");
+    QTest::newRow("uint32 max") << QByteArray(R"({"holding":[{"address":0,"value":4294967295,"format":"uint32"}]})");
+    QTest::newRow("float32 max") << QByteArray(R"({"holding":[{"address":0,"value":3.4028234663852886e38,"format":"float32"}]})");
+    QTest::newRow("32-bit ending at holdingCount-1")
+        << QByteArray(R"({"holdingCount":3,"signals":[],"holding":[{"address":1,"value":1,"format":"int32"}]})");
+    QTest::newRow("adjacent 32-bit entries")
+        << QByteArray(R"({"holding":[{"address":0,"value":1,"format":"int32"},{"address":2,"value":2}]})");
+}
+
+void TstServerConfig::holdingBoundaryValues()
+{
+    QFETCH(QByteArray, json);
+    QString error;
+    const auto cfg = parseServerConfig(json, &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+}
+
+void TstServerConfig::holdingRejects_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::addColumn<QString>("key");
+    QTest::newRow("holding not an array") << QByteArray(R"({"holding":{}})") << QStringLiteral("holding");
+    QTest::newRow("entry not an object") << QByteArray(R"({"holding":[5]})") << QStringLiteral("holding[0]");
+    QTest::newRow("address missing") << QByteArray(R"({"holding":[{"value":1}]})") << QStringLiteral("holding[0].address");
+    QTest::newRow("value missing") << QByteArray(R"({"holding":[{"address":1}]})") << QStringLiteral("holding[0].value");
+    QTest::newRow("address fractional") << QByteArray(R"({"holding":[{"address":1.5,"value":1}]})")
+                                        << QStringLiteral("holding[0].address");
+    QTest::newRow("address negative") << QByteArray(R"({"holding":[{"address":-1,"value":1}]})")
+                                      << QStringLiteral("holding[0].address");
+    QTest::newRow("address past holdingCount") << QByteArray(R"({"holding":[{"address":200,"value":1}]})")
+                                               << QStringLiteral("holding[0].address");
+    QTest::newRow("32-bit past holdingCount")
+        << QByteArray(R"({"holding":[{"address":199,"value":1,"format":"int32"}]})") << QStringLiteral("holding[0].address");
+    QTest::newRow("value as string") << QByteArray(R"({"holding":[{"address":1,"value":"1"}]})")
+                                     << QStringLiteral("holding[0].value");
+    QTest::newRow("value null") << QByteArray(R"({"holding":[{"address":1,"value":null}]})")
+                                << QStringLiteral("holding[0].value");
+    QTest::newRow("int16 too large") << QByteArray(R"({"holding":[{"address":1,"value":32768}]})")
+                                     << QStringLiteral("holding[0].value");
+    QTest::newRow("uint16 negative") << QByteArray(R"({"holding":[{"address":1,"value":-1,"format":"uint16"}]})")
+                                     << QStringLiteral("holding[0].value");
+    QTest::newRow("int16 fraction") << QByteArray(R"({"holding":[{"address":1,"value":1.5}]})")
+                                    << QStringLiteral("holding[0].value");
+    QTest::newRow("int32 too large") << QByteArray(R"({"holding":[{"address":1,"value":2147483648,"format":"int32"}]})")
+                                     << QStringLiteral("holding[0].value");
+    QTest::newRow("uint32 too large") << QByteArray(R"({"holding":[{"address":1,"value":4294967296,"format":"uint32"}]})")
+                                      << QStringLiteral("holding[0].value");
+    QTest::newRow("int32 fraction") << QByteArray(R"({"holding":[{"address":1,"value":1.5,"format":"int32"}]})")
+                                    << QStringLiteral("holding[0].value");
+    QTest::newRow("float32 too large") << QByteArray(R"({"holding":[{"address":1,"value":1e39,"format":"float32"}]})")
+                                       << QStringLiteral("holding[0].value");
+    QTest::newRow("unknown format") << QByteArray(R"({"holding":[{"address":1,"value":1,"format":"int64"}]})")
+                                    << QStringLiteral("holding[0].format");
+    QTest::newRow("format is case-sensitive") << QByteArray(R"({"holding":[{"address":1,"value":1,"format":"Int16"}]})")
+                                              << QStringLiteral("holding[0].format");
+    QTest::newRow("unsigned format not accepted for signals")
+        << QByteArray(R"({"signals":[{"kind":"sine","format":"uint16"}]})") << QStringLiteral("format");
+    QTest::newRow("unknown byteOrder") << QByteArray(R"({"holding":[{"address":1,"value":1,"format":"int32","byteOrder":"ABC"}]})")
+                                       << QStringLiteral("holding[0].byteOrder");
+    QTest::newRow("unknown key") << QByteArray(R"({"holding":[{"address":1,"value":1,"kind":"sine"}]})")
+                                 << QStringLiteral("holding[0].kind");
+    QTest::newRow("32-bit overlaps next entry")
+        << QByteArray(R"({"holding":[{"address":5,"value":1,"format":"int32"},{"address":6,"value":2}]})")
+        << QStringLiteral("overlaps");
+    QTest::newRow("same address twice") << QByteArray(R"({"holding":[{"address":5,"value":1},{"address":5,"value":2}]})")
+                                        << QStringLiteral("overlaps");
+    QTest::newRow("explicit entry does not fit holdingCount")
+        << QByteArray(R"({"holdingCount":100,"signals":[],"holding":[{"address":110,"value":1}]})")
+        << QStringLiteral("holding[0].address");
+}
+
+void TstServerConfig::holdingRejects()
+{
+    QFETCH(QByteArray, json);
+    QFETCH(QString, key);
+    QString error;
+    const auto cfg = parseServerConfig(json, &error);
+    QVERIFY(!cfg.has_value());
+    QVERIFY2(error.contains(key), qPrintable(error));
+}
+
+void TstServerConfig::defaultHoldingDroppedWhenItDoesNotFit()
+{
+    // Without a "holding" key, default initial values that do not fit below holdingCount are
+    // dropped, so files written before the key existed still load.
+    QString error;
+    auto cfg = parseServerConfig(R"JSON({"holdingCount":101})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QVERIFY(cfg->holdingValues.isEmpty());
+
+    cfg = parseServerConfig(R"JSON({"holdingCount":112})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->holdingValues.size(), 1);
+    QCOMPARE(cfg->holdingValues.at(0).address, quint16(110));
+
+    cfg = parseServerConfig(R"JSON({"holdingCount":122})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->holdingValues.size(), 2);
+}
+
+void TstServerConfig::defaultHoldingEncoding()
+{
+    // ServerLoop::start writes each entry with encodeRegisters(); check the default entries.
+    const ServerConfig cfg = ServerConfig::defaults();
+    QCOMPARE(cfg.holdingValues.size(), 2);
+    quint16 regs[2] = {0, 0};
+    const HoldingValue &setpoint = cfg.holdingValues.at(0);
+    encodeRegisters(setpoint.value, setpoint.format, setpoint.byteOrder, regs);
+    QCOMPARE(regs[0], quint16(0x3333)); // HR110
+    QCOMPARE(regs[1], quint16(0x4251)); // HR111
+    const HoldingValue &int32Value = cfg.holdingValues.at(1);
+    encodeRegisters(int32Value.value, int32Value.format, int32Value.byteOrder, regs);
+    QCOMPARE(regs[0], quint16(0x0000)); // HR120
+    QCOMPARE(regs[1], quint16(0x0064)); // HR121
+}
+
+void TstServerConfig::unsignedEncoding()
+{
+    quint16 regs[2] = {0, 0};
+    encodeRegisters(65535.0, RegisterFormat::UInt16, WordOrder::ABCD, regs);
+    QCOMPARE(regs[0], quint16(0xFFFF));
+    encodeRegisters(70000.0, RegisterFormat::UInt16, WordOrder::ABCD, regs);
+    QCOMPARE(regs[0], quint16(0xFFFF));
+    encodeRegisters(-5.0, RegisterFormat::UInt16, WordOrder::ABCD, regs);
+    QCOMPARE(regs[0], quint16(0));
+    encodeRegisters(305419896.0, RegisterFormat::UInt32, WordOrder::ABCD, regs);
+    QCOMPARE(regs[0], quint16(0x1234));
+    QCOMPARE(regs[1], quint16(0x5678));
+    encodeRegisters(4294967296.0, RegisterFormat::UInt32, WordOrder::ABCD, regs);
+    QCOMPARE(regs[0], quint16(0xFFFF));
+    QCOMPARE(regs[1], quint16(0xFFFF));
+    encodeRegisters(-1.0, RegisterFormat::UInt32, WordOrder::CDAB, regs);
+    QCOMPARE(regs[0], quint16(0));
+    QCOMPARE(regs[1], quint16(0));
 }
 
 QTEST_GUILESS_MAIN(TstServerConfig)

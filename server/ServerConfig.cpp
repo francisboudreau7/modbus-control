@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QStringList>
 
 #include <cmath>
 #include <limits>
@@ -161,7 +162,9 @@ bool readKind(const ObjectReader &r, SignalKind &kind)
     return r.fail("kind", QStringLiteral("has unknown kind \"%1\"").arg(name));
 }
 
-bool readFormat(const ObjectReader &r, RegisterFormat &format)
+/// Reads "format". The unsigned formats are accepted only where `allowUnsigned` is set
+/// (holding values); signal bindings keep the int16/int32/float32 set.
+bool readFormat(const ObjectReader &r, RegisterFormat &format, bool allowUnsigned = false)
 {
     const auto value = r.get("format");
     if (!value)
@@ -175,9 +178,30 @@ bool readFormat(const ObjectReader &r, RegisterFormat &format)
         format = RegisterFormat::Int32;
     else if (name == QStringLiteral("float32"))
         format = RegisterFormat::Float32;
+    else if (allowUnsigned && name == QStringLiteral("uint16"))
+        format = RegisterFormat::UInt16;
+    else if (allowUnsigned && name == QStringLiteral("uint32"))
+        format = RegisterFormat::UInt32;
     else
         return r.fail("format", QStringLiteral("has unknown format \"%1\"").arg(name));
     return true;
+}
+
+QString formatName(RegisterFormat format)
+{
+    switch (format) {
+    case RegisterFormat::Int16:
+        return QStringLiteral("int16");
+    case RegisterFormat::Int32:
+        return QStringLiteral("int32");
+    case RegisterFormat::Float32:
+        return QStringLiteral("float32");
+    case RegisterFormat::UInt16:
+        return QStringLiteral("uint16");
+    case RegisterFormat::UInt32:
+        return QStringLiteral("uint32");
+    }
+    return QString();
 }
 
 bool readByteOrder(const ObjectReader &r, WordOrder &order)
@@ -217,6 +241,96 @@ bool readBinding(const QJsonObject &object, const QString &prefix, QString *erro
         && readByteOrder(r, binding.byteOrder);
 }
 
+/// Checks one holding entry's value against its format's range. Integer formats need whole
+/// numbers; float32 needs a finite value that still fits a single-precision float.
+bool checkHoldingValue(const ObjectReader &r, const HoldingValue &entry)
+{
+    if (!std::isfinite(entry.value))
+        return r.fail("value", QStringLiteral("must be a finite number"));
+
+    double lo = 0.0;
+    double hi = 0.0;
+    bool wholeNumber = true;
+    switch (entry.format) {
+    case RegisterFormat::Int16:
+        lo = -32768.0;
+        hi = 32767.0;
+        break;
+    case RegisterFormat::UInt16:
+        lo = 0.0;
+        hi = 65535.0;
+        break;
+    case RegisterFormat::Int32:
+        lo = -2147483648.0;
+        hi = 2147483647.0;
+        break;
+    case RegisterFormat::UInt32:
+        lo = 0.0;
+        hi = 4294967295.0;
+        break;
+    case RegisterFormat::Float32:
+        lo = -static_cast<double>(std::numeric_limits<float>::max());
+        hi = static_cast<double>(std::numeric_limits<float>::max());
+        wholeNumber = false;
+        break;
+    }
+    if (entry.value < lo || entry.value > hi) {
+        return r.fail("value", QStringLiteral("must be between %1 and %2 for format \"%3\"")
+                                   .arg(QString::number(lo, 'g', 12), QString::number(hi, 'g', 12),
+                                        formatName(entry.format)));
+    }
+    if (wholeNumber && entry.value != std::floor(entry.value))
+        return r.fail("value", QStringLiteral("must be a whole number for format \"%1\"").arg(formatName(entry.format)));
+    return true;
+}
+
+bool readHoldingEntry(const QJsonObject &object, const QString &prefix, QString *error, HoldingValue &entry)
+{
+    static const QStringList kKeys = {QStringLiteral("address"), QStringLiteral("value"),
+                                      QStringLiteral("format"), QStringLiteral("byteOrder")};
+    for (const QString &key : object.keys()) {
+        if (!kKeys.contains(key)) {
+            setError(error, QStringLiteral("\"%1%2\" is not a known key").arg(prefix, key));
+            return false;
+        }
+    }
+
+    const ObjectReader r(object, prefix, error);
+    if (!object.contains(QStringLiteral("address")))
+        return r.fail("address", QStringLiteral("is required"));
+    if (!object.contains(QStringLiteral("value")))
+        return r.fail("value", QStringLiteral("is required"));
+    return r.readInt<quint16>("address", 0, 65535, entry.address)
+        && r.readNumber("value", entry.value)
+        && readFormat(r, entry.format, true)
+        && readByteOrder(r, entry.byteOrder)
+        && checkHoldingValue(r, entry);
+}
+
+bool readHolding(const ObjectReader &r, ServerConfig &cfg)
+{
+    const auto value = r.get("holding");
+    if (!value)
+        return true;
+    if (!value->isArray())
+        return r.fail("holding", QStringLiteral("must be an array"));
+
+    const QJsonArray items = value->toArray();
+    QList<HoldingValue> entries;
+    for (qsizetype i = 0; i < items.size(); ++i) {
+        const QJsonValue item = items.at(i);
+        if (!item.isObject())
+            return r.failRaw(QStringLiteral("\"holding[%1]\" must be an object").arg(i));
+        HoldingValue entry;
+        const QString prefix = QStringLiteral("holding[%1].").arg(i);
+        if (!readHoldingEntry(item.toObject(), prefix, r.error(), entry))
+            return false;
+        entries.append(entry);
+    }
+    cfg.holdingValues = entries;
+    return true;
+}
+
 bool readSignals(const ObjectReader &r, ServerConfig &cfg)
 {
     const auto value = r.get("signals");
@@ -254,11 +368,38 @@ bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
         && r.readInRange("dropPercent", cfg.dropPercent, 0.0, 100.0)
         && r.readBool("verbose", cfg.verbose)
         && r.readBool("logWrites", cfg.logWrites)
-        && readSignals(r, cfg);
+        && readSignals(r, cfg)
+        && readHolding(r, cfg);
     if (!ok)
         return false;
     if (cfg.host.isEmpty())
         return r.fail("host", QStringLiteral("must not be empty"));
+    return true;
+}
+
+/// Checks holding entries against the final holdingCount and against each other.
+bool checkHoldingValues(const ServerConfig &cfg, QString *error)
+{
+    for (qsizetype i = 0; i < cfg.holdingValues.size(); ++i) {
+        const HoldingValue &entry = cfg.holdingValues.at(i);
+        const int registers = registerCount(entry.format);
+        if (entry.address + registers > cfg.holdingCount) {
+            setError(error, QStringLiteral("\"holding[%1].address\" is %2, but %3 register(s) from there must fit below holdingCount (%4)")
+                                .arg(i)
+                                .arg(entry.address)
+                                .arg(registers)
+                                .arg(cfg.holdingCount));
+            return false;
+        }
+        for (qsizetype j = 0; j < i; ++j) {
+            const HoldingValue &other = cfg.holdingValues.at(j);
+            const int otherEnd = other.address + registerCount(other.format);
+            if (entry.address < otherEnd && other.address < entry.address + registers) {
+                setError(error, QStringLiteral("\"holding[%1].address\" overlaps \"holding[%2]\"").arg(i).arg(j));
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -293,6 +434,10 @@ bool checkBindings(const ServerConfig &cfg, QString *error)
 ServerConfig ServerConfig::defaults()
 {
     ServerConfig cfg;
+    cfg.holdingValues = {
+        {110, 52.3, RegisterFormat::Float32, WordOrder::CDAB},
+        {120, 100.0, RegisterFormat::Int32, WordOrder::ABCD},
+    };
     cfg.signalBindings = {
         {0, {SignalKind::Sine, 1000.0, 0.0, 5.0, 2.0, 0}},
         {1, {SignalKind::Triangle, 1000.0, 0.0, 10.0, 2.0, 0}},
@@ -323,6 +468,15 @@ std::optional<ServerConfig> parseServerConfig(const QByteArray &json, QString *e
 
     ServerConfig config = ServerConfig::defaults();
     if (!readRoot(document.object(), config, error) || !checkBindings(config, error))
+        return std::nullopt;
+    if (!document.object().contains(QStringLiteral("holding"))) {
+        // Files written before "holding" existed may set a small holdingCount; the default
+        // initial values that do not fit are dropped instead of failing those files.
+        config.holdingValues.removeIf([&config](const HoldingValue &entry) {
+            return entry.address + registerCount(entry.format) > config.holdingCount;
+        });
+    }
+    if (!checkHoldingValues(config, error))
         return std::nullopt;
     return config;
 }

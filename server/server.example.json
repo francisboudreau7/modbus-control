@@ -19,5 +19,9 @@
     { "input": 20, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "ABCD" },
     { "input": 22, "kind": "sine",     "amplitude": 123.456, "offset": 0, "periodS": 5, "format": "float32", "byteOrder": "CDAB" },
     { "input": 24, "kind": "sawtooth", "amplitude": 100000, "offset": 0, "periodS": 8, "format": "int32", "byteOrder": "ABCD" }
+  ],
+  "holding": [
+    { "address": 110, "value": 52.3, "format": "float32", "byteOrder": "CDAB" },
+    { "address": 120, "value": 100,  "format": "int32",   "byteOrder": "ABCD" }
   ]
 }

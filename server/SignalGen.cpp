@@ -131,11 +131,24 @@ void encodeRegisters(double value, RegisterFormat format, WordOrder order, quint
         out[0] = toRegister(value);
         return;
     }
+    if (format == RegisterFormat::UInt16) {
+        out[0] = static_cast<quint16>(roundClamp(value, 0.0, 65535.0));
+        return;
+    }
 
     // The 32-bit word is split into the high half (A B) and the low half (C D).
-    const quint32 bits = format == RegisterFormat::Int32
-        ? toInt32Bits(value)
-        : std::bit_cast<quint32>(static_cast<float>(value));
+    quint32 bits = 0;
+    switch (format) {
+    case RegisterFormat::Int32:
+        bits = toInt32Bits(value);
+        break;
+    case RegisterFormat::UInt32:
+        bits = static_cast<quint32>(roundClamp(value, 0.0, 4294967295.0));
+        break;
+    default:
+        bits = std::bit_cast<quint32>(static_cast<float>(value));
+        break;
+    }
     const auto hi = static_cast<quint16>(bits >> 16);
     const auto lo = static_cast<quint16>(bits & 0xFFFFu);
 
