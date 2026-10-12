@@ -265,7 +265,8 @@ large random number, and a float with its words swapped is usually of the wrong 
 A write has the same problem in reverse. A value written with the wrong encoding reaches the device
 as a different number, and the device accepts it. Encoding detection compares the device's readings
 with the 12 encodings and works out which one fits. It decides by itself in the clear cases and asks
-you when the answer is not clear.
+you when the answer is not clear. It also checks 16-bit tags that may be half of a 32-bit value (see
+[A 16-bit tag on half of a 32-bit value](#a-16-bit-tag-on-half-of-a-32-bit-value)).
 
 ### Automatic detection
 
@@ -335,6 +336,68 @@ encoding gives implausible values and another encoding fits far better, the tag 
 confirmed**. One message lists these tags, with two buttons: **Review...** opens the dialog for each
 listed tag in turn, and **Close** leaves them as they are. Tags that never read good are skipped.
 
+### A 16-bit tag on half of a 32-bit value
+
+A 16-bit tag can sit on half of a 32-bit value, and then it reads ordinary-looking numbers. The test
+server holds `float32` 52.3 in `CDAB` order at HR 110-111: register HR 110 is `0x3333` and HR 111 is
+`0x4251`. A tag left at `int16` on HR 110 reads 13107, and one on HR 111 reads 16977. Neither looks
+wrong.
+
+A write to such a tag is the real problem. A 16-bit write replaces half of the float, and the device
+then holds a different number. For example, writing 50 to HR 111 leaves `0x3333` in HR 110 and
+`0x0032` in HR 111. The device reads those two registers in `CDAB` order as `float32` 4.6e-39, which
+is practically zero.
+
+The app checks a 16-bit tag in these cases:
+
+- when you add it, or change its register number, on its first good reading while connected;
+- once for every 16-bit tag when you connect.
+
+Each check reads the register below and the register above the tag, once. It does not repeat on
+every poll.
+
+The check looks for a "clean" float32: two neighbouring registers that read as a float of a sensible
+size, with at most 5 significant digits, such as 52.3, 0.5 or 100.
+
+When the check finds one, the tag is flagged. Its Name cell shows the warning icon, and its tooltip
+names the 32-bit reading, for example "HR 110-111 read as float32 CDAB give 52.3". The app then asks
+what to do:
+
+- **Change to float32 CDAB at HR 110** moves the tag to HR 110 and makes it a `float32` in `CDAB`
+  order, in one step. The change is confirmed.
+- **Keep int16** confirms that the tag really is 16-bit, and clears the flag.
+- **Decide later** leaves the tag flagged.
+
+On connect, the flagged 16-bit tags are listed in one message, with **Review...** and **Close**.
+**Review...** opens the prompt for each listed tag in turn.
+
+Writes to a flagged 16-bit tag ask first, as writes to an unconfirmed 32-bit tag do (see Writes to an
+unconfirmed tag). In that prompt, **Confirm and continue** means the tag really is 16-bit.
+
+To check a flagged tag again, right-click it and choose **Detect encoding...**. This works only while
+the application is connected.
+
+The check has limits:
+
+- Two separate 16-bit registers can form a clean float by chance. For example, 16384 and 0 read as
+  `float32` 2.0. If that happens, choose **Keep int16**.
+- A float that is a full-precision measurement, such as 23.456789, is not clean, so it is not
+  detected.
+- Halves of an `int32` value cannot be told apart from two separate 16-bit registers, so they are
+  not detected.
+
+Tags that were never checked write normally.
+
+To try it with the test server:
+
+1. Start the test server and connect the application to it.
+2. Add a **Holding** tag at address 110 with type `int16`. The app flags it: the Name cell shows the
+   warning icon, and the tooltip reads "HR 110-111 read as float32 CDAB give 52.3". A prompt opens.
+3. Choose **Change to float32 CDAB at HR 110**. The tag becomes `float32` `CDAB` at HR 110 and reads
+   52.3.
+4. To see the move, add another `int16` tag at address 111 and choose **Change to float32 CDAB at
+   HR 110** in its prompt. The tag is moved to HR 110.
+
 ### Writes to an unconfirmed tag
 
 Before a write to a 32-bit tag whose encoding is not confirmed, the application asks first. The
@@ -356,7 +419,9 @@ An encoding is confirmed when:
 - you click **Apply** in the Detect encoding dialog;
 - you click **Confirm and continue** in the write prompt;
 - you choose another **Byte order** for the tag yourself;
-- automatic detection finds that the readings fit the encoding the tag already has.
+- automatic detection finds that the readings fit the encoding the tag already has;
+- for a flagged 16-bit tag, you click **Change to float32 CDAB at HR 110** or **Keep int16** in its
+  prompt.
 
 A tag that automatic detection changed stays unconfirmed, with its warning icon, until one of these
 happens.
@@ -799,7 +864,8 @@ Check the value on the controller, then write the setpoint again.
 1. Connect with every tag read-only (Writable unticked). Compare each value with the controller's
    display. Byte order and register numbers are right only if the values match. A tag with the
    warning icon has an unconfirmed encoding: confirm it with **Detect encoding...** (see Encoding
-   detection) before you write to it.
+   detection) before you write to it. A 16-bit tag on half of a float32 setpoint is flagged the same
+   way (see [A 16-bit tag on half of a 32-bit value](#a-16-bit-tag-on-half-of-a-32-bit-value)).
 2. On each writable tag, set **Min** and **Max** to the controller's allowed range for that
    parameter.
 3. Tick **Writable** on the tag.
