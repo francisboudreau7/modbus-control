@@ -3,6 +3,8 @@
 
 #include <QtTest>
 
+#include <bit>
+#include <charconv>
 #include <cmath>
 
 using namespace mb;
@@ -497,6 +499,208 @@ private slots:
         const EncodingResult c = detectEncoding(curF, {neg});
         QVERIFY(find(c, {ValueType::Int32, ByteOrder::ABCD})->group
                 != find(c, {ValueType::UInt32, ByteOrder::ABCD})->group);
+    }
+    // ---- detectSplitValue ------------------------------------------------------------------
+    // The 16-bit tag sits on one register of a float32; `first` says whether it is r0.
+    void splitFloats_data()
+    {
+        QTest::addColumn<double>("value");
+        QTest::addColumn<ByteOrder>("order");
+        QTest::addColumn<bool>("first");
+        for (double v : {52.3, 0.5, 100.0, -17.5, 1013.25, 2.0, 0.001, 9999.5, 1e6}) {
+            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA}) {
+                for (bool first : {true, false}) {
+                    QTest::newRow(qPrintable(QStringLiteral("%1 %2 %3")
+                                                 .arg(v).arg(toString(o), first ? "first" : "second")))
+                        << v << o << first;
+                }
+            }
+        }
+    }
+    void splitFloats()
+    {
+        QFETCH(double, value);
+        QFETCH(ByteOrder, order);
+        QFETCH(bool, first);
+        const RegisterPair r = regsFor(makeTag(ValueType::Float32, order), value);
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 110;
+        const quint16 unrelated = 7;
+        const std::optional<SplitValue> sv = first
+            ? detectSplitValue(tag, r.r0, unrelated, r.r1)
+            : detectSplitValue(tag, r.r1, r.r0, unrelated);
+        QVERIFY(sv);
+        QCOMPARE(sv->address, first ? quint16(110) : quint16(109));
+        QCOMPARE(static_cast<float>(sv->value), static_cast<float>(value));
+        QCOMPARE_ENC(sv->encoding, (Encoding{ValueType::Float32, order}));
+    }
+    void splitNeighbourAbsent()
+    {
+        // 52.3 as float32 CDAB: HR 110 = 0x3333, HR 111 = 0x4251.
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 110;
+        const auto a = detectSplitValue(tag, 0x3333, std::nullopt, 0x4251);
+        QVERIFY(a);
+        QCOMPARE(a->address, quint16(110));
+        QCOMPARE_ENC(a->encoding, kF_CDAB);
+        QCOMPARE(static_cast<float>(a->value), 52.3f);
+        QCOMPARE(a->digits, 3);
+        tag.address = 111;
+        const auto b = detectSplitValue(tag, 0x4251, 0x3333, std::nullopt);
+        QVERIFY(b);
+        QCOMPARE(b->address, quint16(110));
+        QVERIFY(!detectSplitValue(tag, 0x4251, std::nullopt, std::nullopt));
+        // Table edges: the neighbour does not exist.
+        tag.address = 0;
+        const auto c = detectSplitValue(tag, 0x3333, std::nullopt, 0x4251);
+        QVERIFY(c);
+        QCOMPARE(c->address, quint16(0));
+        tag.address = 65535;
+        const auto d = detectSplitValue(tag, 0x4251, 0x3333, std::nullopt);
+        QVERIFY(d);
+        QCOMPARE(d->address, quint16(65534));
+        // Address bounds are honoured even if the caller passes a neighbour anyway.
+        tag.address = 0;
+        QVERIFY(!detectSplitValue(tag, 0x4251, 0x3333, std::nullopt));
+        tag.address = 65535;
+        QVERIFY(!detectSplitValue(tag, 0x3333, std::nullopt, 0x4251));
+    }
+    void splitNotClean()
+    {
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 10;
+        // Full-precision values and out-of-range magnitudes are not reported with their own
+        // encoding (another order may decode to something clean by accident).
+        for (float f : {23.456789f, 1e-5f, 2e7f}) {
+            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA}) {
+                const RegisterPair r = regsFor(makeTag(ValueType::Float32, o), f);
+                const auto sv = detectSplitValue(tag, r.r0, std::nullopt, r.r1);
+                if (sv)
+                    QVERIFY(!(sv->encoding.order == o && static_cast<float>(sv->value) == f));
+            }
+        }
+        // NaN / Inf patterns (ABCD; the other orders of the same words are tiny or huge) and zeros.
+        QVERIFY(!detectSplitValue(tag, 0x7FC0, std::nullopt, 0));
+        QVERIFY(!detectSplitValue(tag, 0x7F80, std::nullopt, 0));
+        QVERIFY(!detectSplitValue(tag, 0xFF80, std::nullopt, 0));
+        QVERIFY(!detectSplitValue(tag, 0, 0, 0));
+        QVERIFY(!detectSplitValue(tag, 0, std::nullopt, std::nullopt));
+    }
+    void splitIgnores32BitTag()
+    {
+        Tag tag = makeTag(ValueType::Float32, ByteOrder::CDAB);
+        tag.address = 110;
+        QVERIFY(!detectSplitValue(tag, 0x3333, 0, 0x4251));
+        tag.type = ValueType::UInt32;
+        QVERIFY(!detectSplitValue(tag, 0x3333, 0, 0x4251));
+    }
+    void splitTieBreak()
+    {
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 50;
+        // Both pairs clean with the same digit count: below (0x42C8, 0x0000) is 100.0 ABCD, above
+        // (0x0000, 0x3F00) is 0.5 CDAB; one digit each, so the pair at tag.address wins.
+        const auto tie = detectSplitValue(tag, 0x0000, 0x42C8, 0x3F00);
+        QVERIFY(tie);
+        QCOMPARE(tie->address, quint16(50));
+        QCOMPARE_ENC(tie->encoding, kF_CDAB);
+        QCOMPARE(tie->value, 0.5);
+        // Fewer digits beat the preferred pair: below (0x42C8, 0x4251) is not clean, but make
+        // above 52.3 (3 digits) and below 100.0 (1 digit): below wins despite coming second.
+        const auto fewer = detectSplitValue(tag, 0x0000, 0x42C8, 0x4251);
+        QVERIFY(fewer);
+        QCOMPARE(fewer->digits, 1);
+        QCOMPARE(fewer->address, quint16(49));
+        QCOMPARE(fewer->value, 100.0);
+        // Within one pair: when several orders are clean with the same digits, the first order
+        // in ABCD > CDAB > BADC > DCBA wins. Scan some register pairs and verify.
+        int checked = 0, multi = 0;
+        for (int k = 1; k <= 4000; ++k) {
+            const RegisterPair rp = regsFor(makeTag(ValueType::Float32, ByteOrder::ABCD), k * 0.5);
+            const quint16 r0 = rp.r0;
+            const quint16 r1 = rp.r1;
+            const auto sv = detectSplitValue(tag, r0, std::nullopt, r1);
+            if (!sv)
+                continue;
+            ++checked;
+            int cleanAtMin = 0;
+            std::optional<ByteOrder> firstAtMin;
+            for (ByteOrder o : {ByteOrder::ABCD, ByteOrder::CDAB, ByteOrder::BADC, ByteOrder::DCBA}) {
+                const float f = std::bit_cast<float>(
+                    combineRegisters(makeTag(ValueType::Float32, o), r0, r1));
+                if (!std::isfinite(f) || std::fabs(double(f)) < 1e-3 || std::fabs(double(f)) > 1e7)
+                    continue;
+                char buf[64];
+                const auto res = std::to_chars(buf, buf + sizeof(buf), f, std::chars_format::scientific);
+                int d = 0;
+                for (const char *c = buf; c != res.ptr && *c != 'e'; ++c)
+                    d += (*c >= '0' && *c <= '9') ? 1 : 0;
+                QVERIFY(d >= sv->digits || d > 6);
+                if (d == sv->digits) {
+                    ++cleanAtMin;
+                    if (!firstAtMin)
+                        firstAtMin = o;
+                }
+            }
+            QVERIFY(firstAtMin);
+            QVERIFY(sv->encoding.order == *firstAtMin);
+            multi += cleanAtMin > 1 ? 1 : 0;
+        }
+        QVERIFY(checked > 0);
+        qInfo("tie-break scan: %d clean pairs, %d with several orders at the minimum", checked, multi);
+        // 2.0 (0x40000000): in the pair (0x4000, 0x0000) only ABCD is clean.
+        const auto two = detectSplitValue(tag, 0x4000, std::nullopt, 0x0000);
+        QVERIFY(two);
+        QCOMPARE_ENC(two->encoding, (Encoding{ValueType::Float32, ByteOrder::ABCD}));
+        QCOMPARE(two->value, 2.0);
+    }
+
+    // False positives: how often do two separate int16 registers look like half of a clean
+    // float32? Measured with clean = at most 6 significant digits (so that 1013.25 counts):
+    //   (a) 27151/1002001 = 2.71 %, (b) 1653/81796 = 2.02 %, (c) 5957/200000 = 2.98 %.
+    // With a limit of 5 digits: 0.96 %, 0.28 %, 0.83 %. The rates are printed (qInfo); the
+    // ceilings (4 %, 3 %, 4 %) catch a regression.
+    void splitFalsePositives()
+    {
+        Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
+        tag.address = 100;
+        // (a) small counts / values: all pairs 0..1000 as (own, above), below absent.
+        long hitsA = 0, totalA = 0;
+        for (quint16 a = 0; a <= 1000; ++a) {
+            for (quint16 b = 0; b <= 1000; ++b) {
+                ++totalA;
+                hitsA += detectSplitValue(tag, a, std::nullopt, b) ? 1 : 0;
+            }
+        }
+        // (b) Siemens-style raw analog 0..27648 on a coarse grid (step 97).
+        long hitsB = 0, totalB = 0;
+        for (quint32 a = 0; a <= 27648; a += 97) {
+            for (quint32 b = 0; b <= 27648; b += 97) {
+                ++totalB;
+                hitsB += detectSplitValue(tag, static_cast<quint16>(a), std::nullopt,
+                                          static_cast<quint16>(b)) ? 1 : 0;
+            }
+        }
+        // (c) test-server style: signed values within +-1000 (two's complement), all three
+        // registers random.
+        long hitsC = 0, totalC = 0;
+        QRandomGenerator rng(4242);
+        const auto small = [&] {
+            return static_cast<quint16>(static_cast<qint16>(static_cast<int>(rng.bounded(2001)) - 1000));
+        };
+        for (int i = 0; i < 200000; ++i) {
+            ++totalC;
+            const quint16 below = small();
+            const quint16 own = small();
+            const quint16 above = small();
+            hitsC += detectSplitValue(tag, own, below, above) ? 1 : 0;
+        }
+        qInfo("split false positives: (a) %ld/%ld = %.4f %%, (b) %ld/%ld = %.4f %%, (c) %ld/%ld = %.4f %%",
+              hitsA, totalA, 100.0 * hitsA / totalA, hitsB, totalB, 100.0 * hitsB / totalB,
+              hitsC, totalC, 100.0 * hitsC / totalC);
+        QVERIFY(hitsA * 100 < totalA * 4);
+        QVERIFY(hitsB * 100 < totalB * 3);
+        QVERIFY(hitsC * 100 < totalC * 4);
     }
 };
 
