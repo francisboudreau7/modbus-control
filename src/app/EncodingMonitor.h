@@ -140,11 +140,15 @@ private:
     static constexpr int kMaxReadings = 10; ///< recent readings kept per 32-bit tag
     static constexpr int kCheckBatches = 10; ///< on-connect check gives up on silent tags after this
 
-    /// An encoding dialog to run. `tag` is the configuration when it was requested.
+    /// An encoding dialog (or, when `split`, a split prompt) to run. `tag` is the configuration
+    /// when it was requested.
     struct Request {
         TagId id = 0;
         Tag tag;
         quint64 epoch = 0;
+        bool split = false;
+        SplitValue splitValue; ///< split prompts only
+        quint16 own = 0;       ///< split prompts only: the tag's register as probed
         friend bool operator==(const Request &a, const Request &b) { return a.id == b.id; }
     };
 
@@ -162,6 +166,44 @@ private:
     QList<RegisterPair> recent(TagId id, int count) const;
     static QString valueText(double value, const Tag &tag);
 
+    // 16-bit split check.
+    enum class ProbeMode { Pending, Connect, Manual };
+    /// One neighbourhood read sequence (the whole read, or one read per side when that fails).
+    struct Probe {
+        TagId id = 0;
+        Tag tag;
+        quint64 epoch = 0;
+        quint64 generation = 0; ///< connection generation when queued
+        ProbeMode mode = ProbeMode::Pending;
+        quint64 requestId = 0;
+        int stage = 0; ///< 0 = whole read, 1 = below side, 2 = above side
+        std::optional<quint16> own;
+        std::optional<quint16> below;
+        std::optional<quint16> above;
+    };
+    /// A suspicious tag found by the on-connect pass.
+    struct SplitFinding {
+        TagId id = 0;
+        Tag tag;
+        quint64 epoch = 0;
+        SplitValue split;
+        quint16 own = 0;
+    };
+
+    bool splitProbeValid(const Probe &probe) const;
+    bool splitRequestValid(const Request &request) const;
+    void queueProbe(TagId id, ProbeMode mode);
+    void startNextProbe();
+    void issueRead(Probe &probe);
+    void completeProbe(const Probe &probe);
+    void flagSplit(const Tag &tag, const SplitValue &split);
+    QString splitNote(const Tag &tag, const SplitValue &split) const;
+    void enqueueSplit(const Tag &tag, const SplitValue &split, quint16 own, quint64 epoch);
+    void runSplitRequest(const Request &request);
+    void maybeFinishConnectPass();
+    void forgetSplit(TagId id);
+    void splitCheckNow(const Tag &tag);
+
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
     bool m_connected = false;
@@ -175,6 +217,16 @@ private:
     TagId m_openId = 0;
     bool m_checkActive = false;
     int m_checkBatches = 0;
+    bool m_promptOpen = false; ///< a split prompt is open (modal)
+    QSet<TagId> m_splitPending;
+    QSet<TagId> m_connectWait; ///< on-connect pass: 16-bit tags waiting for a Good sample
+    QList<SplitFinding> m_connectFound;
+    bool m_passActive = false;
+    int m_passBatches = 0;
+    quint64 m_generation = 0; ///< bumped on every connect and disconnect
+    quint64 m_nextRequest = 1;
+    QList<Probe> m_probes;
+    std::optional<Probe> m_probe; ///< the one in flight
 };
 
 } // namespace mb
