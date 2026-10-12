@@ -47,6 +47,11 @@ namespace mb {
 ///   only when the tag isWritable(): setData() on it does NOT change the model; it emits
 ///   writeRequested(id, value) and returns true.
 /// Invalid edits (bad address, gain 0, unparsable numbers) make setData() return false.
+/// Encoding: a 32-bit tag with encodingVerified false shows a warning icon (DecorationRole,
+/// QIcon from the style's SP_MessageBoxWarning) on its Name cell, and the Name ToolTipRole reads
+/// "Encoding not confirmed (float32 CDAB). Right-click > Detect encoding... to check it; writes
+/// are blocked until it is confirmed." Editing Type or ByteOrder by hand (setData) sets
+/// encodingVerified to true (the user chose it).
 class TagTableModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -98,6 +103,15 @@ public:
     void clearLiveValues();
     /// Sets the Quality tooltip text of one tag (e.g. last write/read error).
     void setStatusText(TagId id, const QString &text);
+
+    /// Sets a 32-bit tag's type (Int32, UInt32 or Float32) and byte order and its
+    /// encodingVerified flag. Returns false (nothing changes) for an unknown id, a 16-bit tag or
+    /// a 16-bit type. When type or order change, forgets the live value (like an edit). Emits
+    /// dataChanged for the row and tagsEdited() when anything changed; returns true.
+    bool setEncoding(TagId id, ValueType type, mb::ByteOrder order, bool verified);
+    /// Sets only encodingVerified (the live value is kept: decoding is unchanged). Emits
+    /// dataChanged for the Name cell and tagsEdited() when it changed. False for an unknown id.
+    bool setEncodingVerified(TagId id, bool verified);
 
     /// 0 (default) or 1. The Address column shows and accepts tag.address + base (edit range
     /// base..65535+base, a 32-bit tag at most 65534+base); its header reads "Address" for 0

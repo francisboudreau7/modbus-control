@@ -28,6 +28,13 @@ class TagTableModel;
 /// 3. 32-bit tags (2 registers) need TagTableModel::goodValue(): without a Good reading ->
 ///    warning "No valid reading of 'X' yet. Check the connection, register number and byte
 ///    order before writing.";
+/// 3b. 32-bit tag whose encoding is not confirmed (Tag::encodingVerified false) -> prompt
+///    "The encoding of 'X' is not confirmed: it reads 52.3 °C as float32 CDAB. Writing with a
+///    wrong encoding sends a wrong value." with "Confirm and continue" / "Detect encoding..." /
+///    Cancel (default). Confirm: TagTableModel::setEncodingVerified(id, true) and the checks go
+///    on (stillSame() ignores encodingVerified). Detect: emits detectEncodingRequested(id) and
+///    stops (nothing written). Cancel: stops. requestWriteSelection asks once for all
+///    unverified tags of the selection (one prompt listing them; Confirm marks them all);
 /// 4. encodeRegisters() fails (out of the type's range) -> warning;
 /// 5. float32 tag whose current value is implausible (not finite, |x| > 1e9, or
 ///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning that
@@ -81,6 +88,8 @@ signals:
     void quickConfirmChanged(bool on);
     /// The user chose "Use FC06 only and reconnect" after an FC16 rejection.
     void singleRegisterWritesRequested();
+    /// The user chose "Detect encoding..." in the unconfirmed-encoding prompt.
+    void detectEncodingRequested(mb::TagId id);
     /// Connect to PollWorker::writeRegisters (queued).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
     /// Status bar text.
@@ -105,6 +114,9 @@ private:
     std::function<void(const QString &)> m_warn;
     /// Extra warning for an implausible current float value; true = "Write anyway".
     std::function<bool(const QString &text)> m_warnImplausible;
+    /// Answer of the unconfirmed-encoding prompt (check 3b).
+    enum class EncodingAnswer { Confirm, Detect, Cancel };
+    std::function<EncodingAnswer(const QString &text)> m_confirmEncoding;
 
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;

@@ -406,3 +406,9 @@ QMenu *TagTableWidget::headerMenu()
 }
 
 } // namespace mb
+
+// Stub created by T150; implemented by T154.
+QMenu *mb::TagTableWidget::rowMenu(int)
+{
+    return nullptr;
+}

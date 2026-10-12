@@ -60,6 +60,9 @@ inline constexpr int kProjectFormatVersion = 1;
 /// keys (see TagTableModel::columnKey) hidden in the tag table. Missing -> compactHiddenColumns().
 /// Always written. Entries must be strings (anything else is rejected); unknown keys are kept as
 /// they are (the table ignores them), duplicates are dropped.
+///
+/// Added in v1.3 (optional, additive): per tag "encodingVerified" (boolean, default true; written
+/// only when false). Any other JSON type is rejected.
 /// Column keys hidden by the tag table's compact view: "raw", "gain", "offset", "byteOrder",
 /// "axis", "color", "writeMin", "writeMax", "quickA", "quickB" (in this order).
 QStringList compactHiddenColumns();

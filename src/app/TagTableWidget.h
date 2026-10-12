@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Tag.h"
+
 #include <QList>
 #include <QStringList>
 #include <QWidget>
@@ -46,12 +48,18 @@ public:
     /// The header context menu described above (new each call, parented to this widget; the
     /// caller may exec() or delete it).
     QMenu *headerMenu();
+    /// Context menu of a row (right-click on a cell; new each call, parented to this widget):
+    /// "Detect encoding..." (object name "detectEncodingAction"), enabled only for 32-bit tags;
+    /// it emits detectEncodingRequested(tag id). nullptr for an invalid row.
+    QMenu *rowMenu(int row);
 
 signals:
     /// "Write selected..." pressed; rows as selectedRows().
     void writeSelectionRequested(const QList<int> &rows);
     /// The user changed the visible columns from the header menu.
     void hiddenColumnsChanged();
+    /// "Detect encoding..." chosen for a tag.
+    void detectEncodingRequested(mb::TagId id);
 
 private:
     // Implementation-defined; the task may change the private section freely.

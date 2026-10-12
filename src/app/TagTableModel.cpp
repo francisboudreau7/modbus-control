@@ -653,3 +653,14 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
+
+// Stubs created by T150; implemented by T154.
+bool mb::TagTableModel::setEncoding(TagId, ValueType, mb::ByteOrder, bool)
+{
+    return false;
+}
+
+bool mb::TagTableModel::setEncodingVerified(TagId, bool)
+{
+    return false;
+}
