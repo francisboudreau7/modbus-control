@@ -117,6 +117,13 @@ Tag makeTag(TagId id, Area area, quint16 address, ValueType type = ValueType::UI
     return t;
 }
 
+struct ReadRecord
+{
+    quint64 id = 0;
+    ModbusResult result;
+    QList<quint16> values;
+};
+
 /// PollWorker on its own thread, with all emitted signals recorded on the main thread.
 class WorkerHarness : public QObject
 {
@@ -133,6 +140,10 @@ public:
                 [this](const SampleBatch &b) { batches.append(b); });
         connect(m_worker, &PollWorker::writeFinished, this,
                 [this](quint64 id, const ModbusResult &r) { writes.insert(id, r); });
+        connect(m_worker, &PollWorker::readFinished, this,
+                [this](quint64 id, const ModbusResult &r, const QList<quint16> &v) {
+                    reads.append({id, r, v});
+                });
         m_thread.start();
     }
 
@@ -164,6 +175,36 @@ public:
         }, Qt::QueuedConnection);
     }
 
+    void read(quint64 id, Area area, quint16 address, int count)
+    {
+        QMetaObject::invokeMethod(m_worker, [w = m_worker, id, area, address, count] {
+            w->readRegisters(id, area, address, count);
+        }, Qt::QueuedConnection);
+    }
+    /// Queues a read and a disconnect in one worker-thread call, so the read is still pending.
+    void readThenDisconnect(quint64 id, Area area, quint16 address, int count)
+    {
+        QMetaObject::invokeMethod(m_worker, [w = m_worker, id, area, address, count] {
+            w->readRegisters(id, area, address, count);
+            w->disconnectFrom();
+        }, Qt::QueuedConnection);
+    }
+    /// How many readFinished were recorded for `id`.
+    int readCount(quint64 id) const
+    {
+        int n = 0;
+        for (const ReadRecord &r : reads)
+            n += r.id == id;
+        return n;
+    }
+    const ReadRecord *readOf(quint64 id) const
+    {
+        for (const ReadRecord &r : reads)
+            if (r.id == id)
+                return &r;
+        return nullptr;
+    }
+
     bool hasState(ConnectionState s) const { return states.contains(s); }
     ConnectionState lastState() const { return states.isEmpty() ? ConnectionState::Disconnected : states.last(); }
 
@@ -179,6 +220,7 @@ public:
     QList<ConnectionState> states;
     QList<SampleBatch> batches;
     QHash<quint64, ModbusResult> writes;
+    QList<ReadRecord> reads;
 
 private:
     QThread m_thread;
@@ -606,6 +648,112 @@ private slots:
         QVERIFY(WorkerHarness::sampleOf(b, 1)->quality == Quality::Good);
         QVERIFY(WorkerHarness::sampleOf(b, 2)->quality == Quality::Exception);
         QVERIFY(m_harness->lastState() == ConnectionState::Connected);
+    }
+
+    void worker_oneOffReadHolding()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 200));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Connected, 5000);
+        m_harness->read(7, Area::HoldingRegister, 109, 3);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->readCount(7) == 1, 3000);
+        const ReadRecord *r = m_harness->readOf(7);
+        QVERIFY2(r->result.ok(), qPrintable(r->result.message));
+        QCOMPARE(r->values, (QList<quint16>{0, 0x3333, 0x4251}));
+    }
+
+    void worker_oneOffReadInput()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 200));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Connected, 5000);
+        m_harness->read(1, Area::InputRegister, 20, 2);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->readCount(1) == 1, 3000);
+        const ReadRecord *r = m_harness->readOf(1);
+        QVERIFY2(r->result.ok(), qPrintable(r->result.message));
+        QCOMPARE(r->values.size(), 2);
+    }
+
+    void worker_oneOffReadOutOfMapKeepsPolling()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 2, 5000);
+        const int statesBefore = m_harness->states.size();
+        m_harness->read(3, Area::HoldingRegister, 199, 3);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->readCount(3) == 1, 3000);
+        const ReadRecord *r = m_harness->readOf(3);
+        QCOMPARE(r->result.error, ModbusError::Exception);
+        QCOMPARE(int(r->result.exceptionCode), 2);
+        QVERIFY(r->values.isEmpty());
+
+        const int n = m_harness->batches.size();
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= n + 2, 3000);
+        QVERIFY(m_harness->batches.last().samples.at(0).quality == Quality::Good);
+        QVERIFY(m_harness->lastState() == ConnectionState::Connected);
+        QCOMPARE(m_harness->states.size(), statesBefore);
+    }
+
+    void worker_oneOffReadRejectedRequests()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->read(1, Area::HoldingRegister, 0, 1); // never connected
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->readCount(1) == 1, 2000);
+        QCOMPARE(m_harness->readOf(1)->result.error, ModbusError::NotConnected);
+        QVERIFY(m_harness->readOf(1)->values.isEmpty());
+
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 200));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Connected, 5000);
+        m_harness->read(2, Area::HoldingRegister, 0, 0);
+        m_harness->read(3, Area::HoldingRegister, 0, 126);
+        m_harness->read(4, Area::InputRegister, 65535, 2);
+        m_harness->read(5, Area::InputRegister, 65535, 1); // last address is valid input
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->readCount(5) == 1, 3000);
+        for (quint64 id : {2, 3, 4}) {
+            QCOMPARE(m_harness->readCount(id), 1);
+            QCOMPARE(m_harness->readOf(id)->result.error, ModbusError::InvalidArgument);
+        }
+        QVERIFY(m_harness->readOf(5)->result.error != ModbusError::InvalidArgument);
+        QVERIFY(m_harness->lastState() == ConnectionState::Connected);
+    }
+
+    void worker_oneOffReadFailsOnDisconnect()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 200));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Connected, 5000);
+        m_harness->readThenDisconnect(9, Area::HoldingRegister, 0, 2);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Disconnected, 3000);
+        QTest::qWait(200);
+        QCOMPARE(m_harness->readCount(9), 1);
+        QCOMPARE(m_harness->readOf(9)->result.error, ModbusError::NotConnected);
+    }
+
+    void worker_oneOffReadsAnsweredOnceInOrder()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->lastState() == ConnectionState::Connected, 5000);
+        for (quint64 i = 0; i < 5; ++i)
+            m_harness->read(100 + i, Area::HoldingRegister, quint16(110 + (i % 2)), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->reads.size() >= 5, 3000);
+        QTest::qWait(300);
+        QCOMPARE(m_harness->reads.size(), 5);
+        for (int i = 0; i < 5; ++i) {
+            QCOMPARE(m_harness->reads.at(i).id, quint64(100 + i));
+            QVERIFY(m_harness->reads.at(i).result.ok());
+            QCOMPARE(m_harness->reads.at(i).values,
+                     (QList<quint16>{i % 2 ? quint16(0x4251) : quint16(0x3333)}));
+        }
     }
 
     void worker_reconnectsAfterServerRestart()
