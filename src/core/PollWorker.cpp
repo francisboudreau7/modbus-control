@@ -131,6 +131,7 @@ void PollWorker::connectTo(const ConnectionSettings &settings)
     m_backoffStep = 0;
     m_lastBlockMessage.clear();
     failAllWrites(notConnectedResult());
+    failAllReads(notConnectedResult());
     if (!m_clock.isValid())
         resetTimeBase();
     attemptConnect(true);
@@ -178,6 +179,7 @@ void PollWorker::enterReconnecting(const QString &reason)
     const QString detail = QStringLiteral("%1 (retry in %2 s)").arg(reason).arg(ms / 1000.0);
     // Fail queued writes before the state change: listeners drop pending requests on it.
     failAllWrites(notConnectedResult());
+    failAllReads(notConnectedResult());
     setState(ConnectionState::Reconnecting, detail);
     emit message(QStringLiteral("Connection to %1 failed: %2").arg(endpoint(), detail));
     m_reconnectTimer->start(ms);
@@ -197,6 +199,7 @@ void PollWorker::disconnectFrom()
     closeConnection();
     m_writePassQueued = false;
     failAllWrites(notConnectedResult());
+    failAllReads(notConnectedResult());
     setState(ConnectionState::Disconnected, QStringLiteral("Disconnected"));
 }
 
@@ -224,7 +227,7 @@ void PollWorker::drainWrites()
 {
     m_writePassQueued = false;
     if (m_state == ConnectionState::Connected)
-        serveWrites();
+        servePending();
 }
 
 ModbusResult PollWorker::withFc16Hint(ModbusResult result)
@@ -321,7 +324,7 @@ void PollWorker::onPollTimer()
     if (m_state != ConnectionState::Connected)
         return;
 
-    serveWrites();
+    servePending();
     if (m_state == ConnectionState::Connected)
         pollCycle(t);
     else if (m_state == ConnectionState::Reconnecting)
@@ -405,13 +408,68 @@ void PollWorker::pollCycle(double t)
         enterReconnecting(lostReason);
 }
 
-} // namespace mb
-
-// Stub created by T160; implemented by T162.
-void mb::PollWorker::readRegisters(quint64 requestId, mb::Area, quint16, int)
+void PollWorker::failAllReads(const ModbusResult &result)
 {
-    ModbusResult result;
-    result.error = ModbusError::NotConnected;
-    result.message = QStringLiteral("not implemented");
-    emit readFinished(requestId, result, {});
+    const QList<PendingRead> reads = std::exchange(m_reads, {});
+    for (const PendingRead &rd : reads)
+        emit readFinished(rd.id, result, {});
 }
+
+void PollWorker::readRegisters(quint64 requestId, Area area, quint16 address, int count)
+{
+    if (m_state != ConnectionState::Connected || !m_conn->isOpen()) {
+        emit readFinished(requestId, notConnectedResult(), {});
+        return;
+    }
+    if (count < 1 || count > 125 || static_cast<int>(address) + count > 65536) {
+        ModbusResult r;
+        r.error = ModbusError::InvalidArgument;
+        r.message = QStringLiteral("Invalid read: %1 registers from %2 (1..125 registers, within 0..65535)")
+                        .arg(count)
+                        .arg(address + m_addressBase);
+        emit readFinished(requestId, r, {});
+        return;
+    }
+    m_reads.append({requestId, area, address, count});
+    if (!m_writePassQueued) {
+        m_writePassQueued = true;
+        QTimer::singleShot(0, this, &PollWorker::drainWrites);
+    }
+}
+
+// One-off reads are served after the queued writes, in request order. They never touch tag
+// qualities, samples or the status bar: an error is only reported through readFinished, except
+// ConnectionLost, which is handled like a failed poll.
+void PollWorker::serveReads()
+{
+    while (!m_reads.isEmpty()) {
+        const PendingRead rd = m_reads.takeFirst();
+        ModbusResult r;
+        QList<quint16> data;
+        if (m_state != ConnectionState::Connected || !m_conn->isOpen())
+            r = notConnectedResult();
+        else
+            r = m_conn->readRegisters(rd.area, rd.address, static_cast<quint16>(rd.count), data);
+
+        if (!r.ok()) {
+            data.clear();
+            // Discard anything left in the socket so a late reply is not read as the next answer.
+            if (r.error != ModbusError::Exception)
+                m_conn->flush();
+        }
+        emit readFinished(rd.id, r, data);
+        if (r.error == ModbusError::ConnectionLost) {
+            enterReconnecting(r.message); // also fails the remaining reads and writes
+            return;
+        }
+    }
+}
+
+void PollWorker::servePending()
+{
+    serveWrites();
+    if (m_state == ConnectionState::Connected)
+        serveReads();
+}
+
+} // namespace mb

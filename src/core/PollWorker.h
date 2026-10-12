@@ -90,6 +90,13 @@ private:
         QList<quint16> values;
     };
 
+    struct PendingRead {
+        quint64 id = 0;
+        Area area = Area::HoldingRegister;
+        quint16 address = 0;
+        int count = 0;
+    };
+
     void setState(ConnectionState state, const QString &detail);
     int nextBackoffMs();
     void attemptConnect(bool firstAttempt);
@@ -101,6 +108,9 @@ private:
     void scheduleNextPoll(double cycleStartMs);
     void serveWrites();
     void drainWrites();
+    void serveReads();
+    void servePending(); ///< queued writes, then queued reads
+    void failAllReads(const ModbusResult &result);
     void failAllWrites(const ModbusResult &result);
     void emitDisconnectedBatch(double t);
     void pollCycle(double t);
@@ -119,6 +129,7 @@ private:
     QElapsedTimer m_clock;
     ConnectionState m_state = ConnectionState::Disconnected;
     QList<PendingWrite> m_writes;
+    QList<PendingRead> m_reads;
     bool m_writePassQueued = false;
     int m_backoffStep = 0;
     int m_addressBase = 0;
