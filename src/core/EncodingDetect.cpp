@@ -369,3 +369,10 @@ bool currentEncodingSuspicious(const Tag &tag, const EncodingResult &result)
 }
 
 } // namespace mb
+
+// Stub created by T160; implemented by T161.
+std::optional<mb::SplitValue> mb::detectSplitValue(const Tag &, quint16, std::optional<quint16>,
+                                                   std::optional<quint16>)
+{
+    return std::nullopt;
+}

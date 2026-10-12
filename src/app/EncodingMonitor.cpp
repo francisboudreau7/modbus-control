@@ -24,6 +24,9 @@ EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QO
     : QObject(parent), m_model(model), m_dialogParent(dialogParent)
 {
     m_runDialog = [](EncodingDialog &dialog) { return dialog.exec() == QDialog::Accepted; };
+    m_splitPrompt = [](const QString &, const QString &, const QString &) {
+        return SplitAnswer::Later; // stub created by T160; the real prompt comes with T163
+    };
     m_reviewPrompt = [this](const QString &text) {
         QMessageBox box(QMessageBox::Warning, QStringLiteral("Encoding check"), text,
                         QMessageBox::NoButton, m_dialogParent);
@@ -387,3 +390,6 @@ void EncodingMonitor::applyChoice(const Request &request, const EncodingDialog &
 }
 
 } // namespace mb
+
+// Stub created by T160; implemented by T163.
+void mb::EncodingMonitor::onReadFinished(quint64, const ModbusResult &, const QList<quint16> &) {}

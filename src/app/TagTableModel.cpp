@@ -710,3 +710,19 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
+
+// Stubs created by T160; implemented by T164.
+bool mb::TagTableModel::setEncodingNote(TagId, const QString &)
+{
+    return false;
+}
+
+QString mb::TagTableModel::encodingNote(TagId) const
+{
+    return {};
+}
+
+bool mb::TagTableModel::setLayout(TagId, quint16, ValueType, mb::ByteOrder, bool)
+{
+    return false;
+}

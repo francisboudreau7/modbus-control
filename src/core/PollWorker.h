@@ -65,12 +65,21 @@ public slots:
     /// at the first failure) when ConnectionSettings::singleRegisterWrites is set.
     /// Answered by exactly one writeFinished(requestId, ...).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
+    /// Queues a one-off read of `count` (1..125) consecutive registers of `area` starting at
+    /// `address` (address + count <= 65536), served between poll cycles like writes (before the
+    /// next cycle's reads). Not part of polling and never shown in samples. Answered by exactly
+    /// one readFinished(requestId, ...): on success result.ok() and `values` has `count` registers;
+    /// otherwise the error (NotConnected when not Connected, or on disconnect while queued;
+    /// InvalidArgument for a bad count/range) and empty `values`. A failed one-off read never
+    /// changes the connection state, except ConnectionLost, which is handled like a failed poll.
+    void readRegisters(quint64 requestId, mb::Area area, quint16 address, int count);
 
 signals:
     void stateChanged(mb::ConnectionState state, const QString &detail);
     void timeBaseReset(const QDateTime &wallClockAtZero);
     void samplesReady(const mb::SampleBatch &batch);
     void writeFinished(quint64 requestId, const mb::ModbusResult &result);
+    void readFinished(quint64 requestId, const mb::ModbusResult &result, const QList<quint16> &values);
     /// Human-readable message for the status bar (block errors, reconnect attempts).
     void message(const QString &text);
 

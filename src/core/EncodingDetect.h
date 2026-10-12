@@ -116,4 +116,27 @@ EncodingResult detectEncoding(const Tag &tag, const QList<RegisterPair> &reading
 /// tag's current one, and the current encoding's candidate scores below 0.5.
 bool currentEncodingSuspicious(const Tag &tag, const EncodingResult &result);
 
+/// A float32 value that a 16-bit tag's register is probably one half of.
+struct SplitValue {
+    quint16 address = 0; ///< first register of the 32-bit value: tag.address - 1 or tag.address
+    Encoding encoding;   ///< Float32 with the byte order that gives `value`
+    double value = 0.0;  ///< the decoded float (device value: no gain or offset)
+    int digits = 0;      ///< significant digits of the value's shortest round-trip decimal form
+    friend bool operator==(const SplitValue &, const SplitValue &) = default;
+};
+
+/// Whether the register of a 16-bit tag (`own`, read at tag.address) is probably half of a float32
+/// value, given its neighbours `below` (tag.address - 1) and `above` (tag.address + 1), each
+/// nullopt when it could not be read (or does not exist). For a 32-bit tag returns nullopt.
+/// Considers the pairs (below, own) starting at tag.address - 1 and (own, above) starting at
+/// tag.address, each decoded as float32 in the four byte orders. A decoding is "clean" when it is
+/// finite, 1e-3 <= |x| <= 1e7 and its shortest round-trip decimal form has at most 5 significant
+/// digits (52.3, 0.5, 100, -17.5, 1013.25 are clean; a full-precision PV such as 23.456789 is not,
+/// so it is not detected: documented limitation). A pair whose two registers are both 0 is never
+/// suspicious. Returns the clean decoding with the fewest digits; ties: the pair starting at
+/// tag.address, then ABCD > CDAB > BADC > DCBA. nullopt when nothing is clean. Halves of int32
+/// values cannot be told from separate 16-bit registers and are not considered.
+std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own, std::optional<quint16> below,
+                                           std::optional<quint16> above);
+
 } // namespace mb

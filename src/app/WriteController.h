@@ -34,7 +34,13 @@ class TagTableModel;
 ///    Cancel (default). Confirm: TagTableModel::setEncodingVerified(id, true) and the checks go
 ///    on (stillSame() ignores encodingVerified). Detect: emits detectEncodingRequested(id) and
 ///    stops (nothing written). Cancel: stops. requestWriteSelection asks once for all
-///    unverified tags of the selection (one prompt listing them; Confirm marks them all);
+///    unverified tags of the selection (one prompt listing them; Confirm marks them all).
+///    A 16-bit tag with encodingVerified false (flagged as probably half of a 32-bit value) gets
+///    the same prompt and buttons with the text "'X' is probably half of a 32-bit value: <note>
+///    Writing a 16-bit value there changes half of that value, and the device then reads a wrong
+///    number." where <note> is TagTableModel::encodingNote(id), or "HR 110 may be half of a 32-bit
+///    value." without one. "Confirm and continue" here means "it really is 16-bit". After the
+///    dialogs, a tag that became unverified meanwhile (any width) is not written;
 /// 4. encodeRegisters() fails (out of the type's range) -> warning;
 /// 5. float32 tag whose current value is implausible (not finite, |x| > 1e9, or
 ///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning that

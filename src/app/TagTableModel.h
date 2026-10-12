@@ -52,6 +52,10 @@ namespace mb {
 /// "Encoding not confirmed (float32 CDAB). Right-click > Detect encoding... to check it; writes
 /// are blocked until it is confirmed." Changing ByteOrder by hand to a different value (setData)
 /// sets encodingVerified to true (the user chose it); editing Type leaves it as it is.
+/// A 16-bit tag with encodingVerified false (flagged as probably half of a 32-bit value) shows the
+/// same icon; its Name ToolTipRole is its encoding note (setEncodingNote) or, without one, "This
+/// register may be half of a 32-bit value. Right-click > Detect encoding... to check it; writes
+/// ask first."
 class TagTableModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -112,6 +116,16 @@ public:
     /// Sets only encodingVerified (the live value is kept: decoding is unchanged). Emits
     /// dataChanged for the Name cell and tagsEdited() when it changed. False for an unknown id.
     bool setEncodingVerified(TagId id, bool verified);
+    /// Tooltip note of a flagged tag (not saved; empty = the default text). Setting
+    /// encodingVerified to true, or any edit of the tag's Area/Address/Type, clears it. Emits
+    /// dataChanged for the Name cell only. False for an unknown id.
+    bool setEncodingNote(TagId id, const QString &note);
+    QString encodingNote(TagId id) const;
+    /// Moves and retypes a tag in one step (the "Change to float32 CDAB at HR 110" fix): sets
+    /// address, type, byte order and encodingVerified, clears the note and forgets the live value.
+    /// False (nothing changes) for an unknown id or when the tag would not fit the address space.
+    /// Emits dataChanged for the row and tagsEdited() when anything changed.
+    bool setLayout(TagId id, quint16 address, ValueType type, mb::ByteOrder order, bool verified);
 
     /// 0 (default) or 1. The Address column shows and accepts tag.address + base (edit range
     /// base..65535+base, a 32-bit tag at most 65534+base); its header reads "Address" for 0

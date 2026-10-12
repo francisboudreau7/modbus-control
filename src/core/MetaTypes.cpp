@@ -16,6 +16,7 @@ void registerMetaTypes()
     qRegisterMetaType<mb::ModbusResult>();
     qRegisterMetaType<mb::ConnectionState>();
     qRegisterMetaType<mb::Tag>();
+    qRegisterMetaType<mb::Area>();
     qRegisterMetaType<QList<mb::Tag>>();
     qRegisterMetaType<QList<quint16>>();
 }

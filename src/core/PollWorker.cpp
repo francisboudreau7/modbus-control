@@ -406,3 +406,12 @@ void PollWorker::pollCycle(double t)
 }
 
 } // namespace mb
+
+// Stub created by T160; implemented by T162.
+void mb::PollWorker::readRegisters(quint64 requestId, mb::Area, quint16, int)
+{
+    ModbusResult result;
+    result.error = ModbusError::NotConnected;
+    result.message = QStringLiteral("not implemented");
+    emit readFinished(requestId, result, {});
+}

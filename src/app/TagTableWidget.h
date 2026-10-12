@@ -49,7 +49,8 @@ public:
     /// caller may exec() or delete it).
     QMenu *headerMenu();
     /// Context menu of a row (right-click on a cell; new each call, parented to this widget):
-    /// "Detect encoding..." (object name "detectEncodingAction"), enabled only for 32-bit tags;
+    /// "Detect encoding..." (object name "detectEncodingAction"), enabled for 32-bit tags and for
+    /// 16-bit tags flagged as probably half of a 32-bit value (encodingVerified false);
     /// it emits detectEncodingRequested(tag id). nullptr for an invalid row.
     QMenu *rowMenu(int row);
 
