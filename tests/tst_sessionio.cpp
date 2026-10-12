@@ -382,7 +382,10 @@ void Test::timing()
     const qint64 loadMs = timer.elapsed();
     qInfo().noquote() << QStringLiteral("72000 rows x 20 tags: save %1 ms, load %2 ms, %3 KiB")
                              .arg(saveMs).arg(loadMs).arg(json.size() / 1024);
+#ifdef NDEBUG
+    // Only in release builds: debug timings depend too much on machine load to be a pass/fail check.
     QVERIFY2(saveMs + loadMs < 5000, "too slow");
+#endif
     compareRecorders(rec, rec2);
 }
 
