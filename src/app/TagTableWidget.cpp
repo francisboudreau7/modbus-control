@@ -216,6 +216,17 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         menu->exec(QCursor::pos());
         delete menu;
     });
+    m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_view, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        const QModelIndex index = m_view->indexAt(pos);
+        if (!index.isValid())
+            return;
+        QMenu *menu = rowMenu(index.row());
+        if (!menu)
+            return;
+        menu->exec(m_view->mapToGlobal(pos));
+        delete menu;
+    });
     m_view->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed
                             | QAbstractItemView::SelectedClicked);
 
@@ -405,10 +416,19 @@ QMenu *TagTableWidget::headerMenu()
     return menu;
 }
 
-} // namespace mb
-
-// Stub created by T150; implemented by T154.
-QMenu *mb::TagTableWidget::rowMenu(int)
+QMenu *TagTableWidget::rowMenu(int row)
 {
-    return nullptr;
+    if (row < 0 || row >= m_model->rowCount())
+        return nullptr;
+    const Tag &tag = m_model->tagAt(row);
+    const TagId id = tag.id;
+
+    auto *menu = new QMenu(this);
+    QAction *detect = menu->addAction(tr("Detect encoding..."));
+    detect->setObjectName(QStringLiteral("detectEncodingAction"));
+    detect->setEnabled(registerCount(tag.type) == 2);
+    connect(detect, &QAction::triggered, this, [this, id] { emit detectEncodingRequested(id); });
+    return menu;
 }
+
+} // namespace mb

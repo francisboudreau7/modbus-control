@@ -4,6 +4,8 @@
 
 #include <QAbstractItemModelTester>
 #include <QAction>
+#include <QApplication>
+#include <QIcon>
 #include <QBrush>
 #include <QColor>
 #include <QComboBox>
@@ -16,6 +18,7 @@
 #include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QStyle>
 #include <QtTest>
 
 #include <limits>
@@ -1532,6 +1535,176 @@ private slots:
         w.setHiddenColumns({});
         QVERIFY(!w.view()->isColumnHidden(C::Raw));
         QVERIFY(w.hiddenColumns().isEmpty());
+    }
+
+    // setEncoding changes type, order and flag; it forgets the live value only when the decoding
+    // changes, and refuses unknown ids, 16-bit tags and 16-bit types.
+    void setEncodingRules()
+    {
+        TagTableModel m;
+        Tag f = makeTag(1, "f", Area::HoldingRegister, 10);
+        f.type = ValueType::Float32;
+        f.byteOrder = ByteOrder::CDAB;
+        f.encodingVerified = false;
+        m.setTags({f, makeTag(2, "s")}, 3);
+        SampleBatch b;
+        b.samples << TagSample{1, 0x42F6E979u, 123.456, Quality::Good};
+        m.updateSamples(b);
+        QVERIFY(m.goodValue(1).has_value());
+
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+
+        // Only the flag changes: the live value stays.
+        QVERIFY(m.setEncoding(1, ValueType::Float32, ByteOrder::CDAB, true));
+        QVERIFY(m.tagAt(0).encodingVerified);
+        QVERIFY(m.goodValue(1).has_value());
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(changed.size(), 1);
+
+        // Nothing changes: true, but no signal.
+        edited.clear();
+        changed.clear();
+        QVERIFY(m.setEncoding(1, ValueType::Float32, ByteOrder::CDAB, true));
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+
+        // New byte order: the live value is forgotten.
+        QVERIFY(m.setEncoding(1, ValueType::Float32, ByteOrder::ABCD, true));
+        QCOMPARE(int(m.tagAt(0).byteOrder), int(ByteOrder::ABCD));
+        QVERIFY(!m.goodValue(1).has_value());
+        QCOMPARE(edited.size(), 1);
+
+        // New type and flag.
+        QVERIFY(m.setEncoding(1, ValueType::Int32, ByteOrder::ABCD, false));
+        QCOMPARE(int(m.tagAt(0).type), int(ValueType::Int32));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+        QCOMPARE(edited.size(), 2);
+
+        // Refused: nothing changes, no signal.
+        edited.clear();
+        QVERIFY(!m.setEncoding(99, ValueType::Float32, ByteOrder::ABCD, true));
+        QVERIFY(!m.setEncoding(2, ValueType::Float32, ByteOrder::ABCD, true)); // 16-bit tag
+        QVERIFY(!m.setEncoding(1, ValueType::UInt16, ByteOrder::ABCD, true)); // 16-bit type
+        QVERIFY(!m.setEncoding(1, ValueType::Int16, ByteOrder::ABCD, true));
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(int(m.tagAt(0).type), int(ValueType::Int32));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+    }
+
+    // setEncodingVerified keeps the live value and touches only the Name cell.
+    void setEncodingVerifiedRules()
+    {
+        TagTableModel m;
+        Tag f = makeTag(1, "f");
+        f.type = ValueType::Float32;
+        f.encodingVerified = false;
+        m.setTags({f}, 2);
+        SampleBatch b;
+        b.samples << TagSample{1, 0x42F6E979u, 123.456, Quality::Good};
+        m.updateSamples(b);
+
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QVERIFY(m.setEncodingVerified(1, true));
+        QVERIFY(m.tagAt(0).encodingVerified);
+        QVERIFY(m.goodValue(1).has_value());
+        QCOMPARE(edited.size(), 1);
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(changed.at(0).at(0).value<QModelIndex>().column(), int(C::Name));
+
+        edited.clear();
+        changed.clear();
+        QVERIFY(m.setEncodingVerified(1, true)); // unchanged
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+
+        QVERIFY(!m.setEncodingVerified(99, false));
+        QCOMPARE(edited.size(), 0);
+        QVERIFY(m.setEncodingVerified(1, false));
+        QVERIFY(!m.tagAt(0).encodingVerified);
+        QCOMPARE(edited.size(), 1);
+    }
+
+    // The Name cell shows the warning only for unverified 32-bit tags.
+    void encodingNameDecorationAndTooltip()
+    {
+        Tag unverified = makeTag(1, "a");
+        unverified.type = ValueType::Float32;
+        unverified.byteOrder = ByteOrder::CDAB;
+        unverified.encodingVerified = false;
+        Tag verified = makeTag(2, "b");
+        verified.type = ValueType::Int32;
+        verified.encodingVerified = true;
+        Tag small = makeTag(3, "c");
+        small.type = ValueType::Int16;
+        small.encodingVerified = false; // 16-bit: no warning
+        TagTableModel m;
+        m.setTags({unverified, verified, small}, 4);
+
+        const QVariant deco = m.data(ix(m, 0, C::Name), Qt::DecorationRole);
+        QCOMPARE(deco.metaType().id(), int(QMetaType::QIcon));
+        QVERIFY(!deco.value<QIcon>().isNull());
+        QCOMPARE(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Encoding not confirmed (float32 CDAB). Right-click > Detect "
+                                "encoding... to check it; writes are blocked until it is confirmed."));
+        QCOMPARE(m.data(ix(m, 0, C::Name), Qt::DisplayRole).toString(), QStringLiteral("a"));
+
+        QVERIFY(!m.data(ix(m, 1, C::Name), Qt::DecorationRole).isValid());
+        QVERIFY(!m.data(ix(m, 1, C::Name), Qt::ToolTipRole).isValid());
+        QVERIFY(!m.data(ix(m, 2, C::Name), Qt::DecorationRole).isValid());
+        QVERIFY(!m.data(ix(m, 2, C::Name), Qt::ToolTipRole).isValid());
+    }
+
+    // Typing a type or byte order by hand confirms the encoding.
+    void typeAndByteOrderEditConfirmEncoding()
+    {
+        TagTableModel m;
+        Tag f = makeTag(1, "f");
+        f.type = ValueType::Float32;
+        f.byteOrder = ByteOrder::CDAB;
+        f.encodingVerified = false;
+        m.setTags({f}, 2);
+
+        QVERIFY(m.setData(ix(m, 0, C::ByteOrder), QString("ABCD")));
+        QVERIFY(m.tagAt(0).encodingVerified);
+
+        QVERIFY(m.setEncodingVerified(1, false));
+        QVERIFY(m.setData(ix(m, 0, C::Type), QString("int32")));
+        QVERIFY(m.tagAt(0).encodingVerified);
+    }
+
+    // rowMenu: "Detect encoding..." is enabled for 32-bit tags only and emits the tag id.
+    void rowMenuDetectEncoding()
+    {
+        TagTableModel m;
+        Tag f = makeTag(5, "f");
+        f.type = ValueType::Float32;
+        m.setTags({f, makeTag(6, "s")}, 7);
+        TagTableWidget w(&m);
+        QSignalSpy spy(&w, &TagTableWidget::detectEncodingRequested);
+
+        QMenu *menu = w.rowMenu(0);
+        QVERIFY(menu);
+        QAction *action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
+        QVERIFY(action);
+        QCOMPARE(action->text(), QStringLiteral("Detect encoding..."));
+        QVERIFY(action->isEnabled());
+        action->trigger();
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(spy.at(0).at(0).value<TagId>(), TagId(5));
+        delete menu;
+
+        menu = w.rowMenu(1);
+        QVERIFY(menu);
+        action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
+        QVERIFY(action);
+        QVERIFY(!action->isEnabled());
+        delete menu;
+        QCOMPARE(spy.size(), 1);
+
+        QVERIFY(w.rowMenu(-1) == nullptr);
+        QVERIFY(w.rowMenu(2) == nullptr);
     }
 };
 

@@ -275,6 +275,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         || !readBool(obj, QStringLiteral("plotted"), prefix, tag.plotted, error)
         || !readBool(obj, QStringLiteral("writable"), prefix, tag.writable, error)
         || !readBool(obj, QStringLiteral("analyzed"), prefix, tag.analyzed, error)
+        || !readBool(obj, QStringLiteral("encodingVerified"), prefix, tag.encodingVerified, error)
         || !readAxis(obj, prefix, tag.axis, error)
         || !readOptionalNumber(obj, QStringLiteral("quickA"), prefix, tag.quickA, error)
         || !readOptionalNumber(obj, QStringLiteral("quickB"), prefix, tag.quickB, error)
@@ -471,6 +472,9 @@ QByteArray projectToJson(const Project &project)
             obj.insert(QStringLiteral("quickA"), *tag.quickA);
         if (tag.quickB)
             obj.insert(QStringLiteral("quickB"), *tag.quickB);
+        // Unverified encodings are written only (default true).
+        if (!tag.encodingVerified)
+            obj.insert(QStringLiteral("encodingVerified"), false);
         // Write limits follow the same rule: written only when set.
         if (tag.writeMin)
             obj.insert(QStringLiteral("writeMin"), *tag.writeMin);
