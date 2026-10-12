@@ -2,6 +2,8 @@
 #include "AppController.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
+#include "EncodingDialog.h"
+#include "EncodingMonitor.h"
 #include "MainWindow.h"
 #include "MetaTypes.h"
 #include "ModbusConnection.h"
@@ -153,6 +155,11 @@ class TstAppController : public QObject
         QList<bool> offers;                         ///< m_offerSingleWrites
         QList<bool> implausible;                    ///< m_warnImplausible
 
+        QStringList encodingDialogs;                ///< EncodingMonitor::m_runDialog (window titles)
+        std::function<bool(EncodingDialog &)> onEncodingDialog; ///< unset: unexpected, cancelled
+        QStringList encodingReviews;                ///< EncodingMonitor::m_reviewPrompt texts
+        bool allowEncodingReview = false;           ///< otherwise a review prompt is unexpected
+
         QStringList unexpected;                     ///< a seam was called without an answer ready
     };
 
@@ -253,6 +260,21 @@ class TstAppController : public QObject
             -> std::optional<QList<double>> {
             d.unexpected << QStringLiteral("askValues");
             return std::nullopt;
+        };
+
+        ctl->m_encoding->m_runDialog = [this](EncodingDialog &dialog) {
+            d.encodingDialogs << dialog.windowTitle();
+            if (!d.onEncodingDialog) {
+                d.unexpected << QStringLiteral("encoding dialog: ") + dialog.windowTitle();
+                return false;
+            }
+            return d.onEncodingDialog(dialog);
+        };
+        ctl->m_encoding->m_reviewPrompt = [this](const QString &text) {
+            d.encodingReviews << text;
+            if (!d.allowEncodingReview)
+                d.unexpected << QStringLiteral("encoding review: ") + text;
+            return false;
         };
     }
 
@@ -621,6 +643,104 @@ private slots:
         win->actions().newProject->trigger();
         waitState(ConnectionState::Disconnected);
         QCOMPARE(model()->rowCount(), 0);
+        noUnexpected();
+    }
+
+    /// Writes `value` as float32 CDAB to HR 150-151 through a verified writable tag and waits
+    /// until the poll reads it back. The demo sines are too steep for a 3-reading detection.
+    void storeFloatCdab(double value, TagId *idOut = nullptr)
+    {
+        Tag w;
+        w.name = QStringLiteral("Stored");
+        w.area = Area::HoldingRegister;
+        w.address = 150;
+        w.type = ValueType::Float32;
+        w.byteOrder = ByteOrder::CDAB;
+        w.writable = true;
+        const TagId id = model()->tagAt(model()->addTag(w)).id;
+        if (idOut)
+            *idOut = id;
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id).has_value(), 8000); // a 32-bit write needs a live value
+        d.confirms << true;
+        QVERIFY(model()->setData(model()->index(model()->rowOf(id), TagTableModel::Value), value));
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - value) < 0.01,
+                                 8000);
+    }
+
+    void encodingDetectedOnLiveTag()
+    {
+        connectLive();
+        TagId stored = 0;
+        storeFloatCdab(52.3, &stored);
+        QVERIFY(model()->tagAt(model()->rowOf(stored)).encodingVerified);
+        // A new tag on the same registers that reads them as ABCD is corrected.
+        Tag t;
+        t.name = QStringLiteral("Probe");
+        t.area = Area::HoldingRegister;
+        t.address = 150;
+        t.type = ValueType::Float32;
+        t.byteOrder = ByteOrder::ABCD;
+        const TagId id = model()->tagAt(model()->addTag(t)).id;
+        QVERIFY(ctl->m_encoding->isPending(id));
+        QTRY_VERIFY_WITH_TIMEOUT(model()->tagAt(model()->rowOf(id)).byteOrder == ByteOrder::CDAB, 8000);
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QVERIFY(now.type == ValueType::Float32);
+        QVERIFY(!now.encodingVerified);
+        QVERIFY(!ctl->m_encoding->isPending(id));
+        QVERIFY(modified());
+        // The corrected tag reads the stored value once the worker has the new tags.
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - 52.3) < 0.01,
+                                 8000);
+        noUnexpected();
+        QVERIFY(d.encodingReviews.isEmpty());
+    }
+
+    void encodingCheckOnConnect()
+    {
+        connectLive();
+        storeFloatCdab(52.3);
+        disconnectLive();
+        // A loaded project whose tag has the wrong byte order: flagged unverified on connect.
+        QList<Tag> tags = model()->tags();
+        Tag t;
+        t.id = 40;
+        t.name = QStringLiteral("Wrong order");
+        t.area = Area::HoldingRegister;
+        t.address = 150;
+        t.type = ValueType::Float32;
+        t.byteOrder = ByteOrder::ABCD;
+        tags << t;
+        model()->setTags(tags, 41);
+        ctl->m_encoding->onTagsReplaced();
+        ctl->pushTags();
+        d.allowEncodingReview = true;
+        connectLive();
+        QTRY_VERIFY_WITH_TIMEOUT(!d.encodingReviews.isEmpty(), 8000);
+        const QString text = d.encodingReviews.first();
+        QVERIFY2(text.contains(QStringLiteral("'Wrong order' reads ")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("as float32 ABCD (float32 CDAB gives 52.3)")),
+                 qPrintable(text));
+        const Tag &now = model()->tagAt(model()->rowOf(40));
+        QVERIFY(!now.encodingVerified);
+        QVERIFY(now.byteOrder == ByteOrder::ABCD); // only flagged, not changed
+        QCOMPARE(d.encodingReviews.size(), 1);
+        QVERIFY(d.encodingDialogs.isEmpty());
+        noUnexpected();
+    }
+
+    void detectEncodingFromTagTable()
+    {
+        connectLive();
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(10).has_value(), 5000);
+        QString seen;
+        d.onEncodingDialog = [&seen](EncodingDialog &dialog) {
+            seen = dialog.windowTitle();
+            return false;
+        };
+        emit win->tagTable()->detectEncodingRequested(10);
+        QCOMPARE(d.encodingDialogs.size(), 1);
+        QCOMPARE(seen, QStringLiteral("Detect encoding - Float sine (CDAB)"));
+        QVERIFY(model()->tagAt(model()->rowOf(10)).encodingVerified);
         noUnexpected();
     }
 
