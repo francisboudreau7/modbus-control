@@ -248,11 +248,14 @@ private:
         QStringList implausibles;
         bool implausibleAnswer = true;
         int quickCalls = 0;
+        QStringList encodingPrompts;
+        WriteController::EncodingAnswer encodingAnswer = WriteController::EncodingAnswer::Cancel;
     };
 
     /// Tag 1: UInt16 "Setpoint" HR 101 limits 0..100 unit C; tag 2: Float32 "Flow" HR 102-103;
     /// tag 3: UInt16 "Next" HR 104; tag 4: UInt16 "Plain" HR 200, no limits.
-    static void setup(Rig &r)
+    /// verified = false: every tag has encodingVerified false, and "Flow" reads as CDAB.
+    static void setup(Rig &r, bool verified = true)
     {
         Tag sp = makeTag(1, "Setpoint", true, std::nullopt, std::nullopt, "C");
         sp.type = ValueType::UInt16;
@@ -269,10 +272,17 @@ private:
         Tag pl = makeTag(4, "Plain", true, std::nullopt, std::nullopt);
         pl.type = ValueType::UInt16;
         pl.address = 200;
+        sp.encodingVerified = fl.encodingVerified = nx.encodingVerified = pl.encodingVerified = verified;
+        if (!verified)
+            fl.byteOrder = ByteOrder::CDAB;
         r.model.setTags({sp, fl, nx, pl}, 0);
         r.wc = std::make_unique<WriteController>(&r.model, nullptr);
         r.writes = std::make_unique<QSignalSpy>(r.wc.get(), &WriteController::writeRegisters);
         Rig *p = &r;
+        r.wc->m_confirmEncoding = [p](const QString &t) {
+            p->encodingPrompts << t;
+            return p->encodingAnswer;
+        };
         r.wc->m_warn = [p](const QString &t) { p->warns << t; };
         r.wc->m_confirm = [p](const QString &t) {
             p->confirms << t;
@@ -610,6 +620,200 @@ private slots:
         feed(r, 2, 50.0);
         r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Gain), 2.0);
         QVERIFY(!r.model.goodValue(2).has_value());
+    }
+
+    // ---- check 3b: unconfirmed 32-bit encoding ----
+
+    void unconfirmedWideCancelWritesNothing()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        QSignalSpy detects(r.wc.get(), &WriteController::detectEncodingRequested);
+        r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QCOMPARE(r.encodingPrompts.at(0),
+                 QStringLiteral("The encoding of 'Flow' is not confirmed: it reads 52.3 as float32 "
+                                "CDAB. Writing with a wrong encoding sends a wrong value."));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+        QVERIFY(r.warns.isEmpty());
+        QCOMPARE(detects.size(), 0);
+
+        // The unit follows the value, with a space
+        r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Unit), QStringLiteral("C"));
+        r.wc->requestQuickWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("reads 52.3 C as float32 CDAB")));
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(r.quickCalls, 0);
+    }
+
+    void unconfirmedWideDetectEmitsOnce()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        QSignalSpy detects(r.wc.get(), &WriteController::detectEncodingRequested);
+        r.encodingAnswer = WriteController::EncodingAnswer::Detect;
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QCOMPARE(detects.size(), 1);
+        QCOMPARE(detects.at(0).at(0).value<TagId>(), TagId(2));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.warns.isEmpty());
+        QVERIFY(r.confirms.isEmpty());
+    }
+
+    void unconfirmedWideConfirmThenWrites()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        QSignalSpy detects(r.wc.get(), &WriteController::detectEncodingRequested);
+        r.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QCOMPARE(r.confirms.size(), 1); // the normal confirmation follows
+        QCOMPARE(r.writes->size(), 1);  // the model's stub does not change: the write proceeds
+        QCOMPARE(detects.size(), 0);
+        QVERIFY(r.warns.isEmpty());
+    }
+
+    void encodingPromptOnlyForUnverifiedWide()
+    {
+        // Verified 32-bit tag: no prompt
+        Rig r;
+        setup(r);
+        feed(r, 2, 52.3);
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 0);
+        QCOMPARE(r.writes->size(), 1);
+
+        // 16-bit tag with encodingVerified false (should not happen): no prompt
+        Rig n;
+        setup(n, false);
+        n.wc->requestWrite(4, 12.0);
+        QCOMPARE(n.encodingPrompts.size(), 0);
+        QCOMPARE(n.writes->size(), 1);
+    }
+
+    void encodingPromptBeforeConfirmation()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        QStringList order;
+        r.wc->m_confirmEncoding = [&](const QString &) {
+            order << QStringLiteral("encoding");
+            return WriteController::EncodingAnswer::Confirm;
+        };
+        r.wc->m_confirm = [&](const QString &) {
+            order << QStringLiteral("confirm");
+            return true;
+        };
+        r.wc->requestQuickWrite(2, 20.0);
+        QCOMPARE(order, (QStringList{QStringLiteral("encoding"), QStringLiteral("confirm")}));
+        QCOMPARE(r.quickCalls, 0);
+        QCOMPARE(r.writes->size(), 1);
+    }
+
+    void encodingPromptCheckOrder()
+    {
+        Rig r;
+        setup(r, false);
+        // Out of limits: refused before the encoding prompt
+        feed(r, 2, 52.3);
+        r.wc->requestWrite(2, 5.0);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains("'Flow' accepts at least 10"));
+        QCOMPARE(r.encodingPrompts.size(), 0);
+
+        // No valid reading: the warning, not the encoding prompt
+        feed(r, 2, 0.0, Quality::Timeout);
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.warns.size(), 2);
+        QVERIFY(r.warns.at(1).contains("No valid reading of 'Flow'"));
+        QCOMPARE(r.encodingPrompts.size(), 0);
+        QCOMPARE(r.writes->size(), 0);
+    }
+
+    void encodingPromptSelection()
+    {
+        Rig r;
+        setup(r, false);
+        // Setpoint HR 101 (16-bit), Flow HR 102-103 (float32 CDAB), Count HR 104-105 (int32 ABCD);
+        // both 32-bit tags unconfirmed.
+        Tag sp = makeTag(1, "Setpoint", true, std::nullopt, std::nullopt);
+        sp.type = ValueType::UInt16;
+        sp.address = 101;
+        Tag fl = makeTag(2, "Flow", true, std::nullopt, std::nullopt);
+        fl.type = ValueType::Float32;
+        fl.byteOrder = ByteOrder::CDAB;
+        fl.address = 102;
+        fl.encodingVerified = false;
+        Tag cnt = makeTag(3, "Count", true, std::nullopt, std::nullopt);
+        cnt.type = ValueType::Int32;
+        cnt.address = 104;
+        cnt.encodingVerified = false;
+        r.model.setTags({sp, fl, cnt}, 0);
+        feed(r, 2, 52.3);
+        feed(r, 3, 7.0);
+        int asked = 0;
+        r.wc->m_askValues = [&](const QList<Tag> &, const QList<double> &) {
+            ++asked;
+            return std::optional<QList<double>>(QList<double>{1.0, 20.0, 1.0});
+        };
+        QSignalSpy detects(r.wc.get(), &WriteController::detectEncodingRequested);
+
+        // Cancel: one prompt, nothing written
+        r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(asked, 1);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        const QString text = r.encodingPrompts.at(0);
+        QVERIFY(text.contains(QStringLiteral("'Flow' (reads 52.3 as float32 CDAB)")));
+        QVERIFY(text.contains(QStringLiteral("'Count' (reads 7 as int32 ABCD)")));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+
+        // Detect: emitted for the first unverified tag, nothing written
+        r.encodingAnswer = WriteController::EncodingAnswer::Detect;
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QCOMPARE(detects.size(), 1);
+        QCOMPARE(detects.at(0).at(0).value<TagId>(), TagId(2));
+        QCOMPARE(r.writes->size(), 0);
+        QVERIFY(r.warns.isEmpty());
+
+        // Confirm: the write proceeds after the normal confirmation
+        r.encodingAnswer = WriteController::EncodingAnswer::Confirm;
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.encodingPrompts.size(), 3);
+        QCOMPARE(r.confirms.size(), 1);
+        QCOMPARE(r.writes->size(), 1);
+        QCOMPARE(detects.size(), 1);
+        QVERIFY(r.warns.isEmpty());
+    }
+
+    void encodingPromptSelectionCheckOrder()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        // Out of limits: refused before the encoding prompt
+        int asked = 0;
+        r.wc->m_askValues = [&](const QList<Tag> &, const QList<double> &) {
+            ++asked;
+            return std::optional<QList<double>>(QList<double>{150.0, 20.0, 7.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(asked, 1);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains("Setpoint"));
+        QCOMPARE(r.encodingPrompts.size(), 0);
+        QCOMPARE(r.writes->size(), 0);
     }
 
     // A device without FC16 rejects a 32-bit write with exception 1: offer FC06 only.

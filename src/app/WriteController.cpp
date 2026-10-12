@@ -1,5 +1,6 @@
 ﻿#include "WriteController.h"
 
+#include "EncodingDetect.h"
 #include "TagCodec.h"
 #include "TagTableModel.h"
 
@@ -171,6 +172,21 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
         box.exec();
         return box.clickedButton() == anyway;
     };
+    m_confirmEncoding = [this](const QString &text) {
+        QMessageBox box(QMessageBox::Warning, tr("Confirm write"), text, QMessageBox::NoButton,
+                        m_dialogParent);
+        QPushButton *confirm = box.addButton(tr("Confirm and continue"), QMessageBox::AcceptRole);
+        QPushButton *detect = box.addButton(tr("Detect encoding..."), QMessageBox::ActionRole);
+        QPushButton *cancel = box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(cancel);
+        box.setEscapeButton(cancel);
+        box.exec();
+        if (box.clickedButton() == confirm)
+            return EncodingAnswer::Confirm;
+        if (box.clickedButton() == detect)
+            return EncodingAnswer::Detect;
+        return EncodingAnswer::Cancel;
+    };
     m_askValues = [this](const QList<Tag> &tags,
                          const QList<double> &current) -> std::optional<QList<double>> {
         ValuesDialog dlg(tags, current, m_model->addressBase(), m_dialogParent);
@@ -191,7 +207,12 @@ void WriteController::requestWrite(TagId id, double scaledValue)
 bool WriteController::stillSame(const Tag &tag) const
 {
     const int row = m_model->rowOf(tag.id);
-    return row >= 0 && m_model->tagAt(row) == tag;
+    if (row < 0)
+        return false;
+    // encodingVerified is not part of the configuration: confirming it must not abort a write.
+    Tag current = m_model->tagAt(row);
+    current.encodingVerified = tag.encodingVerified;
+    return current == tag;
 }
 
 void WriteController::writeValue(TagId id, double scaledValue, bool quick)
@@ -223,6 +244,24 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
                   "order before writing.")
                    .arg(tag.name));
         return;
+    }
+
+    // 3b. 32-bit tag whose encoding is not confirmed yet
+    if (wide && !tag.encodingVerified) {
+        const QString text = tr("The encoding of '%1' is not confirmed: it reads %2 as %3. Writing "
+                                "with a wrong encoding sends a wrong value.")
+                                 .arg(tag.name, valueText(*current) + unitSuffix(tag),
+                                      toString(encodingOf(tag)));
+        switch (m_confirmEncoding(text)) {
+        case EncodingAnswer::Confirm:
+            m_model->setEncodingVerified(id, true);
+            break;
+        case EncodingAnswer::Detect:
+            emit detectEncodingRequested(id);
+            return;
+        case EncodingAnswer::Cancel:
+            return;
+        }
     }
 
     // 4. encodable
@@ -376,6 +415,35 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     if (!outside.isEmpty()) {
         m_warn(tr("Values outside the write limits:\n%1").arg(outside.join(QLatin1Char('\n'))));
         return;
+    }
+
+    // 3b. unconfirmed encodings of the 32-bit tags: one prompt for all of them
+    QStringList unconfirmed;
+    QList<TagId> unconfirmedIds;
+    for (const Tag &tag : std::as_const(tags)) {
+        if (registerCount(tag.type) != 2 || tag.encodingVerified)
+            continue;
+        unconfirmed.append(tr("'%1' (reads %2 as %3)")
+                               .arg(tag.name, valueText(m_model->goodValue(tag.id).value_or(0.0))
+                                                  + unitSuffix(tag),
+                                    toString(encodingOf(tag))));
+        unconfirmedIds.append(tag.id);
+    }
+    if (!unconfirmed.isEmpty()) {
+        const QString text = tr("The encoding of these tags is not confirmed: %1. Writing with a "
+                                "wrong encoding sends a wrong value.")
+                                 .arg(unconfirmed.join(QStringLiteral(", ")));
+        switch (m_confirmEncoding(text)) {
+        case EncodingAnswer::Confirm:
+            for (TagId id : std::as_const(unconfirmedIds))
+                m_model->setEncodingVerified(id, true);
+            break;
+        case EncodingAnswer::Detect:
+            emit detectEncodingRequested(unconfirmedIds.first());
+            return;
+        case EncodingAnswer::Cancel:
+            return;
+        }
     }
 
     QList<quint16> raws;
