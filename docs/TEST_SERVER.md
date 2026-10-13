@@ -28,6 +28,7 @@ At start-up it prints a banner, the unit id, the register ranges, the bound sign
 | `--drop <percent>` | Chance (0..100) per request to drop the client instead of replying. |
 | `-v`, `--verbose` | Log every request and connection to stdout. |
 | `--log-writes` | Log only write requests, with time stamps, registers in hex and 32-bit values decoded in every byte order (see below). |
+| `--strict-32bit` | Refuse reads and writes that split a 32-bit value with exception 2 (see [Behaving like a CM50](#behaving-like-a-cm50)). Off by default. |
 
 Command-line options override the same settings in the configuration file. Positional arguments
 are not accepted.
@@ -135,6 +136,7 @@ The same content is in [`server/server.example.json`](../server/server.example.j
   "dropPercent": 0,
   "verbose": false,
   "logWrites": false,
+  "strict32Bit": false,
   "signals": [
     { "input": 0,  "kind": "sine",     "amplitude": 1000, "offset": 0, "periodS": 5 },
     { "input": 1,  "kind": "triangle", "amplitude": 1000, "offset": 0, "periodS": 10 },
@@ -163,6 +165,7 @@ Keys:
 | `inputCount` | 1..65536 | Input registers IR 0..count-1. |
 | `tickMs` | 1 or more | Simulation tick. |
 | `delayMs`, `dropPercent`, `verbose`, `logWrites` | 0 or more; 0..100; true/false; true/false | Fault injection and logging. |
+| `strict32Bit` | true/false, default false | Refuse 32-bit splits, see [Behaving like a CM50](#behaving-like-a-cm50). `--strict-32bit` turns it on even when the file says false. |
 | `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS`, `deadTimeS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
 | `holding` | array | Initial holding register values, see below. Each entry has `address` (HR), `value`, and optionally `format` (`int16` default, `uint16`, `int32`, `uint32`, `float32`) and `byteOrder` (default `ABCD`, used by the 32-bit formats). |
 
@@ -211,6 +214,39 @@ not fit below a smaller `holdingCount` are dropped, so older configuration files
   client's connection without replying. Expected on the client: the LED turns orange
   (**Reconnecting**), the tags show quality **Disconnected**, and the application retries with
   back-off until the server answers again.
+
+## Behaving like a CM50
+
+Some devices, for example the ABB CM50, refuse to read or write only one register of a 32-bit
+value. A request that covers just the first or the second register answers "Illegal data address"
+(exception 2), and only a request covering both registers works. `--strict-32bit` (`strict32Bit`)
+makes the test server do the same, so you can see how a client handles that refusal.
+
+With the option on, a read (FC03, FC04) or write (FC06, FC16) is refused when its register range
+covers exactly one of the two registers of:
+
+- a 2-register holding value (`holding` entry with a 32-bit format, by default HR 110-111 and
+  HR 120-121), for holding register requests;
+- a 2-register signal (`signals` entry with a 32-bit format, by default IR 20-21, 22-23 and 24-25),
+  for input register requests.
+
+A refused request changes nothing and gets exception 2. A request covering both registers, or
+neither, is served as usual. For example, with the defaults:
+
+| Request | Result |
+|---|---|
+| read HR 110, count 1 | exception 2 |
+| read HR 109, count 2 (HR 109-110) | exception 2 |
+| read HR 110, count 2 | OK |
+| read HR 109, count 3 (HR 109-111) | OK |
+| read IR 20, count 1 | exception 2 |
+| write single HR 110 (FC06) | exception 2, value unchanged |
+| write multiple HR 111-112 (FC16) | exception 2, value unchanged |
+| write multiple HR 110-111 (FC16) | OK |
+
+Each refused request prints a `refused` line on the console, even without `-v`. Function codes
+FC05 (coils) and FC17 (read/write multiple) are not checked. Without the option the server
+serves these requests as usual.
 
 ## Output
 

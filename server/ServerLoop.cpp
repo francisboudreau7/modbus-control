@@ -16,6 +16,7 @@
 
 #include <modbus.h>
 
+#include <QSet>
 #include <QTime>
 
 #include <algorithm>
@@ -51,6 +52,38 @@ void closeSocket(int fd)
 #else
     ::close(fd);
 #endif
+}
+
+/// True when registers [first, first + count) contain exactly one register of a 32-bit pair
+/// (a pair is p and p + 1 for each p in `pairStarts`).
+bool splitsPair(const QSet<unsigned> &pairStarts, unsigned first, unsigned count)
+{
+    if (count == 0) {
+        return false;
+    }
+    const unsigned last = first + count - 1;
+    // The pair (first - 1, first) starts before the range; the pair (last, last + 1) ends after it.
+    return (first > 0 && pairStarts.contains(first - 1)) || pairStarts.contains(last);
+}
+
+/// strict32Bit check for one request: `pdu` points after the function code. Covers FC03, FC04,
+/// FC06 and FC16; other function codes are never refused.
+bool splitsRequest(unsigned fc, const unsigned char *pdu, int pduLen, const QSet<unsigned> &holdingPairs,
+                   const QSet<unsigned> &inputPairs)
+{
+    auto be16 = [](const unsigned char *p) { return (unsigned(p[0]) << 8) | unsigned(p[1]); };
+    switch (fc) {
+    case MODBUS_FC_READ_HOLDING_REGISTERS:
+        return pduLen >= 4 && splitsPair(holdingPairs, be16(pdu), be16(pdu + 2));
+    case MODBUS_FC_READ_INPUT_REGISTERS:
+        return pduLen >= 4 && splitsPair(inputPairs, be16(pdu), be16(pdu + 2));
+    case MODBUS_FC_WRITE_SINGLE_REGISTER:
+        return pduLen >= 4 && splitsPair(holdingPairs, be16(pdu), 1);
+    case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
+        return pduLen >= 4 && splitsPair(holdingPairs, be16(pdu), be16(pdu + 2));
+    default:
+        return false;
+    }
 }
 
 } // namespace
@@ -125,12 +158,20 @@ bool ServerLoop::start(QString *error)
     }
 
     // Initial holding values; the config parser has checked that they fit holdingCount.
+    m_holdingPairs.clear();
+    m_inputPairs.clear();
     for (const HoldingValue &entry : std::as_const(m_config.holdingValues)) {
         quint16 regs[2] = {0, 0};
         encodeRegisters(entry.value, entry.format, entry.byteOrder, regs);
         m_mapping->tab_registers[entry.address] = regs[0];
         if (registerCount(entry.format) == 2) {
             m_mapping->tab_registers[entry.address + 1] = regs[1];
+            m_holdingPairs.insert(entry.address);
+        }
+    }
+    for (const SignalBinding &binding : std::as_const(m_config.signalBindings)) {
+        if (registerCount(binding.format) == 2) {
+            m_inputPairs.insert(binding.inputAddress);
         }
     }
 
@@ -356,6 +397,17 @@ int ServerLoop::run(const std::atomic<bool> &stop)
             }
             if (m_config.dropPercent > 0 && uniform(rng) < m_config.dropPercent) {
                 closeClient(fd, "fault injection: dropped");
+                continue;
+            }
+            const int hl = modbus_get_header_length(m_ctx);
+            if (m_config.strict32Bit && rc > hl
+                && splitsRequest(query[hl], query.data() + hl + 1, rc - hl - 1, m_holdingPairs, m_inputPairs)) {
+                // Refused requests are always noted, even without -v or --log-writes.
+                std::printf("[%d]   refused: illegal data address (exception 2), splits a 32-bit value\n", fd);
+                std::fflush(stdout);
+                if (modbus_reply_exception(m_ctx, query.data(), MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS) == -1) {
+                    closeClient(fd, "reply failed");
+                }
                 continue;
             }
             if (modbus_reply(m_ctx, query.data(), rc, m_mapping) == -1) {

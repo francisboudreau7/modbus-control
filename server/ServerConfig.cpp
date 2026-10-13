@@ -368,6 +368,7 @@ bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
         && r.readInRange("dropPercent", cfg.dropPercent, 0.0, 100.0)
         && r.readBool("verbose", cfg.verbose)
         && r.readBool("logWrites", cfg.logWrites)
+        && r.readBool("strict32Bit", cfg.strict32Bit)
         && readSignals(r, cfg)
         && readHolding(r, cfg);
     if (!ok)
