@@ -831,6 +831,39 @@ private slots:
         noUnexpected();
     }
 
+    // Keep int16 is remembered in the project: reconnecting raises no new prompt.
+    void splitCheckKeepSurvivesReconnect()
+    {
+        connectLive();
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Keep;
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->tagAt(model()->rowOf(id)).confirmed16Bit, 8000);
+        disconnectLive();
+        connectLive();
+        QTest::qWait(1500); // the on-connect pass is over after 10 batches
+        QCOMPARE(d.splitTexts.size(), 1);
+        QVERIFY(d.encodingReviews.isEmpty());
+        QVERIFY(model()->tagAt(model()->rowOf(id)).encodingVerified);
+        noUnexpected();
+    }
+
+    // Decide later: the tag stays flagged, but reconnecting in the same session does not ask again.
+    void splitCheckLaterNotAskedAgainOnReconnect()
+    {
+        connectLive();
+        d.splitAnswers << EncodingMonitor::SplitAnswer::Later;
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
+        disconnectLive();
+        connectLive();
+        QTest::qWait(1500);
+        QCOMPARE(d.splitTexts.size(), 1);
+        QVERIFY(d.encodingReviews.isEmpty());
+        QVERIFY(!model()->tagAt(model()->rowOf(id)).encodingVerified);
+        noUnexpected();
+    }
+
     void exampleProjectsRaiseNoSplitPrompt()
     {
         for (const QString &file : {QStringLiteral(MC_EXAMPLES_DIR "/demo.mbproj"),

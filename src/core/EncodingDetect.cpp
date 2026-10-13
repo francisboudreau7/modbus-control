@@ -370,8 +370,10 @@ bool currentEncodingSuspicious(const Tag &tag, const EncodingResult &result)
 
 // A "clean" float for the split check: at most 5 significant digits, or 6 with at most 2
 // decimals (1013.25). Measured on separate int16 neighbours (word orders only): 0 % for small or
-// signed values and for a value next to an empty register, about 0.5 % for Siemens-style raw
-// values 0..27648 (6 digits with any decimals: 1 %; all four orders: up to 8.6 %).
+// signed values (and for 1..1000 next to an empty register), about 0.5 % for Siemens-style raw
+// values 0..27648 (6 digits with any decimals: 1 %; all four orders: up to 8.6 %). Any int16 value
+// next to an empty register is the weak spot: about 7 % of them read as a clean float (17000 next
+// to 0 reads as 58.0); the user answers Keep once and the app remembers it.
 bool cleanForSplit(float f, int digits)
 {
     if (digits <= 5)
@@ -387,7 +389,7 @@ std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
                                            std::optional<quint16> below,
                                            std::optional<quint16> above)
 {
-    if (registerCount(tag.type) != 1)
+    if (registerCount(tag.type) != 1 || own == 0)
         return std::nullopt;
 
     // Pairs in preference order: the one starting at tag.address first.

@@ -4,7 +4,11 @@
 #include "TagCodec.h"
 #include "TagTableModel.h"
 
+#include <QApplication>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QtTest>
 
 #include <functional>
@@ -677,6 +681,7 @@ private slots:
         QVERIFY(tagOf(id).type == ValueType::Int16);
         QCOMPARE(tagOf(id).address, quint16(110));
         QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(tagOf(id).confirmed16Bit); // remembered in the project
         QVERIFY(model->encodingNote(id).isEmpty());
         feed({good16(id, 0x3333)});
         QCOMPARE(reads.size(), 1);
@@ -749,9 +754,9 @@ private slots:
         const TagId id = addSplitTag(QStringLiteral("S"), 110);
         QCOMPARE(reads.size(), 3);
         QVERIFY(!tagOf(id).encodingVerified); // the above side alone is enough
-        // And the other way: the tag at 111 with its above side failing.
-        readFails = [](quint16 first, int count) { return count == 3 || first == 111; };
-        const TagId hi = addSplitTag(QStringLiteral("Hi"), 111);
+        // And the other way: the tag at 121 (17.5 at HR 120-121) with its above side failing.
+        readFails = [](quint16 first, int count) { return count == 3 || first == 121; };
+        const TagId hi = addSplitTag(QStringLiteral("Hi"), 121);
         QVERIFY(!tagOf(hi).encodingVerified);
         // Everything failing: nothing is known, nothing flagged.
         readFails = [](quint16, int) { return true; };
@@ -949,10 +954,10 @@ private slots:
     {
         splitDevice();
         load({mkTag(QStringLiteral("X"), 110, ValueType::Int16),
-              mkTag(QStringLiteral("Y"), 120, ValueType::Int16),
+              mkTag(QStringLiteral("Y"), 121, ValueType::Int16),
               mkTag(QStringLiteral("Z"), 5, ValueType::Int16)});
         mon->onConnected();
-        feed({good16(1, 0x3333), good16(2, 0)});
+        feed({good16(1, 0x3333), good16(2, 0x418C)});
         QVERIFY(reviews.isEmpty()); // Z has not read yet
         feed({good16(3, 8)});
         QCOMPARE(reviews.size(), 1);
@@ -964,24 +969,24 @@ private slots:
         QVERIFY(!tagOf(2).encodingVerified);
         QVERIFY(tagOf(3).encodingVerified);
         QVERIFY(splits.isEmpty()); // no individual prompts
-        feed({good16(1, 0x3333), good16(2, 0), good16(3, 8)});
+        feed({good16(1, 0x3333), good16(2, 0x418C), good16(3, 8)});
         QCOMPARE(reviews.size(), 1);
-        QCOMPARE(reads.size(), 5); // X: 1, Y: whole read and both sides (HR 119 is absent), Z: 1
+        QCOMPARE(reads.size(), 5); // X: 1, Y: whole read and both sides (HR 122 is absent), Z: 1
     }
 
     void splitConnectPassReviewPromptsEach()
     {
         splitDevice();
         load({mkTag(QStringLiteral("X"), 110, ValueType::Int16),
-              mkTag(QStringLiteral("Y"), 120, ValueType::Int16)});
+              mkTag(QStringLiteral("Y"), 121, ValueType::Int16)});
         reviewAnswer = true;
         splitAnswer = EncodingMonitor::SplitAnswer::Change;
         mon->onConnected();
-        feed({good16(1, 0x3333), good16(2, 0)});
+        feed({good16(1, 0x3333), good16(2, 0x418C)});
         QCOMPARE(reviews.size(), 1);
         QCOMPARE(splits.size(), 2);
         QVERIFY(splits[0].text.startsWith(QStringLiteral("'X' (HR 110, int16)")));
-        QVERIFY(splits[1].text.startsWith(QStringLiteral("'Y' (HR 120, int16)")));
+        QVERIFY(splits[1].text.startsWith(QStringLiteral("'Y' (HR 121, int16)")));
         QVERIFY(tagOf(1).type == ValueType::Float32);
         QVERIFY(tagOf(2).type == ValueType::Float32);
         QCOMPARE(tagOf(2).address, quint16(120));
@@ -1056,7 +1061,23 @@ private slots:
         QCOMPARE(model->encodingNote(1), QStringLiteral("HR 110-111 read as float32 CDAB give 52.3"));
     }
 
-    void splitDetectNowVerifiesFlaggedTagWithCleanNeighbours()
+    // detectNow on an unflagged tag with clean neighbours: a message only.
+    void splitDetectNowUnflaggedCleanTagSaysSo()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("S"), 5, ValueType::Int16)});
+        mon->onConnected();
+        mon->detectNow(1);
+        QVERIFY(tagOf(1).encodingVerified);
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("'S' (HR 5) looks like a 16-bit value: no float32 found around it."));
+        QVERIFY(splits.isEmpty());
+    }
+
+    // detectNow on a flagged tag that finds nothing now: the flag stays; the split prompt offers
+    // only Keep and Later.
+    void splitDetectNowKeepsFlagWhenNothingFound()
     {
         splitDevice();
         load({mkTag(QStringLiteral("S"), 5, ValueType::Int16)});
@@ -1064,12 +1085,420 @@ private slots:
         model->setEncodingNote(1, QStringLiteral("HR 5-6 read as float32 CDAB give 1"));
         mon->onConnected();
         mon->detectNow(1);
+        QCOMPARE(splits.size(), 1);
+        QCOMPARE(splits[0].text,
+                 QStringLiteral("No float32 found around 'S' (HR 5) right now; it stays flagged. "
+                                "Choose Keep int16 when it is 16-bit."));
+        QVERIFY(splits[0].change.isEmpty());
+        QCOMPARE(splits[0].keep, QStringLiteral("Keep int16"));
+        QVERIFY(messages->isEmpty());
+        // Later: nothing changes.
+        QVERIFY(!tagOf(1).encodingVerified);
+        QVERIFY(!model->encodingNote(1).isEmpty());
+        QVERIFY(!tagOf(1).confirmed16Bit);
+        // Keep: verified and remembered.
+        splitAnswer = EncodingMonitor::SplitAnswer::Keep;
+        mon->detectNow(1);
+        QCOMPARE(splits.size(), 2);
         QVERIFY(tagOf(1).encodingVerified);
+        QVERIFY(tagOf(1).confirmed16Bit);
         QVERIFY(model->encodingNote(1).isEmpty());
+    }
+
+    // A Change answer cannot happen without a Change button; it is treated as Later.
+    void splitNothingFoundPromptIgnoresChange()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("S"), 5, ValueType::Int16)});
+        model->setEncodingVerified(1, false);
+        splitAnswer = EncodingMonitor::SplitAnswer::Change;
+        mon->onConnected();
+        mon->detectNow(1);
+        QCOMPARE(splits.size(), 1);
+        QVERIFY(tagOf(1).type == ValueType::Int16);
+        QVERIFY(!tagOf(1).encodingVerified);
+    }
+
+    // An automatic check that finds nothing clears a stale flag (no note), but not a real one.
+    void splitAutomaticCheckClearsStaleFlag()
+    {
+        splitDevice();
+        regs[99] = 1;
+        regs[100] = 2;
+        regs[101] = 3;
+        load({mkTag(QStringLiteral("Stale"), 5, ValueType::Int16),
+              mkTag(QStringLiteral("Noted"), 100, ValueType::Int16)});
+        model->setEncodingVerified(1, false);
+        model->setEncodingVerified(2, false);
+        model->setEncodingNote(2, QStringLiteral("a note"));
+        mon->onConnected();
+        feed({good16(1, 8), good16(2, 2)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(tagOf(1).encodingVerified);
+        QVERIFY(!tagOf(2).encodingVerified);
+        QVERIFY(splits.isEmpty());
+        QVERIFY(reviews.isEmpty());
+        QVERIFY(messages->isEmpty());
+    }
+
+    // The pending path clears a stale flag too: a flagged tag that was moved to a clean place.
+    void splitPendingCheckClearsStaleFlag()
+    {
+        splitDevice();
+        mon->onConnected();
+        const TagId id = addSplitTag(QStringLiteral("S"), 110, ValueType::Int16);
+        QVERIFY(!tagOf(id).encodingVerified);
+        model->setData(model->index(model->rowOf(id), TagTableModel::Address), 5);
+        feed({good16(id, 8)});
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(messages->isEmpty());
+    }
+
+    // Own register 0 is never flagged, even when the neighbour makes a clean float (0x4268 reads
+    // 58.0 with a 0 low word).
+    void splitOwnRegisterZeroIsNotFlagged()
+    {
+        regs[299] = 0;
+        regs[300] = 0;
+        regs[301] = 0x4268;
+        regs[302] = 0;
+        mon->onConnected();
+        const TagId id = addSplitTag(QStringLiteral("Z"), 300);
+        QCOMPARE(reads.size(), 1);
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(splits.isEmpty());
+    }
+
+    // A neighbour that another tag maps counts as absent (and is not read).
+    void splitNeighbourUsedByOtherTagIsAbsent()
+    {
+        splitDevice();
+        regs[112] = 0x1234;
+        load({mkTag(QStringLiteral("S"), 110, ValueType::Int16),
+              mkTag(QStringLiteral("O"), 111, ValueType::Int16)});
+        mon->onConnected();
+        feed({good16(1, 0x3333), good16(2, 0x4251)});
+        QVERIFY(splits.isEmpty()); // 111 is O's: S sees only 109
+        QVERIFY(reviews.isEmpty());
+        QVERIFY(tagOf(1).encodingVerified);
+        QVERIFY(tagOf(2).encodingVerified);
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[0].address, quint16(109)); // S: 109..110, 111 not read
+        QCOMPARE(reads[0].count, 2);
+        QCOMPARE(reads[1].address, quint16(111)); // O: 111..112, 110 not read
+        QCOMPARE(reads[1].count, 2);
+
+        // Once O is gone, a manual check of S finds the float.
+        model->removeRows(model->rowOf(2), 1);
+        mon->detectNow(1);
+        QCOMPARE(splits.size(), 1);
+        QVERIFY(!tagOf(1).encodingVerified);
+    }
+
+    void splitNeighbourInsideThirtyTwoBitTagIsAbsent()
+    {
+        splitDevice();
+        // F covers HR 111-112; S at 110 must not see 111.
+        load({mkTag(QStringLiteral("S"), 110, ValueType::Int16),
+              mkTag(QStringLiteral("F"), 111, ValueType::Float32, ByteOrder::CDAB)});
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QVERIFY(splits.isEmpty());
+        QVERIFY(tagOf(1).encodingVerified);
+        // The second register of F counts too: S2 at 113 must not see 112 (a clean float with it).
+        regs[112] = 0x3333;
+        regs[113] = 0x4251;
+        regs[114] = 0x1234;
+        const TagId s2 = add(mkTag(QStringLiteral("S2"), 113, ValueType::Int16));
+        feed({good16(s2, 0x4251)});
+        QVERIFY(splits.isEmpty());
+        QVERIFY(tagOf(s2).encodingVerified);
+    }
+
+    // Tags with confirmed16Bit are not checked automatically; detectNow still checks them.
+    void splitConfirmedTagsAreSkipped()
+    {
+        splitDevice();
+        Tag t = mkTag(QStringLiteral("Kept"), 110, ValueType::Int16);
+        t.confirmed16Bit = true;
+        load({t});
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QVERIFY(reads.isEmpty());
+        QVERIFY(reviews.isEmpty());
+        // A confirmed tag added later (pending path) is skipped too.
+        Tag u = mkTag(QStringLiteral("Kept2"), 110, ValueType::Int16);
+        u.confirmed16Bit = true;
+        const TagId id = add(u);
+        feed({good16(id, 0x3333)});
+        QVERIFY(reads.isEmpty());
+        // detectNow checks anyway.
+        mon->detectNow(1);
+        QCOMPARE(reads.size(), 1);
+        QCOMPARE(splits.size(), 1);
+        // Moving the tag clears the confirmation and checks it again.
+        model->setData(model->index(0, TagTableModel::Address), 111);
+        QVERIFY(!tagOf(1).confirmed16Bit);
+        feed({good16(1, 0x4251)});
+        QCOMPARE(reads.size(), 2);
+    }
+
+    // The on-connect checks run once per tag per session.
+    void splitConnectChecksOnceAcrossReconnects()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("X"), 110, ValueType::Int16),
+              mkTag(QStringLiteral("Z"), 5, ValueType::Int16)});
+        mon->onConnected();
+        feed({good16(1, 0x3333), good16(2, 8)});
+        QCOMPARE(reviews.size(), 1);
+        QCOMPARE(reads.size(), 2);
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(1, 0x3333), good16(2, 8)});
+        QCOMPARE(reviews.size(), 1);
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(splits.isEmpty());
+        // A new session (the list was replaced) checks again.
+        load({mkTag(QStringLiteral("X"), 110, ValueType::Int16)});
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QCOMPARE(reviews.size(), 2);
+    }
+
+    // A tag that never read Good was not checked: the next connect tries again.
+    void splitSilentTagIsCheckedOnReconnect()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("X"), 110, ValueType::Int16)});
+        mon->onConnected();
+        for (int i = 0; i < 10; ++i)
+            feed({good16(1, 0, Quality::Timeout)});
+        QVERIFY(reads.isEmpty());
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QCOMPARE(reads.size(), 1);
+        QCOMPARE(reviews.size(), 1);
+    }
+
+    // A tag that moves is handled by the pending path and not checked again on reconnect.
+    void splitMovedTagIsNotCheckedByTheConnectPassAgain()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("X"), 5, ValueType::Int16)});
+        mon->onConnected();
+        feed({good16(1, 8)});
+        QCOMPARE(reads.size(), 1);
+        model->setData(model->index(0, TagTableModel::Address), 110);
+        feed({good16(1, 0x3333)}); // the pending path checks the moved tag
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(splits.size(), 1);
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reviews.size(), 0);
+    }
+
+    void thirtyTwoBitConnectCheckRunsOncePerSession()
+    {
+        load({mkTag(QStringLiteral("P"), 200, ValueType::Float32, ByteOrder::ABCD)});
+        mon->onConnected();
+        for (int i = 0; i < 3; ++i)
+            feedOne(1, kF_CDAB, 52.1 + 0.1 * i);
+        QCOMPARE(reviews.size(), 1);
+        QVERIFY(!tagOf(1).encodingVerified);
+        model->setEncodingVerified(1, true);
+        mon->onDisconnected();
+        mon->onConnected();
+        for (int i = 0; i < 3; ++i)
+            feedOne(1, kF_CDAB, 52.1 + 0.1 * i);
+        QCOMPARE(reviews.size(), 1); // not flagged or asked again in this session
+        QVERIFY(tagOf(1).encodingVerified);
+        // A replaced list starts a new session.
+        load({mkTag(QStringLiteral("P"), 200, ValueType::Float32, ByteOrder::ABCD)});
+        mon->onDisconnected();
+        mon->onConnected();
+        for (int i = 0; i < 3; ++i)
+            feedOne(1, kF_CDAB, 52.1 + 0.1 * i);
+        QCOMPARE(reviews.size(), 2);
+    }
+
+    // The 16-bit on-connect review waits while a split prompt is open.
+    void splitConnectReviewWaitsForSplitPrompt()
+    {
+        splitDevice();
+        load({mkTag(QStringLiteral("A"), 110, ValueType::Int16),
+              mkTag(QStringLiteral("B"), 5, ValueType::Int16)});
+        mon->onConnected();
+        feed({good16(1, 0x3333)}); // the pass still waits for B
+        QVERIFY(reviews.isEmpty());
+        int reviewsDuringPrompt = -1;
+        onSplit = [&] {
+            feed({good16(2, 8)}); // the pass finishes under the open prompt
+            reviewsDuringPrompt = int(reviews.size());
+            return EncodingMonitor::SplitAnswer::Later;
+        };
+        const TagId q = add(mkTag(QStringLiteral("Q"), 110, ValueType::Int16));
+        feed({good16(q, 0x3333)});
+        QCOMPARE(splits.size(), 1);
+        QCOMPARE(reviewsDuringPrompt, 0);
+        QCOMPARE(reviews.size(), 1);
+        QVERIFY(reviews[0].contains(QStringLiteral("'A'")));
+    }
+
+    // ... and the 32-bit one waits while an encoding dialog is open.
+    void thirtyTwoBitConnectReviewWaitsForDialog()
+    {
+        load({mkTag(QStringLiteral("P"), 200, ValueType::Float32, ByteOrder::ABCD)});
+        mon->onConnected();
+        const TagId r = add(mkTag(QStringLiteral("R"), 300, ValueType::Float32, ByteOrder::CDAB));
+        int reviewsDuringDialog = -1;
+        onDialog = [&](EncodingDialog &) {
+            for (int i = 0; i < 3; ++i)
+                feedOne(1, kF_CDAB, 52.1 + 0.1 * i); // P's check completes under the open dialog
+            reviewsDuringDialog = int(reviews.size());
+            return false;
+        };
+        for (int i = 0; i < 3; ++i)
+            feedOne(r, kI_ABCD, 100);
+        QCOMPARE(dialogs.size(), 1);
+        QCOMPARE(reviewsDuringDialog, 0);
+        QCOMPARE(reviews.size(), 1);
+        QVERIFY(reviews[0].contains(QStringLiteral("'P'")));
+    }
+
+    // A timed-out probe stops all split probes until the list is replaced.
+    void splitTimeoutStopsProbes()
+    {
+        splitDevice();
+        autoAnswer = false;
+        load({mkTag(QStringLiteral("A"), 110, ValueType::Int16),
+              mkTag(QStringLiteral("B"), 5, ValueType::Int16)});
+        mon->onConnected();
+        feed({good16(1, 0x3333), good16(2, 8)});
+        QCOMPARE(reads.size(), 1); // B waits behind A
+        ModbusResult timeout;
+        timeout.error = ModbusError::Timeout;
+        mon->onReadFinished(reads[0].id, timeout, {});
         QCOMPARE(messages->size(), 1);
         QCOMPARE(messages->first().first().toString(),
-                 QStringLiteral("'S' (HR 5) looks like a 16-bit value: no float32 found around it."));
+                 QStringLiteral("Stopped checking 16-bit tags: the device did not answer a read "
+                                "next to 'A'."));
+        QCOMPARE(reads.size(), 1); // B's probe was dropped
+        // No more probes, no more messages.
+        const TagId c = add(mkTag(QStringLiteral("C"), 6, ValueType::Int16));
+        feed({good16(c, 9)});
+        QCOMPARE(reads.size(), 1);
+        QCOMPARE(messages->size(), 1);
         QVERIFY(splits.isEmpty());
+        QVERIFY(reviews.isEmpty());
+        // A replaced list starts probing again.
+        autoAnswer = true;
+        load({mkTag(QStringLiteral("A"), 110, ValueType::Int16)});
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(1, 0x3333)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reviews.size(), 1);
+    }
+
+    void splitConnectionLostStopsProbes()
+    {
+        splitDevice();
+        autoAnswer = false;
+        mon->onConnected();
+        addSplitTag(QStringLiteral("A"), 110);
+        QCOMPARE(reads.size(), 1);
+        ModbusResult lost;
+        lost.error = ModbusError::ConnectionLost;
+        mon->onReadFinished(reads[0].id, lost, {});
+        QCOMPARE(messages->size(), 1);
+        addSplitTag(QStringLiteral("B"), 5);
+        QCOMPARE(reads.size(), 1);
+        QCOMPARE(messages->size(), 1);
+    }
+
+    // A Modbus exception is not a stop: the side counts as absent.
+    void splitExceptionDoesNotStopProbes()
+    {
+        splitDevice();
+        mon->onConnected();
+        addSplitTag(QStringLiteral("A"), 300); // HR 299-301 do not exist: exceptions
+        addSplitTag(QStringLiteral("B"), 5);
+        QVERIFY(messages->isEmpty());
+        QCOMPARE(reads.last().address, quint16(4));
+    }
+
+    // The split prompt mentions what Change resets.
+    void splitPromptMentionsScalingReset()
+    {
+        splitDevice();
+        const QString extra = QStringLiteral(" Change also resets its gain and offset to 1 and 0 and "
+                                             "clears its quick values.");
+        mon->onConnected();
+        const TagId p = add(mkTag(QStringLiteral("P"), 110, ValueType::Int16));
+        feed({good16(p, 0x3333)});
+        QCOMPARE(splits.size(), 1);
+        QVERIFY(!splits[0].text.contains(QStringLiteral("Change also resets")));
+
+        Tag g = mkTag(QStringLiteral("G"), 110, ValueType::Int16);
+        g.gain = 0.1;
+        feed({good16(add(g), 0x3333)});
+        QCOMPARE(splits.size(), 2);
+        QVERIFY(splits[1].text.endsWith(extra));
+
+        Tag o = mkTag(QStringLiteral("O"), 110, ValueType::Int16);
+        o.offset = 5;
+        feed({good16(add(o), 0x3333)});
+        QCOMPARE(splits.size(), 3);
+        QVERIFY(splits[2].text.endsWith(extra));
+
+        Tag q = mkTag(QStringLiteral("Q"), 110, ValueType::Int16);
+        q.quickB = 3;
+        feed({good16(add(q), 0x3333)});
+        QCOMPARE(splits.size(), 4);
+        QVERIFY(splits[3].text.endsWith(extra));
+    }
+
+    // The default prompt has no Change button when the label is empty.
+    void defaultSplitPromptOmitsEmptyChange()
+    {
+        EncodingMonitor fresh(model.get(), nullptr);
+        QStringList buttonTexts;
+        QTimer::singleShot(0, [&] {
+            auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(box);
+            QPushButton *keep = nullptr;
+            const auto buttons = box->buttons();
+            for (QAbstractButton *b : buttons) {
+                buttonTexts << b->text();
+                if (b->text() == QStringLiteral("Keep int16"))
+                    keep = qobject_cast<QPushButton *>(b);
+            }
+            QVERIFY(keep);
+            keep->click();
+        });
+        const auto answer = fresh.m_splitPrompt(QStringLiteral("text"), QString(),
+                                                QStringLiteral("Keep int16"));
+        QVERIFY(answer == EncodingMonitor::SplitAnswer::Keep);
+        QCOMPARE(buttonTexts.size(), 2);
+        QVERIFY(buttonTexts.contains(QStringLiteral("Decide later")));
+
+        buttonTexts.clear();
+        QTimer::singleShot(0, [&] {
+            auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(box);
+            const auto buttons = box->buttons();
+            for (QAbstractButton *b : buttons)
+                buttonTexts << b->text();
+            buttons.first()->click();
+        });
+        fresh.m_splitPrompt(QStringLiteral("text"), QStringLiteral("Change it"),
+                            QStringLiteral("Keep int16"));
+        QCOMPARE(buttonTexts.size(), 3);
     }
 
     // ---- one dialog at a time ----------------------------------------------------------------

@@ -35,13 +35,15 @@ EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QO
                            const QString &keepLabel) {
         QMessageBox box(QMessageBox::Warning, QStringLiteral("Encoding check"), text,
                         QMessageBox::NoButton, m_dialogParent);
-        QPushButton *change = box.addButton(changeLabel, QMessageBox::AcceptRole);
+        QPushButton *change = changeLabel.isEmpty()
+                                  ? nullptr
+                                  : box.addButton(changeLabel, QMessageBox::AcceptRole);
         QPushButton *keep = box.addButton(keepLabel, QMessageBox::ActionRole);
         QPushButton *later = box.addButton(QStringLiteral("Decide later"), QMessageBox::RejectRole);
         box.setDefaultButton(later);
         box.setEscapeButton(later);
         box.exec();
-        if (box.clickedButton() == change)
+        if (change && box.clickedButton() == change)
             return SplitAnswer::Change;
         if (box.clickedButton() == keep)
             return SplitAnswer::Keep;
@@ -146,7 +148,7 @@ void EncodingMonitor::onSamples(const SampleBatch &batch)
         ++m_checkBatches;
         bool ready = true;
         for (const Tag &tag : m_model->tags()) {
-            if (wide(tag) && !m_pending.contains(tag.id)
+            if (wide(tag) && !m_pending.contains(tag.id) && !m_sessionChecked.contains(tag.id)
                 && m_readings.value(tag.id).size() < kReadings) {
                 ready = false;
                 break;
@@ -171,6 +173,7 @@ void EncodingMonitor::evaluatePending(TagId id)
         return;
     }
     const Tag tag = *found;
+    m_sessionChecked.insert(id); // the pending path covers this tag; no on-connect check later
     EncodingOptions options;
     options.deviceOrder = deviceOrder();
     const EncodingResult result = detectEncoding(tag, recent(id, kReadings), options);
@@ -236,7 +239,8 @@ void EncodingMonitor::onConnected()
     m_connectFound.clear();
     m_connectWait.clear();
     for (const Tag &tag : m_model->tags()) {
-        if (!wide(tag) && !m_splitPending.contains(tag.id))
+        if (!wide(tag) && !m_splitPending.contains(tag.id) && !tag.confirmed16Bit
+            && !m_sessionChecked.contains(tag.id))
             m_connectWait.insert(tag.id);
     }
     m_passActive = true;
@@ -265,11 +269,12 @@ void EncodingMonitor::runConnectCheck()
     QStringList entries;
     QList<TagId> ids;
     for (const Tag &tag : m_model->tags()) {
-        if (!wide(tag) || m_pending.contains(tag.id))
+        if (!wide(tag) || m_pending.contains(tag.id) || m_sessionChecked.contains(tag.id))
             continue;
         const QList<RegisterPair> readings = recent(tag.id, kReadings);
         if (readings.size() < kReadings)
             continue;
+        m_sessionChecked.insert(tag.id);
         EncodingOptions options;
         options.deviceOrder = deviceOrder();
         const EncodingResult result = detectEncoding(tag, readings, options);
@@ -303,10 +308,19 @@ void EncodingMonitor::runConnectCheck()
         QStringLiteral("These tags read implausible values with their current encoding: %1. "
                        "Writes to them are blocked until you confirm their encoding.")
             .arg(entries.join(QStringLiteral("; ")));
-    if (m_reviewPrompt && m_reviewPrompt(text)) {
-        for (TagId id : std::as_const(ids))
-            detectNow(id);
-    }
+    // Shown by pump() as soon as no prompt or dialog is open (now, usually).
+    m_deferred32 = Review32{text, ids};
+    pump();
+}
+
+bool EncodingMonitor::askReview(const QString &text)
+{
+    if (!m_reviewPrompt)
+        return false;
+    m_promptOpen = true;
+    const bool review = m_reviewPrompt(text);
+    m_promptOpen = false;
+    return review;
 }
 
 void EncodingMonitor::onTagsChanged()
@@ -326,6 +340,7 @@ void EncodingMonitor::onTagsChanged()
                                    || it->area != tag.area || it->address != tag.address;
             if (relocated) {
                 forgetSplit(tag.id);
+                m_sessionChecked.remove(tag.id);
                 m_queue.removeAll(Request{tag.id, {}, 0});
                 m_splitPending.insert(tag.id);
             }
@@ -335,6 +350,7 @@ void EncodingMonitor::onTagsChanged()
         const bool moved = it == m_snapshot.constEnd() || !wide(*it) || it->area != tag.area
                            || it->address != tag.address;
         if (moved) {
+            m_sessionChecked.remove(tag.id);
             if (tag.encodingVerified)
                 unverify.append(tag.id);
             m_pending.insert(tag.id);
@@ -350,6 +366,7 @@ void EncodingMonitor::onTagsChanged()
             continue;
         finishPending(it.key());
         forgetSplit(it.key());
+        m_sessionChecked.remove(it.key());
         m_readings.remove(it.key());
         m_queue.removeAll(Request{it.key(), {}, 0});
     }
@@ -378,6 +395,10 @@ void EncodingMonitor::onTagsReplaced()
     m_probes.clear();
     m_probe.reset();
     m_passActive = false;
+    m_sessionChecked.clear();
+    m_deferred32.reset();
+    m_deferred16.reset();
+    m_splitStopped = false;
 }
 
 void EncodingMonitor::detectNow(TagId id)
@@ -411,12 +432,31 @@ bool EncodingMonitor::stillValid(const Request &request) const
 
 void EncodingMonitor::pump()
 {
-    while (!m_openDialog && !m_promptOpen && !m_queue.isEmpty()) {
-        const Request request = m_queue.takeFirst();
-        if (request.split)
-            runSplitRequest(request);
-        else
-            runRequest(request);
+    while (!m_openDialog && !m_promptOpen) {
+        if (!m_queue.isEmpty()) {
+            const Request request = m_queue.takeFirst();
+            if (request.split)
+                runSplitRequest(request);
+            else
+                runRequest(request);
+        } else if (m_deferred32) {
+            // On-connect review prompts: only when no prompt or dialog is open.
+            const Review32 review = *std::exchange(m_deferred32, std::nullopt);
+            if (askReview(review.text)) {
+                for (TagId id : review.ids)
+                    enqueue(id);
+            }
+        } else if (m_deferred16) {
+            const Review16 review = *std::exchange(m_deferred16, std::nullopt);
+            if (askReview(review.text)) {
+                for (const SplitFinding &f : review.flagged) {
+                    if (const Tag *tag = findTag(f.id))
+                        enqueueSplit(*tag, f.split, f.own, f.epoch);
+                }
+            }
+        } else {
+            break;
+        }
     }
 }
 
@@ -494,6 +534,10 @@ void EncodingMonitor::queueProbe(TagId id, ProbeMode mode)
     const Tag *tag = findTag(id);
     if (!tag || wide(*tag) || !m_connected)
         return;
+    if (mode != ProbeMode::Manual && tag->confirmed16Bit)
+        return; // the user answered Keep: not checked automatically any more
+    if (m_splitStopped)
+        return;
     const bool busy = (m_probe && m_probe->id == id)
                       || std::any_of(m_probes.begin(), m_probes.end(),
                                      [id](const Probe &p) { return p.id == id; });
@@ -518,15 +562,31 @@ void EncodingMonitor::startNextProbe()
     }
 }
 
+bool EncodingMonitor::registerUsedByOther(const Tag &self, int reg) const
+{
+    for (const Tag &other : m_model->tags()) {
+        if (other.id != self.id && other.area == self.area && reg >= other.address
+            && reg < other.address + registerCount(other.type))
+            return true;
+    }
+    return false;
+}
+
 void EncodingMonitor::issueRead(Probe &probe)
 {
     const int address = probe.tag.address;
+    if (!probe.sidesChecked) {
+        // A neighbour that another tag maps counts as absent: it is not read at all.
+        probe.belowUsable = address > 0 && !registerUsedByOther(probe.tag, address - 1);
+        probe.aboveUsable = address < 65535 && !registerUsedByOther(probe.tag, address + 1);
+        probe.sidesChecked = true;
+    }
     int first = address;
     int count = 2;
     switch (probe.stage) {
     case 0:
-        first = address > 0 ? address - 1 : 0;
-        count = (address < 65535 ? address + 1 : 65535) - first + 1;
+        first = probe.belowUsable ? address - 1 : address;
+        count = (probe.aboveUsable ? address + 1 : address) - first + 1;
         break;
     case 1:
         first = address - 1;
@@ -553,9 +613,21 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
         pump();
         return;
     }
-    const int address = probe.tag.address;
-    const bool hasBelow = address > 0;
-    const bool hasAbove = address < 65535;
+    if (result.error == ModbusError::Timeout || result.error == ModbusError::ConnectionLost) {
+        // Some devices drop the connection on reads outside their map: stop probing.
+        m_splitStopped = true;
+        m_probes.clear();
+        const Tag *now = findTag(probe.id);
+        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+                                    "read next to '%1'.")
+                         .arg(now ? now->name : probe.tag.name));
+        m_connectWait.clear(); // nothing more will be probed: let the connect pass finish
+        maybeFinishConnectPass();
+        pump();
+        return;
+    }
+    const bool hasBelow = probe.belowUsable;
+    const bool hasAbove = probe.aboveUsable;
     const int expected = probe.stage == 0 ? 1 + (hasBelow ? 1 : 0) + (hasAbove ? 1 : 0) : 2;
     const bool ok = result.ok() && values.size() == expected;
     bool done = true;
@@ -641,19 +713,40 @@ void EncodingMonitor::completeProbe(const Probe &probe)
             emit message(QStringLiteral("Could not read the registers around '%1'.").arg(tag.name));
         return;
     }
-    const std::optional<SplitValue> split =
-        detectSplitValue(tag, *probe.own, probe.below, probe.above);
+    m_sessionChecked.insert(tag.id); // checked once: not again on reconnect
+    // A neighbour another tag maps by now counts as absent too.
+    std::optional<quint16> below = probe.below;
+    std::optional<quint16> above = probe.above;
+    if (below && registerUsedByOther(tag, tag.address - 1))
+        below.reset();
+    if (above && registerUsedByOther(tag, tag.address + 1))
+        above.reset();
+    const std::optional<SplitValue> split = detectSplitValue(tag, *probe.own, below, above);
     if (!split) {
+        const QString where = QStringLiteral("%1 %2").arg(areaPrefix(tag.area))
+                                  .arg(tag.address + m_model->addressBase());
         if (probe.mode == ProbeMode::Manual) {
             if (!tag.encodingVerified) {
-                m_model->setEncodingVerified(tag.id, true);
-                if (const Tag *now = findTag(tag.id))
-                    m_snapshot.insert(tag.id, *now);
+                // Flagged earlier and nothing found right now: the flag stays (the user decides).
+                Request request;
+                request.id = tag.id;
+                request.tag = tag;
+                request.epoch = probe.epoch;
+                request.split = true;
+                request.noSplit = true;
+                request.own = *probe.own;
+                m_queue.removeAll(Request{tag.id, {}, 0});
+                m_queue.append(request);
+                return;
             }
-            emit message(QStringLiteral("'%1' (%2 %3) looks like a 16-bit value: no float32 found "
+            emit message(QStringLiteral("'%1' (%2) looks like a 16-bit value: no float32 found "
                                         "around it.")
-                             .arg(tag.name, areaPrefix(tag.area))
-                             .arg(tag.address + m_model->addressBase()));
+                             .arg(tag.name, where));
+        } else if (!tag.encodingVerified && m_model->encodingNote(tag.id).isEmpty()) {
+            // A stale flag (the tag moved, or was a float32 tag): nothing to warn about.
+            m_model->setEncodingVerified(tag.id, true);
+            if (const Tag *now = findTag(tag.id))
+                m_snapshot.insert(tag.id, *now);
         }
         return;
     }
@@ -669,6 +762,11 @@ void EncodingMonitor::splitCheckNow(const Tag &tag)
 {
     if (!m_connected) {
         emit message(QStringLiteral("Connect to check '%1'.").arg(tag.name));
+        return;
+    }
+    if (m_splitStopped) {
+        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+                                    "read next to a 16-bit tag."));
         return;
     }
     queueProbe(tag.id, ProbeMode::Manual);
@@ -702,13 +800,9 @@ void EncodingMonitor::maybeFinishConnectPass()
         QStringLiteral("These 16-bit tags are probably half of a 32-bit value: %1. Writes to them "
                        "ask first.")
             .arg(entries.join(QStringLiteral(", ")));
-    if (m_reviewPrompt && m_reviewPrompt(text)) {
-        for (const SplitFinding &f : std::as_const(flagged)) {
-            if (const Tag *tag = findTag(f.id))
-                enqueueSplit(*tag, f.split, f.own, f.epoch);
-        }
-        pump();
-    }
+    // Shown by pump() as soon as no prompt or dialog is open (now, usually).
+    m_deferred16 = Review16{text, flagged};
+    pump();
 }
 
 void EncodingMonitor::runSplitRequest(const Request &request)
@@ -720,14 +814,24 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     const QString where = QStringLiteral("%1 %2").arg(areaPrefix(tag.area))
                               .arg(tag.address + m_model->addressBase());
     const double reading = decodeValue(tag, combineRegisters(tag, request.own));
-    const QString text =
-        QStringLiteral("'%1' (%2, %3) reads %4, but %5: this tag is probably half of a float32 "
-                       "value.")
-            .arg(tag.name, where, toString(tag.type), QString::number(reading, 'g', 7),
-                 splitNote(tag, split));
-    const QString changeLabel = QStringLiteral("Change to %1 at %2 %3")
-                                    .arg(toString(split.encoding), areaPrefix(tag.area))
-                                    .arg(split.address + m_model->addressBase());
+    QString text;
+    QString changeLabel;
+    if (request.noSplit) {
+        text = QStringLiteral("No float32 found around '%1' (%2) right now; it stays flagged. "
+                              "Choose Keep %3 when it is 16-bit.")
+                   .arg(tag.name, where, toString(tag.type));
+    } else {
+        text = QStringLiteral("'%1' (%2, %3) reads %4, but %5: this tag is probably half of a "
+                              "float32 value.")
+                   .arg(tag.name, where, toString(tag.type), QString::number(reading, 'g', 7),
+                        splitNote(tag, split));
+        if (tag.gain != 1.0 || tag.offset != 0.0 || tag.quickA || tag.quickB)
+            text += QStringLiteral(" Change also resets its gain and offset to 1 and 0 and clears "
+                                   "its quick values.");
+        changeLabel = QStringLiteral("Change to %1 at %2 %3")
+                          .arg(toString(split.encoding), areaPrefix(tag.area))
+                          .arg(split.address + m_model->addressBase());
+    }
     const QString keepLabel = QStringLiteral("Keep %1").arg(toString(tag.type));
     m_promptOpen = true;
     const SplitAnswer answer =
@@ -735,7 +839,7 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     m_promptOpen = false;
     if (!splitRequestValid(request))
         return; // removed or reconfigured meanwhile: the answer no longer applies
-    switch (answer) {
+    switch (request.noSplit && answer == SplitAnswer::Change ? SplitAnswer::Later : answer) {
     case SplitAnswer::Change: {
         // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new
         // 32-bit tag to detect.
@@ -753,6 +857,7 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     }
     case SplitAnswer::Keep:
         m_model->setEncodingVerified(request.id, true);
+        m_model->setConfirmed16Bit(request.id, true);
         if (const Tag *now = findTag(request.id))
             m_snapshot.insert(request.id, *now);
         break;
