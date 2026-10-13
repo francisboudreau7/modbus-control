@@ -107,14 +107,19 @@ class TagTableModel;
 /// value with a Modbus exception (illegal data address), so a 16-bit tag placed on a float32 never
 /// reads Good and the split check cannot run. When a 16-bit tag's sample has Quality::Exception —
 /// its first sample after becoming split-pending, in the on-connect pass (once per session per tag,
-/// same set as the split check), or on detectNow — the monitor issues two one-off reads instead of
-/// the split probe: readRequested(id, area, address, 2) and readRequested(id, area, address - 1, 2)
-/// (a pair outside 0..65535 or overlapping another tag of the project is skipped; Timeout or
-/// ConnectionLost stops probes as for the split check). Tags with confirmed16Bit are skipped by the
-/// automatic paths, not by detectNow.
+/// same set as the split check), or on detectNow — the monitor first re-reads the tag's own register
+/// alone, readRequested(id, area, address, 1): a block of tags can fail as a whole, so Exception
+/// does not prove this tag is the refused one. Only a Modbus exception 2 continues; the monitor then
+/// issues two one-off reads instead of the split probe: readRequested(id, area, address, 2) and
+/// readRequested(id, area, address - 1, 2) (a pair outside 0..65535 or overlapping another tag of
+/// the project is skipped; Timeout or ConnectionLost stops probes as for the split check).
+/// - The read alone succeeds: the tag is readable, not refused; the normal split check is queued
+///   for it instead (same mode), which does its own read.
+/// - Any other error: nothing changes; detectNow emits "'X' (HR 110) could not be read: <message>."
+/// Tags with confirmed16Bit are skipped by the automatic paths, not by detectNow.
 /// - Neither pair reads OK: nothing changes (the register probably does not exist); detectNow emits
 ///   "'X' (HR 110) can't be read, alone or as part of a 32-bit value: check the register number."
-/// - One or both read OK: for each, detectEncoding(<the tag as Float32 at that start, gain 1,
+/// - One or both read OK (a pair another tag of the project has taken since is dropped): for each, detectEncoding(<the tag as Float32 at that start, gain 1,
 ///   offset 0, byte order deviceOrder() or ABCD>, {pair}, {deviceOrder}); the chosen pair is the
 ///   only one, or the one whose best group scores higher (tie: the pair starting at the tag's
 ///   address). The tag is flagged: setEncodingVerified(false) and setEncodingNote("HR 110 can't be
@@ -126,7 +131,10 @@ class TagTableModel;
 ///   device."). Accepted: setLayout(id, start, chosen type, chosen order, verified = true) (resets
 ///   gain/offset/quick values) and the byte order to applyOrderTo() tags as for 32-bit dialogs.
 ///   Cancelled: the tag stays flagged (writes ask first). The tag is re-validated (same area,
-///   address and type) before applying.
+///   address and type) before applying. A dialog queued on an earlier connection is dropped. If
+///   another tag uses either register of the pair when the dialog is about to open, or when it was
+///   accepted, nothing is applied and the monitor emits "Not applied: HR 110-111 is now used by
+///   'Y'." The split prompt's Change answer makes the same check.
 /// detectNow on a 16-bit tag: when its latest sample is Exception → this flow; otherwise the split
 /// check as described above.
 class EncodingMonitor : public QObject
@@ -195,6 +203,7 @@ private:
         quint16 own = 0;       ///< split prompts only: the tag's register as probed
         bool noSplit = false;  ///< split prompts only: nothing found now, the tag stays flagged
         bool refused = false;  ///< refused-read dialog: `tag` is the 16-bit tag as requested
+        quint64 generation = 0; ///< refused-read dialog: connection generation when queued
         Tag view;              ///< refused-read dialog: the tag as a 32-bit value at `start`
         quint16 start = 0;     ///< refused-read dialog: first register of the readable pair
         RegisterPair pair;     ///< refused-read dialog: the pair's registers
@@ -232,7 +241,8 @@ private:
         bool belowUsable = true; ///< the register exists and no other tag of the project uses it
         bool aboveUsable = true;
         bool sidesChecked = false; ///< belowUsable/aboveUsable are set
-        bool refused = false;      ///< refused-read probe: stage 0 = (address, 2), 1 = (address - 1, 2)
+        bool refused = false;      ///< refused-read probe: own register alone, then stage 0 = (address, 2), 1 = (address - 1, 2)
+        bool aloneDone = false;    ///< refused-read probe: the read of the own register alone is done
         std::optional<RegisterPair> pairOwn;   ///< refused-read probe: registers at address
         std::optional<RegisterPair> pairBelow; ///< refused-read probe: registers at address - 1
     };
@@ -256,6 +266,11 @@ private:
 
     bool askReview(const QString &text);
     bool registerUsedByOther(const Tag &self, int reg) const;
+    /// The other tag of the project (same area) that maps register `reg`, or null.
+    std::optional<Tag> registerOwnerOther(const Tag &self, int reg) const;
+    /// True (after emitting "Not applied: HR 110-111 is now used by 'Y'.") when another tag now
+    /// uses register `start` or `start + 1` of `self`'s area.
+    bool pairBlocked(const Tag &self, int start);
     bool splitProbeValid(const Probe &probe) const;
     bool splitRequestValid(const Request &request) const;
     void queueProbe(TagId id, ProbeMode mode);

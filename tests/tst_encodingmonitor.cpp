@@ -683,6 +683,24 @@ private slots:
         QVERIFY(tagOf(id).encodingVerified);
     }
 
+    void splitChangeIsNotAppliedWhenARegisterWasTaken()
+    {
+        splitDevice();
+        mon->onConnected();
+        onSplit = [&] {
+            add(mkTag(QStringLiteral("Y"), 111, ValueType::Int16));
+            return EncodingMonitor::SplitAnswer::Change;
+        };
+        const TagId id = addSplitTag(QStringLiteral("Setpoint"), 110);
+        QCOMPARE(splits.size(), 1);
+        QCOMPARE(tagOf(id).address, quint16(110));
+        QVERIFY(tagOf(id).type == ValueType::Int16);
+        QVERIFY(!tagOf(id).encodingVerified); // stays flagged
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("Not applied: HR 110-111 is now used by 'Y'."));
+    }
+
     void splitKeepVerifiesAndClearsNote()
     {
         splitDevice();
@@ -1574,11 +1592,13 @@ private slots:
         const TagId id = add(proto);
         QVERIFY(reads.isEmpty());
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
-        QCOMPARE(reads[0].address, quint16(110));
-        QCOMPARE(reads[0].count, 2);
-        QCOMPARE(reads[1].address, quint16(109));
+        QCOMPARE(reads.size(), 3);
+        QCOMPARE(reads[0].address, quint16(110)); // the own register alone, first
+        QCOMPARE(reads[0].count, 1);
+        QCOMPARE(reads[1].address, quint16(110));
         QCOMPARE(reads[1].count, 2);
+        QCOMPARE(reads[2].address, quint16(109));
+        QCOMPARE(reads[2].count, 2);
         QCOMPARE(dialogs.size(), 1);
         QCOMPARE(introTexts, QStringList{refusedIntro(QStringLiteral("Setpoint"), QStringLiteral("int16"),
                                                       110, 110)});
@@ -1600,7 +1620,7 @@ private slots:
         feed({sample(id, kF_CDAB, 52.3)});
         feed({sample(id, kF_CDAB, 52.3)});
         QCOMPARE(dialogs.size(), 1);
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QVERIFY(messages->isEmpty());
         QVERIFY(reviews.isEmpty());
         QVERIFY(splits.isEmpty());
@@ -1632,9 +1652,10 @@ private slots:
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("Upper"), 111, ValueType::UInt16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
-        QCOMPARE(reads[0].address, quint16(111)); // refused: HR 112 does not exist
-        QCOMPARE(reads[1].address, quint16(110));
+        QCOMPARE(reads.size(), 3);
+        QCOMPARE(reads[0].count, 1);
+        QCOMPARE(reads[1].address, quint16(111)); // refused: HR 112 does not exist
+        QCOMPARE(reads[2].address, quint16(110));
         QCOMPARE(introTexts,
                  QStringList{refusedIntro(QStringLiteral("Upper"), QStringLiteral("uint16"), 111, 110)});
         QCOMPARE(tagOf(id).address, quint16(110));
@@ -1681,11 +1702,12 @@ private slots:
         regs[109] = 0x4251; // below pair (109, 110): 52.3 as float32 ABCD
         regs[110] = 0x3333;
         regs[111] = 0x7FFF; // own pair (110, 111): nothing plausible
+        readFails = [](quint16, int count) { return count == 1; };
         answerWith(QStringLiteral("52.3"));
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(dialogs.size(), 1);
         QCOMPARE(tagOf(id).address, quint16(109));
         QVERIFY(tagOf(id).type == ValueType::Float32);
@@ -1699,11 +1721,12 @@ private slots:
         regs[109] = 0x4251; // (109, 110): 52.3 ABCD
         regs[110] = 0x3333;
         regs[111] = 0x4251; // (110, 111): 52.3 CDAB
+        readFails = [](quint16, int count) { return count == 1; };
         answerWith(QStringLiteral("52.3"));
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(dialogs.size(), 1);
         QCOMPARE(tagOf(id).address, quint16(110));
         QVERIFY(tagOf(id).byteOrder == ByteOrder::CDAB);
@@ -1738,9 +1761,11 @@ private slots:
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("Gone"), 300, ValueType::Int16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(reads[0].address, quint16(300));
-        QCOMPARE(reads[1].address, quint16(299));
+        QCOMPARE(reads[0].count, 1);
+        QCOMPARE(reads[1].address, quint16(300));
+        QCOMPARE(reads[2].address, quint16(299));
         QVERIFY(dialogs.isEmpty());
         QVERIFY(tagOf(id).encodingVerified);
         QVERIFY(model->encodingNote(id).isEmpty());
@@ -1748,7 +1773,7 @@ private slots:
         QVERIFY(splits.isEmpty());
         // detectNow says so.
         mon->detectNow(id);
-        QCOMPARE(reads.size(), 4);
+        QCOMPARE(reads.size(), 6);
         QCOMPARE(messages->size(), 1);
         QCOMPARE(messages->first().first().toString(),
                  QStringLiteral("'Gone' (HR 300) can't be read, alone or as part of a 32-bit value: "
@@ -1771,12 +1796,12 @@ private slots:
         // Not asked again by itself.
         feed({exception16(id)});
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(dialogs.size(), 1);
         // detectNow runs the flow again.
         answerWith(QStringLiteral("52.3"));
         mon->detectNow(id);
-        QCOMPARE(reads.size(), 4);
+        QCOMPARE(reads.size(), 6);
         QCOMPARE(dialogs.size(), 2);
         QVERIFY(tagOf(id).type == ValueType::Float32);
         QVERIFY(tagOf(id).encodingVerified);
@@ -1794,7 +1819,7 @@ private slots:
         QVERIFY(reads.isEmpty());
         QVERIFY(dialogs.isEmpty());
         mon->detectNow(id);
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(dialogs.size(), 1);
         QVERIFY(tagOf(id).type == ValueType::Float32);
     }
@@ -1840,13 +1865,14 @@ private slots:
         regs[109] = 0x4251;
         regs[110] = 0x3333;
         regs[111] = 0x4251;
+        readFails = [](quint16, int count) { return count == 1; };
         answerWith(QStringLiteral("52.3"), false);
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
         add(mkTag(QStringLiteral("Next"), 111, ValueType::Int16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 1);
-        QCOMPARE(reads[0].address, quint16(109)); // (110, 2) overlaps HR 111
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[1].address, quint16(109)); // (110, 2) overlaps HR 111
         QCOMPARE(dialogs.size(), 1);
 
         reads.clear();
@@ -1856,8 +1882,8 @@ private slots:
         mon->onDisconnected();
         mon->onConnected();
         feed({exception16(1)});
-        QCOMPARE(reads.size(), 1);
-        QCOMPARE(reads[0].address, quint16(110)); // (109, 2) overlaps HR 109
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[1].address, quint16(110)); // (109, 2) overlaps HR 109
     }
 
     void refusedReadSkipsPairsOutsideTheAddressSpace()
@@ -1867,11 +1893,11 @@ private slots:
         const TagId low = add(mkTag(QStringLiteral("Low"), 0, ValueType::Int16));
         const TagId high = add(mkTag(QStringLiteral("High"), 65535, ValueType::Int16));
         feed({exception16(low)});
-        QCOMPARE(reads.size(), 1);
-        QCOMPARE(reads[0].address, quint16(0));
+        QCOMPARE(reads.size(), 2); // alone, then (0, 2)
+        QCOMPARE(reads[1].address, quint16(0));
         feed({exception16(high)});
-        QCOMPARE(reads.size(), 2);
-        QCOMPARE(reads[1].address, quint16(65534));
+        QCOMPARE(reads.size(), 4); // alone, then (65534, 2)
+        QCOMPARE(reads[3].address, quint16(65534));
     }
 
     void refusedReadTimeoutStopsProbes()
@@ -1948,6 +1974,9 @@ private slots:
         strictDevice();
         regs[120] = 0x0000; // a float32 CDAB 100.0 at HR 120-121
         regs[121] = 0x42C8;
+        readFails = [](quint16 address, int count) {
+            return count == 1 && (address == 110 || address == 111 || address == 120 || address == 121);
+        };
         mon->onConnected();
         const TagId a = add(mkTag(QStringLiteral("A"), 110, ValueType::Int16));
         const TagId b = add(mkTag(QStringLiteral("B"), 120, ValueType::Int16));
@@ -1982,18 +2011,18 @@ private slots:
         mon->onConnected();
         feed({exception16(1)});
         QVERIFY(mon->m_passActive); // Plain has not read yet
-        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads.size(), 3);
         QCOMPARE(dialogs.size(), 1);
         feed({good16(2, 8)});
         QVERIFY(!mon->m_passActive);
-        QCOMPARE(reads.size(), 3); // Plain's split check
+        QCOMPARE(reads.size(), 4); // Plain's split check
         QVERIFY(reviews.isEmpty());
         QCOMPARE(dialogs.size(), 1);
         // Reconnect: the same tag is not handled again.
         mon->onDisconnected();
         mon->onConnected();
         feed({exception16(1), good16(2, 8)});
-        QCOMPARE(reads.size(), 3);
+        QCOMPARE(reads.size(), 4);
         QCOMPARE(dialogs.size(), 1);
         QVERIFY(!mon->m_passActive);
     }
@@ -2053,6 +2082,159 @@ private slots:
         QVERIFY(tagOf(a).byteOrder == ByteOrder::CDAB);
         QVERIFY(tagOf(1).byteOrder == ByteOrder::CDAB);
         QVERIFY(!tagOf(1).encodingVerified); // only the order was chosen for it
+    }
+
+
+    // The tag's own register is read alone first; only exception 2 continues to the pair probes.
+    void checkOtherErrorStopsAfterTheOwnRead(quint8 code)
+    {
+        {
+            strictDevice();
+            autoAnswer = false;
+            mon->onConnected();
+            const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
+            feed({exception16(id)});
+            QCOMPARE(reads.size(), 1);
+            QCOMPARE(reads[0].count, 1);
+            ModbusResult busy;
+            busy.error = ModbusError::Exception;
+            busy.exceptionCode = code;
+            busy.message = QStringLiteral("boom");
+            mon->onReadFinished(reads[0].id, busy, {});
+            QCOMPARE(reads.size(), 1); // no pair probes
+            QVERIFY(dialogs.isEmpty());
+            QVERIFY(tagOf(id).encodingVerified);
+            QVERIFY(model->encodingNote(id).isEmpty());
+            QVERIFY(messages->isEmpty());
+            mon->detectNow(id);
+            QCOMPARE(reads.size(), 2);
+            mon->onReadFinished(reads[1].id, busy, {});
+            QCOMPARE(reads.size(), 2);
+            QCOMPARE(messages->size(), 1);
+            QCOMPARE(messages->first().first().toString(),
+                     QStringLiteral("'S' (HR 110) could not be read: boom."));
+            QVERIFY(dialogs.isEmpty());
+        }
+    }
+    void refusedReadExceptionCode3StopsAfterTheOwnRead() { checkOtherErrorStopsAfterTheOwnRead(3); }
+    void refusedReadExceptionCode4StopsAfterTheOwnRead() { checkOtherErrorStopsAfterTheOwnRead(4); }
+    void refusedReadExceptionCode6StopsAfterTheOwnRead() { checkOtherErrorStopsAfterTheOwnRead(6); }
+
+    // The own register reads fine: not a refused read, the normal split check runs instead.
+    void refusedReadOwnReadOkFallsBackToTheSplitCheck()
+    {
+        regs[109] = 0;
+        regs[110] = 5;
+        regs[111] = 0;
+        mon->onConnected();
+        const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
+        feed({exception16(id)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[0].address, quint16(110));
+        QCOMPARE(reads[0].count, 1);
+        QCOMPARE(reads[1].address, quint16(109)); // the split check's neighbourhood read
+        QCOMPARE(reads[1].count, 3);
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(model->encodingNote(id).isEmpty());
+        QVERIFY(messages->isEmpty());
+        // detectNow: the own read is not repeated by the monitor on its own, and still no dialog.
+        mon->detectNow(id);
+        QVERIFY(dialogs.isEmpty());
+    }
+
+    // A failed block marks every tag of it Exception; only the tag the device really refuses is
+    // flagged and gets the dialog.
+    void refusedReadBlockMateIsNotFlagged()
+    {
+        strictDevice();
+        regs[105] = 1;
+        answerWith(QStringLiteral("52.3"));
+        introTexts.clear();
+        mon->onConnected();
+        const TagId mate = add(mkTag(QStringLiteral("Mate"), 105, ValueType::Int16));
+        const TagId refused = add(mkTag(QStringLiteral("Refused"), 110, ValueType::Int16));
+        feed({exception16(mate), exception16(refused)});
+        QCOMPARE(dialogs.size(), 1);
+        QCOMPARE(introTexts.size(), 1);
+        QVERIFY(introTexts[0].contains(QStringLiteral("'Refused'")));
+        QCOMPARE(tagOf(mate).address, quint16(105));
+        QVERIFY(tagOf(mate).type == ValueType::Int16);
+        QVERIFY(tagOf(mate).encodingVerified);
+        QVERIFY(model->encodingNote(mate).isEmpty());
+        QVERIFY(tagOf(refused).type == ValueType::Float32);
+    }
+
+    // B's pair was readable when probed, but A's dialog (open meanwhile) then took one register.
+    void refusedReadPairTakenWhileQueuedIsNotApplied()
+    {
+        regs[110] = 0x3333;
+        regs[111] = 0x4251;
+        regs[112] = 0x1234;
+        readFails = [](quint16, int count) { return count == 1; };
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 110, ValueType::Int16));
+        const TagId b = add(mkTag(QStringLiteral("B"), 112, ValueType::Int16));
+        onDialog = [&](EncodingDialog &dlg) {
+            if (dialogs.size() == 1)
+                feed({exception16(b)}); // B's pair is (111, 112) while A is still at HR 110
+            dlg.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        feed({exception16(a)});
+        QCOMPARE(dialogs.size(), 1); // B's dialog is not opened
+        QVERIFY(tagOf(a).type == ValueType::Float32);
+        QCOMPARE(tagOf(b).address, quint16(112));
+        QVERIFY(tagOf(b).type == ValueType::Int16);
+        QVERIFY(!tagOf(b).encodingVerified); // still flagged
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("Not applied: HR 111-112 is now used by 'A'."));
+    }
+
+    // A tag added while the dialog is open takes the register the answer would use.
+    void refusedReadPairTakenInTheDialogIsNotApplied()
+    {
+        strictDevice();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 110, ValueType::Int16));
+        onDialog = [&](EncodingDialog &dlg) {
+            add(mkTag(QStringLiteral("Y"), 111, ValueType::Int16));
+            dlg.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        feed({exception16(a)});
+        QCOMPARE(dialogs.size(), 1);
+        QCOMPARE(tagOf(a).address, quint16(110));
+        QVERIFY(tagOf(a).type == ValueType::Int16);
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("Not applied: HR 110-111 is now used by 'Y'."));
+    }
+
+    void refusedReadQueuedDialogIsDroppedAfterReconnect()
+    {
+        strictDevice();
+        regs[120] = 0x0000;
+        regs[121] = 0x42C8;
+        readFails = [](quint16 address, int count) {
+            return count == 1 && (address == 110 || address == 111 || address == 120 || address == 121);
+        };
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 110, ValueType::Int16));
+        const TagId b = add(mkTag(QStringLiteral("B"), 120, ValueType::Int16));
+        onDialog = [&](EncodingDialog &) {
+            if (dialogs.size() == 1) {
+                feed({exception16(b)}); // queued behind A's dialog
+                mon->onDisconnected();
+                mon->onConnected();
+            }
+            return false;
+        };
+        feed({exception16(a)});
+        QCOMPARE(dialogs.size(), 1);
+        QVERIFY(tagOf(b).type == ValueType::Int16);
+        QCOMPARE(tagOf(b).address, quint16(120));
     }
 
     // ---- one dialog at a time ----------------------------------------------------------------

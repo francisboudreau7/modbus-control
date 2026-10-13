@@ -121,6 +121,7 @@ void PollWorker::setTags(const QList<Tag> &tags)
     for (int i = 0; i < m_tags.size(); ++i)
         m_tagIndex.insert(m_tags.at(i).id, i);
     m_blocks = planBlocks(m_tags);
+    m_perTagBlocks.clear();
 }
 
 void PollWorker::connectTo(const ConnectionSettings &settings)
@@ -130,6 +131,7 @@ void PollWorker::connectTo(const ConnectionSettings &settings)
     closeConnection();
     m_backoffStep = 0;
     m_lastBlockMessage.clear();
+    m_perTagBlocks.clear();
     failAllWrites(notConnectedResult());
     failAllReads(notConnectedResult());
     if (!m_clock.isValid())
@@ -153,6 +155,7 @@ void PollWorker::attemptConnect(bool firstAttempt)
     const ModbusResult r = m_conn->open(m_settings);
     if (r.ok()) {
         m_backoffStep = 0;
+        m_perTagBlocks.clear();
         m_reconnectTimer->stop();
         setState(ConnectionState::Connected,
                  QStringLiteral("Connected to %1 (unit %2)").arg(endpoint()).arg(m_settings.unitId));
@@ -340,28 +343,89 @@ void PollWorker::pollCycle(double t)
 
     bool lost = false;
     QString lostReason;
-    for (const ReadBlock &block : std::as_const(m_blocks)) {
+
+    // Decodes the tag at `idx` from `data`, where its first register is at data[off].
+    const auto decodeInto = [&](int idx, const QList<quint16> &data, int off) {
+        TagSample &s = batch.samples[idx];
+        const Tag &tag = m_tags.at(idx);
+        const int regs = registerCount(tag.type);
+        if (off + regs > data.size()) {
+            s.quality = Quality::Error;
+            return;
+        }
+        const quint16 r0 = data.at(off);
+        const quint16 r1 = regs == 2 ? data.at(off + 1) : quint16(0);
+        s.raw = combineRegisters(tag, r0, r1);
+        s.value = decodeValue(tag, s.raw);
+        s.quality = Quality::Good;
+    };
+
+    // Reports a failed request (one message per request) and discards stale socket data.
+    // Returns true when the connection was lost.
+    const auto failed = [&](const ModbusResult &r, Area area, int start, int count) {
+        emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
+                             .arg(areaShort(area))
+                             .arg(start + m_addressBase)
+                             .arg(start + count - 1 + m_addressBase)
+                             .arg(r.message));
+        // Discard anything left in the socket so a late reply is not read as the next answer.
+        if (r.error != ModbusError::Exception)
+            m_conn->flush();
+        if (r.error == ModbusError::ConnectionLost) {
+            lost = true;
+            lostReason = r.message;
+            return true;
+        }
+        return false;
+    };
+
+    // Reads each tag of the block on its own, so every tag gets its own quality.
+    const auto readPerTag = [&](const ReadBlock &block) {
+        for (int k = 0; k < block.tagIds.size(); ++k) {
+            const int idx = m_tagIndex.value(block.tagIds.at(k), -1);
+            if (idx < 0)
+                continue;
+            const int regs = registerCount(m_tags.at(idx).type);
+            const int start = block.start + block.offsets.at(k);
+            QList<quint16> data;
+            const ModbusResult r = m_conn->readRegisters(block.area, static_cast<quint16>(start),
+                                                         static_cast<quint16>(regs), data);
+            if (r.ok()) {
+                decodeInto(idx, data, 0);
+                continue;
+            }
+            batch.samples[idx].quality = qualityFor(r.error);
+            if (failed(r, block.area, start, regs))
+                return false;
+        }
+        return true;
+    };
+
+    for (int bi = 0; bi < m_blocks.size(); ++bi) {
+        const ReadBlock &block = m_blocks.at(bi);
+        if (block.tagIds.size() > 1 && m_perTagBlocks.contains(bi)) {
+            if (!readPerTag(block))
+                break; // remaining tags stay Disconnected
+            continue;
+        }
+
         QList<quint16> data;
         const ModbusResult r = m_conn->readRegisters(block.area, block.start, block.count, data);
         if (r.ok()) {
             for (int k = 0; k < block.tagIds.size(); ++k) {
                 const int idx = m_tagIndex.value(block.tagIds.at(k), -1);
-                const int off = block.offsets.at(k);
-                if (idx < 0)
-                    continue;
-                TagSample &s = batch.samples[idx];
-                const Tag &tag = m_tags.at(idx);
-                const int regs = registerCount(tag.type);
-                if (off + regs > data.size()) {
-                    s.quality = Quality::Error;
-                    continue;
-                }
-                const quint16 r0 = data.at(off);
-                const quint16 r1 = regs == 2 ? data.at(off + 1) : quint16(0);
-                s.raw = combineRegisters(tag, r0, r1);
-                s.value = decodeValue(tag, s.raw);
-                s.quality = Quality::Good;
+                if (idx >= 0)
+                    decodeInto(idx, data, block.offsets.at(k));
             }
+            continue;
+        }
+
+        // A device may refuse some registers of a block (e.g. one half of a 32-bit value) while
+        // serving the others: read the tags one by one, now and in later cycles.
+        if (r.error == ModbusError::Exception && block.tagIds.size() > 1) {
+            m_perTagBlocks.insert(bi);
+            if (!readPerTag(block))
+                break;
             continue;
         }
 
@@ -371,19 +435,8 @@ void PollWorker::pollCycle(double t)
             if (idx >= 0)
                 batch.samples[idx].quality = q;
         }
-        emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
-                             .arg(areaShort(block.area))
-                             .arg(block.start + m_addressBase)
-                             .arg(block.start + block.count - 1 + m_addressBase)
-                             .arg(r.message));
-        // Discard anything left in the socket so a late reply is not read as the next answer.
-        if (r.error != ModbusError::Exception)
-            m_conn->flush();
-        if (r.error == ModbusError::ConnectionLost) {
-            lost = true;
-            lostReason = r.message;
+        if (failed(r, block.area, block.start, block.count))
             break; // remaining tags stay Disconnected
-        }
     }
 
     emit samplesReady(batch);

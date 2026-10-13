@@ -651,6 +651,61 @@ private slots:
         QVERIFY(m_harness->lastState() == ConnectionState::Connected);
     }
 
+    // One refused tag must not take its block-mates down: the failing block is read tag by tag.
+    void worker_refusedTagDoesNotFailItsBlockMates()
+    {
+        QVERIFY(m_server->start({QStringLiteral("--strict-32bit")}));
+        m_harness = std::make_unique<WorkerHarness>();
+        // One planned block, HR 100..110: it ends inside the float at HR 110-111.
+        m_harness->setTags({makeTag(1, Area::HoldingRegister, 100, ValueType::Int16),
+                            makeTag(2, Area::HoldingRegister, 110, ValueType::Int16),
+                            makeTag(3, Area::HoldingRegister, 105, ValueType::Int16)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 1, 5000);
+        m_harness->write(41, 100, {1234});
+        m_harness->write(42, 105, {55});
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->writes.contains(41) && m_harness->writes.contains(42), 3000);
+        QVERIFY(m_harness->writes.value(41).ok() && m_harness->writes.value(42).ok());
+        const auto settled = [&] {
+            const SampleBatch &b = m_harness->batches.last();
+            return WorkerHarness::sampleOf(b, 1)->raw == 1234 && WorkerHarness::sampleOf(b, 3)->raw == 55;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(settled(), 4000);
+        // Every batch from the first on has the same split: no flip-flop between cycles.
+        const int first = m_harness->batches.size();
+        QTest::qWait(800);
+        QVERIFY(m_harness->batches.size() >= first + 3);
+        for (const SampleBatch &b : std::as_const(m_harness->batches)) {
+            QVERIFY(WorkerHarness::sampleOf(b, 1)->quality != Quality::Timeout);
+            QVERIFY(WorkerHarness::sampleOf(b, 2)->quality == Quality::Exception);
+        }
+        for (int i = first - 1; i < m_harness->batches.size(); ++i) {
+            const SampleBatch &b = m_harness->batches.at(i);
+            QVERIFY(WorkerHarness::sampleOf(b, 1)->quality == Quality::Good);
+            QCOMPARE(int(WorkerHarness::sampleOf(b, 1)->raw), 1234);
+            QVERIFY(WorkerHarness::sampleOf(b, 3)->quality == Quality::Good);
+            QCOMPARE(int(WorkerHarness::sampleOf(b, 3)->raw), 55);
+            QVERIFY(WorkerHarness::sampleOf(b, 2)->quality == Quality::Exception);
+        }
+        QVERIFY(m_harness->lastState() == ConnectionState::Connected);
+    }
+
+    // A block that fails for every tag still reports each as Exception.
+    void worker_blockOfOutOfMapTagsIsExceptionPerTag()
+    {
+        QVERIFY(m_server->start());
+        m_harness = std::make_unique<WorkerHarness>();
+        m_harness->setTags({makeTag(1, Area::HoldingRegister, 500), makeTag(2, Area::HoldingRegister, 504),
+                            makeTag(3, Area::InputRegister, 2)});
+        m_harness->connectTo(settingsFor(m_server->port(), 1000, 1, 100));
+        QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 4, 5000);
+        for (const SampleBatch &b : std::as_const(m_harness->batches)) {
+            QVERIFY(WorkerHarness::sampleOf(b, 1)->quality == Quality::Exception);
+            QVERIFY(WorkerHarness::sampleOf(b, 2)->quality == Quality::Exception);
+            QVERIFY(WorkerHarness::sampleOf(b, 3)->quality == Quality::Good);
+        }
+    }
+
     void worker_oneOffReadHolding()
     {
         QVERIFY(m_server->start());

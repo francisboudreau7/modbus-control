@@ -919,6 +919,41 @@ private slots:
         noUnexpected();
     }
 
+    // Polled in one block with the refused tag, a plain neighbour keeps reading and gets no dialog.
+    void refusedReadDoesNotInvolveBlockMates()
+    {
+        connectLive(true);
+        int dialogsFor = 0;
+        d.onEncodingDialog = [&dialogsFor](EncodingDialog &dialog) {
+            ++dialogsFor;
+            dialog.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        const TagId mate = addInt16(QStringLiteral("Mate"), 100);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(mate).has_value(), 8000);
+        const TagId refused = addInt16(QStringLiteral("Setpoint"), 110);
+        // The neighbour reads Good all the way through.
+        for (int i = 0; i < 30 && model()->tagAt(model()->rowOf(refused)).type == ValueType::Int16; ++i) {
+            QVERIFY(model()->goodValue(mate).has_value());
+            QTest::qWait(100);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(refused)
+                                     && qAbs(*model()->goodValue(refused) - 52.3) < 0.01,
+                                 8000);
+        for (int i = 0; i < 10; ++i) {
+            QVERIFY(model()->goodValue(mate).has_value());
+            QTest::qWait(100);
+        }
+        QCOMPARE(dialogsFor, 1);
+        QCOMPARE(d.encodingDialogs.size(), 1);
+        QVERIFY(d.encodingDialogs.first().contains(QStringLiteral("Setpoint")));
+        const Tag &m = model()->tagAt(model()->rowOf(mate));
+        QVERIFY(m.type == ValueType::Int16);
+        QCOMPARE(m.address, quint16(100));
+        QVERIFY(m.encodingVerified);
+        noUnexpected();
+    }
+
     void refusedReadOfUpperHalfEndsAtTheFirstRegister()
     {
         connectLive(true);

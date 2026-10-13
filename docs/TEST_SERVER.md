@@ -245,7 +245,7 @@ neither, is served as usual. For example, with the defaults:
 | write multiple HR 110-111 (FC16) | OK |
 
 Each refused request prints a `refused` line on the console, even without `-v`. Function codes
-FC05 (coils) and FC17 (read/write multiple) are not checked. Without the option the server
+FC05 (coils) and FC23 (read/write multiple) are not checked. Without the option the server
 serves these requests as usual.
 
 ## Output

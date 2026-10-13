@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QList>
 #include <QObject>
+#include <QSet>
 
 #include <memory>
 
@@ -34,6 +35,11 @@ QString toString(ConnectionState state);
 /// planned block and emits exactly one samplesReady() with one TagSample per tag.
 /// A failed block marks its tags with the matching Quality; a ConnectionLost error
 /// ends the cycle, marks remaining tags Disconnected and enters Reconnecting.
+/// When a block of more than one tag fails with a Modbus exception (a device may refuse some
+/// registers, e.g. one half of a 32-bit value, but serve the others), each of its tags is read
+/// on its own in the same cycle so every tag gets its own quality, and the block keeps being
+/// read per tag until the next setTags() or (re)connect. Timeouts and lost connections do not
+/// trigger this fallback.
 class PollWorker : public QObject
 {
     Q_OBJECT
@@ -124,6 +130,7 @@ private:
     QList<Tag> m_tags;
     QHash<TagId, int> m_tagIndex;
     QList<ReadBlock> m_blocks;
+    QSet<int> m_perTagBlocks; ///< indices into m_blocks that are read tag by tag
     QTimer *m_timer = nullptr;          ///< poll (or disconnected-gap) cycle, single shot
     QTimer *m_reconnectTimer = nullptr; ///< backoff retry, single shot
     QElapsedTimer m_clock;
