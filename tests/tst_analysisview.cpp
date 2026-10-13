@@ -10,6 +10,7 @@
 #include <qwt_plot_curve.h>
 #include <qwt_plot_item.h>
 #include <qwt_plot_marker.h>
+#include <qwt_symbol.h>
 #include <qwt_text.h>
 
 #include <QCheckBox>
@@ -229,6 +230,11 @@ void TstAnalysisView::detailedLabels()
         QVERIFY(l.backgroundBrush().style() != Qt::NoBrush);
         QVERIFY(l.backgroundBrush().color().alpha() >= 200);
         QCOMPARE(l.borderPen().color(), QColor(QStringLiteral("#0000ff")));
+        // The point itself is not in the curve's colour: white disc, dark ring, above the curves.
+        QCOMPARE(m->symbol()->brush().color(), QColor(Qt::white));
+        QVERIFY(m->symbol()->pen().color().lightness() < 80);
+        QVERIFY(m->symbol()->pen().color() != QColor(QStringLiteral("#0000ff")));
+        QVERIFY(m->z() > 20.0);
         QVERIFY(l.color().lightness() < 80);
     }
 

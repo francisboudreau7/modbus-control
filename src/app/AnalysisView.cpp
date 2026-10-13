@@ -107,6 +107,36 @@ QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, d
 constexpr int kGuideRtti = QwtPlotItem::Rtti_PlotUserItem + 1;
 constexpr int kModelPoints = 400;
 
+/// Setpoint marker: a white disc with a dark ring, so it stands out on a curve of any colour,
+/// and a small dot of the tag's colour in the middle to show which tag it belongs to.
+class SetpointSymbol : public QwtSymbol
+{
+public:
+    static constexpr int kSize = 13;
+    explicit SetpointSymbol(const QColor &tagColor)
+        : QwtSymbol(QwtSymbol::Ellipse, QBrush(Qt::white), QPen(QColor(0x20, 0x20, 0x20), 2),
+                    QSize(kSize, kSize)),
+          m_tagColor(tagColor)
+    {
+    }
+    QColor tagColor() const { return m_tagColor; }
+
+    void renderSymbols(QPainter *painter, const QPointF *points, int numPoints) const override
+    {
+        QwtSymbol::renderSymbols(painter, points, numPoints); // white disc, dark ring
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(m_tagColor);
+        for (int i = 0; i < numPoints; ++i)
+            painter->drawEllipse(points[i], 2.5, 2.5);
+        painter->restore();
+    }
+
+private:
+    QColor m_tagColor;
+};
+
 /// Dashed guide lines from setpoint points down to the bottom and left to the left edge of
 /// the canvas; computed at draw time so they follow zoom and pan.
 struct GuidePoint {
@@ -622,8 +652,8 @@ void AnalysisView::rebuildMarkers()
                 continue;
             auto *marker = new QwtPlotMarker;
             marker->setValue(sp.time, sp.target);
-            marker->setSymbol(new QwtSymbol(QwtSymbol::XCross, QBrush(), QPen(color, 2),
-                                            QSize(11, 11)));
+            marker->setSymbol(new SetpointSymbol(color));
+            marker->setZ(25.0); // above the curves and the model curve
             QString text = fmtPercent(sp.percent);
             if (m_settings.detailedLabels) {
                 text += QStringLiteral("\nt = ") + QString::number(sp.time, 'f', 3)
