@@ -1,6 +1,7 @@
 #include "EncodingMonitor.h"
 
 #include "EncodingDialog.h"
+#include "RichText.h"
 #include "TagCodec.h"
 #include "TagTableModel.h"
 
@@ -20,17 +21,8 @@ bool wide(const Tag &tag)
     return registerCount(tag.type) == 2;
 }
 
-// Prompt texts are rich text: a bold headline, then the readings laid out for comparison.
-QString esc(const QString &text)
-{
-    return text.toHtmlEscaped();
-}
-
-QString headline(const QString &text)
-{
-    return QStringLiteral("<p><b>%1</b></p>").arg(text);
-}
-
+// Prompt texts are rich text built with mb::rich: a bold headline, then the readings laid out for
+// comparison.
 /// "1 tag reads" / "2 tags read" style counts.
 QString tagCount(qsizetype n, const QString &one, const QString &many)
 {
@@ -311,9 +303,9 @@ void EncodingMonitor::runConnectCheck()
                 bestValue = valueText(c.values.last(), tag);
         }
         const int first = tag.address + m_model->addressBase();
-        entries << QStringLiteral("<li>'%1' (%2 %3-%4): %5 as %6, <b>%7</b> as %8</li>")
-                       .arg(esc(tag.name), areaPrefix(tag.area)).arg(first).arg(first + 1)
-                       .arg(esc(currentValue), toString(current), esc(bestValue),
+        entries << QStringLiteral("'%1' (%2 %3-%4): %5 as %6, <b>%7</b> as %8")
+                       .arg(rich::escaped(tag.name), areaPrefix(tag.area)).arg(first).arg(first + 1)
+                       .arg(rich::escaped(currentValue), toString(current), rich::escaped(bestValue),
                             toString(*result.best));
         ids << tag.id;
     }
@@ -326,12 +318,14 @@ void EncodingMonitor::runConnectCheck()
             m_snapshot.insert(id, *now);
     }
     const QString text =
-        headline(tagCount(ids.size(), QStringLiteral("reads an implausible value with its current "
-                                                     "encoding:"),
-                          QStringLiteral("read implausible values with their current encoding:")))
-        + QStringLiteral("<ul>%1</ul>").arg(entries.join(QString()))
-        + QStringLiteral("<p>Writes to them ask first until you confirm their encoding. Review "
-                         "them now?</p>");
+        rich::headline(tagCount(ids.size(),
+                                QStringLiteral("reads an implausible value with its current "
+                                               "encoding:"),
+                                QStringLiteral("read implausible values with their current "
+                                               "encoding:")))
+        + rich::bulletsRich(entries)
+        + rich::paragraph(QStringLiteral("Writes to them ask first until you confirm their "
+                                         "encoding. Review them now?"));
     // Shown by pump() as soon as no prompt or dialog is open (now, usually).
     m_deferred32 = Review32{text, ids};
     pump();
@@ -817,8 +811,8 @@ void EncodingMonitor::maybeFinishConnectPass()
         flagSplit(*tag, f.split);
         const double reading = decodeValue(*tag, combineRegisters(*tag, f.own));
         const int base = m_model->addressBase();
-        entries << QStringLiteral("<li>'%1' (%2 %3): %4 as %5, <b>%6</b> as %7 (%2 %8-%9)</li>")
-                       .arg(esc(tag->name), areaPrefix(tag->area)).arg(tag->address + base)
+        entries << QStringLiteral("'%1' (%2 %3): %4 as %5, <b>%6</b> as %7 (%2 %8-%9)")
+                       .arg(rich::escaped(tag->name), areaPrefix(tag->area)).arg(tag->address + base)
                        .arg(QString::number(reading, 'g', 7), toString(tag->type),
                             QString::number(f.split.value, 'g', 7), toString(f.split.encoding))
                        .arg(f.split.address + base).arg(f.split.address + 1 + base);
@@ -827,10 +821,11 @@ void EncodingMonitor::maybeFinishConnectPass()
     if (flagged.isEmpty())
         return;
     const QString text =
-        headline(tagCount(flagged.size(), QStringLiteral("is probably half of a float32 value:"),
-                          QStringLiteral("are probably half of a float32 value:")))
-        + QStringLiteral("<ul>%1</ul>").arg(entries.join(QString()))
-        + QStringLiteral("<p>Writes to them ask first. Review them now?</p>");
+        rich::headline(tagCount(flagged.size(),
+                                QStringLiteral("is probably half of a float32 value:"),
+                                QStringLiteral("are probably half of a float32 value:")))
+        + rich::bulletsRich(entries)
+        + rich::paragraph(QStringLiteral("Writes to them ask first. Review them now?"));
     // Shown by pump() as soon as no prompt or dialog is open (now, usually).
     m_deferred16 = Review16{text, flagged};
     pump();
@@ -848,26 +843,29 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     QString text;
     QString changeLabel;
     if (request.noSplit) {
-        text = headline(QStringLiteral("No float32 found around '%1' (%2) right now.")
-                            .arg(esc(tag.name), where))
-               + QStringLiteral("<p>It stays flagged. Choose <b>Keep %1</b> if it is a 16-bit "
-                                "value.</p>")
-                     .arg(toString(tag.type));
+        text = rich::headline(QStringLiteral("No float32 found around '%1' (%2) right now.")
+                                  .arg(tag.name, where))
+               + rich::paragraphRich(QStringLiteral("It stays flagged. Choose %1 if it is a 16-bit "
+                                                    "value.")
+                                         .arg(rich::bold(QStringLiteral("Keep %1")
+                                                             .arg(toString(tag.type)))));
     } else {
         const int base = m_model->addressBase();
-        text = headline(QStringLiteral("'%1' is probably half of a float32 value.").arg(esc(tag.name)))
-               + QStringLiteral("<table cellspacing=\"0\" cellpadding=\"3\">"
-                                "<tr><td>As %1 (%2):</td><td align=\"right\">%3</td></tr>"
-                                "<tr><td>As %4 (%5 %6-%7):</td><td align=\"right\"><b>%8</b></td></tr>"
-                                "</table>")
-                     .arg(toString(tag.type), where, QString::number(reading, 'g', 7),
-                          toString(split.encoding), areaPrefix(tag.area))
-                     .arg(split.address + base).arg(split.address + 1 + base)
-                     .arg(QString::number(split.value, 'g', 7))
-               + QStringLiteral("<p>Writing a 16-bit value here would change half of the float.</p>");
+        text = rich::headline(QStringLiteral("'%1' is probably half of a float32 value.")
+                                  .arg(tag.name))
+               + rich::rows(
+                   {{QStringLiteral("As %1 (%2):").arg(toString(tag.type), where),
+                     QString::number(reading, 'g', 7)},
+                    {QStringLiteral("As %1 (%2 %3-%4):")
+                         .arg(toString(split.encoding), areaPrefix(tag.area))
+                         .arg(split.address + base)
+                         .arg(split.address + 1 + base),
+                     QString::number(split.value, 'g', 7), true}})
+               + rich::paragraph(
+                   QStringLiteral("Writing a 16-bit value here would change half of the float."));
         if (tag.gain != 1.0 || tag.offset != 0.0 || tag.quickA || tag.quickB)
-            text += QStringLiteral("<p><small>Change also resets its gain and offset to 1 and 0 and "
-                                   "clears its quick values.</small></p>");
+            text += rich::note(QStringLiteral("Change also resets its gain and offset to 1 and 0 "
+                                              "and clears its quick values."));
         changeLabel = QStringLiteral("Change to %1 at %2 %3")
                           .arg(toString(split.encoding), areaPrefix(tag.area))
                           .arg(split.address + m_model->addressBase());

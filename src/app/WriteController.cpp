@@ -1,6 +1,7 @@
 ﻿#include "WriteController.h"
 
 #include "EncodingDetect.h"
+#include "RichText.h"
 #include "TagCodec.h"
 #include "TagTableModel.h"
 
@@ -73,11 +74,32 @@ QString limitsText(const Tag &tag)
     return QString();
 }
 
-/// "'Setpoint' accepts 0 to 100 °C; 150 was not written."
+/// "'Setpoint' accepts 0 to 100 °C; 150 was not written." (plain text, one bullet of the list)
 QString limitViolationText(const Tag &tag, double value)
 {
     return QObject::tr("'%1' accepts %2%3; %4 was not written.")
         .arg(tag.name, limitsText(tag), unitSuffix(tag), valueText(value));
+}
+
+/// "'A', 'B'" (plain text).
+QString quotedNames(const QStringList &names)
+{
+    QStringList quoted;
+    for (const QString &name : names)
+        quoted << QStringLiteral("'%1'").arg(name);
+    return quoted.join(QStringLiteral(", "));
+}
+
+/// "Check:" and a bullet list of what to look at.
+QString checkList(const QStringList &items)
+{
+    return rich::paragraph(QObject::tr("Check:")) + rich::bullets(items);
+}
+
+/// A message box showing rich text (see mb::rich).
+void setRich(QMessageBox &box)
+{
+    box.setTextFormat(Qt::RichText);
 }
 
 /// Typical of a wrong byte order or register: not finite, huge or tiny non-zero.
@@ -140,13 +162,17 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
     : QObject(parent), m_model(model), m_dialogParent(dialogParent)
 {
     m_confirm = [this](const QString &question) {
-        return QMessageBox::question(m_dialogParent, tr("Confirm write"), question,
-                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
-               == QMessageBox::Yes;
+        QMessageBox box(QMessageBox::Question, tr("Confirm write"), question,
+                        QMessageBox::Yes | QMessageBox::No, m_dialogParent);
+        setRich(box);
+        box.setDefaultButton(QMessageBox::No);
+        box.setEscapeButton(QMessageBox::No);
+        return box.exec() == QMessageBox::Yes;
     };
     m_offerSingleWrites = [this](const QString &text) {
         QMessageBox box(QMessageBox::Warning, tr("Write rejected"), text, QMessageBox::NoButton,
                         m_dialogParent);
+        setRich(box);
         QPushButton *use = box.addButton(tr("Use FC06 only and reconnect"), QMessageBox::AcceptRole);
         box.addButton(tr("Close"), QMessageBox::RejectRole);
         box.exec();
@@ -155,17 +181,22 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
     m_quickConfirmPrompt = [this](const QString &question) {
         QMessageBox box(QMessageBox::Question, tr("Confirm write"), question,
                         QMessageBox::Yes | QMessageBox::No, m_dialogParent);
+        setRich(box);
         box.setDefaultButton(QMessageBox::No);
+        box.setEscapeButton(QMessageBox::No);
         QCheckBox dontAsk(tr("Don't ask again this session"));
         box.setCheckBox(&dontAsk);
         const bool yes = box.exec() == QMessageBox::Yes;
         return QuickAnswer{yes, yes && dontAsk.isChecked()};
     };
     m_warn = [this](const QString &text) {
-        QMessageBox::warning(m_dialogParent, tr("Write"), text);
+        QMessageBox box(QMessageBox::Warning, tr("Write"), text, QMessageBox::Ok, m_dialogParent);
+        setRich(box);
+        box.exec();
     };
     m_warnImplausible = [this](const QString &text) {
         QMessageBox box(QMessageBox::Warning, tr("Write"), text, QMessageBox::NoButton, m_dialogParent);
+        setRich(box);
         QPushButton *anyway = box.addButton(tr("Write anyway"), QMessageBox::AcceptRole);
         QPushButton *cancel = box.addButton(QMessageBox::Cancel);
         box.setDefaultButton(cancel);
@@ -175,6 +206,7 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
     m_confirmEncoding = [this](const QString &text) {
         QMessageBox box(QMessageBox::Warning, tr("Confirm write"), text, QMessageBox::NoButton,
                         m_dialogParent);
+        setRich(box);
         QPushButton *confirm = box.addButton(tr("Confirm and continue"), QMessageBox::AcceptRole);
         QPushButton *detect = box.addButton(tr("Detect encoding..."), QMessageBox::ActionRole);
         QPushButton *cancel = box.addButton(QMessageBox::Cancel);
@@ -193,7 +225,7 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
         while (dlg.exec() == QDialog::Accepted) {
             if (auto v = dlg.values())
                 return v;
-            m_warn(tr("Please enter a valid number in every field."));
+            m_warn(rich::headline(tr("Please enter a valid number in every field.")));
         }
         return std::nullopt;
     };
@@ -236,7 +268,10 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
 
     // 2. write limits
     if (std::isfinite(scaledValue) && !tag.withinWriteLimits(scaledValue)) {
-        m_warn(limitViolationText(tag, scaledValue));
+        m_warn(rich::headline(tr("%1%2 is outside the limits of '%3'.")
+                                  .arg(valueText(scaledValue), unitSuffix(tag), tag.name))
+               + rich::paragraph(tr("'%1' accepts %2%3. Nothing was written.")
+                                     .arg(tag.name, limitsText(tag), unitSuffix(tag))));
         return;
     }
 
@@ -244,9 +279,10 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     const bool wide = registerCount(tag.type) == 2;
     const std::optional<double> current = m_model->goodValue(id);
     if (wide && !current) {
-        m_warn(tr("No valid reading of '%1' yet. Check the connection, register number and byte "
-                  "order before writing.")
-                   .arg(tag.name));
+        m_warn(rich::headline(tr("No valid reading of '%1' yet.").arg(tag.name))
+               + checkList({tr("the connection (the connection bar shows Connected)"),
+                            tr("the register number (%1)").arg(registerRange(tag, base)),
+                            tr("the type and byte order (%1)").arg(toString(encodingOf(tag)))}));
         return;
     }
 
@@ -255,21 +291,32 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     if (!tag.encodingVerified) {
         QString text;
         if (wide) {
-            text = tr("The encoding of '%1' is not confirmed: it reads %2 as %3. Writing "
-                      "with a wrong encoding sends a wrong value.")
-                       .arg(tag.name, valueText(*current) + unitSuffix(tag),
-                            toString(encodingOf(tag)));
+            text = rich::headline(tr("The encoding of '%1' is not confirmed.").arg(tag.name))
+                   + rich::rows({{tr("Reads:"), valueText(*current) + unitSuffix(tag), true},
+                                 {tr("As:"), tr("%1 (%2)").arg(toString(encodingOf(tag)),
+                                                               registerRange(tag, base))}})
+                   + rich::paragraph(tr("If this value is wrong for the device, the encoding is "
+                                        "wrong, and a write would send a wrong value."));
         } else {
             const QString note = m_model->encodingNote(id);
             const QString regNo = QStringLiteral("%1 %2")
                                       .arg(tag.area == Area::InputRegister ? QStringLiteral("IR")
                                                                            : QStringLiteral("HR"))
                                       .arg(tag.address + base);
-            const QString risk = tr("Writing a 16-bit value there changes half of that value, and "
-                                    "the device then reads a wrong number.");
-            text = note.isEmpty()
-                       ? tr("'%1' (%2) may be half of a 32-bit value. %3").arg(tag.name, regNo, risk)
-                       : tr("'%1' is probably half of a 32-bit value: %2. %3").arg(tag.name, note, risk);
+            QList<rich::Row> facts;
+            const std::optional<double> reading = m_model->goodValue(id);
+            facts.append({tr("Reads:"),
+                          reading ? tr("%1 as %2 (%3)")
+                                        .arg(valueText(*reading) + unitSuffix(tag), typeText(tag), regNo)
+                                  : tr("%1 (%2)").arg(typeText(tag), regNo)});
+            if (!note.isEmpty())
+                facts.append({tr("Found:"), note});
+            text = rich::headline(note.isEmpty()
+                                      ? tr("'%1' may be half of a 32-bit value.").arg(tag.name)
+                                      : tr("'%1' is probably half of a 32-bit value.").arg(tag.name))
+                   + rich::rows(facts)
+                   + rich::paragraph(tr("Writing a 16-bit value here would change half of that "
+                                        "value, and the device would read a wrong number."));
         }
         switch (m_confirmEncoding(text)) {
         case EncodingAnswer::Confirm:
@@ -286,33 +333,39 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     // 4. encodable
     const auto raw = encodeRegisters(tag, scaledValue);
     if (!raw) {
-        m_warn(tr("Value %1 is out of range for %2 (%3, gain %4, offset %5).")
-                   .arg(valueText(scaledValue), tag.name, typeText(tag), valueText(tag.gain),
-                        valueText(tag.offset)));
+        m_warn(rich::headline(tr("%1 is out of range for '%2'.").arg(valueText(scaledValue), tag.name))
+               + rich::paragraph(tr("Type %1, gain %2, offset %3. Nothing was written.")
+                                     .arg(typeText(tag), valueText(tag.gain), valueText(tag.offset))));
         return;
     }
 
     // 5. implausible current float
     if (tag.type == ValueType::Float32 && current && implausibleFloat(*current)) {
         if (!m_warnImplausible(
-                tr("The current value of '%1' is %2, which is implausible. This usually means a "
-                   "wrong byte order or register number, so the value you write may also be "
-                   "misinterpreted by the device.\n\nWrite anyway?")
-                    .arg(tag.name, valueText(*current))))
+                rich::headline(tr("'%1' reads an implausible value: %2.")
+                                   .arg(tag.name, valueText(*current)))
+                + rich::paragraph(tr("This usually means a wrong byte order or register number, so "
+                                     "the value you write may also be misinterpreted by the "
+                                     "device."))
+                + checkList({tr("the byte order (now %1)").arg(toString(encodingOf(tag))),
+                             tr("the register number (%1)").arg(registerRange(tag, base))})))
             return;
     }
 
     const QString unit = unitSuffix(tag);
-    const QString typeInfo = wide ? tr(" [%1, %2]").arg(typeText(tag), toString(tag.byteOrder))
-                                  : QString();
-    QString question = tr("Write %1%2 (raw %3) to %4 '%5'%6?")
-                           .arg(valueText(scaledValue), unit, rawText(tag, *raw),
-                                registerRange(tag, base), tag.name, typeInfo);
-    question += tr("\nCurrent value: %1")
-                    .arg(current ? valueText(*current) + unit : tr("unknown"));
+    QList<rich::Row> facts;
+    facts.append({tr("Current value:"), current ? valueText(*current) + unit : tr("unknown")});
+    facts.append({tr("New value:"), valueText(scaledValue) + unit, true});
     const QString limits = limitsText(tag);
     if (!limits.isEmpty())
-        question += tr("\nLimits: %1%2").arg(limits, unit);
+        facts.append({tr("Limits:"), limits + unit});
+    const QString question =
+        rich::headline(tr("Write to '%1'?").arg(tag.name)) + rich::rows(facts)
+        + rich::note(tr("%1 · %2 · raw %3")
+                         .arg(registerRange(tag, base),
+                              wide ? tr("%1 %2").arg(typeText(tag), toString(tag.byteOrder))
+                                   : typeText(tag),
+                              rawText(tag, *raw)));
     if (quick && !wide) {
         if (m_quickConfirm) {
             const QuickAnswer answer = m_quickConfirmPrompt(question);
@@ -331,8 +384,9 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     }
     if (!stillSame(tag) || (wide && !m_model->goodValue(id))) {
-        m_warn(tr("'%1' changed or lost its reading while the confirmation was open. Nothing "
-                  "was written.").arg(tag.name));
+        m_warn(rich::headline(tr("'%1' changed or lost its reading while the confirmation was open.")
+                                  .arg(tag.name))
+               + rich::paragraph(tr("Nothing was written.")));
         return;
     }
     const quint64 reqId = m_nextRequest++;
@@ -358,13 +412,15 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         if (tags.contains(tag))
             continue;
         if (!tag.isWritable()) {
-            m_warn(tr("'%1' is not a writable holding register.").arg(tag.name));
+            m_warn(rich::headline(tr("'%1' is not a writable holding register.").arg(tag.name)));
             return;
         }
         tags.append(tag);
     }
     if (tags.size() < 2 || tags.size() > 123) {
-        m_warn(tr("Select between 2 and 123 writable holding registers (selected: %1).").arg(tags.size()));
+        m_warn(rich::headline(tr("Select between 2 and 123 writable holding registers "
+                                 "(selected: %1).")
+                                  .arg(tags.size())));
         return;
     }
     std::sort(tags.begin(), tags.end(), [](const Tag &a, const Tag &b) { return a.address < b.address; });
@@ -377,22 +433,26 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         const Tag &next = tags.at(i);
         const int expected = prev.address + registerCount(prev.type);
         if (next.address < expected) {
-            m_warn(tr("'%1' (%2) overlaps '%3' (%4).")
-                       .arg(next.name, registerRange(next, base), prev.name, registerRange(prev, base)));
+            m_warn(rich::headline(tr("'%1' (%2) overlaps '%3' (%4).")
+                                      .arg(next.name, registerRange(next, base), prev.name,
+                                           registerRange(prev, base))));
             return;
         }
         if (next.address != expected) {
-            m_warn(tr("The selected registers are not consecutive: '%1' (%2) should start at HR %3 "
-                      "to follow '%4' (%5), but starts at HR %6.")
-                       .arg(next.name, registerRange(next, base))
-                       .arg(expected + base)
-                       .arg(prev.name, registerRange(prev, base))
-                       .arg(next.address + base));
+            m_warn(rich::headline(tr("The selected registers are not consecutive."))
+                   + rich::paragraph(tr("'%1' (%2) should start at HR %3 to follow '%4' (%5), but "
+                                        "starts at HR %6.")
+                                         .arg(next.name, registerRange(next, base))
+                                         .arg(expected + base)
+                                         .arg(prev.name, registerRange(prev, base))
+                                         .arg(next.address + base)));
             return;
         }
     }
     if (totalRegisters > 123) {
-        m_warn(tr("Too many registers: the selection spans %1 registers (maximum 123).").arg(totalRegisters));
+        m_warn(rich::headline(tr("Too many registers: the selection spans %1 registers (maximum "
+                                 "123).")
+                                  .arg(totalRegisters)));
         return;
     }
 
@@ -402,9 +462,10 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         if (registerCount(tag.type) == 2 && !m_model->goodValue(tag.id))
             noReading.append(tag.name);
     if (!noReading.isEmpty()) {
-        m_warn(tr("No valid reading of %1 yet. Check the connection, register number and byte "
-                  "order before writing.")
-                   .arg(noReading.join(QStringLiteral(", "))));
+        m_warn(rich::headline(tr("No valid reading of %1 yet.").arg(quotedNames(noReading)))
+               + checkList({tr("the connection (the connection bar shows Connected)"),
+                            tr("the register numbers of these tags"),
+                            tr("the type and byte order of these tags")}));
         return;
     }
 
@@ -432,7 +493,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         if (std::isfinite(values->at(i)) && !tags.at(i).withinWriteLimits(values->at(i)))
             outside.append(limitViolationText(tags.at(i), values->at(i)));
     if (!outside.isEmpty()) {
-        m_warn(tr("Values outside the write limits:\n%1").arg(outside.join(QLatin1Char('\n'))));
+        m_warn(rich::headline(tr("Values outside the write limits:")) + rich::bullets(outside));
         return;
     }
 
@@ -444,18 +505,21 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         if (tag.encodingVerified)
             continue;
         if (registerCount(tag.type) == 2)
-            unconfirmed.append(tr("'%1' (reads %2 as %3)")
+            unconfirmed.append(tr("'%1' reads %2 as %3 (%4)")
                                    .arg(tag.name, valueText(m_model->goodValue(tag.id).value_or(0.0))
                                                       + unitSuffix(tag),
-                                        toString(encodingOf(tag))));
+                                        toString(encodingOf(tag)), registerRange(tag, base)));
         else
-            unconfirmed.append(tr("'%1' (probably half of a 32-bit value)").arg(tag.name));
+            unconfirmed.append(tr("'%1' (%2) is probably half of a 32-bit value")
+                                   .arg(tag.name, registerRange(tag, base)));
         unconfirmedIds.append(tag.id);
     }
     if (!unconfirmed.isEmpty()) {
-        const QString text = tr("The encoding of these tags is not confirmed: %1. Writing with a "
-                                "wrong encoding sends a wrong value.")
-                                 .arg(unconfirmed.join(QStringLiteral(", ")));
+        const QString text =
+            rich::headline(tr("The encoding of these tags is not confirmed:"))
+            + rich::bullets(unconfirmed)
+            + rich::paragraph(tr("If a value is wrong for the device, its encoding is wrong, and a "
+                                 "write would send a wrong value."));
         switch (m_confirmEncoding(text)) {
         case EncodingAnswer::Confirm:
             for (TagId id : std::as_const(unconfirmedIds))
@@ -481,7 +545,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
             raws += *raw;
     }
     if (!bad.isEmpty()) {
-        m_warn(tr("Out of range values:\n%1").arg(bad.join(QLatin1Char('\n'))));
+        m_warn(rich::headline(tr("Out of range values:")) + rich::bullets(bad));
         return;
     }
 
@@ -491,21 +555,39 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
             continue;
         const auto cur = m_model->goodValue(tag.id);
         if (cur && implausibleFloat(*cur))
-            implausible.append(QStringLiteral("%1 = %2").arg(tag.name, valueText(*cur)));
+            implausible.append(tr("'%1' reads %2 (%3, %4)")
+                                   .arg(tag.name, valueText(*cur), toString(encodingOf(tag)),
+                                        registerRange(tag, base)));
     }
     if (!implausible.isEmpty()
         && !m_warnImplausible(
-            tr("The current value of these float tags is implausible. This usually means a wrong "
-               "byte order or register number, so the values you write may also be misinterpreted "
-               "by the device:\n%1\n\nWrite anyway?")
-                .arg(implausible.join(QLatin1Char('\n')))))
+            rich::headline(tr("These float tags read implausible values:"))
+            + rich::bullets(implausible)
+            + rich::paragraph(tr("This usually means a wrong byte order or register number, so the "
+                                 "values you write may also be misinterpreted by the device."))
+            + checkList({tr("the byte order of these tags"),
+                         tr("the register numbers of these tags")})))
         return;
 
     const quint16 first = tags.first().address;
     const int last = tags.last().address + registerCount(tags.last().type) - 1;
     const int shownFirst = first + base;
     const int shownLast = last + base;
-    if (!m_confirm(tr("Write %1 registers HR %2..%3?").arg(totalRegisters).arg(shownFirst).arg(shownLast)))
+    QList<QStringList> table;
+    for (qsizetype i = 0; i < tags.size(); ++i) {
+        const Tag &tag = tags.at(i);
+        const auto cur = m_model->goodValue(tag.id);
+        table.append({tag.name, cur ? valueText(*cur) + unitSuffix(tag) : tr("unknown"),
+                      valueText(values->at(i)) + unitSuffix(tag)});
+    }
+    const QString range = shownFirst == shownLast ? QStringLiteral("HR %1").arg(shownFirst)
+                                                  : QStringLiteral("HR %1-%2").arg(shownFirst).arg(shownLast);
+    const QString how = m_singleRegisterWrites ? tr("FC06 ×%1").arg(totalRegisters) : tr("FC16");
+    const QString question =
+        rich::headline(tags.size() == 1 ? tr("Write 1 tag?") : tr("Write %1 tags?").arg(tags.size()))
+        + rich::grid({tr("Tag"), tr("Current"), tr("New")}, table, 2)
+        + rich::note(tr("%1 · %2").arg(range, how));
+    if (!m_confirm(question))
         return;
 
     // The dialogs run an event loop: the connection, the tags or their readings may have changed.
@@ -515,8 +597,9 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     }
     for (const Tag &tag : std::as_const(tags)) {
         if (!stillSame(tag) || (registerCount(tag.type) == 2 && !m_model->goodValue(tag.id))) {
-            m_warn(tr("'%1' changed or lost its reading while the dialog was open. Nothing was "
-                      "written.").arg(tag.name));
+            m_warn(rich::headline(tr("'%1' changed or lost its reading while the dialog was open.")
+                                      .arg(tag.name))
+                   + rich::paragraph(tr("Nothing was written.")));
             return;
         }
     }
@@ -564,11 +647,12 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1
             && !m_singleRegisterWrites
             && m_offerSingleWrites(
-                tr("The device rejected the write of %1 with \"Illegal function\". It probably does "
-                   "not support FC16 (write multiple registers). Nothing was written.\n\n"
-                   "With FC06 only, each register is written with its own FC06 request. The value "
-                   "is not written again automatically: write it again after reconnecting.")
-                    .arg(names.join(QStringLiteral(", "))))
+                rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
+                + rich::paragraph(tr("It answered \"Illegal function\": it probably does not "
+                                     "support FC16 (write multiple registers). Nothing was "
+                                     "written."))
+                + rich::paragraph(tr("With FC06 only, each register is written with its own "
+                                     "request. Write the value again after reconnecting.")))
             && !m_singleRegisterWrites) { // another offer may have switched while this one was open
             emit singleRegisterWritesRequested();
         }

@@ -21,42 +21,54 @@ class TagTableModel;
 /// Turns user write requests into PollWorker writes and reports the results.
 /// Register numbers in all texts use TagTableModel::addressBase() (protocol address + base).
 ///
+/// All prompt texts are rich text built with mb::rich (RichText.h): a bold headline saying what
+/// the prompt is about, the facts as label/value rows (or a grid, or bullets), a short
+/// consequence line, and technical details (registers, type, raw value) in a small note. The
+/// default dialogs use Qt::RichText; tag names and values are escaped. Errors with something to
+/// look at end with "Check:" and a bullet list.
+///
 /// requestWrite, checks in this order (each failure -> warning box, nothing written):
 /// 1. not connected -> message and stop;
-/// 2. outside the tag's write limits (Tag::withinWriteLimits) -> warning naming the tag and
-///    its limits ("'Setpoint' accepts 0 to 100 °C; 150 was not written.");
+/// 2. outside the tag's write limits (Tag::withinWriteLimits) -> warning with the headline
+///    "150 °C is outside the limits of 'Setpoint'." and "'Setpoint' accepts 0 to 100 °C. Nothing
+///    was written.";
 /// 3. 32-bit tags (2 registers) need TagTableModel::goodValue(): without a Good reading ->
-///    warning "No valid reading of 'X' yet. Check the connection, register number and byte
-///    order before writing.";
-/// 3b. 32-bit tag whose encoding is not confirmed (Tag::encodingVerified false) -> prompt
-///    "The encoding of 'X' is not confirmed: it reads 52.3 °C as float32 CDAB. Writing with a
-///    wrong encoding sends a wrong value." with "Confirm and continue" / "Detect encoding..." /
-///    Cancel (default). Confirm: TagTableModel::setEncodingVerified(id, true) and the checks go
-///    on (stillSame() ignores encodingVerified). Detect: emits detectEncodingRequested(id) and
-///    stops (nothing written). Cancel: stops. requestWriteSelection asks once for all
-///    unverified tags of the selection (one prompt listing them; Confirm marks them all).
+///    warning "No valid reading of 'X' yet." with Check: the connection, the register number, the
+///    type and byte order;
+/// 3b. 32-bit tag whose encoding is not confirmed (Tag::encodingVerified false) -> prompt with the
+///    headline "The encoding of 'X' is not confirmed.", the rows "Reads: 52.3 °C" and "As: float32
+///    CDAB (HR 110-111)" and the line "If this value is wrong for the device, the encoding is
+///    wrong, and a write would send a wrong value.", with "Confirm and continue" / "Detect
+///    encoding..." / Cancel (default). Confirm: TagTableModel::setEncodingVerified(id, true) and
+///    the checks go on (stillSame() ignores encodingVerified). Detect: emits
+///    detectEncodingRequested(id) and stops (nothing written). Cancel: stops.
+///    requestWriteSelection asks once for all unverified tags of the selection (headline "The
+///    encoding of these tags is not confirmed:", one bullet per tag; Confirm marks them all).
 ///    A 16-bit tag with encodingVerified false (flagged as probably half of a 32-bit value) gets
-///    the same prompt and buttons with the text "'X' is probably half of a 32-bit value: <note>.
-///    Writing a 16-bit value there changes half of that value, and the device then reads a wrong
-///    number." where <note> is TagTableModel::encodingNote(id); without a note: "'X' (HR 110) may
-///    be half of a 32-bit value. Writing ..." (same ending). "Confirm and continue" here means "it
-///    really is 16-bit". After the dialogs, a tag that became unverified meanwhile (any width) is
-///    not written;
+///    the same prompt and buttons: headline "'X' is probably half of a 32-bit value." (without a
+///    TagTableModel::encodingNote(id): "'X' may be half of a 32-bit value."), the row "Reads:
+///    13107 as int16 (HR 110)" and, with a note, the row "Found: <note>", then "Writing a 16-bit
+///    value here would change half of that value, and the device would read a wrong number."
+///    "Confirm and continue" here means "it really is 16-bit". After the dialogs, a tag that
+///    became unverified meanwhile (any width) is not written;
 /// 4. encodeRegisters() fails (out of the type's range) -> warning;
 /// 5. float32 tag whose current value is implausible (not finite, |x| > 1e9, or
-///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning that
-///    explains this and needs an explicit "Write anyway" (default button: Cancel);
-/// then the confirmation ("Write 12.5 °C (raw 125) to HR 100 'Setpoint'?"; 32-bit: raw as
-/// 0x%08X, "HR 6639-6640", type and byte order named) with an extra line "Current value: X"
-/// (or "Current value: unknown") and, when limits are set, "Limits: min to max". Then
-/// writeRegisters is emitted.
+///    0 < |x| < 1e-6, typical of a wrong byte order or register) -> an extra warning ("'X' reads
+///    an implausible value: -3.1e+27.", why, Check: the byte order, the register number) that
+///    needs an explicit "Write anyway" (default button: Cancel);
+/// then the confirmation: headline "Write to 'Setpoint'?", rows "Current value:" (or "unknown"),
+/// "New value:" (bold) and, when limits are set, "Limits: min to max", and the note "HR 6639-6640
+/// · float32 CDAB · raw 0x42513333" (16-bit: "HR 100 · int16 · raw 125"). Then writeRegisters is
+/// emitted.
 ///
 /// requestWriteSelection: rows must all be writable holding registers that are contiguous
 /// when sorted by address (each tag starts right after the previous tag's last register;
 /// 16- and 32-bit tags may be mixed; at most 123 registers in total); otherwise explain why
 /// in a warning box. Shows a dialog with one value field per tag (prefilled with the current
 /// value), applies checks 2, 3 and 5 to every tag (limits listed together in one warning),
-/// encodes all, confirms, and emits one writeRegisters with all registers.
+/// encodes all, confirms ("Write 3 tags?", a grid Tag | Current | New and the note "HR 100-103 ·
+/// FC16", or "FC06 ×4" while singleRegisterWrites() is on), and emits one writeRegisters with all
+/// registers.
 ///
 /// requestQuickWrite: same checks as requestWrite. 16-bit tags: while quickConfirm() is on the
 /// confirmation has a check box "Don't ask again this session"; when it is ticked and the
@@ -67,8 +79,9 @@ class TagTableModel;
 /// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
 /// TagTableModel::setStatusText() on the affected tags. Exception: a write of more than one
 /// register that failed with Modbus exception 1 (illegal function) while singleRegisterWrites()
-/// is off also shows a warning (replaceable prompt) explaining that the device probably does
-/// not support FC16 and nothing was written, with the buttons "Use FC06 only and reconnect" and
+/// is off also shows a warning (replaceable prompt, headline "The device rejected the write of
+/// 'X'.") explaining that the device probably does not support FC16 and nothing was written,
+/// with the buttons "Use FC06 only and reconnect" and
 /// "Close"; the first emits singleRegisterWritesRequested(). The value is not written again.
 class WriteController : public QObject
 {
