@@ -23,6 +23,7 @@
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QLabel>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QLineEdit>
@@ -51,14 +52,15 @@ class ServerProcess
 public:
     ~ServerProcess() { stop(); }
 
-    bool start()
+    bool start(const QStringList &extraArgs = {})
     {
         stop();
         m_log.clear();
         m_buffer.clear();
         m_port = 0;
-        const QStringList args{QStringLiteral("--host"), QStringLiteral("127.0.0.1"),
-                               QStringLiteral("--port"), QStringLiteral("0")};
+        const QStringList args = QStringList{QStringLiteral("--host"), QStringLiteral("127.0.0.1"),
+                                             QStringLiteral("--port"), QStringLiteral("0")}
+                                 + extraArgs;
         m_proc.setProcessChannelMode(QProcess::MergedChannels);
         m_proc.start(QStringLiteral(MC_TEST_SERVER_PATH), args);
         if (!m_proc.waitForStarted(10000)) {
@@ -323,11 +325,15 @@ class TstAppController : public QObject
         QTRY_VERIFY_WITH_TIMEOUT(ctl->m_state == state, timeoutMs);
     }
 
-    /// Starts the test server (once) and presses Connect.
-    void connectLive()
+    /// Starts the test server (once) and presses Connect. `strict32`: the server refuses reads and
+    /// writes that split a 32-bit value (--strict-32bit, like an ABB CM50).
+    void connectLive(bool strict32 = false)
     {
-        if (m_server.port() == 0)
-            QVERIFY2(m_server.start(), qPrintable(m_server.log()));
+        if (m_server.port() == 0) {
+            QVERIFY2(m_server.start(strict32 ? QStringList{QStringLiteral("--strict-32bit")}
+                                             : QStringList{}),
+                     qPrintable(m_server.log()));
+        }
         ConnectionSettings s = win->connectionBar()->settings();
         s.host = QStringLiteral("127.0.0.1");
         s.port = m_server.port();
@@ -875,6 +881,91 @@ private slots:
                 QVERIFY2(tag.encodingVerified, qPrintable(tag.name));
                 QVERIFY2(model()->encodingNote(tag.id).isEmpty(), qPrintable(tag.name));
             }
+            QVERIFY(model()->tags() == before);
+            disconnectLive();
+        }
+        noUnexpected();
+    }
+
+    // A strict server (like a CM50) refuses an int16 tag on half of a float32: the monitor reads
+    // the pair and offers the 32-bit encoding.
+    void refusedReadOffersTheThirtyTwoBitEncoding()
+    {
+        connectLive(true);
+        QStringList intros;
+        d.onEncodingDialog = [&intros](EncodingDialog &dialog) {
+            if (auto *intro = dialog.findChild<QLabel *>(QStringLiteral("introLabel")))
+                intros << intro->text();
+            dialog.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.encodingDialogs.isEmpty(), 8000);
+        QCOMPARE(intros.size(), 1);
+        QVERIFY2(intros[0].contains(QStringLiteral("'Setpoint' (HR 110, int16) can't be read alone.")),
+                 qPrintable(intros[0]));
+        QVERIFY2(intros[0].contains(QStringLiteral("HR 110-111 can be read as a 32-bit value")),
+                 qPrintable(intros[0]));
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QVERIFY(now.type == ValueType::Float32);
+        QVERIFY(now.byteOrder == ByteOrder::CDAB);
+        QCOMPARE(now.address, quint16(110));
+        QVERIFY(now.encodingVerified);
+        QVERIFY(model()->encodingNote(id).isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - 52.3) < 0.01,
+                                 8000);
+        QCOMPARE(d.encodingDialogs.size(), 1);
+        QVERIFY(d.splitTexts.isEmpty());
+        noUnexpected();
+    }
+
+    void refusedReadOfUpperHalfEndsAtTheFirstRegister()
+    {
+        connectLive(true);
+        d.onEncodingDialog = [](EncodingDialog &dialog) {
+            dialog.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        const TagId id = addInt16(QStringLiteral("Hi"), 111);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->tagAt(model()->rowOf(id)).type == ValueType::Float32, 8000);
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QCOMPARE(now.address, quint16(110));
+        QVERIFY(now.byteOrder == ByteOrder::CDAB);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(id) && qAbs(*model()->goodValue(id) - 52.3) < 0.01,
+                                 8000);
+        noUnexpected();
+    }
+
+    void refusedReadCancelledStaysFlagged()
+    {
+        connectLive(true);
+        d.onEncodingDialog = [](EncodingDialog &) { return false; };
+        const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
+        QTRY_VERIFY_WITH_TIMEOUT(!d.encodingDialogs.isEmpty(), 8000);
+        const Tag &now = model()->tagAt(model()->rowOf(id));
+        QVERIFY(now.type == ValueType::Int16);
+        QVERIFY(!now.encodingVerified);
+        QCOMPARE(model()->encodingNote(id),
+                 QStringLiteral("HR 110 can't be read alone; HR 110-111 can be read as a 32-bit value"));
+        QTest::qWait(500);
+        QCOMPARE(d.encodingDialogs.size(), 1);
+        noUnexpected();
+    }
+
+    // The example projects map whole 32-bit values: a strict server raises nothing.
+    void exampleProjectsRaiseNothingOnAStrictServer()
+    {
+        bool first = true;
+        for (const QString &file : {QStringLiteral(MC_EXAMPLES_DIR "/demo.mbproj"),
+                                    QStringLiteral(MC_EXAMPLES_DIR "/cm50.mbproj")}) {
+            QVERIFY(ctl->openProject(file));
+            const QList<Tag> before = model()->tags();
+            connectLive(first);
+            first = false;
+            QTest::qWait(1500);
+            QVERIFY2(d.encodingDialogs.isEmpty(), qPrintable(d.encodingDialogs.join(QLatin1Char('\n'))));
+            QVERIFY2(d.splitTexts.isEmpty(), qPrintable(d.splitTexts.join(QLatin1Char('\n'))));
+            QVERIFY2(d.encodingReviews.isEmpty(), qPrintable(d.encodingReviews.join(QLatin1Char('\n'))));
             QVERIFY(model()->tags() == before);
             disconnectLive();
         }
