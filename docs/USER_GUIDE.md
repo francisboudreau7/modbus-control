@@ -433,6 +433,9 @@ read of that register alone with "Illegal data address". A 16-bit tag placed on 
 reads, so the check above cannot see its value. The app then tries to read the register as the
 first and as the second half of a 32-bit value: for a tag at HR 110, it reads HR 110-111, then
 HR 109-110.
+Before that it reads the tag's register alone once more and continues only if the device answers
+"Illegal data address". When one tag is refused, the tags next to it keep reading: polling falls
+back to reading the tags of a failing group one by one.
 
 - If one of these reads works, the tag is flagged (its Name cell shows the warning icon). The
   Detect encoding dialog opens, with a line that explains why: "'Setpoint' (HR 110, int16) can't be

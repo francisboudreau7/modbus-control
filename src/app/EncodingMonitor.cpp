@@ -609,18 +609,42 @@ void EncodingMonitor::startNextProbe()
 
 bool EncodingMonitor::registerUsedByOther(const Tag &self, int reg) const
 {
+    return registerOwnerOther(self, reg).has_value();
+}
+
+std::optional<Tag> EncodingMonitor::registerOwnerOther(const Tag &self, int reg) const
+{
     for (const Tag &other : m_model->tags()) {
         if (other.id != self.id && other.area == self.area && reg >= other.address
             && reg < other.address + registerCount(other.type))
-            return true;
+            return other;
     }
-    return false;
+    return std::nullopt;
+}
+
+bool EncodingMonitor::pairBlocked(const Tag &self, int start)
+{
+    std::optional<Tag> owner = registerOwnerOther(self, start);
+    if (!owner)
+        owner = registerOwnerOther(self, start + 1);
+    if (!owner)
+        return false;
+    const int base = m_model->addressBase();
+    emit message(QStringLiteral("Not applied: %1 %2-%3 is now used by '%4'.")
+                     .arg(areaPrefix(self.area)).arg(start + base).arg(start + 1 + base)
+                     .arg(owner->name));
+    return true;
 }
 
 void EncodingMonitor::issueRead(Probe &probe)
 {
     if (probe.refused) {
-        if (!issueRefusedRead(probe)) {
+        if (!probe.aloneDone) {
+            probe.requestId = m_nextRequest++;
+            m_probe = probe;
+            // Last: a synchronous answer (tests) runs onReadFinished before this returns.
+            emit readRequested(probe.requestId, probe.tag.area, probe.tag.address, 1);
+        } else if (!issueRefusedRead(probe)) {
             completeRefused(probe);
             maybeFinishConnectPass();
         }
@@ -674,6 +698,35 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
                                     "read next to '%1'.")
                          .arg(now ? now->name : probe.tag.name));
         m_connectWait.clear(); // nothing more will be probed: let the connect pass finish
+        maybeFinishConnectPass();
+        pump();
+        return;
+    }
+    if (probe.refused && !probe.aloneDone) {
+        // The tag's own register, read alone: the pair probes only make sense when the device
+        // refuses it with "Illegal data address".
+        probe.aloneDone = true;
+        const bool refusedAlone = result.error == ModbusError::Exception && result.exceptionCode == 2;
+        if (refusedAlone && issueRefusedRead(probe))
+            return;
+        if (refusedAlone) {
+            completeRefused(probe);
+        } else if (result.ok()) {
+            // Readable on its own (e.g. the tag only shared a failed block with a refused one):
+            // not a refused read. The normal split check takes over, with its own read.
+            queueProbe(probe.id, probe.mode);
+        } else {
+            if (const Tag *now = findTag(probe.id)) {
+                m_sessionChecked.insert(now->id);
+                if (probe.mode == ProbeMode::Manual) {
+                    emit message(QStringLiteral("'%1' (%2 %3) could not be read: %4.")
+                                     .arg(now->name, areaPrefix(now->area))
+                                     .arg(now->address + m_model->addressBase())
+                                     .arg(result.message));
+                }
+            }
+        }
+        startNextProbe();
         maybeFinishConnectPass();
         pump();
         return;
@@ -927,6 +980,8 @@ void EncodingMonitor::runSplitRequest(const Request &request)
         return; // removed or reconfigured meanwhile: the answer no longer applies
     switch (request.noSplit && answer == SplitAnswer::Change ? SplitAnswer::Later : answer) {
     case SplitAnswer::Change: {
+        if (pairBlocked(*findTag(request.id), split.address))
+            break;
         // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new
         // 32-bit tag to detect.
         Tag moved = *findTag(request.id);
@@ -1017,7 +1072,15 @@ void EncodingMonitor::completeRefused(const Probe &probe)
     const Tag tag = *found;
     m_sessionChecked.insert(tag.id); // checked once: not again on reconnect
     const int base = m_model->addressBase();
-    if (!probe.pairOwn && !probe.pairBelow) {
+    // A pair another tag has taken since it was read no longer counts.
+    std::optional<RegisterPair> pairOwn = probe.pairOwn;
+    std::optional<RegisterPair> pairBelow = probe.pairBelow;
+    if (pairOwn && (registerUsedByOther(tag, tag.address) || registerUsedByOther(tag, tag.address + 1)))
+        pairOwn.reset();
+    if (pairBelow
+        && (registerUsedByOther(tag, tag.address - 1) || registerUsedByOther(tag, tag.address)))
+        pairBelow.reset();
+    if (!pairOwn && !pairBelow) {
         if (probe.mode == ProbeMode::Manual) {
             emit message(QStringLiteral("'%1' (%2 %3) can't be read, alone or as part of a 32-bit "
                                         "value: check the register number.")
@@ -1046,17 +1109,17 @@ void EncodingMonitor::completeRefused(const Probe &probe)
     };
     int start = tag.address;
     RegisterPair pair;
-    if (probe.pairOwn && probe.pairBelow) {
+    if (pairOwn && pairBelow) {
         // Tie: the pair starting at the tag's own address.
-        const bool below = scoreOf(tag.address - 1, *probe.pairBelow)
-                           > scoreOf(tag.address, *probe.pairOwn);
+        const bool below = scoreOf(tag.address - 1, *pairBelow)
+                           > scoreOf(tag.address, *pairOwn);
         start = below ? tag.address - 1 : tag.address;
-        pair = below ? *probe.pairBelow : *probe.pairOwn;
-    } else if (probe.pairBelow) {
+        pair = below ? *pairBelow : *pairOwn;
+    } else if (pairBelow) {
         start = tag.address - 1;
-        pair = *probe.pairBelow;
+        pair = *pairBelow;
     } else {
-        pair = *probe.pairOwn;
+        pair = *pairOwn;
     }
 
     const QString prefix = areaPrefix(tag.area);
@@ -1073,6 +1136,7 @@ void EncodingMonitor::completeRefused(const Probe &probe)
     request.tag = tag;
     request.epoch = probe.epoch;
     request.refused = true;
+    request.generation = probe.generation;
     request.view = viewAt(start);
     request.start = quint16(start);
     request.pair = pair;
@@ -1081,9 +1145,11 @@ void EncodingMonitor::completeRefused(const Probe &probe)
 
 void EncodingMonitor::runRefusedRequest(const Request &request)
 {
-    if (!splitRequestValid(request))
-        return;
+    if (!splitRequestValid(request) || request.generation != m_generation)
+        return; // removed/reconfigured, or queued on an earlier connection
     const Tag tag = *findTag(request.id);
+    if (pairBlocked(tag, request.start))
+        return;
     const int base = m_model->addressBase();
     const QString prefix = areaPrefix(tag.area);
     QList<Tag> others;
@@ -1109,6 +1175,8 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
         return; // cancelled (the tag stays flagged), or removed/reconfigured meanwhile
     const std::optional<Encoding> chosen = dialog.chosenEncoding();
     if (!chosen)
+        return;
+    if (pairBlocked(*findTag(request.id), request.start))
         return;
     // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new 32-bit tag
     // to detect.
