@@ -32,7 +32,7 @@ struct HoldingValue {
 /// {
 ///   "host": "127.0.0.1", "port": 1502, "unitId": 1,
 ///   "holdingCount": 200, "inputCount": 64, "tickMs": 50,
-///   "delayMs": 0, "dropPercent": 0, "verbose": false, "logWrites": false,
+///   "delayMs": 0, "dropPercent": 0, "verbose": false, "logWrites": false, "strict32Bit": false,
 ///   "signals": [ { "input": 0, "kind": "sine"|"triangle"|"sawtooth"|"square"|"counter"|
 ///                  "noise"|"lag"|"constant", "amplitude": 1000, "offset": 0,
 ///                  "periodS": 5, "tauS": 2, "deadTimeS": 0, "source": 100,
@@ -58,6 +58,12 @@ struct ServerConfig {
     double dropPercent = 0; ///< fault injection: chance (0..100) to drop a client per request
     bool verbose = false;   ///< log each request to stdout
     bool logWrites = false; ///< log only write requests (hex registers, 32-bit decodings)
+    /// Behave like devices (e.g. the ABB CM50) that refuse to split a 32-bit value: a read (FC03,
+    /// FC04) or write (FC06, FC16) whose register range covers only one of the two registers of a
+    /// 32-bit "holding" entry (holding registers) or 32-bit signal binding (input registers) is
+    /// answered with exception 2 (illegal data address) and changes nothing. Command line
+    /// --strict-32bit. Default off.
+    bool strict32Bit = false;
     QList<SignalBinding> signalBindings;
     QList<HoldingValue> holdingValues; ///< written into the holding registers at start
 

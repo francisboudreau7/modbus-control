@@ -318,3 +318,6 @@ void EncodingDialog::rerank()
 }
 
 } // namespace mb
+
+// Stub created by T172; implemented by T175.
+void mb::EncodingDialog::setIntro(const QString &) {}

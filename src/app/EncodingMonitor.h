@@ -102,6 +102,33 @@ class TagTableModel;
 /// "Review..." (the split prompt for each, in turn) and "Close". detectNow on a 16-bit tag runs the
 /// split check now (when connected; otherwise message "Connect to check 'X'.") and shows the split
 /// prompt when it is suspicious.
+///
+/// Refused 16-bit reads. Some devices (e.g. the ABB CM50) answer a read of one register of a 32-bit
+/// value with a Modbus exception (illegal data address), so a 16-bit tag placed on a float32 never
+/// reads Good and the split check cannot run. When a 16-bit tag's sample has Quality::Exception —
+/// its first sample after becoming split-pending, in the on-connect pass (once per session per tag,
+/// same set as the split check), or on detectNow — the monitor issues two one-off reads instead of
+/// the split probe: readRequested(id, area, address, 2) and readRequested(id, area, address - 1, 2)
+/// (a pair outside 0..65535 or overlapping another tag of the project is skipped; Timeout or
+/// ConnectionLost stops probes as for the split check). Tags with confirmed16Bit are skipped by the
+/// automatic paths, not by detectNow.
+/// - Neither pair reads OK: nothing changes (the register probably does not exist); detectNow emits
+///   "'X' (HR 110) can't be read, alone or as part of a 32-bit value: check the register number."
+/// - One or both read OK: for each, detectEncoding(<the tag as Float32 at that start, gain 1,
+///   offset 0, byte order deviceOrder() or ABCD>, {pair}, {deviceOrder}); the chosen pair is the
+///   only one, or the one whose best group scores higher (tie: the pair starting at the tag's
+///   address). The tag is flagged: setEncodingVerified(false) and setEncodingNote("HR 110 can't be
+///   read alone; HR 110-111 can be read as a 32-bit value"). Then the EncodingDialog opens (dialog
+///   queue, one prompt or dialog at a time) for that 32-bit view of the tag, with the pair as its
+///   reading, the other 32-bit tags as `others`, and setIntro(rich headline "'Setpoint' (HR 110,
+///   int16) can't be read alone." + paragraph "The device answered \"Illegal data address\". HR
+///   110-111 can be read as a 32-bit value: choose its encoding, or type the value shown on the
+///   device."). Accepted: setLayout(id, start, chosen type, chosen order, verified = true) (resets
+///   gain/offset/quick values) and the byte order to applyOrderTo() tags as for 32-bit dialogs.
+///   Cancelled: the tag stays flagged (writes ask first). The tag is re-validated (same area,
+///   address and type) before applying.
+/// detectNow on a 16-bit tag: when its latest sample is Exception → this flow; otherwise the split
+/// check as described above.
 class EncodingMonitor : public QObject
 {
     Q_OBJECT

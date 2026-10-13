@@ -21,6 +21,8 @@ namespace mb {
 /// "Detect encoding" dialog for one 32-bit tag (title "Detect encoding - <tag name>").
 ///
 /// Children (object names, for tests):
+/// - "introLabel": an optional explanation at the top, rich text, word-wrapped (setIntro); hidden
+///   while empty.
 /// - "registersLabel": the latest registers in hex, "HR 100-101: 0x4251 0x3333" (register numbers
 ///   with the address base given to the constructor), or "No reading yet".
 /// - "displayValueEdit": QLineEdit "Value shown on the device (optional)"; every edit re-runs
@@ -57,6 +59,9 @@ public:
     void addReading(const RegisterPair &reading);
     /// Sets the display value field (as if typed) and re-ranks.
     void setDisplayValue(const QString &text);
+    /// Shows `rich` (Qt rich text, see RichText.h) in "introLabel" above everything else; an empty
+    /// string hides it.
+    void setIntro(const QString &rich);
 
     /// The current ranking.
     EncodingResult result() const;
