@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTableWidget>
@@ -527,6 +528,28 @@ private slots:
         auto d = make(twoGroups(), spy, {{0x4251, 0x3333}}, {}, std::nullopt, 1);
         QCOMPARE(label(*d, "registersLabel")->text(),
                  QStringLiteral("HR 101-102: 0x4251 0x3333"));
+    }
+
+    void introLabel()
+    {
+        auto spy = std::make_shared<Spy>();
+        auto d = make(twoGroups(), spy);
+        QLabel *intro = label(*d, "introLabel");
+        QVERIFY(intro);
+        QVERIFY(intro->isHidden());
+        QCOMPARE(intro->textFormat(), Qt::RichText);
+        QVERIFY(intro->wordWrap());
+        // First item of the dialog's layout: above "registersLabel".
+        QCOMPARE(d->layout()->itemAt(0)->widget(), intro);
+
+        const QString rich = QStringLiteral("<b>'Setpoint' (HR 110, int16)</b> can't be read alone.");
+        d->setIntro(rich);
+        QVERIFY(!intro->isHidden());
+        QCOMPARE(intro->text(), rich);
+
+        d->setIntro(QString());
+        QVERIFY(intro->isHidden());
+        QVERIFY(intro->text().isEmpty());
     }
 
     void realDetectionSmoke()

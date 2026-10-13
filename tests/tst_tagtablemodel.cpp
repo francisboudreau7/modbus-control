@@ -1678,7 +1678,7 @@ private slots:
         QVERIFY(m.tagAt(0).encodingVerified);
     }
 
-    // rowMenu: "Detect encoding..." is enabled for 32-bit tags only and emits the tag id.
+    // rowMenu: "Detect encoding..." is enabled for every tag and emits the tag id.
     void rowMenuDetectEncoding()
     {
         TagTableModel m;
@@ -1703,9 +1703,11 @@ private slots:
         QVERIFY(menu);
         action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
         QVERIFY(action);
-        QVERIFY(!action->isEnabled());
+        QVERIFY(action->isEnabled());
+        action->trigger();
+        QCOMPARE(spy.size(), 2);
+        QCOMPARE(spy.at(1).at(0).value<TagId>(), TagId(6));
         delete menu;
-        QCOMPARE(spy.size(), 1);
 
         QVERIFY(w.rowMenu(-1) == nullptr);
         QVERIFY(w.rowMenu(2) == nullptr);
@@ -1916,7 +1918,7 @@ private slots:
         QVERIFY(!m.tagAt(0).confirmed16Bit);
     }
 
-    // rowMenu: enabled for an unverified 16-bit tag, disabled for a verified one.
+    // rowMenu: enabled for an unverified 16-bit tag and for a verified one (every tag).
     void rowMenuFlagged16Bit()
     {
         TagTableModel m;
@@ -1936,7 +1938,7 @@ private slots:
         QVERIFY(menu);
         action = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
         QVERIFY(action);
-        QVERIFY(!action->isEnabled());
+        QVERIFY(action->isEnabled());
         delete menu;
     }
 };

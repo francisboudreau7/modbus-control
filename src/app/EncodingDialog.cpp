@@ -50,6 +50,12 @@ EncodingDialog::EncodingDialog(const Tag &tag, const QList<RegisterPair> &readin
 
     setWindowTitle(tr("Detect encoding - %1").arg(tag.name));
 
+    m_intro = new QLabel(this);
+    m_intro->setObjectName(QStringLiteral("introLabel"));
+    m_intro->setTextFormat(Qt::RichText);
+    m_intro->setWordWrap(true);
+    m_intro->hide();
+
     m_registers = new QLabel(this);
     m_registers->setObjectName(QStringLiteral("registersLabel"));
     m_registers->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -84,6 +90,7 @@ EncodingDialog::EncodingDialog(const Tag &tag, const QList<RegisterPair> &readin
     form->addRow(tr("Value shown on the device (optional)"), m_display);
 
     auto *layout = new QVBoxLayout(this);
+    layout->addWidget(m_intro);
     layout->addLayout(form);
     layout->addWidget(m_verdict);
     layout->addWidget(m_table, 1);
@@ -105,6 +112,12 @@ void EncodingDialog::addReading(const RegisterPair &reading)
     while (m_readings.size() > kMaxReadings)
         m_readings.removeFirst();
     rerank();
+}
+
+void EncodingDialog::setIntro(const QString &rich)
+{
+    m_intro->setText(rich);
+    m_intro->setVisible(!rich.isEmpty());
 }
 
 void EncodingDialog::setDisplayValue(const QString &text)
@@ -318,6 +331,3 @@ void EncodingDialog::rerank()
 }
 
 } // namespace mb
-
-// Stub created by T172; implemented by T175.
-void mb::EncodingDialog::setIntro(const QString &) {}

@@ -426,7 +426,6 @@ QMenu *TagTableWidget::rowMenu(int row)
     auto *menu = new QMenu(this);
     QAction *detect = menu->addAction(tr("Detect encoding..."));
     detect->setObjectName(QStringLiteral("detectEncodingAction"));
-    detect->setEnabled(registerCount(tag.type) == 2 || !tag.encodingVerified);
     connect(detect, &QAction::triggered, this, [this, id] { emit detectEncodingRequested(id); });
     return menu;
 }
