@@ -110,6 +110,7 @@ private:
     std::optional<Encoding> m_userChoice;
     bool m_rebuilding = false;
 
+    QLabel *m_intro = nullptr;
     QLabel *m_registers = nullptr;
     QLineEdit *m_display = nullptr;
     QLabel *m_verdict = nullptr;

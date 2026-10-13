@@ -294,7 +294,11 @@ confirmation as it was.
 ### The Detect encoding dialog
 
 Right-click the tag in the tag table and choose **Detect encoding...**. The item is available for
-32-bit tags only. The dialog has these parts:
+every tag. For a 32-bit tag it opens this dialog. For a 16-bit tag it runs the check for half of a
+32-bit value (see [A 16-bit tag on half of a 32-bit value](#a-16-bit-tag-on-half-of-a-32-bit-value)),
+or, when the device refuses to read the register alone, the check in
+[A device that refuses to read half of a 32-bit value](#a-device-that-refuses-to-read-half-of-a-32-bit-value).
+The dialog has these parts:
 
 - **The latest registers**, in hex and with their register numbers, for example
   `HR 110-111: 0x3333 0x4251`.
@@ -421,6 +425,35 @@ To try it with the test server:
 4. To see the move, delete that tag (its registers HR 110-111 would otherwise be used by it), then
    add an `int16` tag at address 111, or do this in a new project. Choose **Change to float32 CDAB
    at HR 110** in its prompt. The tag is moved to HR 110.
+
+### A device that refuses to read half of a 32-bit value
+
+Some controllers, such as the ABB CM50, refuse to read one register of a 32-bit value. They answer a
+read of that register alone with "Illegal data address". A 16-bit tag placed on a float32 then never
+reads, so the check above cannot see its value. The app then tries to read the register as the
+first and as the second half of a 32-bit value: for a tag at HR 110, it reads HR 110-111, then
+HR 109-110.
+
+- If one of these reads works, the tag is flagged (its Name cell shows the warning icon). The
+  Detect encoding dialog opens, with a line that explains why: "'Setpoint' (HR 110, int16) can't be
+  read alone." and the device's "Illegal data address" answer. Type the value shown on the device
+  in **Value shown on the device (optional)** to pick the encoding, then click **Apply**. The tag is
+  moved to the start of the 32-bit value, its type is changed and the encoding is confirmed. Gain,
+  offset and quick values are reset, as in the section above.
+- **Cancel** leaves the tag flagged. Writes to it ask first.
+- If neither read works, the register probably does not exist. Nothing changes. Detect encoding...
+  then reports that the register can't be read alone or as part of a 32-bit value, and asks you to
+  check the register number.
+
+The check runs when you add or move a 16-bit tag, once per session on connect, and when you choose
+**Detect encoding...** from the right-click menu, which works on every tag.
+
+To try it with the test server, start it with `--strict-32bit`, for example
+`build\msvc-debug\bin\modbus_test_server.exe --port 1502 --strict-32bit`,
+and connect the application to it. Add a **Holding** tag at address 110 with type `int16`. The read
+of HR 110 alone is refused, the read of HR 110-111 works, and the Detect encoding dialog opens with
+the explanation. Type `52.3` in **Value shown on the device**, select the `float32 CDAB` row, and
+click **Apply**. The tag becomes `float32` `CDAB` at HR 110 and reads 52.3.
 
 ### Writes to an unconfirmed tag
 
