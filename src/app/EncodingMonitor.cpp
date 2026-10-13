@@ -128,9 +128,21 @@ void EncodingMonitor::finishPending(TagId id)
 void EncodingMonitor::onSamples(const SampleBatch &batch)
 {
     for (const TagSample &sample : batch.samples) {
+        const Tag *found = findTag(sample.tagId);
+        if (found && !wide(*found)) {
+            m_lastQuality[sample.tagId] = sample.quality;
+            if (sample.quality == Quality::Exception && m_connected) {
+                // The device refuses to read this register alone: try it as part of a pair.
+                const bool pending = m_splitPending.remove(sample.tagId);
+                const bool connect = m_connectWait.remove(sample.tagId);
+                if (pending)
+                    queueRefused(sample.tagId, ProbeMode::Pending);
+                if (connect)
+                    queueRefused(sample.tagId, ProbeMode::Connect);
+            }
+        }
         if (sample.quality != Quality::Good)
             continue;
-        const Tag *found = findTag(sample.tagId);
         if (found && !wide(*found)) {
             // First Good sample of a 16-bit tag: time for its split check.
             if (m_connected && m_splitPending.remove(sample.tagId))
@@ -265,6 +277,7 @@ void EncodingMonitor::onDisconnected()
     for (auto it = m_collected.begin(); it != m_collected.end(); ++it)
         it.value() = 0;
     m_checkActive = false;
+    m_lastQuality.clear();
 
     ++m_generation;
     m_probes.clear();
@@ -357,6 +370,7 @@ void EncodingMonitor::onTagsChanged()
             const bool relocated = it == m_snapshot.constEnd() || wide(*it)
                                    || it->area != tag.area || it->address != tag.address;
             if (relocated) {
+                m_lastQuality.remove(tag.id);
                 forgetSplit(tag.id);
                 m_sessionChecked.remove(tag.id);
                 m_queue.removeAll(Request{tag.id, {}, 0});
@@ -365,6 +379,7 @@ void EncodingMonitor::onTagsChanged()
             continue;
         }
         forgetSplit(tag.id);
+        m_lastQuality.remove(tag.id);
         const bool moved = it == m_snapshot.constEnd() || !wide(*it) || it->area != tag.area
                            || it->address != tag.address;
         if (moved) {
@@ -384,6 +399,7 @@ void EncodingMonitor::onTagsChanged()
             continue;
         finishPending(it.key());
         forgetSplit(it.key());
+        m_lastQuality.remove(it.key());
         m_sessionChecked.remove(it.key());
         m_readings.remove(it.key());
         m_queue.removeAll(Request{it.key(), {}, 0});
@@ -414,6 +430,7 @@ void EncodingMonitor::onTagsReplaced()
     m_probe.reset();
     m_passActive = false;
     m_sessionChecked.clear();
+    m_lastQuality.clear();
     m_deferred32.reset();
     m_deferred16.reset();
     m_splitStopped = false;
@@ -425,7 +442,10 @@ void EncodingMonitor::detectNow(TagId id)
     if (!tag)
         return;
     if (!wide(*tag)) {
-        splitCheckNow(*tag);
+        if (m_lastQuality.value(id, Quality::Unknown) == Quality::Exception)
+            refusedCheckNow(*tag);
+        else
+            splitCheckNow(*tag);
         pump();
         return;
     }
@@ -453,7 +473,9 @@ void EncodingMonitor::pump()
     while (!m_openDialog && !m_promptOpen) {
         if (!m_queue.isEmpty()) {
             const Request request = m_queue.takeFirst();
-            if (request.split)
+            if (request.refused)
+                runRefusedRequest(request);
+            else if (request.split)
                 runSplitRequest(request);
             else
                 runRequest(request);
@@ -510,13 +532,18 @@ void EncodingMonitor::applyChoice(const Request &request, const EncodingDialog &
     m_model->setEncoding(request.id, chosen->type, chosen->order, true);
     if (const Tag *now = findTag(request.id))
         m_snapshot.insert(request.id, *now);
+    applyOrderToOthers(dialog, chosen->order);
+}
+
+void EncodingMonitor::applyOrderToOthers(const EncodingDialog &dialog, ByteOrder order)
+{
     for (TagId otherId : dialog.applyOrderTo()) {
         const Tag *other = findTag(otherId);
         if (!other || !wide(*other))
             continue;
         const Tag copy = *other;
         // Only the byte order was chosen for them: their encoding stays to be confirmed.
-        m_model->setEncoding(otherId, copy.type, chosen->order, false);
+        m_model->setEncoding(otherId, copy.type, order, false);
         if (const Tag *now = findTag(otherId))
             m_snapshot.insert(otherId, *now);
     }
@@ -592,6 +619,13 @@ bool EncodingMonitor::registerUsedByOther(const Tag &self, int reg) const
 
 void EncodingMonitor::issueRead(Probe &probe)
 {
+    if (probe.refused) {
+        if (!issueRefusedRead(probe)) {
+            completeRefused(probe);
+            maybeFinishConnectPass();
+        }
+        return;
+    }
     const int address = probe.tag.address;
     if (!probe.sidesChecked) {
         // A neighbour that another tag maps counts as absent: it is not read at all.
@@ -640,6 +674,20 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
                                     "read next to '%1'.")
                          .arg(now ? now->name : probe.tag.name));
         m_connectWait.clear(); // nothing more will be probed: let the connect pass finish
+        maybeFinishConnectPass();
+        pump();
+        return;
+    }
+    if (probe.refused) {
+        if (result.ok() && values.size() == 2) {
+            const RegisterPair pair{values[0], values[1]};
+            (probe.stage == 0 ? probe.pairOwn : probe.pairBelow) = pair;
+        }
+        ++probe.stage;
+        if (issueRefusedRead(probe))
+            return;
+        completeRefused(probe);
+        startNextProbe();
         maybeFinishConnectPass();
         pump();
         return;
@@ -902,6 +950,178 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     case SplitAnswer::Later:
         break;
     }
+}
+
+// --- Refused 16-bit reads -----------------------------------------------------------
+
+void EncodingMonitor::queueRefused(TagId id, ProbeMode mode)
+{
+    const Tag *tag = findTag(id);
+    if (!tag || wide(*tag) || !m_connected)
+        return;
+    if (mode != ProbeMode::Manual && tag->confirmed16Bit)
+        return;
+    if (m_splitStopped)
+        return;
+    const bool busy = (m_probe && m_probe->id == id)
+                      || std::any_of(m_probes.begin(), m_probes.end(),
+                                     [id](const Probe &p) { return p.id == id; });
+    if (busy)
+        return;
+    Probe probe;
+    probe.id = id;
+    probe.tag = *tag;
+    probe.epoch = m_epoch;
+    probe.generation = m_generation;
+    probe.mode = mode;
+    probe.refused = true;
+    m_probes.append(probe);
+    startNextProbe();
+}
+
+void EncodingMonitor::refusedCheckNow(const Tag &tag)
+{
+    if (!m_connected) {
+        emit message(QStringLiteral("Connect to check '%1'.").arg(tag.name));
+        return;
+    }
+    if (m_splitStopped) {
+        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+                                    "read next to a 16-bit tag."));
+        return;
+    }
+    queueRefused(tag.id, ProbeMode::Manual);
+}
+
+bool EncodingMonitor::issueRefusedRead(Probe &probe)
+{
+    for (; probe.stage < 2; ++probe.stage) {
+        const int start = probe.tag.address - probe.stage;
+        if (start < 0 || start + 1 > 65535 || registerUsedByOther(probe.tag, start)
+            || registerUsedByOther(probe.tag, start + 1))
+            continue;
+        probe.requestId = m_nextRequest++;
+        m_probe = probe;
+        // Last: a synchronous answer (tests) runs onReadFinished before this returns.
+        emit readRequested(probe.requestId, probe.tag.area, quint16(start), 2);
+        return true;
+    }
+    return false;
+}
+
+void EncodingMonitor::completeRefused(const Probe &probe)
+{
+    const Tag *found = findTag(probe.id);
+    if (!found)
+        return;
+    const Tag tag = *found;
+    m_sessionChecked.insert(tag.id); // checked once: not again on reconnect
+    const int base = m_model->addressBase();
+    if (!probe.pairOwn && !probe.pairBelow) {
+        if (probe.mode == ProbeMode::Manual) {
+            emit message(QStringLiteral("'%1' (%2 %3) can't be read, alone or as part of a 32-bit "
+                                        "value: check the register number.")
+                             .arg(tag.name, areaPrefix(tag.area)).arg(tag.address + base));
+        }
+        return;
+    }
+    // The 32-bit view of the tag at `start`, and how plausible the pair reads in it.
+    const std::optional<ByteOrder> order = deviceOrder();
+    const auto viewAt = [&](int start) {
+        Tag view = tag;
+        view.address = quint16(start);
+        view.type = ValueType::Float32;
+        view.byteOrder = order.value_or(ByteOrder::ABCD);
+        view.gain = 1.0;
+        view.offset = 0.0;
+        view.quickA.reset();
+        view.quickB.reset();
+        return view;
+    };
+    const auto scoreOf = [&](int start, const RegisterPair &pair) {
+        EncodingOptions options;
+        options.deviceOrder = order;
+        const EncodingResult result = detectEncoding(viewAt(start), {pair}, options);
+        return result.candidates.isEmpty() ? 0.0 : result.candidates.first().score;
+    };
+    int start = tag.address;
+    RegisterPair pair;
+    if (probe.pairOwn && probe.pairBelow) {
+        // Tie: the pair starting at the tag's own address.
+        const bool below = scoreOf(tag.address - 1, *probe.pairBelow)
+                           > scoreOf(tag.address, *probe.pairOwn);
+        start = below ? tag.address - 1 : tag.address;
+        pair = below ? *probe.pairBelow : *probe.pairOwn;
+    } else if (probe.pairBelow) {
+        start = tag.address - 1;
+        pair = *probe.pairBelow;
+    } else {
+        pair = *probe.pairOwn;
+    }
+
+    const QString prefix = areaPrefix(tag.area);
+    m_model->setEncodingVerified(tag.id, false);
+    m_model->setEncodingNote(
+        tag.id, QStringLiteral("%1 %2 can't be read alone; %1 %3-%4 can be read as a 32-bit value")
+                    .arg(prefix).arg(tag.address + base).arg(start + base).arg(start + 1 + base));
+    if (const Tag *now = findTag(tag.id))
+        m_snapshot.insert(tag.id, *now);
+
+    m_queue.removeAll(Request{tag.id, {}, 0});
+    Request request;
+    request.id = tag.id;
+    request.tag = tag;
+    request.epoch = probe.epoch;
+    request.refused = true;
+    request.view = viewAt(start);
+    request.start = quint16(start);
+    request.pair = pair;
+    m_queue.append(request);
+}
+
+void EncodingMonitor::runRefusedRequest(const Request &request)
+{
+    if (!splitRequestValid(request))
+        return;
+    const Tag tag = *findTag(request.id);
+    const int base = m_model->addressBase();
+    const QString prefix = areaPrefix(tag.area);
+    QList<Tag> others;
+    for (const Tag &other : m_model->tags()) {
+        if (other.id != tag.id && wide(other))
+            others.append(other);
+    }
+    EncodingDialog dialog(request.view, {request.pair}, others, deviceOrder(), base,
+                          m_dialogParent);
+    dialog.setIntro(
+        rich::headline(QStringLiteral("'%1' (%2 %3, %4) can't be read alone.")
+                           .arg(tag.name, prefix).arg(tag.address + base).arg(toString(tag.type)))
+        + rich::paragraph(QStringLiteral("The device answered \"Illegal data address\". %1 %2-%3 "
+                                         "can be read as a 32-bit value: choose its encoding, or "
+                                         "type the value shown on the device.")
+                              .arg(prefix).arg(request.start + base).arg(request.start + 1 + base)));
+    m_openDialog = &dialog;
+    m_openId = tag.id;
+    const bool accepted = m_runDialog && m_runDialog(dialog);
+    m_openDialog = nullptr;
+    m_openId = 0;
+    if (!accepted || !splitRequestValid(request))
+        return; // cancelled (the tag stays flagged), or removed/reconfigured meanwhile
+    const std::optional<Encoding> chosen = dialog.chosenEncoding();
+    if (!chosen)
+        return;
+    // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new 32-bit tag
+    // to detect.
+    Tag moved = *findTag(request.id);
+    moved.address = request.start;
+    moved.type = chosen->type;
+    moved.byteOrder = chosen->order;
+    moved.encodingVerified = true;
+    m_snapshot.insert(request.id, moved);
+    m_model->setLayout(request.id, request.start, chosen->type, chosen->order, true);
+    if (const Tag *now = findTag(request.id))
+        m_snapshot.insert(request.id, *now);
+    applyOrderToOthers(dialog, chosen->order);
 }
 
 } // namespace mb

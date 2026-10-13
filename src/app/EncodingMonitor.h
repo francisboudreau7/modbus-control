@@ -194,6 +194,10 @@ private:
         SplitValue splitValue; ///< split prompts only
         quint16 own = 0;       ///< split prompts only: the tag's register as probed
         bool noSplit = false;  ///< split prompts only: nothing found now, the tag stays flagged
+        bool refused = false;  ///< refused-read dialog: `tag` is the 16-bit tag as requested
+        Tag view;              ///< refused-read dialog: the tag as a 32-bit value at `start`
+        quint16 start = 0;     ///< refused-read dialog: first register of the readable pair
+        RegisterPair pair;     ///< refused-read dialog: the pair's registers
         friend bool operator==(const Request &a, const Request &b) { return a.id == b.id; }
     };
 
@@ -228,6 +232,9 @@ private:
         bool belowUsable = true; ///< the register exists and no other tag of the project uses it
         bool aboveUsable = true;
         bool sidesChecked = false; ///< belowUsable/aboveUsable are set
+        bool refused = false;      ///< refused-read probe: stage 0 = (address, 2), 1 = (address - 1, 2)
+        std::optional<RegisterPair> pairOwn;   ///< refused-read probe: registers at address
+        std::optional<RegisterPair> pairBelow; ///< refused-read probe: registers at address - 1
     };
     /// A suspicious tag found by the on-connect pass.
     struct SplitFinding {
@@ -262,6 +269,13 @@ private:
     void maybeFinishConnectPass();
     void forgetSplit(TagId id);
     void splitCheckNow(const Tag &tag);
+    // Refused 16-bit reads.
+    void queueRefused(TagId id, ProbeMode mode);
+    void refusedCheckNow(const Tag &tag);
+    bool issueRefusedRead(Probe &probe);
+    void completeRefused(const Probe &probe);
+    void runRefusedRequest(const Request &request);
+    void applyOrderToOthers(const EncodingDialog &dialog, ByteOrder order);
 
     TagTableModel *m_model = nullptr;
     QWidget *m_dialogParent = nullptr;
@@ -289,6 +303,7 @@ private:
     QSet<TagId> m_sessionChecked; ///< tags the on-connect checks (16 and 32-bit) already covered
     std::optional<Review32> m_deferred32;
     std::optional<Review16> m_deferred16;
+    QHash<TagId, Quality> m_lastQuality; ///< latest sample quality of each 16-bit tag
     bool m_splitStopped = false; ///< a probe timed out: no more split probes until onTagsReplaced
 };
 
