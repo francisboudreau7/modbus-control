@@ -1848,6 +1848,74 @@ private slots:
         QCOMPARE(edited.size(), 1);
     }
 
+    // setLayout also resets gain, offset and the quick values; write limits stay.
+    void setLayoutResetsScaling()
+    {
+        TagTableModel m;
+        Tag s = makeTag(1, "s", Area::HoldingRegister, 111);
+        s.gain = 0.1;
+        s.offset = 5.0;
+        s.writable = true;
+        s.quickA = 10.0;
+        s.quickB = 20.0;
+        s.writeMin = 0.0;
+        s.writeMax = 100.0;
+        s.confirmed16Bit = true;
+        m.setTags({s}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QVERIFY(m.setLayout(1, 110, ValueType::Float32, ByteOrder::CDAB, true));
+        const Tag &t = m.tagAt(0);
+        QCOMPARE(t.gain, 1.0);
+        QCOMPARE(t.offset, 0.0);
+        QVERIFY(!t.quickA && !t.quickB);
+        QVERIFY(!t.confirmed16Bit);
+        QVERIFY(t.writeMin && *t.writeMin == 0.0);
+        QVERIFY(t.writeMax && *t.writeMax == 100.0);
+        QCOMPARE(edited.size(), 1);
+
+        // Only a leftover quick value or confirmation also counts as a change.
+        Tag u = makeTag(2, "u", Area::HoldingRegister, 110);
+        u.type = ValueType::Float32;
+        u.byteOrder = ByteOrder::CDAB;
+        u.confirmed16Bit = true;
+        m.setTags({u}, 3);
+        edited.clear();
+        QVERIFY(m.setLayout(2, 110, ValueType::Float32, ByteOrder::CDAB, true));
+        QVERIFY(!m.tagAt(0).confirmed16Bit);
+        QCOMPARE(edited.size(), 1);
+    }
+
+    // confirmed16Bit: set by setConfirmed16Bit, cleared by edits of Area, Address or Type.
+    void confirmed16BitRules()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "s", Area::HoldingRegister, 110)}, 2);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+
+        QVERIFY(!m.setConfirmed16Bit(99, true));
+        QVERIFY(m.setConfirmed16Bit(1, true));
+        QVERIFY(m.tagAt(0).confirmed16Bit);
+        QCOMPARE(edited.size(), 1);
+        QVERIFY(m.setConfirmed16Bit(1, true)); // unchanged
+        QCOMPARE(edited.size(), 1);
+
+        // Other edits keep it.
+        QVERIFY(m.setData(m.index(0, C::Unit), QStringLiteral("C")));
+        QVERIFY(m.tagAt(0).confirmed16Bit);
+
+        QVERIFY(m.setData(m.index(0, C::Address), 111));
+        QVERIFY(!m.tagAt(0).confirmed16Bit);
+        m.setConfirmed16Bit(1, true);
+        QVERIFY(m.setData(m.index(0, C::Area), QStringLiteral("Input")));
+        QVERIFY(!m.tagAt(0).confirmed16Bit);
+        m.setConfirmed16Bit(1, true);
+        QVERIFY(m.setData(m.index(0, C::Type), QStringLiteral("uint16")));
+        QVERIFY(!m.tagAt(0).confirmed16Bit);
+        QVERIFY(m.setConfirmed16Bit(1, false));
+        QVERIFY(!m.tagAt(0).confirmed16Bit);
+    }
+
     // rowMenu: enabled for an unverified 16-bit tag, disabled for a verified one.
     void rowMenuFlagged16Bit()
     {

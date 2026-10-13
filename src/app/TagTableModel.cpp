@@ -404,6 +404,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         emitLiveChanged(index.row(), index.row(),
                         {Qt::DisplayRole, Qt::ForegroundRole, Qt::ToolTipRole});
     const bool noteCleared = placementChanged && m_encodingNotes.remove(t.id);
+    if (placementChanged)
+        t.confirmed16Bit = false; // a Keep answer was about the register as it was
     if (rowChanged)
         emit dataChanged(this->index(index.row(), 0), this->index(index.row(), ColumnCount - 1));
     else
@@ -645,22 +647,43 @@ bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::Byt
     if (!probe.fitsAddressSpace())
         return false;
 
-    const bool decodingChanged = t.address != address || t.type != type || t.byteOrder != order;
+    const bool decodingChanged = t.address != address || t.type != type || t.byteOrder != order
+                                 || t.gain != 1.0 || t.offset != 0.0;
     const bool verifiedChanged = t.encodingVerified != verified;
+    const bool otherChanged = t.quickA || t.quickB || t.confirmed16Bit;
     const bool noteRemoved = m_encodingNotes.remove(id);
-    if (!decodingChanged && !verifiedChanged && !noteRemoved)
+    if (!decodingChanged && !verifiedChanged && !noteRemoved && !otherChanged)
         return true;
 
     t.address = address;
     t.type = type;
     t.byteOrder = order;
     t.encodingVerified = verified;
+    // The scaling and presets were meant for the old reading of the register.
+    t.gain = 1.0;
+    t.offset = 0.0;
+    t.quickA.reset();
+    t.quickB.reset();
+    t.confirmed16Bit = false;
     // The last reading was decoded with the old layout (see setData).
     if (decodingChanged)
         m_live.remove(id);
     emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
-    if (decodingChanged || verifiedChanged)
+    if (decodingChanged || verifiedChanged || otherChanged)
         emit tagsEdited();
+    return true;
+}
+
+bool TagTableModel::setConfirmed16Bit(TagId id, bool confirmed)
+{
+    const int row = rowOf(id);
+    if (row < 0)
+        return false;
+    Tag &t = m_tags[row];
+    if (t.confirmed16Bit == confirmed)
+        return true;
+    t.confirmed16Bit = confirmed;
+    emit tagsEdited();
     return true;
 }
 
@@ -785,9 +808,3 @@ int TagTableModel::columnFromKey(const QString &key)
 }
 
 } // namespace mb
-
-// Stub; implemented with the review fixes.
-bool mb::TagTableModel::setConfirmed16Bit(TagId, bool)
-{
-    return false;
-}

@@ -39,6 +39,7 @@ const EncodingCandidate *find(const EncodingResult &res, const Encoding &e)
     return nullptr;
 }
 
+constexpr Encoding kF_ABCD{ValueType::Float32, ByteOrder::ABCD};
 constexpr Encoding kF_CDAB{ValueType::Float32, ByteOrder::CDAB};
 
 } // namespace
@@ -529,6 +530,11 @@ private slots:
         const std::optional<SplitValue> sv = first
             ? detectSplitValue(tag, r.r0, unrelated, r.r1)
             : detectSplitValue(tag, r.r1, r.r0, unrelated);
+        const quint16 own = first ? r.r0 : r.r1;
+        if (own == 0) { // an empty own register is never reported
+            QVERIFY(!sv);
+            return;
+        }
         QVERIFY(sv);
         QCOMPARE(sv->address, first ? quint16(110) : quint16(109));
         QCOMPARE(static_cast<float>(sv->value), static_cast<float>(value));
@@ -605,6 +611,11 @@ private slots:
         QVERIFY(!detectSplitValue(tag, 0xFF80, std::nullopt, 0));
         QVERIFY(!detectSplitValue(tag, 0, 0, 0));
         QVERIFY(!detectSplitValue(tag, 0, std::nullopt, std::nullopt));
+        // Own register 0: never flagged, even when the neighbour makes a clean float
+        // (0x4268 with 0 as its low word reads 58.0).
+        QVERIFY(!detectSplitValue(tag, 0, std::nullopt, 0x4268));
+        QVERIFY(!detectSplitValue(tag, 0, 0x4268, std::nullopt));
+        QVERIFY(!detectSplitValue(tag, 0, 0x4268, 0x4268));
     }
     void splitIgnores32BitTag()
     {
@@ -618,19 +629,20 @@ private slots:
     {
         Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
         tag.address = 50;
-        // Both pairs clean with the same digit count: below (0x42C8, 0x0000) is 100.0 ABCD, above
-        // (0x0000, 0x3F00) is 0.5 CDAB; one digit each, so the pair at tag.address wins.
-        const auto tie = detectSplitValue(tag, 0x0000, 0x42C8, 0x3F00);
+        // Both pairs clean with the same digit count: above (0x42C8, 0x0000) is 100.0 ABCD, below
+        // (0x0000, 0x42C8) is 100.0 CDAB; one digit each, so the pair at tag.address wins.
+        const auto tie = detectSplitValue(tag, 0x42C8, 0x0000, 0x0000);
         QVERIFY(tie);
         QCOMPARE(tie->address, quint16(50));
-        QCOMPARE_ENC(tie->encoding, kF_CDAB);
-        QCOMPARE(tie->value, 0.5);
-        // Fewer digits beat the preferred pair: below (0x42C8, 0x4251) is not clean, but make
-        // above 52.3 (3 digits) and below 100.0 (1 digit): below wins despite coming second.
-        const auto fewer = detectSplitValue(tag, 0x0000, 0x42C8, 0x4251);
+        QCOMPARE_ENC(tie->encoding, kF_ABCD);
+        QCOMPARE(tie->value, 100.0);
+        // Fewer digits beat the preferred pair: above (0x42C8, 0x3333) reads 100.1 (4 digits),
+        // below (0x0000, 0x42C8) reads 100.0 CDAB (1 digit): below wins despite coming second.
+        const auto fewer = detectSplitValue(tag, 0x42C8, 0x0000, 0x3333);
         QVERIFY(fewer);
         QCOMPARE(fewer->digits, 1);
         QCOMPARE(fewer->address, quint16(49));
+        QCOMPARE_ENC(fewer->encoding, kF_CDAB);
         QCOMPARE(fewer->value, 100.0);
         // Within one pair: when both word orders are clean with the same digits, ABCD wins. Scan
         // some register pairs and verify (byte-swapped orders are not considered).
@@ -677,9 +689,11 @@ private slots:
 
     // False positives: how often do two separate int16 registers look like half of a clean
     // float32? With word orders only and clean = at most 5 digits, or 6 with at most 2 decimals:
-    // (a) and (c) about 0 %, (b) about 0.5 %, (d) 0 %. (All four orders with up to 6 digits gave
-    // 2.7 %, 2.0 %, 3.0 % and 8.6 % for (d).) The rates are printed (qInfo); the ceilings catch a
-    // regression.
+    // (a) and (c) about 0 %, (b) about 0.5 %, (d) 0 %, (e) about 7 % (any int16 value next to an
+    // empty register: values from roughly 15000 to 20000 and a few others read as a clean float,
+    // e.g. 17000 next to 0 is 58.0; this is the documented weak spot, answered once with Keep).
+    // (All four orders with up to 6 digits gave 2.7 %, 2.0 %, 3.0 % and 8.6 % for (d).) The rates
+    // are printed (qInfo); the ceilings catch a regression.
     void splitFalsePositives()
     {
         Tag tag = makeTag(ValueType::Int16, ByteOrder::ABCD);
@@ -721,6 +735,14 @@ private slots:
             ++totalD;
             hitsD += detectSplitValue(tag, v, 0, 0) ? 1 : 0;
         }
+        // (e) any int16 value next to an empty register above, below absent.
+        long hitsE = 0, totalE = 0;
+        for (quint32 v = 1; v <= 65535; ++v) {
+            ++totalE;
+            hitsE += detectSplitValue(tag, static_cast<quint16>(v), std::nullopt, 0) ? 1 : 0;
+        }
+        qInfo("split false positives (e) any value next to an empty register: %ld/%ld = %.2f %%",
+              hitsE, totalE, 100.0 * hitsE / totalE);
         qInfo("split false positives: (a) %ld/%ld = %.4f %%, (b) %ld/%ld = %.4f %%, (c) %ld/%ld = %.4f %%, "
               "(d) %ld/%ld",
               hitsA, totalA, 100.0 * hitsA / totalA, hitsB, totalB, 100.0 * hitsB / totalB,
@@ -729,6 +751,7 @@ private slots:
         QVERIFY(hitsB * 100 < totalB * 1);   // < 1 %
         QVERIFY(hitsC * 10000 < totalC * 5); // < 0.05 %
         QCOMPARE(hitsD, 0L);
+        QVERIFY(hitsE * 100 < totalE * 8);   // < 8 %
     }
 };
 

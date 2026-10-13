@@ -351,10 +351,16 @@ is practically zero.
 The app checks a 16-bit tag in these cases:
 
 - when you add it, or change its register number, on its first good reading while connected;
-- once for every 16-bit tag when you connect.
+- once for every 16-bit tag when you connect. This pass runs once per tag for as long as the tag
+  list stays the same (until you open or start another project): reconnecting does not check the
+  same tags again.
 
 Each check reads the register below and the register above the tag, once. It does not repeat on
-every poll.
+every poll. A neighbouring register that another tag of the project uses is ignored: it is mapped as
+something else, and a change there would make one tag overwrite another. A tag whose own register
+reads 0 is never flagged. If the device does not answer one of these reads (a timeout, or the
+connection drops), the app stops checking 16-bit tags until you open or start another project, and
+says so in the status bar. Some devices drop the connection on reads outside their register map.
 
 The check looks for a "clean" float32: two neighbouring registers that read, in `ABCD` or `CDAB`
 order, as a float of a sensible size with at most 5 significant digits, or 6 with at most 2
@@ -365,23 +371,36 @@ names the 32-bit reading, for example "HR 110-111 read as float32 CDAB give 52.3
 what to do:
 
 - **Change to float32 CDAB at HR 110** moves the tag to HR 110 and makes it a `float32` in `CDAB`
-  order, in one step. The change is confirmed.
-- **Keep int16** confirms that the tag really is 16-bit, and clears the flag.
+  order, in one step. The change is confirmed. Gain and offset go back to 1 and 0 and the quick
+  values are cleared, because they were meant for the 16-bit reading; the write limits are kept.
+  The prompt says so when the tag has a gain, an offset or quick values.
+- **Keep int16** confirms that the tag really is 16-bit, and clears the flag. The app remembers the
+  answer in the project: the tag is not checked again on its own, unless you change its register
+  number, its area or its type. **Detect encoding...** still checks it.
 - **Decide later** leaves the tag flagged.
 
 On connect, the flagged 16-bit tags are listed in one message, with **Review...** and **Close**.
-**Review...** opens the prompt for each listed tag in turn.
+**Review...** opens the prompt for each listed tag in turn. If another prompt or a Detect encoding
+dialog is open at that moment, the message waits and appears when it closes.
 
 Writes to a flagged 16-bit tag ask first, as writes to an unconfirmed 32-bit tag do (see Writes to an
 unconfirmed tag). In that prompt, **Confirm and continue** means the tag really is 16-bit.
 
 To check a flagged tag again, right-click it and choose **Detect encoding...**. This works only while
-the application is connected.
+the application is connected. If the new check finds no float32, the tag stays flagged and a prompt
+says so, with **Keep int16** and **Decide later**: choose **Keep int16** when the tag is 16-bit. A
+check that runs on its own (when you connect, or after you move the tag) and finds nothing clears a
+flag that has no 32-bit reading behind it, for example on a tag you moved away from the pair.
 
 The check has limits:
 
 - Two separate 16-bit registers can form a clean float by chance. For example, 16384 and 0 read as
-  `float32` 2.0. If that happens, choose **Keep int16**.
+  `float32` 2.0. The weak spot is a value next to an empty register: a value between roughly 15000
+  and 20000 (or a status word such as `0x4000`) often reads as a clean float, because 17000 next to
+  0 reads as 58.0. Over all 16-bit values next to an empty register, about 7 % read as a clean float
+  (measured on the test data). Ordinary small values and typical raw analog values are almost never
+  flagged (about 0.5 % for raw values 0 to 27648). If that happens, choose **Keep int16** once: the
+  app remembers it in the project.
 - A float that is a full-precision measurement, such as 23.456789, is not clean, so it is not
   detected.
 - Halves of an `int32` value cannot be told apart from two separate 16-bit registers, so they are
@@ -399,8 +418,9 @@ To try it with the test server:
    warning icon, and the tooltip reads "HR 110-111 read as float32 CDAB give 52.3". A prompt opens.
 3. Choose **Change to float32 CDAB at HR 110**. The tag becomes `float32` `CDAB` at HR 110 and reads
    52.3.
-4. To see the move, add another `int16` tag at address 111 and choose **Change to float32 CDAB at
-   HR 110** in its prompt. The tag is moved to HR 110.
+4. To see the move, delete that tag (its registers HR 110-111 would otherwise be used by it), then
+   add an `int16` tag at address 111, or do this in a new project. Choose **Change to float32 CDAB
+   at HR 110** in its prompt. The tag is moved to HR 110.
 
 ### Writes to an unconfirmed tag
 
@@ -425,7 +445,7 @@ An encoding is confirmed when:
 - you choose another **Byte order** for the tag yourself;
 - automatic detection finds that the readings fit the encoding the tag already has;
 - for a flagged 16-bit tag, you click **Change to float32 CDAB at HR 110** or **Keep int16** in its
-  prompt.
+  prompt (**Keep int16** is also saved in the project).
 
 A tag that automatic detection changed stays unconfirmed, with its warning icon, until one of these
 happens.

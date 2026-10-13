@@ -145,6 +145,11 @@ private slots:
     void encodingVerifiedMissingIsTrue();
     void encodingVerifiedRejected_data();
     void encodingVerifiedRejected();
+    void confirmed16BitRoundTrip();
+    void confirmed16BitWrittenOnlyWhenTrue();
+    void confirmed16BitMissingIsFalse();
+    void confirmed16BitRejected_data();
+    void confirmed16BitRejected();
 };
 
 void TstProjectIO::roundTrip()
@@ -1174,6 +1179,70 @@ void TstProjectIO::encodingVerifiedRejected()
     QString error;
     QVERIFY(!projectFromJson(text, &error).has_value());
     QVERIFY2(error.contains(QStringLiteral("encodingVerified")), qPrintable(error));
+}
+
+void TstProjectIO::confirmed16BitRoundTrip()
+{
+    Project p = sampleProject();
+    p.tags[0].confirmed16Bit = true;
+    p.tags[1].confirmed16Bit = false;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QVERIFY(loaded->tags[0].confirmed16Bit);
+    QVERIFY(!loaded->tags[1].confirmed16Bit);
+}
+
+void TstProjectIO::confirmed16BitWrittenOnlyWhenTrue()
+{
+    Project p;
+    Tag confirmed;
+    confirmed.id = 1;
+    confirmed.confirmed16Bit = true;
+    Tag plain;
+    plain.id = 2;
+    p.tags = {confirmed, plain};
+    p.nextTagId = 3;
+
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    const QJsonObject first = tags.at(0).toObject();
+    QVERIFY(first.contains(QStringLiteral("confirmed16Bit")));
+    QCOMPARE(first.value(QStringLiteral("confirmed16Bit")).toBool(false), true);
+    QVERIFY(!tags.at(1).toObject().contains(QStringLiteral("confirmed16Bit")));
+}
+
+void TstProjectIO::confirmed16BitMissingIsFalse()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1},{"id":2,"confirmed16Bit":true}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(!project->tags.at(0).confirmed16Bit);
+    QVERIFY(project->tags.at(1).confirmed16Bit);
+}
+
+void TstProjectIO::confirmed16BitRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::newRow("number")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"confirmed16Bit":1}]})");
+    QTest::newRow("string")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"confirmed16Bit":"yes"}]})");
+    QTest::newRow("null")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"confirmed16Bit":null}]})");
+}
+
+void TstProjectIO::confirmed16BitRejected()
+{
+    QFETCH(QByteArray, text);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QVERIFY2(error.contains(QStringLiteral("confirmed16Bit")), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

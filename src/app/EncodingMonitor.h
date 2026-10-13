@@ -166,6 +166,7 @@ private:
         bool split = false;
         SplitValue splitValue; ///< split prompts only
         quint16 own = 0;       ///< split prompts only: the tag's register as probed
+        bool noSplit = false;  ///< split prompts only: nothing found now, the tag stays flagged
         friend bool operator==(const Request &a, const Request &b) { return a.id == b.id; }
     };
 
@@ -197,6 +198,9 @@ private:
         std::optional<quint16> own;
         std::optional<quint16> below;
         std::optional<quint16> above;
+        bool belowUsable = true; ///< the register exists and no other tag of the project uses it
+        bool aboveUsable = true;
+        bool sidesChecked = false; ///< belowUsable/aboveUsable are set
     };
     /// A suspicious tag found by the on-connect pass.
     struct SplitFinding {
@@ -206,7 +210,18 @@ private:
         SplitValue split;
         quint16 own = 0;
     };
+    /// An on-connect review prompt that had to wait for an open prompt or dialog.
+    struct Review32 {
+        QString text;
+        QList<TagId> ids;
+    };
+    struct Review16 {
+        QString text;
+        QList<SplitFinding> flagged;
+    };
 
+    bool askReview(const QString &text);
+    bool registerUsedByOther(const Tag &self, int reg) const;
     bool splitProbeValid(const Probe &probe) const;
     bool splitRequestValid(const Request &request) const;
     void queueProbe(TagId id, ProbeMode mode);
@@ -244,6 +259,10 @@ private:
     quint64 m_nextRequest = 1;
     QList<Probe> m_probes;
     std::optional<Probe> m_probe; ///< the one in flight
+    QSet<TagId> m_sessionChecked; ///< tags the on-connect checks (16 and 32-bit) already covered
+    std::optional<Review32> m_deferred32;
+    std::optional<Review16> m_deferred16;
+    bool m_splitStopped = false; ///< a probe timed out: no more split probes until onTagsReplaced
 };
 
 } // namespace mb
