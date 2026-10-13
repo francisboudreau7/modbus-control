@@ -414,10 +414,12 @@ private slots:
         const Tag p = tagOf(1);
         const quint32 raw = sample(1, kF_CDAB, 52.1 + 0.2).raw;
         const QString expected =
-            QStringLiteral("These tags read implausible values with their current encoding: "
-                           "'P' reads %1 bar as float32 ABCD (float32 CDAB gives %2 bar). "
-                           "Writes to them are blocked until you confirm their encoding.")
-                .arg(g7(decodeValue(p, raw)), g7(52.3));
+            QStringLiteral("<p><b>1 tag reads an implausible value with its current encoding:</b></p>"
+                           "<ul><li>'P' (HR %3-%4): %1 bar as float32 ABCD, <b>%2 bar</b> as float32 "
+                           "CDAB</li></ul><p>Writes to them ask first until you confirm their "
+                           "encoding. Review them now?</p>")
+                .arg(g7(decodeValue(p, raw)), g7(52.3))
+                .arg(p.address).arg(p.address + 1);
         QCOMPARE(reviews.first(), expected);
         QVERIFY(!tagOf(1).encodingVerified);
         QVERIFY(tagOf(1).byteOrder == ByteOrder::ABCD);
@@ -450,7 +452,7 @@ private slots:
         }
         feed({sample(1, kF_ABCD, 1.0, Quality::Timeout), sample(2, kF_CDAB, 53.0)});
         QCOMPARE(reviews.size(), 1);
-        QVERIFY(reviews.first().contains(QStringLiteral("'P' reads")));
+        QVERIFY(reviews.first().contains(QStringLiteral("<li>'P' (HR ")));
         QVERIFY(!reviews.first().contains(QStringLiteral("Silent")));
         QVERIFY(tagOf(1).encodingVerified);
         QVERIFY(!tagOf(2).encodingVerified);
@@ -636,8 +638,12 @@ private slots:
         QCOMPARE(model->encodingNote(id), QStringLiteral("HR 110-111 read as float32 CDAB give 52.3"));
         QCOMPARE(splits.size(), 1);
         QCOMPARE(splits[0].text,
-                 QStringLiteral("'Setpoint' (HR 110, int16) reads 13107, but HR 110-111 read as float32 "
-                                "CDAB give 52.3: this tag is probably half of a float32 value."));
+                 QStringLiteral("<p><b>'Setpoint' is probably half of a float32 value.</b></p>"
+                                "<table cellspacing=\"0\" cellpadding=\"3\">"
+                                "<tr><td>As int16 (HR 110):</td><td align=\"right\">13107</td></tr>"
+                                "<tr><td>As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>"
+                                "</td></tr></table>"
+                                "<p>Writing a 16-bit value here would change half of the float.</p>"));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 110"));
         QCOMPARE(splits[0].keep, QStringLiteral("Keep int16"));
         // Later: stays flagged, and is not checked again.
@@ -694,9 +700,11 @@ private slots:
         mon->onConnected();
         const TagId id = addSplitTag(QStringLiteral("Hi"), 111);
         QCOMPARE(splits.size(), 1);
-        QCOMPARE(splits[0].text,
-                 QStringLiteral("'Hi' (HR 111, int16) reads 16977, but HR 110-111 read as float32 "
-                                "CDAB give 52.3: this tag is probably half of a float32 value."));
+        QVERIFY(splits[0].text.contains(QStringLiteral("<b>'Hi' is probably half of a float32 value.</b>")));
+        QVERIFY(splits[0].text.contains(
+            QStringLiteral("As int16 (HR 111):</td><td align=\"right\">16977</td>")));
+        QVERIFY(splits[0].text.contains(
+            QStringLiteral("As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>")));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 110"));
         QCOMPARE(tagOf(id).address, quint16(110));
         QVERIFY(tagOf(id).type == ValueType::Float32);
@@ -713,8 +721,10 @@ private slots:
         QCOMPARE(splits.size(), 1);
         QCOMPARE(splits[0].keep, QStringLiteral("Keep uint16"));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 111"));
-        QVERIFY(splits[0].text.startsWith(QStringLiteral("'U' (HR 111, uint16) reads 13107, but HR "
-                                                         "111-112 read as float32 CDAB give 52.3")));
+        QVERIFY(splits[0].text.contains(
+            QStringLiteral("As uint16 (HR 111):</td><td align=\"right\">13107</td>")));
+        QVERIFY(splits[0].text.contains(
+            QStringLiteral("As float32 CDAB (HR 111-112):</td><td align=\"right\"><b>52.3</b>")));
         QCOMPARE(model->encodingNote(id), QStringLiteral("HR 111-112 read as float32 CDAB give 52.3"));
     }
 
@@ -962,9 +972,10 @@ private slots:
         feed({good16(3, 8)});
         QCOMPARE(reviews.size(), 1);
         QCOMPARE(reviews[0],
-                 QStringLiteral("These 16-bit tags are probably half of a 32-bit value: 'X' (HR "
-                                "110-111 read as float32 CDAB give 52.3), 'Y' (HR 120-121 read as "
-                                "float32 CDAB give 17.5). Writes to them ask first."));
+                 QStringLiteral("<p><b>2 tags are probably half of a float32 value:</b></p><ul>"
+                                "<li>'X' (HR 110): 13107 as int16, <b>52.3</b> as float32 CDAB (HR 110-111)</li>"
+                                "<li>'Y' (HR 121): 16780 as int16, <b>17.5</b> as float32 CDAB (HR 120-121)</li>"
+                                "</ul><p>Writes to them ask first. Review them now?</p>"));
         QVERIFY(!tagOf(1).encodingVerified);
         QVERIFY(!tagOf(2).encodingVerified);
         QVERIFY(tagOf(3).encodingVerified);
@@ -985,8 +996,10 @@ private slots:
         feed({good16(1, 0x3333), good16(2, 0x418C)});
         QCOMPARE(reviews.size(), 1);
         QCOMPARE(splits.size(), 2);
-        QVERIFY(splits[0].text.startsWith(QStringLiteral("'X' (HR 110, int16)")));
-        QVERIFY(splits[1].text.startsWith(QStringLiteral("'Y' (HR 121, int16)")));
+        QVERIFY(splits[0].text.contains(QStringLiteral("<b>'X' is probably half")));
+        QVERIFY(splits[0].text.contains(QStringLiteral("As int16 (HR 110):")));
+        QVERIFY(splits[1].text.contains(QStringLiteral("<b>'Y' is probably half")));
+        QVERIFY(splits[1].text.contains(QStringLiteral("As int16 (HR 121):")));
         QVERIFY(tagOf(1).type == ValueType::Float32);
         QVERIFY(tagOf(2).type == ValueType::Float32);
         QCOMPARE(tagOf(2).address, quint16(120));
@@ -1021,7 +1034,8 @@ private slots:
         QVERIFY(reviews[0].contains(QStringLiteral("'X'")));
         QVERIFY(!reviews[0].contains(QStringLiteral("'Q'")));
         QCOMPARE(splits.size(), 1); // Q's own prompt
-        QVERIFY(splits[0].text.startsWith(QStringLiteral("'Q' (HR 110, int16)")));
+        QVERIFY(splits[0].text.contains(QStringLiteral("<b>'Q' is probably half")));
+        QVERIFY(splits[0].text.contains(QStringLiteral("As int16 (HR 110):")));
         QCOMPARE(reads.size(), 2);
     }
 
@@ -1034,8 +1048,8 @@ private slots:
         for (int i = 0; i < 3; ++i)
             feed({sample(1, kF_CDAB, 52.1 + 0.1 * i), good16(2, 0x3333)});
         QCOMPARE(reviews.size(), 2);
-        QVERIFY(reviews[0].startsWith(QStringLiteral("These 16-bit tags"))
-                != reviews[1].startsWith(QStringLiteral("These 16-bit tags")));
+        QVERIFY(reviews[0].contains(QStringLiteral("half of a float32"))
+                != reviews[1].contains(QStringLiteral("half of a float32")));
         QVERIFY(reviews[0].contains(QStringLiteral("'X'")) != reviews[1].contains(QStringLiteral("'X'")));
     }
 
@@ -1087,8 +1101,9 @@ private slots:
         mon->detectNow(1);
         QCOMPARE(splits.size(), 1);
         QCOMPARE(splits[0].text,
-                 QStringLiteral("No float32 found around 'S' (HR 5) right now; it stays flagged. "
-                                "Choose Keep int16 when it is 16-bit."));
+                 QStringLiteral("<p><b>No float32 found around 'S' (HR 5) right now.</b></p>"
+                                "<p>It stays flagged. Choose <b>Keep int16</b> if it is a 16-bit "
+                                "value.</p>"));
         QVERIFY(splits[0].change.isEmpty());
         QCOMPARE(splits[0].keep, QStringLiteral("Keep int16"));
         QVERIFY(messages->isEmpty());
@@ -1436,8 +1451,8 @@ private slots:
     void splitPromptMentionsScalingReset()
     {
         splitDevice();
-        const QString extra = QStringLiteral(" Change also resets its gain and offset to 1 and 0 and "
-                                             "clears its quick values.");
+        const QString extra = QStringLiteral("<p><small>Change also resets its gain and offset to 1 "
+                                             "and 0 and clears its quick values.</small></p>");
         mon->onConnected();
         const TagId p = add(mkTag(QStringLiteral("P"), 110, ValueType::Int16));
         feed({good16(p, 0x3333)});

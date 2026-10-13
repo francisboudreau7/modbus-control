@@ -746,8 +746,8 @@ private slots:
         connectLive();
         QTRY_VERIFY_WITH_TIMEOUT(!d.encodingReviews.isEmpty(), 8000);
         const QString text = d.encodingReviews.first();
-        QVERIFY2(text.contains(QStringLiteral("'Wrong order' reads ")), qPrintable(text));
-        QVERIFY2(text.contains(QStringLiteral("as float32 ABCD (float32 CDAB gives 52.3)")),
+        QVERIFY2(text.contains(QStringLiteral("<li>'Wrong order' (HR ")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral(" as float32 ABCD, <b>52.3</b> as float32 CDAB</li>")),
                  qPrintable(text));
         const Tag &now = model()->tagAt(model()->rowOf(40));
         QVERIFY(!now.encodingVerified);
@@ -776,10 +776,14 @@ private slots:
         const TagId id = addInt16(QStringLiteral("Setpoint"), 110);
         QVERIFY(model()->tagAt(model()->rowOf(id)).encodingVerified); // not flagged while waiting
         QTRY_VERIFY_WITH_TIMEOUT(!d.splitTexts.isEmpty(), 8000);
-        QCOMPARE(d.splitTexts.first(),
-                 QStringLiteral("'Setpoint' (HR 110, int16) reads 13107, but HR 110-111 read as "
-                                "float32 CDAB give 52.3: this tag is probably half of a float32 "
-                                "value."));
+        const QString split = d.splitTexts.first();
+        QVERIFY2(split.contains(QStringLiteral("<b>'Setpoint' is probably half of a float32 value.</b>")),
+                 qPrintable(split));
+        QVERIFY2(split.contains(QStringLiteral("As int16 (HR 110):</td><td align=\"right\">13107</td>")),
+                 qPrintable(split));
+        QVERIFY2(split.contains(
+                     QStringLiteral("As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>")),
+                 qPrintable(split));
         QCOMPARE(d.splitChanges.first(), QStringLiteral("Change to float32 CDAB at HR 110"));
         QCOMPARE(d.splitKeeps.first(), QStringLiteral("Keep int16"));
         const Tag &now = model()->tagAt(model()->rowOf(id));
