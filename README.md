@@ -20,7 +20,9 @@ and run it (Windows 10/11, 64-bit). See the [User Guide](docs/USER_GUIDE.md) to 
 - Analysis tab for step tests: 0 % and 63.2 % times between the cursors and a first-order model
   (gain K, dead time L, time constant T) for Ziegler–Nichols tuning
 - Safe writes: confirmation, per-tag Min/Max limits, checks for 32-bit values, one-click Quick A/B
-  presets
+  presets; 32-bit values are always written with one FC16 request
+- Encoding detection: works out the type and byte order of 32-bit values from what the device
+  sends, flags 16-bit tags that sit on half of a float32, and asks before writing until confirmed
 - Export of the graph (PNG, SVG, PDF) and of the data and analysis results (CSV)
 - Projects (`.mbproj`) and recorded sessions (`.mbsession`) to review offline
 - Test server `modbus_test_server` with simulated signals and fault injection
