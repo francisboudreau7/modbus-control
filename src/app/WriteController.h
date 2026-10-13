@@ -141,6 +141,9 @@ private:
     bool stillSame(const Tag &tag) const;
     quint64 m_nextRequest = 1;
     QHash<quint64, QList<TagId>> m_pending;
+    /// Registers sent by each pending request (so the reply is judged by what was sent, even if
+    /// the tags changed meanwhile).
+    QHash<quint64, int> m_pendingRegisters;
 };
 
 } // namespace mb

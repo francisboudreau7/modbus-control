@@ -382,6 +382,7 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     }
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, {id});
+    m_pendingRegisters.insert(reqId, int(raw->size()));
     emit message(tr("Writing %1 to %2 '%3' ...").arg(valueText(scaledValue), registerRange(tag, base), tag.name));
     emit writeRegisters(reqId, tag.address, *raw);
 }
@@ -598,6 +599,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         ids.append(tag.id);
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, ids);
+    m_pendingRegisters.insert(reqId, int(raws.size()));
     emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
     emit writeRegisters(reqId, first, raws);
 }
@@ -609,6 +611,9 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         return;
     const QList<TagId> ids = it.value();
     m_pending.erase(it);
+    const std::optional<int> sent = m_pendingRegisters.contains(requestId)
+                                        ? std::optional<int>(m_pendingRegisters.take(requestId))
+                                        : std::nullopt;
 
     QStringList names;
     for (TagId id : ids) {
@@ -628,11 +633,13 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         emit message(text);
 
         // A multi-register write (FC16) rejected as an illegal function: explain, nothing was written.
-        int registers = 0;
-        for (TagId id : ids) {
-            const int row = m_model->rowOf(id);
-            if (row >= 0)
-                registers += registerCount(m_model->tagAt(row).type);
+        int registers = sent.value_or(0);
+        if (!sent) {
+            for (TagId id : ids) {
+                const int row = m_model->rowOf(id);
+                if (row >= 0)
+                    registers += registerCount(m_model->tagAt(row).type);
+            }
         }
         if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1) {
             m_warn(rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
@@ -650,6 +657,7 @@ void WriteController::setConnected(bool connected)
     m_connected = connected;
     if (!connected)
         m_pending.clear();
+        m_pendingRegisters.clear();
 }
 
 void WriteController::requestQuickWrite(mb::TagId id, double scaledValue)

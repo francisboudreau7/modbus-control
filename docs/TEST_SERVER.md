@@ -244,8 +244,8 @@ byte orders, so you can see which order the client sent:
 ```
 
 Here the client wrote 123.5 in `ABCD` order. A client that writes a 32-bit value as two
-single-register writes (FC06) is also recognised: two consecutive FC06 writes to neighbouring addresses are decoded
-together on an extra line:
+single-register writes (FC06) is also recognised: two consecutive FC06 writes to neighbouring
+addresses are decoded together on an extra line:
 
 ```
 12:08:53.541 [576] unit=1 fc=0x06 write addr=120 value=0x0000 (0)

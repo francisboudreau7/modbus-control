@@ -209,8 +209,8 @@ a "run" and a "stop" value).
    It lists each writable tag that has a preset, with its name, live value and one button per
    preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
 3. Click a button. A question asks for confirmation, for example "Write 1000 to HR 100
-   'Setpoint'?". The write is then sent like a single-register write (range check; a 32-bit tag is
-   sent in one FC16 request).
+   'Setpoint'?". The write is then sent like a write of one tag (range check; a 32-bit tag is sent in
+   one FC16 request).
 
 For 16-bit tags the confirmation has a check box **Don't ask again this session**. Ticking it and
 confirming sends the write, and later quick writes to 16-bit tags go without a question until the

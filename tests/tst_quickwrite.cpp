@@ -1017,6 +1017,19 @@ private slots:
         r.wc->requestWrite(4, 7.0);
         r.wc->onWriteFinished(lastRequest(r), rejected(1));
         QCOMPARE(r.warns.size(), 0);
+
+        // Judged by what was sent: a 16-bit write whose tag became 32-bit before the reply is
+        // still a single FC06 write (no FC16 warning), and the other way round.
+        r.wc->requestWrite(4, 7.0);
+        const quint64 single = lastRequest(r);
+        QVERIFY(r.model.setData(r.model.index(r.model.rowOf(4), TagTableModel::Type), QStringLiteral("float32")));
+        r.wc->onWriteFinished(single, rejected(1));
+        QCOMPARE(r.warns.size(), 0);
+        r.wc->requestWrite(2, 20.0);
+        const quint64 wide = lastRequest(r);
+        QVERIFY(r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Type), QStringLiteral("int16")));
+        r.wc->onWriteFinished(wide, rejected(1));
+        QCOMPARE(r.warns.size(), 1);
     }
 
     // ---- layout of the write prompts (rich text built with mb::rich) ----

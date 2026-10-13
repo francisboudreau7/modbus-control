@@ -240,7 +240,7 @@ void ServerLoop::logRequest(int fd, const unsigned char *query, int length)
     const QByteArray stamp = QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")).toLatin1();
     std::printf("%s %s\n", stamp.constData(), describeRequest(fd, unit, fc, pdu, pduLen).c_str());
 
-    // FC06 mode writes a 32-bit value as two single writes: decode a consecutive pair together.
+    // A client that writes a 32-bit value as two FC06 requests: decode a consecutive pair together.
     if (fc == MODBUS_FC_WRITE_SINGLE_REGISTER && pduLen >= 4) {
         const unsigned addr = (unsigned(pdu[0]) << 8) | pdu[1];
         const quint16 value = quint16((unsigned(pdu[2]) << 8) | pdu[3]);
