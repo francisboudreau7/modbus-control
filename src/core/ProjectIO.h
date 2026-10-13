@@ -19,8 +19,7 @@ inline constexpr int kProjectFormatVersion = 1;
 ///
 /// {
 ///   "format": "modbus-control-project", "version": 1,
-///   "connection": { "host": "...", "port": 502, "unitId": 1, "timeoutMs": 1000, "pollPeriodMs": 500,
-///                   "singleRegisterWrites": false },
+///   "connection": { "host": "...", "port": 502, "unitId": 1, "timeoutMs": 1000, "pollPeriodMs": 500 },
 ///   "nextTagId": 4,
 ///   "tags": [ { "id": 1, "name": "...", "area": "holding"|"input", "address": 0,
 ///               "type": "int16"|"uint16"|"int32"|"uint32"|"float32",
@@ -32,6 +31,8 @@ inline constexpr int kProjectFormatVersion = 1;
 ///                 "detailedLabels": false, "showModel": false, "guideLines": true }
 /// }
 ///
+/// Older files may contain "connection.singleRegisterWrites" (the removed FC06-only option): it
+/// must still be a boolean when present, is otherwise ignored, and is never written.
 /// "byteOrder" only matters for the 32-bit types (2 registers); it is written for every tag.
 /// Missing fields take the defaults of ConnectionSettings / Tag (byteOrder defaults to
 /// "ABCD"). The change from format version 1 that added the 32-bit types and "byteOrder"

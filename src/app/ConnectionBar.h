@@ -5,7 +5,6 @@
 
 #include <QWidget>
 
-class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -15,9 +14,7 @@ namespace mb {
 
 /// Toolbar widget with the connection fields and the Connect/Disconnect button.
 /// Layout (one row): status LED, Host [line edit], Port [1..65535], Unit [0..247],
-/// Timeout ms [100..60000], Period ms [100..60000], "FC06 only" checkbox
-/// (singleRegisterWrites; tooltip: write multi-register values as one FC06 per register,
-/// for devices without FC16), Connect button.
+/// Timeout ms [100..60000], Period ms [100..60000], Connect button.
 /// Pure view: it never talks to the PollWorker itself.
 class ConnectionBar : public QWidget
 {
@@ -59,7 +56,6 @@ private:
     QSpinBox *m_unit = nullptr;
     QSpinBox *m_timeout = nullptr;
     QSpinBox *m_period = nullptr;
-    QCheckBox *m_singleWrites = nullptr;
     QPushButton *m_button = nullptr;
 };
 

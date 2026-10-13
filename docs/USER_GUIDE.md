@@ -5,8 +5,7 @@ This guide describes the application as built from this repository. For building
 
 ## Window layout
 
-- **Connection bar** (top): host, port, unit, timeout and period fields, the **FC06 only**
-  checkbox, a status LED, and the Connect / Disconnect button.
+- **Connection bar** (top): host, port, unit, timeout and period fields, a status LED, and the Connect / Disconnect button.
 - **Trend** and **Analysis** tabs (centre): **Trend** is the live graph with its controls above it.
   **Analysis** measures the step response of the tags marked for analysis (see
   [Analysis](#analysis-step-response)).
@@ -31,7 +30,6 @@ to stop. While connecting or connected, the fields are read-only.
 | Unit | 0..247 | Modbus unit id. |
 | Timeout | 100..60000 ms | How long to wait for each response. |
 | Period | 100..60000 ms | Time from one poll cycle to the next. A cycle that takes longer than the period starts the next one at once. |
-| FC06 only | on / off | Off by default. When on, a value that spans several registers (a 32-bit tag, or Write selected) is written as one FC06 request per register instead of one FC16 request. See Writing values. |
 
 The last values you connected with are remembered and used the next time the application starts.
 
@@ -172,16 +170,16 @@ can be written, of any type (16-bit or 32-bit).
 The value is converted to a raw integer with the inverse of gain and offset, and rounded to the
 nearest integer. If the raw value is outside the type's range (-32768..32767 for `int16`,
 0..65535 for `uint16`; the finite `float32` range, and the `int32` and `uint32` ranges, for 32-bit
-types), a warning is shown and nothing is sent. A 16-bit write uses FC06.
+types), a warning is shown and nothing is sent. A write of one 16-bit register uses FC06 (Write Single Register).
 
 For a 32-bit tag the value is encoded into two registers using the tag's byte order, and the
 confirmation names the registers, type and byte order in its note, for example "HR 6639-6640 ·
-float32 ABCD · raw 0x42480000". By default both registers are sent in one FC16
-(Write Multiple Registers) request, so the controller never sees half a value. If the **FC06 only**
-box in the connection bar is ticked, the app sends one FC06 (Write Single Register) request per
-register instead, in ascending address order, and stops at the first failure. In that case a failed
-write can leave the first register changed and the second unchanged. Use the option only for devices
-that do not accept FC16.
+float32 ABCD · raw 0x42480000". Both registers are sent in one FC16
+(Write Multiple Registers) request, so the controller never sees half a value. Everything longer
+than one 16-bit register (every 32-bit value, and Write selected with several registers) is sent
+that way. If a device rejects the request with Modbus exception 1 ("Illegal function"), it does not
+accept FC16. The app then shows a warning, "The device rejected the write of ...", saying so and
+that nothing was written. Such a device cannot be used for 32-bit values or multi-register writes.
 
 The status bar shows "Writing ...", then "Write OK: <name>" or "Write failed: <reason>". A failure
 also sets the reason as the tooltip of the tag's Quality cell. The Value column keeps showing the
@@ -195,8 +193,7 @@ polled value, so it changes only when the next read returns the new value.
 3. Edit the value for each register. Each field starts with the current value. Use `.` as the
    decimal separator.
 4. Confirm "Write N tags?". A table shows each tag with its current and new value, and a note gives
-   the registers (for example "HR 100-103 · FC16"). The whole group is sent in one FC16 request, or as one
-   FC06 request per register (ascending, stopping at the first failure) when **FC06 only** is ticked.
+   the registers (for example "HR 100-103 · FC16"). The whole group is sent in one FC16 request.
    16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.
 
 ### Quick writes
@@ -212,8 +209,8 @@ a "run" and a "stop" value).
    It lists each writable tag that has a preset, with its name, live value and one button per
    preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
 3. Click a button. A question asks for confirmation, for example "Write 1000 to HR 100
-   'Setpoint'?". The write is then sent like a single-register write (range check, and the
-   **FC06 only** setting for 32-bit tags).
+   'Setpoint'?". The write is then sent like a single-register write (range check; a 32-bit tag is
+   sent in one FC16 request).
 
 For 16-bit tags the confirmation has a check box **Don't ask again this session**. Ticking it and
 confirming sends the write, and later quick writes to 16-bit tags go without a question until the
@@ -254,8 +251,7 @@ Then the confirmation shows the **Current value** (the last good reading, or "un
 the Test server guide): it prints every write it receives, with the registers in hex and the
 value decoded in each byte order. Add a writable float32 holding tag at address 110 with the byte
 order you plan to use, write a value, and check that the log shows that value under the same byte
-order, that refused writes (outside the limits, no reading) produce no line, and, with **FC06
-only**, that the pair line decodes to the same value.
+order, that refused writes (outside the limits, no reading) produce no line.
 
 Limits are a safety net, not a substitute for checking the controller's own ranges. Set them to the
 ranges your controller accepts for that parameter (see the CM50 section below).
@@ -770,7 +766,7 @@ A session also keeps the cursors (see [Sessions](#sessions)).
 
 ## Projects
 
-Projects are saved as `.mbproj` files. A project holds the connection settings (including FC06 only), the register numbering
+Projects are saved as `.mbproj` files. A project holds the connection settings, the register numbering
 (1-based or not), the tag list, including tag colours, the **Analyze** flags, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
 
 In the file, each tag has an `analyzed` key, an `axis` key (`"left"` or `"right"`) and optional
@@ -874,19 +870,11 @@ process variable). The app sends address 5008.
 **Floating-point values** are IEEE-754 single precision, high word first: byte order `ABCD`. If the
 controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDAB`.
 
-**Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single) only,
-so `examples/cm50.mbproj` has **FC06 only** ticked: each 32-bit write is sent as two FC06
-requests. Without it, a 32-bit write uses FC16; a device that doesn't support FC16 rejects the
-whole request (nothing is written). The app then shows a warning with a **Use FC06 only and
-reconnect** button: it ticks **FC06 only** (saved in the project) and reconnects. The value is not
-written again; write it again yourself. The app never switches to FC06 without you choosing it.
-
-**FC06 mode.** With **FC06 only** ticked, a float is written as two separate single-register writes.
-Between them the controller holds a mix of the old and the new word. For a float, that mixed value
-stays within 0.8 % of the old or the new value, so it is never far off, but the regulator sees it.
-If the second write fails, the status bar reports "Write failed" with the text "value partially
-applied" and names the registers already written: the first word is then new and the second is old.
-Check the value on the controller, then write the setpoint again.
+**Writes.** The manual documents holding registers for FC03 (read) and FC06 (write single). The
+float32 setpoints of `examples/cm50.mbproj` are written with FC16 (Write Multiple Registers): one
+request carries both registers, so the controller never holds half old, half new. If your CM50 does
+not accept FC16, it rejects the request (nothing is written) and the app says so; such a controller
+cannot take float32 writes from this app.
 
 **First writes to a real controller**
 
@@ -914,7 +902,7 @@ Check the value on the controller, then write the setpoint again.
 | Instrument Type | Input | 3 | uint16 | Read-only. |
 
 `examples/cm50.mbproj` contains these tags, with the 1-based option on, host 192.168.1.50, port 502,
-unit 1, a 500 ms period and FC06 only on. Open it with File > Open, or give its path on the
+unit 1, and a 500 ms period. Open it with File > Open, or give its path on the
 command line, then change the host and unit to match your controller. Setpoint and trip values are
 written with confirmation, but check them against the controller's own limits first.
 

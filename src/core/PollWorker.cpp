@@ -234,8 +234,8 @@ ModbusResult PollWorker::withFc16Hint(ModbusResult result)
 {
     if (result.error == ModbusError::Exception && result.exceptionCode == 1) {
         result.message += QStringLiteral(
-            " This device may not support FC16 (write multiple registers): tick FC06 only in the "
-            "connection bar and reconnect.");
+            " The device does not accept FC16 (write multiple registers), which 32-bit values and "
+            "multi-register writes need.");
     }
     return result;
 }
@@ -249,23 +249,7 @@ void PollWorker::serveWrites()
             r = notConnectedResult();
         else if (w.values.size() == 1)
             r = m_conn->writeSingle(w.address, w.values.first());
-        else if (m_settings.singleRegisterWrites && w.values.size() > 1) {
-            for (qsizetype i = 0; i < w.values.size(); ++i) {
-                const quint16 reg = static_cast<quint16>(w.address + i);
-                r = m_conn->writeSingle(reg, w.values.at(i));
-                if (!r.ok()) {
-                    const QString partial = i > 0
-                        ? QStringLiteral(" (registers %1..%2 were already written: value partially applied)")
-                              .arg(w.address + m_addressBase)
-                              .arg(reg - 1 + m_addressBase)
-                        : QString();
-                    r.message = QStringLiteral("Write of register %1 failed%2: %3")
-                                    .arg(reg + m_addressBase)
-                                    .arg(partial, r.message);
-                    break;
-                }
-            }
-        } else
+        else
             r = withFc16Hint(m_conn->writeMultiple(w.address, w.values));
 
         // Discard anything left in the socket so a late reply is not read as the next answer.
