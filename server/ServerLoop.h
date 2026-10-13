@@ -3,6 +3,7 @@
 #include <utility>
 
 #include <QHash>
+#include <QSet>
 
 #include "ServerConfig.h"
 #include "SignalGen.h"
@@ -47,6 +48,10 @@ private:
     QList<SignalGenerator> m_generators;
     quint16 m_boundPort = 0;
     QList<int> m_clients;
+    /// strict32Bit: first register of each 2-register holding value / input binding (the pair is
+    /// start and start + 1). Filled by start().
+    QSet<unsigned> m_holdingPairs;
+    QSet<unsigned> m_inputPairs;
 
     void tick(double t, double dt);
     void closeClient(int fd, const char *why);

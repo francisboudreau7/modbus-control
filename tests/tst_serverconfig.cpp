@@ -100,6 +100,7 @@ private slots:
     void defaultHoldingDroppedWhenItDoesNotFit();
     void defaultHoldingEncoding();
     void unsignedEncoding();
+    void strict32BitKey();
 };
 
 void TstServerConfig::defaultsMatchSpec()
@@ -625,6 +626,30 @@ void TstServerConfig::unsignedEncoding()
     encodeRegisters(-1.0, RegisterFormat::UInt32, WordOrder::CDAB, regs);
     QCOMPARE(regs[0], quint16(0));
     QCOMPARE(regs[1], quint16(0));
+}
+
+void TstServerConfig::strict32BitKey()
+{
+    QVERIFY(!ServerConfig::defaults().strict32Bit);
+    QString error;
+    const auto empty = parseServerConfig("{}", &error);
+    QVERIFY2(empty.has_value(), qPrintable(error));
+    QVERIFY(!empty->strict32Bit);
+
+    const auto on = parseServerConfig(R"JSON({"strict32Bit": true})JSON", &error);
+    QVERIFY2(on.has_value(), qPrintable(error));
+    QVERIFY(on->strict32Bit);
+
+    const auto off = parseServerConfig(R"JSON({"strict32Bit": false})JSON", &error);
+    QVERIFY2(off.has_value(), qPrintable(error));
+    QVERIFY(!off->strict32Bit);
+
+    for (const char *json : {R"JSON({"strict32Bit": 1})JSON", R"JSON({"strict32Bit": "true"})JSON"}) {
+        const auto bad = parseServerConfig(json, &error);
+        QVERIFY(!bad.has_value());
+        QVERIFY2(error.contains(QStringLiteral("strict32Bit")), qPrintable(error));
+        QVERIFY2(error.contains(QStringLiteral("must be true or false")), qPrintable(error));
+    }
 }
 
 QTEST_GUILESS_MAIN(TstServerConfig)

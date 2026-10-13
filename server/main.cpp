@@ -112,8 +112,9 @@ int main(int argc, char *argv[])
     const QCommandLineOption dropOption(QStringLiteral("drop"), QStringLiteral("Percent chance (0..100) to drop the client instead of replying."), QStringLiteral("percent"));
     const QCommandLineOption verboseOption({QStringLiteral("v"), QStringLiteral("verbose")}, QStringLiteral("Log every request to stdout."));
     const QCommandLineOption logWritesOption(QStringLiteral("log-writes"), QStringLiteral("Log only write requests, with registers in hex and 32-bit values decoded in every byte order."));
+    const QCommandLineOption strict32Option(QStringLiteral("strict-32bit"), QStringLiteral("Refuse with exception 2 every read or write that covers only one register of a 32-bit value (like the ABB CM50)."));
     parser.addOptions({helpOption, versionOption, configOption, hostOption, portOption, unitOption, tickOption,
-                       delayOption, dropOption, verboseOption, logWritesOption});
+                       delayOption, dropOption, verboseOption, logWritesOption, strict32Option});
 
     if (!parser.parse(QCoreApplication::arguments())) {
         return usageError(parser.errorText());
@@ -182,6 +183,9 @@ int main(int argc, char *argv[])
     if (parser.isSet(logWritesOption)) {
         config.logWrites = true;
     }
+    if (parser.isSet(strict32Option)) {
+        config.strict32Bit = true;
+    }
 
 #ifdef _WIN32
     SetConsoleCtrlHandler(consoleHandler, TRUE);
@@ -220,6 +224,9 @@ int main(int argc, char *argv[])
     }
     if (config.delayMs > 0 || config.dropPercent > 0) {
         std::printf("fault injection: delay %d ms, drop %g%%\n", config.delayMs, config.dropPercent);
+    }
+    if (config.strict32Bit) {
+        std::printf("strict 32-bit: reads and writes that split a 32-bit value are refused\n");
     }
     std::printf("LISTENING %u\n", static_cast<unsigned>(server.boundPort()));
     std::fflush(stdout);

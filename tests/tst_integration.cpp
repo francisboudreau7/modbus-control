@@ -1099,7 +1099,7 @@ private slots:
         const CliRun r = runServerCli({QStringLiteral("--help")});
         QVERIFY(r.finished);
         QCOMPARE(r.exitCode, 0);
-        for (const char *opt : {"--log-writes", "--config", "--delay", "--drop", "--verbose", "--port"})
+        for (const char *opt : {"--log-writes", "--strict-32bit", "--config", "--delay", "--drop", "--verbose", "--port"})
             QVERIFY2(r.out.contains(QLatin1String(opt)), opt);
     }
 
@@ -1248,6 +1248,55 @@ private slots:
         QVERIFY2(log.contains(QStringLiteral("FC06 pair addr=40-41 values=0x3F80,0x0000")), qPrintable(log));
         QVERIFY2(!log.contains(QStringLiteral("read addr=")), "reads must not be logged with --log-writes");
         QVERIFY2(!log.contains(QStringLiteral("] connected")), "connections are logged only with -v");
+    }
+
+    void server_strict32BitRefusesSplitValues()
+    {
+        QVERIFY(m_server->start({QStringLiteral("--strict-32bit")}));
+        QVERIFY(m_server->log().contains(
+            QStringLiteral("strict 32-bit: reads and writes that split a 32-bit value are refused")));
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        auto illegalAddress = [](const ModbusResult &r) {
+            return r.error == ModbusError::Exception && r.exceptionCode == 2;
+        };
+        QList<quint16> v;
+
+        // Reads: one register of a 32-bit holding value (HR 110-111) or input value (IR 20-21).
+        QVERIFY(illegalAddress(c.readRegisters(Area::HoldingRegister, 110, 1, v)));
+        QVERIFY(illegalAddress(c.readRegisters(Area::HoldingRegister, 111, 1, v)));
+        QVERIFY(illegalAddress(c.readRegisters(Area::HoldingRegister, 109, 2, v)));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 110, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x3333, 0x4251}));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 109, 3, v).ok());
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 100, 1, v).ok());
+        QVERIFY(illegalAddress(c.readRegisters(Area::InputRegister, 20, 1, v)));
+        QVERIFY(c.readRegisters(Area::InputRegister, 20, 2, v).ok());
+
+        // Writes: a refused write changes nothing.
+        QVERIFY(illegalAddress(c.writeSingle(110, 0x1234)));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 110, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x3333, 0x4251}));
+        QVERIFY(c.writeMultiple(110, {0x4000, 0x0000}).ok());
+        QVERIFY(illegalAddress(c.writeMultiple(111, {0x7777, 0x8888})));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 110, 2, v).ok());
+        QCOMPARE(v, (QList<quint16>{0x4000, 0x0000}));
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 112, 1, v).ok());
+        QCOMPARE(v, QList<quint16>{0});
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("splits a 32-bit value")), 3000);
+    }
+
+    void server_strict32BitOffByDefault()
+    {
+        QVERIFY(m_server->start());
+        QVERIFY(!m_server->log().contains(QStringLiteral("strict 32-bit")));
+        ModbusConnection c;
+        QVERIFY(c.open(settingsFor(m_server->port())).ok());
+        QList<quint16> v;
+        QVERIFY(c.readRegisters(Area::HoldingRegister, 110, 1, v).ok());
+        QCOMPARE(v, QList<quint16>{0x3333});
+        QVERIFY(c.readRegisters(Area::InputRegister, 20, 1, v).ok());
+        QVERIFY(c.writeSingle(110, 0x1234).ok());
     }
 
     void server_dropInjectionLogged()
