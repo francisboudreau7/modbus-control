@@ -108,9 +108,8 @@ private slots:
     void addressSpaceLimit_data();
     void addressSpaceLimit();
     void unitIdRange();
-    void singleRegisterWritesRoundTrip_data();
-    void singleRegisterWritesRoundTrip();
-    void singleRegisterWritesDefaultsToFalse();
+    void legacySingleRegisterWritesIsIgnored_data();
+    void legacySingleRegisterWritesIsIgnored();
     void addressBaseRoundTrip_data();
     void addressBaseRoundTrip();
     void addressBaseDefaultsToZero();
@@ -176,8 +175,7 @@ void TstProjectIO::writesSchemaKeys()
     QCOMPARE(conn.value(QStringLiteral("unitId")).toInt(), 7);
     QCOMPARE(conn.value(QStringLiteral("timeoutMs")).toInt(), 2500);
     QCOMPARE(conn.value(QStringLiteral("pollPeriodMs")).toInt(), 200);
-    QVERIFY(conn.value(QStringLiteral("singleRegisterWrites")).isBool());
-    QCOMPARE(conn.value(QStringLiteral("singleRegisterWrites")).toBool(), false);
+    QVERIFY(!conn.contains(QStringLiteral("singleRegisterWrites")));
 
     const QJsonArray tags = root.value(QStringLiteral("tags")).toArray();
     QCOMPARE(tags.size(), qsizetype(4));
@@ -595,7 +593,7 @@ void TstProjectIO::unitIdRange()
     QCOMPARE(high->connection.unitId, 247);
 }
 
-void TstProjectIO::singleRegisterWritesRoundTrip_data()
+void TstProjectIO::legacySingleRegisterWritesIsIgnored_data()
 {
     QTest::addColumn<bool>("value");
 
@@ -603,33 +601,24 @@ void TstProjectIO::singleRegisterWritesRoundTrip_data()
     QTest::newRow("false") << false;
 }
 
-void TstProjectIO::singleRegisterWritesRoundTrip()
+// Files written before the FC06-only option was removed still load; the key is not written back.
+void TstProjectIO::legacySingleRegisterWritesIsIgnored()
 {
     QFETCH(bool, value);
 
-    Project p;
-    p.connection.singleRegisterWrites = value;
-    p.nextTagId = 1;
-
-    const QByteArray data = projectToJson(p);
-    const QJsonObject conn = QJsonDocument::fromJson(data).object().value(QStringLiteral("connection")).toObject();
-    QCOMPARE(conn.value(QStringLiteral("singleRegisterWrites")).toBool(), value);
-
     QString error;
-    const std::optional<Project> loaded = projectFromJson(data, &error);
-    QVERIFY2(loaded.has_value(), qPrintable(error));
-    QCOMPARE(loaded->connection.singleRegisterWrites, value);
-    QCOMPARE(*loaded, p);
-}
-
-void TstProjectIO::singleRegisterWritesDefaultsToFalse()
-{
-    QString error;
-    const auto project = projectFromJson(json(R"({
-        "format":"modbus-control-project","version":1,"connection":{"port":502}
-    })"), &error);
+    const auto project = projectFromJson(
+        json(QStringLiteral(R"({"format":"modbus-control-project","version":1,
+                "connection":{"port":502,"singleRegisterWrites":%1}})")
+                 .arg(value ? QStringLiteral("true") : QStringLiteral("false"))
+                 .toUtf8().constData()),
+        &error);
     QVERIFY2(project.has_value(), qPrintable(error));
-    QCOMPARE(project->connection.singleRegisterWrites, false);
+    QCOMPARE(project->connection.port, quint16(502));
+
+    const QByteArray out = projectToJson(*project);
+    QVERIFY(!out.contains("singleRegisterWrites"));
+    QVERIFY(projectFromJson(out, &error).has_value());
 }
 
 void TstProjectIO::addressBaseRoundTrip_data()
@@ -687,7 +676,6 @@ void TstProjectIO::exampleProjectsLoad()
     QCOMPARE(cm50->addressBase, 1);
     QCOMPARE(cm50->connection.host, QStringLiteral("192.168.1.50"));
     QCOMPARE(cm50->connection.port, quint16(502));
-    QCOMPARE(cm50->connection.singleRegisterWrites, true); // CM50 documents FC06 only
     QCOMPARE(cm50->tags.size(), 6);
     // Register 5009 (as printed in the manual) is protocol address 5008.
     QCOMPARE(cm50->tags.at(0).name, QStringLiteral("Loop 1 Process Variable"));

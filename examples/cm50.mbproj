@@ -7,8 +7,7 @@
     "port": 502,
     "unitId": 1,
     "timeoutMs": 1000,
-    "pollPeriodMs": 500,
-    "singleRegisterWrites": true
+    "pollPeriodMs": 500
   },
   "addressBase": 1,
   "nextTagId": 7,

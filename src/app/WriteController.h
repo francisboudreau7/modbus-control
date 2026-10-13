@@ -67,8 +67,7 @@ class TagTableModel;
 /// in a warning box. Shows a dialog with one value field per tag (prefilled with the current
 /// value), applies checks 2, 3 and 5 to every tag (limits listed together in one warning),
 /// encodes all, confirms ("Write 3 tags?", a grid Tag | Current | New and the note "HR 100-103 ·
-/// FC16", or "FC06 ×4" while singleRegisterWrites() is on), and emits one writeRegisters with all
-/// registers.
+/// FC16"), and emits one writeRegisters with all registers (one FC16 request).
 ///
 /// requestQuickWrite: same checks as requestWrite. 16-bit tags: while quickConfirm() is on the
 /// confirmation has a check box "Don't ask again this session"; when it is ticked and the
@@ -78,11 +77,10 @@ class TagTableModel;
 ///
 /// onWriteFinished: success -> message "Write OK: ..."; failure -> message "Write failed: ..." (no dialog) and
 /// TagTableModel::setStatusText() on the affected tags. Exception: a write of more than one
-/// register that failed with Modbus exception 1 (illegal function) while singleRegisterWrites()
-/// is off also shows a warning (replaceable prompt, headline "The device rejected the write of
-/// 'X'.") explaining that the device probably does not support FC16 and nothing was written,
-/// with the buttons "Use FC06 only and reconnect" and
-/// "Close"; the first emits singleRegisterWritesRequested(). The value is not written again.
+/// register that failed with Modbus exception 1 (illegal function) also shows a warning (through
+/// the replaceable warning seam, headline "The device rejected the write of 'X'.") explaining that
+/// the device does not accept FC16 (which 32-bit values and multi-register writes need) and that
+/// nothing was written. There is no fallback to single-register writes.
 class WriteController : public QObject
 {
     Q_OBJECT
@@ -97,17 +95,12 @@ public slots:
     void requestQuickWrite(mb::TagId id, double scaledValue);
     /// Default true (each application start).
     void setQuickConfirm(bool on);
-    /// Whether the connection uses FC06 for multi-register values (set on every connect).
-    void setSingleRegisterWrites(bool on);
 
 public:
     bool quickConfirm() const;
-    bool singleRegisterWrites() const;
 
 signals:
     void quickConfirmChanged(bool on);
-    /// The user chose "Use FC06 only and reconnect" after an FC16 rejection.
-    void singleRegisterWritesRequested();
     /// The user chose "Detect encoding..." in the unconfirmed-encoding prompt.
     void detectEncodingRequested(mb::TagId id);
     /// Connect to PollWorker::writeRegisters (queued).
@@ -143,9 +136,6 @@ private:
     bool m_connected = false;
     bool m_quickConfirm = true;
     quint64 m_connectionGeneration = 0; ///< bumped on every disconnect
-    bool m_singleRegisterWrites = false;
-    /// FC16 rejected: true = "Use FC06 only and reconnect". Replaceable in tests.
-    std::function<bool(const QString &text)> m_offerSingleWrites;
     /// True when the tag still exists with exactly this configuration (encodingVerified aside),
     /// and its encoding is confirmed now (encodingVerified true, any width).
     bool stillSame(const Tag &tag) const;

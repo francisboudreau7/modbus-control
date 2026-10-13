@@ -152,7 +152,6 @@ class TstAppController : public QObject
         QStringList confirmTexts;
         QStringList writeWarnings;                  ///< WriteController::m_warn
         QList<WriteController::QuickAnswer> quickAnswers;
-        QList<bool> offers;                         ///< m_offerSingleWrites
         QList<bool> implausible;                    ///< m_warnImplausible
         QList<WriteController::EncodingAnswer> encodingAnswers; ///< m_confirmEncoding
         QStringList encodingPrompts;
@@ -262,13 +261,6 @@ class TstAppController : public QObject
                 return WriteController::EncodingAnswer::Cancel;
             }
             return d.encodingAnswers.takeFirst();
-        };
-        w->m_offerSingleWrites = [this](const QString &text) {
-            if (d.offers.isEmpty()) {
-                d.unexpected << QStringLiteral("offer single writes: ") + text;
-                return false;
-            }
-            return d.offers.takeFirst();
         };
         w->m_askValues = [this](const QList<Tag> &, const QList<double> &)
             -> std::optional<QList<double>> {
@@ -965,57 +957,47 @@ private slots:
         noUnexpected();
     }
 
-    void fc06ButtonReconnects()
+    // A device that rejects FC16: a warning explains it; there is no FC06 fallback any more.
+    void fc16RejectionWarns()
     {
         connectLive();
         QTRY_VERIFY_WITH_TIMEOUT(ctl->m_recorder.size() >= 3, 5000);
         WriteController *w = ctl->m_writes;
-        QVERIFY(!w->singleRegisterWrites());
-        QVERIFY(!modified());
-
         const ModbusResult illegal{ModbusError::Exception, 1, QStringLiteral("Illegal function")};
 
-        // The user closes the box: nothing changes.
-        w->m_pending.insert(900, {11});
-        d.offers << false;
+        w->m_pending.insert(900, {11}); // a 32-bit tag
         w->onWriteFinished(900, illegal);
-        QVERIFY(!w->singleRegisterWrites());
-        QVERIFY(!win->connectionBar()->settings().singleRegisterWrites);
+        QCOMPARE(d.writeWarnings.size(), 1);
+        QVERIFY(d.writeWarnings.at(0).contains(QStringLiteral("does not accept FC16")));
+        QVERIFY(d.writeWarnings.at(0).contains(QStringLiteral("Nothing was written.")));
+        QVERIFY(!d.writeWarnings.at(0).contains(QStringLiteral("FC06")));
         QVERIFY(!modified());
 
-        // "Use FC06 only and reconnect".
-        QSignalSpy requested(w, &WriteController::singleRegisterWritesRequested);
-        w->m_pending.insert(901, {11});
-        d.offers << true;
+        // A 16-bit failure, another exception, or a success never warns.
+        w->m_pending.insert(901, {8});
         w->onWriteFinished(901, illegal);
-        QCOMPARE(requested.count(), 1);
-        QVERIFY(win->connectionBar()->settings().singleRegisterWrites);
-        QVERIFY(w->singleRegisterWrites());
-        QVERIFY(modified());
-        QSettings q;
-        QVERIFY(q.value(QStringLiteral("connection/lastSingleRegisterWrites")).toBool());
-
-        // Reconnected with the new setting and still polling.
-        waitState(ConnectionState::Connected);
-        const qsizetype n = ctl->m_recorder.size();
-        QTRY_VERIFY_WITH_TIMEOUT(ctl->m_recorder.size() > n + 2, 8000);
-
-        // Already in FC06 mode: no second offer. A 16-bit failure never offers it either.
         w->m_pending.insert(902, {11});
-        w->onWriteFinished(902, illegal);
+        w->onWriteFinished(902, ModbusResult{ModbusError::Timeout, 0, QStringLiteral("Timed out")});
         w->m_pending.insert(903, {8});
-        w->onWriteFinished(903, ModbusResult{ModbusError::Timeout, 0, QStringLiteral("Timed out")});
-        w->m_pending.insert(904, {8});
-        w->onWriteFinished(904, ModbusResult{});
-        QCOMPARE(requested.count(), 1);
+        w->onWriteFinished(903, ModbusResult{});
+        QCOMPARE(d.writeWarnings.size(), 1);
+        d.writeWarnings.clear();
+        noUnexpected();
+    }
 
-        // The signal alone (as the dialog would emit it) also works when disconnected.
-        disconnectLive();
-        ConnectionSettings s = win->connectionBar()->settings();
-        s.singleRegisterWrites = false;
-        win->connectionBar()->setSettings(s);
-        emit w->singleRegisterWritesRequested();
-        QVERIFY(win->connectionBar()->settings().singleRegisterWrites);
+    // The obsolete FC06-only value in the saved settings is ignored and removed on the next connect.
+    void legacySingleRegisterWritesSettingIsDropped()
+    {
+        {
+            QSettings q;
+            q.setValue(QStringLiteral("connection/lastSingleRegisterWrites"), true);
+            q.sync();
+        }
+        win->actions().newProject->trigger(); // reads the saved connection settings
+        connectLive();     // stores them again
+        QSettings q;
+        QVERIFY(!q.contains(QStringLiteral("connection/lastSingleRegisterWrites")));
+        QVERIFY(q.contains(QStringLiteral("connection/lastPort")));
         noUnexpected();
     }
 

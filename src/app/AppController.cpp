@@ -65,8 +65,6 @@ ConnectionSettings lastConnection()
     s.unitId = q.value(QStringLiteral("connection/lastUnit"), d.unitId).toInt();
     s.timeoutMs = q.value(QStringLiteral("connection/lastTimeout"), d.timeoutMs).toInt();
     s.pollPeriodMs = q.value(QStringLiteral("connection/lastPeriod"), d.pollPeriodMs).toInt();
-    s.singleRegisterWrites =
-        q.value(QStringLiteral("connection/lastSingleRegisterWrites"), d.singleRegisterWrites).toBool();
     return s;
 }
 
@@ -78,7 +76,7 @@ void storeLastConnection(const ConnectionSettings &s)
     q.setValue(QStringLiteral("connection/lastUnit"), s.unitId);
     q.setValue(QStringLiteral("connection/lastTimeout"), s.timeoutMs);
     q.setValue(QStringLiteral("connection/lastPeriod"), s.pollPeriodMs);
-    q.setValue(QStringLiteral("connection/lastSingleRegisterWrites"), s.singleRegisterWrites);
+    q.remove(QStringLiteral("connection/lastSingleRegisterWrites")); // obsolete FC06-only option
 }
 
 Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType type,
@@ -217,21 +215,7 @@ void AppController::wireConnection()
         if (!prepareConnect())
             return;
         storeLastConnection(s);
-        m_writes->setSingleRegisterWrites(s.singleRegisterWrites);
         QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
-    });
-    // "Use FC06 only and reconnect" after a device rejected an FC16 write.
-    connect(m_writes, &WriteController::singleRegisterWritesRequested, this, [this] {
-        ConnectionBar *b = m_window->connectionBar();
-        ConnectionSettings s = b->settings();
-        s.singleRegisterWrites = true;
-        b->setSettings(s);
-        setModified(true);
-        storeLastConnection(s);
-        m_writes->setSingleRegisterWrites(true);
-        // Reconnect with the new setting; the recording and its time base continue.
-        QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
-        m_window->showStatusMessage(tr("FC06 only is on; reconnecting. Write the value again."));
     });
     connect(bar, &ConnectionBar::disconnectRequested, this, [this] {
         QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);

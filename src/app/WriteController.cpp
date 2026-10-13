@@ -169,15 +169,6 @@ WriteController::WriteController(TagTableModel *model, QWidget *dialogParent, QO
         box.setEscapeButton(QMessageBox::No);
         return box.exec() == QMessageBox::Yes;
     };
-    m_offerSingleWrites = [this](const QString &text) {
-        QMessageBox box(QMessageBox::Warning, tr("Write rejected"), text, QMessageBox::NoButton,
-                        m_dialogParent);
-        setRich(box);
-        QPushButton *use = box.addButton(tr("Use FC06 only and reconnect"), QMessageBox::AcceptRole);
-        box.addButton(tr("Close"), QMessageBox::RejectRole);
-        box.exec();
-        return box.clickedButton() == use;
-    };
     m_quickConfirmPrompt = [this](const QString &question) {
         QMessageBox box(QMessageBox::Question, tr("Confirm write"), question,
                         QMessageBox::Yes | QMessageBox::No, m_dialogParent);
@@ -582,11 +573,10 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     }
     const QString range = shownFirst == shownLast ? QStringLiteral("HR %1").arg(shownFirst)
                                                   : QStringLiteral("HR %1-%2").arg(shownFirst).arg(shownLast);
-    const QString how = m_singleRegisterWrites ? tr("FC06 ×%1").arg(totalRegisters) : tr("FC16");
     const QString question =
         rich::headline(tags.size() == 1 ? tr("Write 1 tag?") : tr("Write %1 tags?").arg(tags.size()))
         + rich::grid({tr("Tag"), tr("Current"), tr("New")}, table, 2)
-        + rich::note(tr("%1 · %2").arg(range, how));
+        + rich::note(tr("%1 · FC16").arg(range));
     if (!m_confirm(question))
         return;
 
@@ -637,31 +627,21 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
             m_model->setStatusText(id, text);
         emit message(text);
 
-        // A multi-register write (FC16) rejected as an illegal function: offer FC06 mode.
+        // A multi-register write (FC16) rejected as an illegal function: explain, nothing was written.
         int registers = 0;
         for (TagId id : ids) {
             const int row = m_model->rowOf(id);
             if (row >= 0)
                 registers += registerCount(m_model->tagAt(row).type);
         }
-        if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1
-            && !m_singleRegisterWrites
-            && m_offerSingleWrites(
-                rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
-                + rich::paragraph(tr("It answered \"Illegal function\": it probably does not "
-                                     "support FC16 (write multiple registers). Nothing was "
-                                     "written."))
-                + rich::paragraph(tr("With FC06 only, each register is written with its own "
-                                     "request. Write the value again after reconnecting.")))
-            && !m_singleRegisterWrites) { // another offer may have switched while this one was open
-            emit singleRegisterWritesRequested();
+        if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1) {
+            m_warn(rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
+                   + rich::paragraph(tr("It answered \"Illegal function\": it does not accept FC16 "
+                                        "(write multiple registers), which 32-bit values and "
+                                        "multi-register writes need. Nothing was written.")));
         }
     }
 }
-
-void WriteController::setSingleRegisterWrites(bool on) { m_singleRegisterWrites = on; }
-
-bool WriteController::singleRegisterWrites() const { return m_singleRegisterWrites; }
 
 void WriteController::setConnected(bool connected)
 {

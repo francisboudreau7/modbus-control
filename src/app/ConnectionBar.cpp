@@ -1,6 +1,5 @@
 ﻿#include "ConnectionBar.h"
 
-#include <QCheckBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -70,12 +69,6 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
     m_timeout = makeSpin(QStringLiteral("Timeout"), 100, 60000, QStringLiteral(" ms"), 90);
     m_period = makeSpin(QStringLiteral("Period"), 100, 60000, QStringLiteral(" ms"), 90);
 
-    m_singleWrites = new QCheckBox(QStringLiteral("FC06 only"), this);
-    m_singleWrites->setToolTip(QStringLiteral(
-        "Write multi-register values (32-bit tags) as one FC06 request per register, for devices "
-        "without FC16 (Write Multiple Registers)."));
-    layout->addWidget(m_singleWrites);
-
     m_button = new QPushButton(this);
     m_button->setFixedWidth(100);
     layout->addWidget(m_button);
@@ -87,7 +80,6 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
     connect(m_unit, &QSpinBox::valueChanged, this, [this] { emit settingsEdited(); });
     connect(m_timeout, &QSpinBox::valueChanged, this, [this] { emit settingsEdited(); });
     connect(m_period, &QSpinBox::valueChanged, this, [this] { emit settingsEdited(); });
-    connect(m_singleWrites, &QCheckBox::clicked, this, [this] { emit settingsEdited(); });
 
     connect(m_host, &QLineEdit::returnPressed, this, [this] {
         if (m_state == ConnectionState::Disconnected && hasValidInput())
@@ -112,7 +104,6 @@ ConnectionSettings ConnectionBar::settings() const
     s.unitId = m_unit->value();
     s.timeoutMs = m_timeout->value();
     s.pollPeriodMs = m_period->value();
-    s.singleRegisterWrites = m_singleWrites->isChecked();
     return s;
 }
 
@@ -124,13 +115,11 @@ void ConnectionBar::setSettings(const ConnectionSettings &settings)
         QSignalBlocker b3(m_unit);
         QSignalBlocker b4(m_timeout);
         QSignalBlocker b5(m_period);
-        QSignalBlocker b6(m_singleWrites);
         m_host->setText(settings.host);
         m_port->setValue(settings.port);
         m_unit->setValue(settings.unitId);
         m_timeout->setValue(settings.timeoutMs);
         m_period->setValue(settings.pollPeriodMs);
-        m_singleWrites->setChecked(settings.singleRegisterWrites);
     }
     updateButton();
 }
@@ -153,7 +142,6 @@ void ConnectionBar::setState(ConnectionState state, const QString &detail)
     m_unit->setEnabled(editable);
     m_timeout->setEnabled(editable);
     m_period->setEnabled(editable);
-    m_singleWrites->setEnabled(editable);
 
     m_led->setStyleSheet(QStringLiteral("border-radius:6px; background:%1;").arg(stateColor(state)));
     m_led->setToolTip(detail.isEmpty() ? toString(state) : detail);

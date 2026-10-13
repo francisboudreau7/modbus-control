@@ -988,8 +988,8 @@ private slots:
         QCOMPARE(s.warns.size(), 1);
     }
 
-    // A device without FC16 rejects a 32-bit write with exception 1: offer FC06 only.
-    void fc16RejectionOffersSingleWrites()
+    // A device without FC16 rejects a multi-register write with exception 1: a warning explains it.
+    void fc16RejectionWarns()
     {
         auto rejected = [](int code) {
             ModbusResult r;
@@ -1000,37 +1000,23 @@ private slots:
         };
         auto lastRequest = [](Rig &r) { return r.writes->last().at(0).toULongLong(); };
 
-        for (const bool accept : {true, false}) {
-            Rig r;
-            setup(r);
-            int offered = 0;
-            r.wc->m_offerSingleWrites = [&](const QString &text) {
-                ++offered;
-                return accept && text.contains(QStringLiteral("Flow"));
-            };
-            QSignalSpy requested(r.wc.get(), &WriteController::singleRegisterWritesRequested);
-            feed(r, 2, 50.0);
-            r.wc->requestWrite(2, 20.0); // float32: two registers, FC16
-            QCOMPARE(r.writes->size(), 1);
-            r.wc->onWriteFinished(lastRequest(r), rejected(1));
-            QCOMPARE(offered, 1);
-            QCOMPARE(requested.size(), accept ? 1 : 0);
-        }
-
-        // Not offered: other exceptions, single-register writes, or FC06 mode already on.
         Rig r;
         setup(r);
-        int offered = 0;
-        r.wc->m_offerSingleWrites = [&](const QString &) { ++offered; return true; };
         feed(r, 2, 50.0);
+        r.wc->requestWrite(2, 20.0); // float32: two registers, FC16
+        QCOMPARE(r.writes->size(), 1);
+        r.wc->onWriteFinished(lastRequest(r), rejected(1));
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("does not accept FC16")));
+        QVERIFY(!r.warns.at(0).contains(QStringLiteral("FC06")));
+
+        // Not warned: other exceptions, or a single 16-bit register.
+        r.warns.clear();
         r.wc->requestWrite(2, 20.0);
         r.wc->onWriteFinished(lastRequest(r), rejected(2));
-        r.wc->requestWrite(4, 7.0); // 16-bit tag: FC06 anyway
+        r.wc->requestWrite(4, 7.0);
         r.wc->onWriteFinished(lastRequest(r), rejected(1));
-        r.wc->setSingleRegisterWrites(true);
-        r.wc->requestWrite(2, 20.0);
-        r.wc->onWriteFinished(lastRequest(r), rejected(1));
-        QCOMPARE(offered, 0);
+        QCOMPARE(r.warns.size(), 0);
     }
 
     // ---- layout of the write prompts (rich text built with mb::rich) ----
@@ -1138,11 +1124,6 @@ private slots:
     {
         Rig r;
         setup(r);
-        QStringList offers;
-        r.wc->m_offerSingleWrites = [&](const QString &t) {
-            offers << t;
-            return false;
-        };
         feed(r, 2, 50.0);
         r.wc->requestWrite(2, 20.0);
         ModbusResult res;
@@ -1150,10 +1131,9 @@ private slots:
         res.exceptionCode = 1;
         res.message = QStringLiteral("Modbus exception 1");
         r.wc->onWriteFinished(r.writes->last().at(0).toULongLong(), res);
-        QCOMPARE(offers.size(), 1);
-        QVERIFY(offers.at(0).startsWith(QStringLiteral("<p><b>The device rejected the write of 'Flow'.</b></p>")));
-        QVERIFY(offers.at(0).contains(QStringLiteral("It answered &quot;Illegal function&quot;: it probably does not support FC16 (write multiple registers). Nothing was written.")));
-        QVERIFY(offers.at(0).contains(QStringLiteral("each register is written with its own request. Write the value again after reconnecting.")));
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).startsWith(QStringLiteral("<p><b>The device rejected the write of 'Flow'.</b></p>")));
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("It answered &quot;Illegal function&quot;: it does not accept FC16 (write multiple registers), which 32-bit values and multi-register writes need. Nothing was written.")));
     }
 
     // Dialog kind 4: the multi-register confirmation.
@@ -1175,12 +1155,6 @@ private slots:
         QVERIFY(t.contains(QStringLiteral("<td>Flow</td><td>30</td><td><b>20</b></td>")));
         QVERIFY(t.contains(QStringLiteral("<td>Next</td><td>unknown</td><td><b>7</b></td>")));
         QVERIFY(t.contains(QStringLiteral("<p><small>HR 101-104 · FC16</small></p>")));
-
-        r.confirms.clear();
-        r.wc->setSingleRegisterWrites(true);
-        r.wc->requestWriteSelection({0, 1, 2});
-        QCOMPARE(r.confirms.size(), 1);
-        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<p><small>HR 101-104 · FC06 ×4</small></p>")));
     }
 
     // Dialog kind 5: lists as bullets, and the single limit warning.

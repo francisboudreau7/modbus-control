@@ -243,8 +243,8 @@ byte orders, so you can see which order the client sent:
 12:08:53.539 [576] unit=1 fc=0x10 write addr=110 count=2 values=0x42F7,0x0000 | float ABCD=123.5 CDAB=2.40224596e-41 BADC=-3.93478746e+33 DCBA=8.86993902e-41
 ```
 
-Here the client wrote 123.5 in `ABCD` order. With **FC06 only**, a 32-bit value arrives as two
-single-register writes; two consecutive FC06 writes to neighbouring addresses are decoded
+Here the client wrote 123.5 in `ABCD` order. A client that writes a 32-bit value as two
+single-register writes (FC06) is also recognised: two consecutive FC06 writes to neighbouring addresses are decoded
 together on an extra line:
 
 ```

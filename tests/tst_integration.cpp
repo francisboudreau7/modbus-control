@@ -266,7 +266,7 @@ class TstIntegration : public QObject
     Q_OBJECT
 
 private slots:
-    // A device without FC16 answers a 32-bit write with exception 1: the message says what to do.
+    // A device without FC16 answers a 32-bit write with exception 1: the message says why.
     void fc16IllegalFunctionHint()
     {
         mb::ModbusResult r;
@@ -276,7 +276,8 @@ private slots:
         const mb::ModbusResult hinted = mb::PollWorker::withFc16Hint(r);
         QCOMPARE(hinted.error, mb::ModbusError::Exception);
         QVERIFY(hinted.message.startsWith(r.message));
-        QVERIFY(hinted.message.contains(QStringLiteral("tick FC06 only")));
+        QVERIFY(hinted.message.contains(QStringLiteral("does not accept FC16")));
+        QVERIFY(!hinted.message.contains(QStringLiteral("FC06")));
 
         r.exceptionCode = 2; // illegal data address: no hint
         QCOMPARE(mb::PollWorker::withFc16Hint(r).message, r.message);
@@ -943,20 +944,12 @@ private slots:
         QCOMPARE(decodeValue(i, combineRegisters(i, v.at(0), v.at(1))), -100000.0);
     }
 
-    void worker_write32Bit_data()
-    {
-        QTest::addColumn<bool>("single");
-        QTest::newRow("FC16") << false;
-        QTest::newRow("FC06 per register") << true;
-    }
-
+    // A float32 (2 registers) goes out as ONE FC16 request, never as two FC06 writes.
     void worker_write32Bit()
     {
-        QFETCH(bool, single);
-        QVERIFY(m_server->start());
+        QVERIFY(m_server->start({QStringLiteral("--log-writes")}));
         m_harness = std::make_unique<WorkerHarness>();
         ConnectionSettings s = settingsFor(m_server->port(), 1000, 1, 100);
-        s.singleRegisterWrites = single;
         m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
         m_harness->connectTo(s);
         QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 1, 5000);
@@ -973,14 +966,18 @@ private slots:
         QList<quint16> v;
         QVERIFY(c.readRegisters(Area::HoldingRegister, 160, 2, v).ok());
         QCOMPARE(decodeValue(f, combineRegisters(f, v.at(0), v.at(1))), 42.5);
+
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("fc=0x10 write addr=160 count=2")), 3000);
+        const QString log = m_server->log();
+        QVERIFY2(!log.contains(QStringLiteral("fc=0x06")), qPrintable(log));
     }
 
-    void worker_singleRegisterWriteFailsOnSecondRegister()
+    // A failing multi-register write is one FC16 request: the device holds nothing of it.
+    void worker_multiRegisterWriteFailureWritesNothing()
     {
         QVERIFY(m_server->start());
         m_harness = std::make_unique<WorkerHarness>();
         ConnectionSettings s = settingsFor(m_server->port(), 1000, 1, 100);
-        s.singleRegisterWrites = true;
         m_harness->setTags({makeTag(1, Area::InputRegister, 2)});
         m_harness->connectTo(s);
         QTRY_VERIFY_WITH_TIMEOUT(m_harness->batches.size() >= 1, 5000);
@@ -990,14 +987,13 @@ private slots:
         const ModbusResult r = m_harness->writes.value(6);
         QCOMPARE(r.error, ModbusError::Exception);
         QCOMPARE(r.exceptionCode, 2);
-        QVERIFY2(r.message.contains(QStringLiteral("200")), qPrintable(r.message));
         QVERIFY(m_harness->lastState() == ConnectionState::Connected);
 
-        ModbusConnection c; // the first register was written before the failure
+        ModbusConnection c;
         QVERIFY(c.open(settingsFor(m_server->port())).ok());
         QList<quint16> v;
         QVERIFY(c.readRegisters(Area::HoldingRegister, 199, 1, v).ok());
-        QCOMPARE(v.value(0), quint16(0x1234));
+        QCOMPARE(v.value(0), quint16(0));
     }
 
     // ---- ModbusConnection error paths ------------------------------------------------------

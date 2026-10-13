@@ -17,9 +17,6 @@ struct ConnectionSettings {
     int unitId = 1;          ///< 0..247 (255 accepted for TCP)
     int timeoutMs = 1000;    ///< response timeout
     int pollPeriodMs = 500;  ///< >= 100
-    /// Write multi-register values (32-bit tags, multi-tag writes) as one FC06 per register
-    /// instead of a single FC16, for devices that only implement FC06.
-    bool singleRegisterWrites = false;
 
     friend bool operator==(const ConnectionSettings &, const ConnectionSettings &) = default;
 };

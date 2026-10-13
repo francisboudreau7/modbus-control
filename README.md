@@ -20,7 +20,7 @@ and run it (Windows 10/11, 64-bit). See the [User Guide](docs/USER_GUIDE.md) to 
 - Analysis tab for step tests: 0 % and 63.2 % times between the cursors and a first-order model
   (gain K, dead time L, time constant T) for Ziegler–Nichols tuning
 - Safe writes: confirmation, per-tag Min/Max limits, checks for 32-bit values, one-click Quick A/B
-  presets, FC06-only mode for devices without FC16
+  presets
 - Export of the graph (PNG, SVG, PDF) and of the data and analysis results (CSV)
 - Projects (`.mbproj`) and recorded sessions (`.mbsession`) to review offline
 - Test server `modbus_test_server` with simulated signals and fault injection

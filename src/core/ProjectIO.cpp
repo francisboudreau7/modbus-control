@@ -223,6 +223,7 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
     qint64 unitId = conn.unitId;
     qint64 timeoutMs = conn.timeoutMs;
     qint64 pollPeriodMs = conn.pollPeriodMs;
+    bool legacySingleWrites = false; // obsolete key of older files: validated, then ignored
     // Same ranges as the ConnectionBar spin boxes.
     constexpr qint64 kMinMs = 100;
     constexpr qint64 kMaxMs = 60000;
@@ -231,7 +232,7 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
         || !readInt(obj, QStringLiteral("unitId"), prefix, 0, 247, unitId, error)
         || !readInt(obj, QStringLiteral("timeoutMs"), prefix, kMinMs, kMaxMs, timeoutMs, error)
         || !readInt(obj, QStringLiteral("pollPeriodMs"), prefix, kMinMs, kMaxMs, pollPeriodMs, error)
-        || !readBool(obj, QStringLiteral("singleRegisterWrites"), prefix, conn.singleRegisterWrites, error)) {
+        || !readBool(obj, QStringLiteral("singleRegisterWrites"), prefix, legacySingleWrites, error)) {
         return false;
     }
     conn.port = static_cast<quint16>(port);
@@ -447,7 +448,6 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("unitId"), static_cast<qint64>(c.unitId)},
         {QStringLiteral("timeoutMs"), static_cast<qint64>(c.timeoutMs)},
         {QStringLiteral("pollPeriodMs"), static_cast<qint64>(c.pollPeriodMs)},
-        {QStringLiteral("singleRegisterWrites"), c.singleRegisterWrites},
     };
 
     QJsonArray tags;
