@@ -164,8 +164,10 @@ can be written, of any type (16-bit or 32-bit).
 1. Connect first. Without a connection the status bar says "Not connected" and nothing is sent.
 2. Double-click the **Value** cell of a writable tag and type a value in scaled units (not the raw
    number).
-3. Confirm the question, for example: "Write 12.5 (raw 125) to HR 100 'Setpoint'?" The unit is
-   shown too, when the tag has one.
+3. Confirm the question. Its headline is "Write to 'Setpoint'?" and it lists the **Current value**
+   (or "unknown"), the **New value** in bold and, when the tag has limits, the **Limits**. A small
+   note at the bottom gives the register, the type and the raw value, for example "HR 100 · int16 ·
+   raw 125". The unit is shown too, when the tag has one.
 
 The value is converted to a raw integer with the inverse of gain and offset, and rounded to the
 nearest integer. If the raw value is outside the type's range (-32768..32767 for `int16`,
@@ -173,8 +175,8 @@ nearest integer. If the raw value is outside the type's range (-32768..32767 for
 types), a warning is shown and nothing is sent. A 16-bit write uses FC06.
 
 For a 32-bit tag the value is encoded into two registers using the tag's byte order, and the
-confirmation names the registers, type and byte order, for example "Write 50 (raw 0x42480000) to
-HR 6639-6640 'Local Setpoint 1' [float32, ABCD]?". By default both registers are sent in one FC16
+confirmation names the registers, type and byte order in its note, for example "HR 6639-6640 ·
+float32 ABCD · raw 0x42480000". By default both registers are sent in one FC16
 (Write Multiple Registers) request, so the controller never sees half a value. If the **FC06 only**
 box in the connection bar is ticked, the app sends one FC06 (Write Single Register) request per
 register instead, in ascending address order, and stops at the first failure. In that case a failed
@@ -192,7 +194,8 @@ polled value, so it changes only when the next read returns the new value.
    addresses and no duplicates. At most 123 registers can be written at once.
 3. Edit the value for each register. Each field starts with the current value. Use `.` as the
    decimal separator.
-4. Confirm "Write N registers HR a..b?". The whole group is sent in one FC16 request, or as one
+4. Confirm "Write N tags?". A table shows each tag with its current and new value, and a note gives
+   the registers (for example "HR 100-103 · FC16"). The whole group is sent in one FC16 request, or as one
    FC06 request per register (ascending, stopping at the first failure) when **FC06 only** is ticked.
    16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.
 
@@ -230,10 +233,12 @@ warning and nothing is sent:
 
 1. **Connected.** Without a connection nothing is sent.
 2. **Limits.** If the tag has a **Min** and/or **Max**, the value must lie within them. The warning
-   names the tag and its limits, for example "'Setpoint' accepts 0 to 100 °C; 150 was not written."
+   names the value, the tag and its limits, for example "150 °C is outside the limits of 'Setpoint'."
+   followed by "'Setpoint' accepts 0 to 100 °C. Nothing was written."
 3. **Valid reading (32-bit tags only).** A 32-bit write needs a current good reading of that tag. If
-   the last read was not Good, or there is none yet, the write is refused. Check the connection,
-   the register number and the byte order first: a wrong setting usually makes reads fail or look wrong.
+   the last read was not Good, or there is none yet, the write is refused ("No valid reading of
+   'Setpoint' yet."). The warning lists what to check: the connection, the register number, and the
+   type and byte order. A wrong setting usually makes reads fail or look wrong.
 4. **Range.** The value must fit the tag's type (for example -32768..32767 for `int16`).
 5. **Plausibility (float32 only).** If the current value of a `float32` tag is implausible (not a
    finite number, larger than 1e9 in size, or smaller than 1e-6 but not zero), an extra warning
@@ -242,9 +247,8 @@ warning and nothing is sent:
    or register makes the reading look absurd, so this warning often catches the mistake before a
    write.
 
-Then the confirmation shows the new value and, on a new line, **Current value** (the last good
-reading, or "unknown"). When the tag has limits, it also shows **Limits**, for example "Limits: 0 to
-2000". Read the current value before you confirm: if it is not what you expect, click **No**.
+Then the confirmation shows the **Current value** (the last good reading, or "unknown") and the
+**New value**. When the tag has limits, it also shows **Limits**, for example "0 to 2000". Read the current value before you confirm: if it is not what you expect, click **No**.
 
 **Checking writes before using a real device.** Start the test server with `--log-writes` (see
 the Test server guide): it prints every write it receives, with the registers in hex and the
@@ -425,8 +429,9 @@ To try it with the test server:
 ### Writes to an unconfirmed tag
 
 Before a write to a 32-bit tag whose encoding is not confirmed, the application asks first. The
-prompt says, for example, "The encoding of 'Setpoint' is not confirmed: it reads 52.3 °C as float32
-CDAB. Writing with a wrong encoding sends a wrong value." It has three buttons:
+prompt says, for example, "The encoding of 'Setpoint' is not confirmed." and shows what the tag
+reads (52.3 °C) and the encoding it reads it as (float32 CDAB, HR 110-111), then warns that a write
+would send a wrong value if the encoding is wrong. It has three buttons:
 
 - **Confirm and continue** confirms the encoding and carries on with the other write checks and the
   usual confirmation.

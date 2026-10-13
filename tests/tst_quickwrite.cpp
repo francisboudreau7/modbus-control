@@ -1,8 +1,11 @@
 #include "QuickWritePanel.h"
+#include "RichText.h"
 #include "TagTableModel.h"
 #include "WriteController.h"
 
+#include <QApplication>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QtTest>
@@ -402,7 +405,7 @@ private slots:
         QCOMPARE(r.writes->size(), 1);
         QVERIFY(r.warns.isEmpty());
         QCOMPARE(r.confirms.size(), 1);
-        QVERIFY(r.confirms.at(0).contains("Current value: unknown"));
+        QVERIFY(r.confirms.at(0).contains("<td>Current value:</td><td>unknown</td>"));
         QVERIFY(!r.confirms.at(0).contains("Limits"));
     }
 
@@ -480,17 +483,16 @@ private slots:
         feed(r, 1, 12.5);
         r.wc->requestWrite(1, 50.0);
         QCOMPARE(r.confirms.size(), 1);
-        QVERIFY(r.confirms.at(0).contains("Current value: 12.5"));
-        QVERIFY(r.confirms.at(0).contains("Limits: 0 to 100"));
-        QVERIFY(r.confirms.at(0).contains("C")); // unit kept
+        QVERIFY(r.confirms.at(0).contains("<td>Current value:</td><td>12.5 C</td>"));
+        QVERIFY(r.confirms.at(0).contains("<td>Limits:</td><td>0 to 100 C</td>")); // unit kept
 
         // One-sided limit
         feed(r, 2, 30.0);
         r.confirms.clear();
         r.wc->requestWrite(2, 20.0);
         QCOMPARE(r.confirms.size(), 1);
-        QVERIFY(r.confirms.at(0).contains("Limits: at least 10"));
-        QVERIFY(r.confirms.at(0).contains("Current value: 30"));
+        QVERIFY(r.confirms.at(0).contains("<td>Limits:</td><td>at least 10</td>"));
+        QVERIFY(r.confirms.at(0).contains("<td>Current value:</td><td>30</td>"));
     }
 
     void quickWriteWideAlwaysConfirms()
@@ -633,9 +635,11 @@ private slots:
         r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
         r.wc->requestWrite(2, 20.0);
         QCOMPARE(r.encodingPrompts.size(), 1);
-        QCOMPARE(r.encodingPrompts.at(0),
-                 QStringLiteral("The encoding of 'Flow' is not confirmed: it reads 52.3 as float32 "
-                                "CDAB. Writing with a wrong encoding sends a wrong value."));
+        const QString p0 = r.encodingPrompts.at(0);
+        QVERIFY(p0.startsWith(QStringLiteral("<p><b>The encoding of 'Flow' is not confirmed.</b></p>")));
+        QVERIFY(p0.contains(QStringLiteral("<td>Reads:</td><td><b>52.3</b></td>")));
+        QVERIFY(p0.contains(QStringLiteral("<td>As:</td><td>float32 CDAB (HR 102-103)</td>")));
+        QVERIFY(p0.contains(QStringLiteral("the encoding is wrong, and a write would send a wrong value.")));
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.confirms.isEmpty());
         QVERIFY(r.warns.isEmpty());
@@ -645,7 +649,7 @@ private slots:
         r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Unit), QStringLiteral("C"));
         r.wc->requestQuickWrite(2, 20.0);
         QCOMPARE(r.encodingPrompts.size(), 2);
-        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("reads 52.3 C as float32 CDAB")));
+        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("<td>Reads:</td><td><b>52.3 C</b></td>")));
         QCOMPARE(r.writes->size(), 0);
         QCOMPARE(r.quickCalls, 0);
     }
@@ -774,8 +778,9 @@ private slots:
         QCOMPARE(asked, 1);
         QCOMPARE(r.encodingPrompts.size(), 1);
         const QString text = r.encodingPrompts.at(0);
-        QVERIFY(text.contains(QStringLiteral("'Flow' (reads 52.3 as float32 CDAB)")));
-        QVERIFY(text.contains(QStringLiteral("'Count' (reads 7 as int32 ABCD)")));
+        QVERIFY(text.startsWith(QStringLiteral("<p><b>The encoding of these tags is not confirmed:</b></p><ul>")));
+        QVERIFY(text.contains(QStringLiteral("<li>'Flow' reads 52.3 as float32 CDAB (HR 102-103)</li>")));
+        QVERIFY(text.contains(QStringLiteral("<li>'Count' reads 7 as int32 ABCD (HR ")));
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.confirms.isEmpty());
 
@@ -829,10 +834,11 @@ private slots:
         r.encodingAnswer = WriteController::EncodingAnswer::Cancel;
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 1);
-        QCOMPARE(r.encodingPrompts.at(0),
-                 QStringLiteral("'Plain' is probably half of a 32-bit value: HR 200-201 read as float32 "
-                                "ABCD give 10. Writing a 16-bit value there changes half of that value, and "
-                                "the device then reads a wrong number."));
+        const QString p0 = r.encodingPrompts.at(0);
+        QVERIFY(p0.startsWith(QStringLiteral("<p><b>'Plain' is probably half of a 32-bit value.</b></p>")));
+        QVERIFY(p0.contains(QStringLiteral("<td>Reads:</td><td>uint16 (HR 200)</td>")));
+        QVERIFY(p0.contains(QStringLiteral("<td>Found:</td><td>HR 200-201 read as float32 ABCD give 10</td>")));
+        QVERIFY(p0.contains(QStringLiteral("would change half of that value, and the device would read a wrong number.")));
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.confirms.isEmpty());
         QVERIFY(r.warns.isEmpty());
@@ -842,16 +848,16 @@ private slots:
         r.model.setEncodingNote(4, QString());
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 2);
-        QCOMPARE(r.encodingPrompts.at(1),
-                 QStringLiteral("'Plain' (HR 200) may be half of a 32-bit value. Writing a 16-bit value "
-                                "there changes half of that value, and the device then reads a wrong "
-                                "number."));
+        QVERIFY(r.encodingPrompts.at(1).startsWith(
+            QStringLiteral("<p><b>'Plain' may be half of a 32-bit value.</b></p>")));
+        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("<td>Reads:</td><td>uint16 (HR 200)</td>")));
+        QVERIFY(!r.encodingPrompts.at(1).contains(QStringLiteral("Found:")));
 
         // Address base 1: the register is shown as HR 201
         r.model.setAddressBase(1);
         r.wc->requestWrite(4, 12.0);
         QCOMPARE(r.encodingPrompts.size(), 3);
-        QVERIFY(r.encodingPrompts.at(2).contains(QStringLiteral("'Plain' (HR 201) may be half of a 32-bit value.")));
+        QVERIFY(r.encodingPrompts.at(2).contains(QStringLiteral("<td>Reads:</td><td>uint16 (HR 201)</td>")));
         QCOMPARE(r.writes->size(), 0);
     }
 
@@ -919,7 +925,7 @@ private slots:
         r.wc->requestWriteSelection({0, 1, 2});
         QCOMPARE(asked, 1);
         QCOMPARE(r.encodingPrompts.size(), 1);
-        QVERIFY(r.encodingPrompts.at(0).contains(QStringLiteral("'Setpoint' (probably half of a 32-bit value)")));
+        QVERIFY(r.encodingPrompts.at(0).contains(QStringLiteral("<li>'Setpoint' (HR 101) is probably half of a 32-bit value</li>")));
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.confirms.isEmpty());
 
@@ -1025,6 +1031,207 @@ private slots:
         r.wc->requestWrite(2, 20.0);
         r.wc->onWriteFinished(lastRequest(r), rejected(1));
         QCOMPARE(offered, 0);
+    }
+
+    // ---- layout of the write prompts (rich text built with mb::rich) ----
+
+    // Dialog kind 1: the write confirmation, single, quick and 32-bit; escaping of the tag name.
+    void confirmationLayout()
+    {
+        Rig r;
+        setup(r);
+        feed(r, 1, 12.5);
+        r.wc->requestWrite(1, 50.0);
+        QCOMPARE(r.confirms.size(), 1);
+        const QString t = r.confirms.at(0);
+        QVERIFY(t.startsWith(QStringLiteral("<p><b>Write to 'Setpoint'?</b></p>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Current value:</td><td>12.5 C</td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>New value:</td><td><b>50 C</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Limits:</td><td>0 to 100 C</td>")));
+        QVERIFY(t.contains(QStringLiteral("<p><small>HR 101 · uint16 · raw 50</small></p>")));
+
+        // Quick write (16-bit): the same text reaches the quick prompt
+        r.confirms.clear();
+        r.wc->requestQuickWrite(1, 60.0);
+        QCOMPARE(r.confirms.size(), 1);
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<td>New value:</td><td><b>60 C</b></td>")));
+
+        // 32-bit: registers, type, byte order and raw hex in the note
+        feed(r, 2, 52.3);
+        r.confirms.clear();
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.confirms.size(), 1);
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<p><small>HR 102-103 · float32 ABCD · raw 0x41A00000</small></p>")));
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<td>Limits:</td><td>at least 10</td>")));
+    }
+
+    void tagNamesAreEscaped()
+    {
+        Rig r;
+        setup(r);
+        r.model.setData(r.model.index(r.model.rowOf(1), TagTableModel::Name), QStringLiteral("A<b>&B"));
+        r.wc->requestWrite(1, 50.0);
+        QCOMPARE(r.confirms.size(), 1);
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("Write to 'A&lt;b&gt;&amp;B'?")));
+        QVERIFY(!r.confirms.at(0).contains(QStringLiteral("A<b>")));
+        r.wc->requestWrite(1, 150.0);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("limits of 'A&lt;b&gt;&amp;B'.")));
+    }
+
+    // Dialog kind 2: unconfirmed encoding (32-bit single is covered above; 16-bit and selection).
+    void unconfirmedEncodingLayout()
+    {
+        Rig r;
+        setup(r, false);
+        feed(r, 2, 52.3);
+        r.model.setEncodingNote(4, QString());
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.encodingPrompts.size(), 1);
+        QVERIFY(r.encodingPrompts.at(0).contains(QStringLiteral("<p>If this value is wrong for the device, ")));
+
+        // Selection: bullets and the same consequence paragraph
+        feed(r, 3, 7.0);
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{1.0, 20.0, 1.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.encodingPrompts.size(), 2);
+        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("<ul><li>")));
+        QVERIFY(r.encodingPrompts.at(1).contains(QStringLiteral("<p>If a value is wrong for the device")));
+    }
+
+    // Dialog kind 3: errors with a "Check:" list.
+    void checkListsLayout()
+    {
+        Rig r;
+        setup(r);
+        r.wc->requestWrite(2, 20.0); // Flow: no reading
+        QCOMPARE(r.warns.size(), 1);
+        const QString w = r.warns.at(0);
+        QVERIFY(w.startsWith(QStringLiteral("<p><b>No valid reading of 'Flow' yet.</b></p><p>Check:</p><ul>")));
+        QVERIFY(w.contains(QStringLiteral("<li>the connection (the connection bar shows Connected)</li>")));
+        QVERIFY(w.contains(QStringLiteral("<li>the register number (HR 102-103)</li>")));
+        QVERIFY(w.contains(QStringLiteral("<li>the type and byte order (float32 ABCD)</li>")));
+
+        // Implausible float
+        feed(r, 2, -3.1e27);
+        r.wc->requestWrite(2, 20.0);
+        QCOMPARE(r.implausibles.size(), 1);
+        const QString i = r.implausibles.at(0);
+        QVERIFY(i.startsWith(QStringLiteral("<p><b>'Flow' reads an implausible value: -3.1e+27.</b></p>")));
+        QVERIFY(i.contains(QStringLiteral("wrong byte order or register number")));
+        QVERIFY(i.contains(QStringLiteral("<li>the byte order (now float32 ABCD)</li>")));
+        QVERIFY(i.contains(QStringLiteral("<li>the register number (HR 102-103)</li>")));
+
+        // Selection version lists the tags as bullets
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{1.0, 20.0, 1.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.implausibles.size(), 2);
+        QVERIFY(r.implausibles.at(1).contains(QStringLiteral("<li>'Flow' reads -3.1e+27 (float32 ABCD, HR 102-103)</li>")));
+        QVERIFY(r.implausibles.at(1).contains(QStringLiteral("<p>Check:</p>")));
+    }
+
+    void rejectedWriteLayout()
+    {
+        Rig r;
+        setup(r);
+        QStringList offers;
+        r.wc->m_offerSingleWrites = [&](const QString &t) {
+            offers << t;
+            return false;
+        };
+        feed(r, 2, 50.0);
+        r.wc->requestWrite(2, 20.0);
+        ModbusResult res;
+        res.error = ModbusError::Exception;
+        res.exceptionCode = 1;
+        res.message = QStringLiteral("Modbus exception 1");
+        r.wc->onWriteFinished(r.writes->last().at(0).toULongLong(), res);
+        QCOMPARE(offers.size(), 1);
+        QVERIFY(offers.at(0).startsWith(QStringLiteral("<p><b>The device rejected the write of 'Flow'.</b></p>")));
+        QVERIFY(offers.at(0).contains(QStringLiteral("It answered &quot;Illegal function&quot;: it probably does not support FC16 (write multiple registers). Nothing was written.")));
+        QVERIFY(offers.at(0).contains(QStringLiteral("each register is written with its own request. Write the value again after reconnecting.")));
+    }
+
+    // Dialog kind 4: the multi-register confirmation.
+    void selectionConfirmationLayout()
+    {
+        Rig r;
+        setup(r);
+        feed(r, 1, 12.5);
+        feed(r, 2, 30.0);
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{50.0, 20.0, 7.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.confirms.size(), 1);
+        const QString t = r.confirms.at(0);
+        QVERIFY(t.startsWith(QStringLiteral("<p><b>Write 3 tags?</b></p>")));
+        QVERIFY(t.contains(QStringLiteral("<th align=\"left\">Tag</th><th align=\"left\">Current</th><th align=\"left\">New</th>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Setpoint</td><td>12.5 C</td><td><b>50 C</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Flow</td><td>30</td><td><b>20</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Next</td><td>unknown</td><td><b>7</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<p><small>HR 101-104 · FC16</small></p>")));
+
+        r.confirms.clear();
+        r.wc->setSingleRegisterWrites(true);
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.confirms.size(), 1);
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<p><small>HR 101-104 · FC06 ×4</small></p>")));
+    }
+
+    // Dialog kind 5: lists as bullets, and the single limit warning.
+    void limitAndListLayout()
+    {
+        Rig r;
+        setup(r);
+        r.wc->requestWrite(1, 150.0);
+        QCOMPARE(r.warns.size(), 1);
+        QCOMPARE(r.warns.at(0),
+                 QStringLiteral("<p><b>150 C is outside the limits of 'Setpoint'.</b></p>"
+                                "<p>'Setpoint' accepts 0 to 100 C. Nothing was written.</p>"));
+
+        feed(r, 2, 50.0);
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{150.0, 5.0, 7.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.warns.size(), 2);
+        QVERIFY(r.warns.at(1).startsWith(QStringLiteral("<p><b>Values outside the write limits:</b></p><ul><li>")));
+        QCOMPARE(r.warns.at(1).count(QStringLiteral("<li>")), 2);
+
+        // Out of range values: one bullet per value
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{99.0, 20.0, 70000.0});
+        };
+        r.wc->requestWriteSelection({0, 1, 2});
+        QCOMPARE(r.warns.size(), 3);
+        QVERIFY(r.warns.at(2).startsWith(QStringLiteral("<p><b>Out of range values:</b></p><ul><li>Next = 70000")));
+    }
+
+    // The default dialogs show rich text (offscreen: a timer closes the modal box).
+    void defaultConfirmUsesRichText()
+    {
+        TagTableModel model;
+        WriteController wc(&model, nullptr);
+        Qt::TextFormat format = Qt::AutoText;
+        QString shown;
+        QTimer::singleShot(100, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                format = box->textFormat();
+                shown = box->text();
+                box->button(QMessageBox::No)->click();
+            } else if (QWidget *w = QApplication::activeModalWidget()) {
+                w->close();
+            }
+        });
+        const bool answer = wc.m_confirm(rich::headline(QStringLiteral("Write to 'X'?")));
+        QVERIFY(!answer);
+        QCOMPARE(format, Qt::RichText);
+        QVERIFY(shown.contains(QStringLiteral("<b>Write to 'X'?</b>")));
     }
 };
 

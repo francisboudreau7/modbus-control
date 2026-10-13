@@ -779,10 +779,10 @@ private slots:
         const QString split = d.splitTexts.first();
         QVERIFY2(split.contains(QStringLiteral("<b>'Setpoint' is probably half of a float32 value.</b>")),
                  qPrintable(split));
-        QVERIFY2(split.contains(QStringLiteral("As int16 (HR 110):</td><td align=\"right\">13107</td>")),
+        QVERIFY2(split.contains(QStringLiteral("As int16 (HR 110):</td><td>13107</td>")),
                  qPrintable(split));
         QVERIFY2(split.contains(
-                     QStringLiteral("As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>")),
+                     QStringLiteral("As float32 CDAB (HR 110-111):</td><td><b>52.3</b>")),
                  qPrintable(split));
         QCOMPARE(d.splitChanges.first(), QStringLiteral("Change to float32 CDAB at HR 110"));
         QCOMPARE(d.splitKeeps.first(), QStringLiteral("Keep int16"));

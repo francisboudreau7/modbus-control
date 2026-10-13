@@ -640,8 +640,8 @@ private slots:
         QCOMPARE(splits[0].text,
                  QStringLiteral("<p><b>'Setpoint' is probably half of a float32 value.</b></p>"
                                 "<table cellspacing=\"0\" cellpadding=\"3\">"
-                                "<tr><td>As int16 (HR 110):</td><td align=\"right\">13107</td></tr>"
-                                "<tr><td>As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>"
+                                "<tr><td>As int16 (HR 110):</td><td>13107</td></tr>"
+                                "<tr><td>As float32 CDAB (HR 110-111):</td><td><b>52.3</b>"
                                 "</td></tr></table>"
                                 "<p>Writing a 16-bit value here would change half of the float.</p>"));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 110"));
@@ -702,9 +702,9 @@ private slots:
         QCOMPARE(splits.size(), 1);
         QVERIFY(splits[0].text.contains(QStringLiteral("<b>'Hi' is probably half of a float32 value.</b>")));
         QVERIFY(splits[0].text.contains(
-            QStringLiteral("As int16 (HR 111):</td><td align=\"right\">16977</td>")));
+            QStringLiteral("As int16 (HR 111):</td><td>16977</td>")));
         QVERIFY(splits[0].text.contains(
-            QStringLiteral("As float32 CDAB (HR 110-111):</td><td align=\"right\"><b>52.3</b>")));
+            QStringLiteral("As float32 CDAB (HR 110-111):</td><td><b>52.3</b>")));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 110"));
         QCOMPARE(tagOf(id).address, quint16(110));
         QVERIFY(tagOf(id).type == ValueType::Float32);
@@ -722,9 +722,9 @@ private slots:
         QCOMPARE(splits[0].keep, QStringLiteral("Keep uint16"));
         QCOMPARE(splits[0].change, QStringLiteral("Change to float32 CDAB at HR 111"));
         QVERIFY(splits[0].text.contains(
-            QStringLiteral("As uint16 (HR 111):</td><td align=\"right\">13107</td>")));
+            QStringLiteral("As uint16 (HR 111):</td><td>13107</td>")));
         QVERIFY(splits[0].text.contains(
-            QStringLiteral("As float32 CDAB (HR 111-112):</td><td align=\"right\"><b>52.3</b>")));
+            QStringLiteral("As float32 CDAB (HR 111-112):</td><td><b>52.3</b>")));
         QCOMPARE(model->encodingNote(id), QStringLiteral("HR 111-112 read as float32 CDAB give 52.3"));
     }
 
