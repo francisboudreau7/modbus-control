@@ -130,7 +130,7 @@ void PollWorker::connectTo(const ConnectionSettings &settings)
     stopTimers();
     closeConnection();
     m_backoffStep = 0;
-    m_lastBlockMessage.clear();
+    m_blockMessageTimes.clear();
     m_perTagBlocks.clear();
     failAllWrites(notConnectedResult());
     failAllReads(notConnectedResult());
@@ -268,12 +268,10 @@ void PollWorker::serveWrites()
 
 void PollWorker::emitBlockMessage(const QString &text)
 {
-    if (text == m_lastBlockMessage && m_lastBlockMessageTime.isValid()
-        && m_lastBlockMessageTime.elapsed() < kMessageRepeatMs) {
+    QElapsedTimer &shown = m_blockMessageTimes[text];
+    if (shown.isValid() && shown.elapsed() < kMessageRepeatMs)
         return;
-    }
-    m_lastBlockMessage = text;
-    m_lastBlockMessageTime.restart();
+    shown.restart();
     emit message(text);
 }
 

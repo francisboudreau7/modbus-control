@@ -140,8 +140,9 @@ private:
     bool m_writePassQueued = false;
     int m_backoffStep = 0;
     int m_addressBase = 0;
-    QString m_lastBlockMessage;
-    QElapsedTimer m_lastBlockMessageTime;
+    /// When each block/tag error text was last shown (several failing tags each repeat at most
+    /// every kMessageRepeatMs).
+    QHash<QString, QElapsedTimer> m_blockMessageTimes;
 };
 } // namespace mb
 
