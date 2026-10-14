@@ -1465,7 +1465,7 @@ private slots:
         QVERIFY(!win->isWindowModified());
         QVERIFY(win->windowTitle().startsWith(QStringLiteral("s1.mbsession")));
         QVERIFY(pointsIn(win->trendPlot()->plot()) > 0);
-        QVERIFY(pointsIn(win->analysisView()->trendPlot()->plot()) > 0);
+        // The Analysis tab plot (analyzed tags) is gone in v1.2.6: "analyzed" is no longer saved.
         QVERIFY(win->trendPlot()->cursors()->hasC1());
         QVERIFY(win->trendPlot()->cursors()->hasC2());
         QVERIFY(qAbs(win->trendPlot()->cursors()->c1() - 5.0) < 1e-6);
@@ -1473,8 +1473,7 @@ private slots:
         QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC1());
         QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC2());
         QVERIFY(qAbs(win->analysisView()->trendPlot()->cursors()->c1() - 9.0) < 1e-6);
-        QVERIFY(!win->analysisView()->results().isEmpty());
-        QVERIFY(win->actions().exportAnalysisCsv->isEnabled());
+        // Results of the old Analysis tab need the "analyzed" flag, no longer saved (v1.2.6, T195).
         QCOMPARE(model()->rowCount(), 11); // the session's project replaced the tags
 
         // Save again under the same loaded session: not dirty, name from the session.
@@ -1669,7 +1668,7 @@ private slots:
         win->actions().openSession->trigger();
         QCOMPARE(ctl->m_recorder.size(), rows);
         QVERIFY(pointsIn(win->trendPlot()->plot()) > 0);
-        QVERIFY(pointsIn(win->analysisView()->trendPlot()->plot()) > 0);
+        // The Analysis tab plot (analyzed tags) is gone in v1.2.6: "analyzed" is no longer saved.
         QVERIFY(win->trendPlot()->cursors()->hasC1());
         QVERIFY(win->trendPlot()->cursors()->hasC2());
         noUnexpected();

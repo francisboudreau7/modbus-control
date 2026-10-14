@@ -1226,7 +1226,10 @@ void TstProjectIO::v12KeysDefaultWhenMissing()
     QVERIFY(!tag.quickB.has_value());
     QVERIFY(project->analysis.showModel); // default on since v1.2.6
     QVERIFY(project->analysis.guideLines);
-    QCOMPARE(project->analysis, AnalysisSettings{});
+    AnalysisSettings expected; // the analyzed tag becomes the PV (v1.2.6 migration)
+    expected.pvTagId = 1;
+    expected.setpointTagIds = {1};
+    QCOMPARE(project->analysis, expected);
 }
 
 void TstProjectIO::writeLimitsRoundTrip()
