@@ -17,8 +17,10 @@ and run it (Windows 10/11, 64-bit). See the [User Guide](docs/USER_GUIDE.md) to 
 - `int16`, `uint16`, `int32`, `uint32` and `float32` values with gain/offset scaling and a selectable
   byte order (ABCD, CDAB, BADC, DCBA)
 - Live trend with two cursors (Δt, ΔY), zoom, pan and a second Y axis
-- Analysis tab for step tests: 0 % and 63.2 % times between the cursors and a first-order model
-  (gain K, dead time L, time constant T) for Ziegler–Nichols tuning
+- Analysis panel for step tests: K, L and T of a first-order model with dead time, from the cursors,
+  with method presets (0 % / 63.2 %, Smith, Sundaresan-Krishnaswamy, custom), plain-language checks,
+  a tuning calculator (Ziegler-Nichols, Cohen-Coon, IMC / lambda, SIMC) and tooltips that show the
+  formulas with your numbers
 - Safe writes: confirmation, per-tag Min/Max limits, checks for 32-bit values, one-click Quick A/B
   presets; 32-bit values are always written with one FC16 request
 - Add tag dialog: reads the register and detects whether it holds a 16-bit value or a float32
@@ -40,7 +42,7 @@ modbus_control.exe examples\demo.mbproj
 ```
 
 Write a new value to **Setpoint** and watch **Lag** follow it, then measure its step response in the
-**Analysis** tab.
+**Analysis** panel.
 
 ## Build from source
 
