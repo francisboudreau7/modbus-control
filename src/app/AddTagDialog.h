@@ -8,6 +8,7 @@
 #include <QList>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 class QCheckBox;
@@ -22,6 +23,7 @@ class TstAddTagDialog;
 namespace mb {
 
 class EncodingDialog;
+struct ProbeState;
 
 /// "Add tag" dialog (title "Add tag"), opened by the tag table's Add button. Nothing about the
 /// register is guessed: the area has no selection and the address is empty when it opens.
@@ -136,6 +138,28 @@ private:
     QLabel *m_detect = nullptr;
     QDialogButtonBox *m_buttons = nullptr;
     QTimer *m_autoRead = nullptr;
+
+    bool m_probing = false;   ///< a probe (Read or Detect) is running
+    bool m_applying = false;  ///< fields are being set by Detect: field signals are ignored
+
+    std::optional<quint16> parsedAddress() const;
+    bool canProbe() const;
+    QString regLabel(int address) const;
+    QString rangeLabel(int first, int count) const;
+    QString disconnectedHint() const;
+    /// Re-evaluates overlap, enabled states and the preview hint from the fields.
+    void refresh();
+    /// Area or address edited: cancels a probe, clears the answers, restarts the timer.
+    void onTargetChanged();
+    /// Type or order edited.
+    void onEncodingChanged();
+    void startProbe(bool forDetect);
+    void probeNext(const std::shared_ptr<ProbeState> &state);
+    void probeAnswered(const std::shared_ptr<ProbeState> &state, const ModbusResult &result,
+                       const QList<quint16> &values);
+    void finishProbe(const std::shared_ptr<ProbeState> &state);
+    QString previewText(const ProbeState &state) const;
+    void applyDetect(const ProbeState &state);
 };
 
 } // namespace mb
