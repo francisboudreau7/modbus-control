@@ -104,6 +104,56 @@ bool readOptionalNumber(const QJsonObject &obj, const QString &key, const QStrin
     return true;
 }
 
+// JSON [min, max]: an array of two finite numbers with min != max.
+bool parseSpan(const QJsonValue &value, const QString &name, double &lo, double &hi, QString *error)
+{
+    if (!value.isArray()) {
+        setError(error, QStringLiteral("\"%1\" must be an array of 2 numbers [min, max]").arg(name));
+        return false;
+    }
+    const QJsonArray pair = value.toArray();
+    if (pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()
+        || !std::isfinite(pair.at(0).toDouble()) || !std::isfinite(pair.at(1).toDouble())
+        || pair.at(0).toDouble() == pair.at(1).toDouble()) {
+        setError(error, QStringLiteral("\"%1\" must be [min, max]: two different finite numbers").arg(name));
+        return false;
+    }
+    lo = pair.at(0).toDouble();
+    hi = pair.at(1).toDouble();
+    return true;
+}
+
+// Enum names of the "analysis" keys added in v1.2.6.
+QString methodName(ModelMethod method)
+{
+    switch (method) {
+    case ModelMethod::ZeroTo632:
+        return QStringLiteral("0-63.2");
+    case ModelMethod::Smith:
+        return QStringLiteral("smith");
+    case ModelMethod::Sundaresan:
+        return QStringLiteral("sundaresan");
+    case ModelMethod::Custom:
+        break;
+    }
+    return QStringLiteral("custom");
+}
+
+QString tuningRuleName(TuningRule rule)
+{
+    switch (rule) {
+    case TuningRule::ZieglerNichols:
+        return QStringLiteral("zn");
+    case TuningRule::CohenCoon:
+        return QStringLiteral("cohen-coon");
+    case TuningRule::ImcLambda:
+        return QStringLiteral("imc");
+    case TuningRule::Simc:
+        break;
+    }
+    return QStringLiteral("simc");
+}
+
 QString areaName(Area area)
 {
     return area == Area::InputRegister ? QStringLiteral("input") : QStringLiteral("holding");
@@ -306,18 +356,33 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
 }
 
 // Optional "analysis" object. Every key is optional; a missing key keeps the default in `out`.
-bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error)
+// The keys added in v1.2.6 (pvTag, setpointTags, method, ...) fall back to values migrated from
+// the per-tag "analyzed" flags (pvTag, setpointTags) or from modelPercents (method) when missing.
+bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSettings &out, QString *error)
 {
     const QString key = QStringLiteral("analysis");
     const QJsonValue value = root.value(key);
-    if (value.isUndefined())
-        return true;
-    if (!value.isObject()) {
-        setError(error, QStringLiteral("\"analysis\" must be an object"));
-        return false;
+    QJsonObject obj;
+    if (!value.isUndefined()) {
+        if (!value.isObject()) {
+            setError(error, QStringLiteral("\"analysis\" must be an object"));
+            return false;
+        }
+        obj = value.toObject();
     }
-    const QJsonObject obj = value.toObject();
     const QString prefix = QStringLiteral("analysis.");
+
+    // Before v1.2.6 the analysed tags were flagged per tag: the first one was the PV, all of them
+    // were shown as setpoint tags. Used only when the keys are missing (they are read below).
+    out.pvTagId = 0;
+    out.setpointTagIds.clear();
+    for (const Tag &tag : tags) {
+        if (!tag.analyzed)
+            continue;
+        if (out.pvTagId == 0)
+            out.pvTagId = tag.id;
+        out.setpointTagIds.append(tag.id);
+    }
 
     const QJsonValue percents = obj.value(QStringLiteral("percents"));
     if (!percents.isUndefined()) {
@@ -390,6 +455,76 @@ bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error
         out.modelPercentB = b;
     }
 
+    // Without "method" (files before v1.2.6): 0 / 63.2 % is the two-point method, else Custom.
+    out.method = std::fabs(out.modelPercentA) < 1e-9 && std::fabs(out.modelPercentB - 63.2) < 1e-9
+                     ? ModelMethod::ZeroTo632
+                     : ModelMethod::Custom;
+    const QJsonValue method = obj.value(QStringLiteral("method"));
+    if (!method.isUndefined()) {
+        const QString text = method.toString();
+        if (!method.isString()) {
+            setError(error, QStringLiteral("\"analysis.method\" must be a string"));
+            return false;
+        }
+        if (text == QStringLiteral("0-63.2")) {
+            out.method = ModelMethod::ZeroTo632;
+        } else if (text == QStringLiteral("smith")) {
+            out.method = ModelMethod::Smith;
+        } else if (text == QStringLiteral("sundaresan")) {
+            out.method = ModelMethod::Sundaresan;
+        } else if (text == QStringLiteral("custom")) {
+            out.method = ModelMethod::Custom;
+        } else {
+            setError(error, QStringLiteral("\"analysis.method\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"custom\")")
+                                .arg(text));
+            return false;
+        }
+    }
+
+    qint64 pvTag = static_cast<qint64>(out.pvTagId);
+    if (!readInt(obj, QStringLiteral("pvTag"), prefix, 0, kMaxTagId, pvTag, error))
+        return false;
+    out.pvTagId = static_cast<TagId>(pvTag);
+
+    const QJsonValue setpointTags = obj.value(QStringLiteral("setpointTags"));
+    if (!setpointTags.isUndefined()) {
+        if (!setpointTags.isArray()) {
+            setError(error, QStringLiteral("\"analysis.setpointTags\" must be an array of tag ids"));
+            return false;
+        }
+        QList<TagId> ids;
+        for (const QJsonValue &entry : setpointTags.toArray()) {
+            const double d = entry.toDouble();
+            if (!entry.isDouble() || std::trunc(d) != d || d < 1.0 || d > static_cast<double>(kMaxTagId)) {
+                setError(error, QStringLiteral("\"analysis.setpointTags\" entries must be integers from 1 to %1")
+                                    .arg(kMaxTagId));
+                return false;
+            }
+            ids.append(static_cast<TagId>(d));
+        }
+        out.setpointTagIds = ids;
+    }
+
+    // "pvRange" is null (no range) or [min, max]; both are stored, or neither.
+    const QJsonValue pvRange = obj.value(QStringLiteral("pvRange"));
+    if (pvRange.isNull()) {
+        out.pvRangeMin.reset();
+        out.pvRangeMax.reset();
+    } else if (!pvRange.isUndefined()) {
+        double lo = 0.0;
+        double hi = 0.0;
+        if (!parseSpan(pvRange, QStringLiteral("analysis.pvRange"), lo, hi, error))
+            return false;
+        out.pvRangeMin = lo;
+        out.pvRangeMax = hi;
+    }
+
+    const QJsonValue coRange = obj.value(QStringLiteral("coRange"));
+    if (!coRange.isUndefined()
+        && !parseSpan(coRange, QStringLiteral("analysis.coRange"), out.coRangeMin, out.coRangeMax, error)) {
+        return false;
+    }
+
     qint64 deltaCoTag = static_cast<qint64>(out.deltaCoTagId);
     if (!readInt(obj, QStringLiteral("deltaCoTag"), prefix, 0, kMaxTagId, deltaCoTag, error))
         return false;
@@ -403,6 +538,53 @@ bool readAnalysis(const QJsonObject &root, AnalysisSettings &out, QString *error
         return false;
     if (!readBool(obj, QStringLiteral("guideLines"), prefix, out.guideLines, error))
         return false;
+
+    const QJsonValue tuningRule = obj.value(QStringLiteral("tuningRule"));
+    if (!tuningRule.isUndefined()) {
+        const QString text = tuningRule.toString();
+        if (!tuningRule.isString()) {
+            setError(error, QStringLiteral("\"analysis.tuningRule\" must be a string"));
+            return false;
+        }
+        if (text == QStringLiteral("zn")) {
+            out.tuningRule = TuningRule::ZieglerNichols;
+        } else if (text == QStringLiteral("cohen-coon")) {
+            out.tuningRule = TuningRule::CohenCoon;
+        } else if (text == QStringLiteral("imc")) {
+            out.tuningRule = TuningRule::ImcLambda;
+        } else if (text == QStringLiteral("simc")) {
+            out.tuningRule = TuningRule::Simc;
+        } else {
+            setError(error, QStringLiteral("\"analysis.tuningRule\" has unknown value \"%1\" (expected \"zn\", \"cohen-coon\", \"imc\" or \"simc\")")
+                                .arg(text));
+            return false;
+        }
+    }
+
+    if (!readDouble(obj, QStringLiteral("lambdaS"), prefix, out.lambdaS, error))
+        return false;
+    if (!(std::isfinite(out.lambdaS) && out.lambdaS >= 0.0)) {
+        setError(error, QStringLiteral("\"analysis.lambdaS\" must be a finite number, 0 or more"));
+        return false;
+    }
+
+    const QJsonValue timeUnit = obj.value(QStringLiteral("timeUnit"));
+    if (!timeUnit.isUndefined()) {
+        const QString text = timeUnit.toString();
+        if (!timeUnit.isString()) {
+            setError(error, QStringLiteral("\"analysis.timeUnit\" must be a string"));
+            return false;
+        }
+        if (text == QStringLiteral("s")) {
+            out.timeInMinutes = false;
+        } else if (text == QStringLiteral("min")) {
+            out.timeInMinutes = true;
+        } else {
+            setError(error, QStringLiteral("\"analysis.timeUnit\" has unknown value \"%1\" (expected \"s\" or \"min\")")
+                                .arg(text));
+            return false;
+        }
+    }
     return true;
 }
 
@@ -465,7 +647,6 @@ QByteArray projectToJson(const Project &project)
             {QStringLiteral("color"), tag.color},
             {QStringLiteral("plotted"), tag.plotted},
             {QStringLiteral("writable"), tag.writable},
-            {QStringLiteral("analyzed"), tag.analyzed},
             {QStringLiteral("axis"), axisName(tag.axis)},
         };
         // Quick values are written only when set.
@@ -491,6 +672,13 @@ QByteArray projectToJson(const Project &project)
     QJsonArray percents;
     for (double p : a.percents)
         percents.append(p);
+    QJsonArray setpointTags;
+    for (TagId id : a.setpointTagIds)
+        setpointTags.append(static_cast<qint64>(id));
+    // pvRange is null unless both ends are set.
+    const QJsonValue pvRange = (a.pvRangeMin && a.pvRangeMax)
+                                   ? QJsonValue(QJsonArray{*a.pvRangeMin, *a.pvRangeMax})
+                                   : QJsonValue(QJsonValue::Null);
     const QJsonObject analysis{
         {QStringLiteral("percents"), percents},
         {QStringLiteral("reference"),
@@ -498,11 +686,19 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("referenceWindowS"), a.referenceWindowS},
         {QStringLiteral("smoothingS"), a.smoothingS},
         {QStringLiteral("modelPercents"), QJsonArray{a.modelPercentA, a.modelPercentB}},
+        {QStringLiteral("method"), methodName(a.method)},
+        {QStringLiteral("pvTag"), static_cast<qint64>(a.pvTagId)},
+        {QStringLiteral("setpointTags"), setpointTags},
         {QStringLiteral("deltaCoTag"), static_cast<qint64>(a.deltaCoTagId)},
         {QStringLiteral("deltaCo"), a.manualDeltaCo},
         {QStringLiteral("detailedLabels"), a.detailedLabels},
         {QStringLiteral("showModel"), a.showModel},
         {QStringLiteral("guideLines"), a.guideLines},
+        {QStringLiteral("pvRange"), pvRange},
+        {QStringLiteral("coRange"), QJsonArray{a.coRangeMin, a.coRangeMax}},
+        {QStringLiteral("tuningRule"), tuningRuleName(a.tuningRule)},
+        {QStringLiteral("lambdaS"), a.lambdaS},
+        {QStringLiteral("timeUnit"), a.timeInMinutes ? QStringLiteral("min") : QStringLiteral("s")},
     };
 
     QJsonArray hiddenColumns;
@@ -601,7 +797,7 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
         project.tags.append(tag);
     }
 
-    if (!readAnalysis(root, project.analysis, error))
+    if (!readAnalysis(root, project.tags, project.analysis, error))
         return std::nullopt;
 
     if (!readHiddenColumns(root, project.hiddenColumns, error))
