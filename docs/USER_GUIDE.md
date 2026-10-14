@@ -6,13 +6,13 @@ This guide describes the application as built from this repository. For building
 ## Window layout
 
 - **Connection bar** (top): host, port, unit, timeout and period fields, a status LED, and the Connect / Disconnect button.
-- **Trend** and **Analysis** tabs (centre): **Trend** is the live graph with its controls above it.
-  **Analysis** measures the step response of the tags marked for analysis (see
-  [Analysis](#analysis-step-response)).
+- **Trend** (centre): the live graph with its controls above it.
 - **Tags** (bottom dock): the tag table with Add, Duplicate, Remove and Write selected buttons.
 - **Cursors** (right dock): cursor times and the readout table of the Trend.
-- **Quick write** (right dock, tabbed with Cursors): one button per preset value of the writable
+- **Quick write** (right dock, tabbed with Cursors and Analysis): one button per preset value of the writable
   tags (see [Quick writes](#quick-writes)).
+- **Analysis** (right dock, tabbed with Cursors and Quick write): the step-response analysis of the
+  Trend (see [Analysis](#analysis-step-response)).
 - **Menus**: File, Export, View, Options and Help.
 - **Status bar**: short messages (left) and the connection state (right).
 
@@ -65,8 +65,7 @@ Each row is one register value that the application reads. Columns:
 | Unit | Shown after the name in the legend and the CSV header. Optional. |
 | Writable | Allows writes from the Value column. Holding registers only, of any type. The box is disabled for input registers, and changing Area to Input clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
-| Analyze | Shows the tag on the Analysis tab and includes it in the step-response results. See [Analysis](#analysis-step-response). |
-| Axis | `Left` or `Right`: the Y axis the tag's curve uses on the Trend and the Analysis plot. See [Trend](#trend). |
+| Axis | `Left` or `Right`: the Y axis the tag's curve uses on the Trend. See [Trend](#trend). |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
 | Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
 | Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
@@ -232,7 +231,7 @@ a "run" and a "stop" value).
    writable tag, in scaled units. Clear the cell to remove the preset. Quick A and Quick B are
    read-only for tags that are not writable. A preset outside the tag's **Min**/**Max** limits is
    refused when you type it.
-2. Open the **Quick write** dock (right side, tabbed with Cursors; reopen it from the View menu).
+2. Open the **Quick write** dock (right side, tabbed with Cursors and Analysis; reopen it from the View menu).
    It lists each writable tag that has a preset, with its name, live value and one button per
    preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
 3. Click a button. A question asks for confirmation, for example "Write 1000 to HR 100
@@ -577,7 +576,8 @@ When data is missing (disconnected, a failed read, or bad quality) the line brea
 
 ## Cursors
 
-Two vertical cursors, **C1** (red) and **C2** (blue), mark times on the trend.
+Two vertical cursors, **C1** (red) and **C2** (blue), mark times on the trend. The
+[Analysis](#analysis-step-response) panel uses the same two cursors.
 
 - **Place cursors** (toggle): click once to put C1 at that time, click again to put C2. Placing
   stops after C2. Press Esc to stop placing without placing C2.
@@ -609,7 +609,8 @@ Export > Graph image... (Ctrl+E).
   the PDF page size is the pixel size divided by the resolution.
 - **Include cursors**: available when a cursor is set. Unticked hides the cursor lines.
 - **Include cursor readout**: available when a cursor is set. Draws the Cursors panel text in a
-  box at the top left of the image.
+  box at the top left of the image. When the Analysis panel has a valid result, the box also holds
+  the analysis summary (K, L, T and the fit error; see [Analysis](#analysis-step-response)).
 
 The image shows the plot as it is on screen, including the current zoom and pan.
 
@@ -634,57 +635,214 @@ header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted wh
 
 ## Analysis (step response)
 
-The Analysis tab measures a step response between two cursors. It finds the times at which the
-response reaches the setpoints (0 % and 63.2 % by default) and computes a first-order model with
-dead time: the gain K, the dead time L and the time constant T. It is meant for step tests, for
-example to get the values for Ziegler–Nichols open-loop tuning.
+The Analysis panel measures a step response on the Trend plot, between the two cursors C1 and C2.
+It finds the times at which the response reaches the setpoints (0 % and 63.2 % by default). From
+these times it computes a first-order model with dead time: the gain K, the dead time L and the time
+constant T. It also computes PID settings from them. It is meant for step tests, for example to get
+the values for Ziegler-Nichols open-loop tuning.
 
-### Preparing the tags
+Open the panel with **View > Analysis**. It is the **Analysis** dock on the right side, tabbed with
+**Cursors** and **Quick write**. Its controls are in four numbered groups, one for each step:
 
-Tick **Analyze** in the tag table for each tag to analyse. Only analysed tags are shown on the
-Analysis plot and in the results. Changing the box marks the project as modified.
+1. **Signals**: the process value, the controller output and the optional ranges.
+2. **Cursors**: where C1 and C2 are, and **Find step**.
+3. **Model**: the method, the results, the model curve and the checks.
+4. **Tuning**: the PID settings.
 
-### Placing the cursors
+Below these is **Setpoints and options**, which is collapsed at first. Hover over any value to see how
+it was calculated (see [Tooltips](#tooltips)).
 
-Each tag is analysed between the two cursors:
+The overlays (setpoint markers, guide lines and the model curve) are drawn on the Trend plot, and the
+graph image export includes them.
 
-- **C1** goes before the step, while the response is still at its starting value.
-- **C2** goes after the response has settled.
+### 1. Signals
 
-Place them on the Analysis plot in the same way as on the Trend (see [Cursors](#cursors)), or place
-them on the Trend and click **Copy cursors from Trend**. The Analysis tab has its own cursors, and
-the Cursors dock shows only the Trend's cursors.
+- **Process value (PV)**: the measured signal that responds to the step, for example a temperature.
+  Choose it in the list. It shows **Choose...** until you choose a tag. Choosing a PV also shows its
+  setpoints (see [Setpoints and options](#setpoints-and-options)).
+- **Controller output (CO)**: the signal that was stepped, for example a setpoint or a valve position.
+  Its change between the cursors is **ΔCO**. Choose the CO tag in the list. To type the step yourself,
+  choose **Typed ΔCO** and enter the step, in the output's units, in the box next to it. A typed ΔCO
+  has no unit in the results.
 
-### References
+Without a ΔCO the panel cannot compute K. L and T are still computed.
 
-The 0 % level is taken at C1 and the 100 % level at C2. **Reference** selects how:
+**Ranges for %/% gains** (optional). Type the **PV min** and **PV max** of the process value, and the
+**CO min** and **CO max** of the controller output (default 0 and 100). The panel then also shows the
+gains in percent of the ranges, **K (%/%)** and **Kp (%/%)**:
 
-- **Value at cursor** (default): the recorded value at the cursor, interpolated between the two
-  samples around it.
-- **Mean before cursor**: the mean of the recorded values in the **Window** W seconds before the
-  cursor (0.1 to 3600 s, default 1 s). Use it when the signal is noisy.
+- K (%/%) = K × CO span / PV span, where the span is max − min.
+- The PV range is used only when both PV boxes are filled in. An empty box means no range.
+- A span of 0 counts as no range.
 
-ΔPV is the 100 % level minus the 0 % level. When the two levels are equal, the result says
-"No change between C1 and C2".
+### 2. Cursors
 
-### Smoothing
+C1 and C2 are the two cursors of the Trend (see [Cursors](#cursors)). The **C1 = …, C2 = …** line in
+this group shows their times. A dash (—) means that cursor is not placed.
 
-**Smoothing** S (Off by default, up to 3600 s) applies a centred moving average of width S to the
-samples between the cursors before the setpoint times are searched. The reference levels are not
-smoothed.
+- **C1** goes just before the step, while the PV still has its starting value.
+- **C2** goes after the PV has settled.
 
-Smoothing has a bias. A centred average starts to rise up to S/2 before the real response, so the
-0 % time comes out early by up to S/2 and L comes out too small. With smoothing on, use a model
-**From %** above 0 (for example 10), or keep S small compared with L.
+The hint line below the buttons tells you what is still missing:
 
-### Setpoints
+- "Choose the process value (PV) in step 1." The PV is not chosen yet.
+- "Place C1 just before the step and C2 after the PV has settled, or click Find step." A cursor is
+  missing.
+- Otherwise, the reason why there is no result, if there is one (for example "No change between C1
+  and C2").
 
-The **Setpoints** list holds the percentages of the change to find. The default is 0 % and 63.2 %.
-Type a value (0 to 100, two decimals) and click **Add**; select an entry and click **Remove**. The
-list stays sorted, has no duplicates and holds at most 20 values. For Smith's method, add 28.3 and
-use the 28.3 % and 63.2 % times.
+**Find step** places C1 and C2 for you. It needs a PV and a CO in step 1. When it is disabled, its
+tooltip says what is missing. It looks at the visible time range of the Trend (the whole recording if
+nothing is visible), so zoom or scroll to the step first. It then:
 
-### How the times are found
+- finds the largest change of the controller output in that range. That change is the step;
+- puts C1 5 s before the step, or halfway back to the previous change of the output when that is
+  closer;
+- puts C2 after the PV has settled: at the settling time plus 20 % of the time the settling took.
+  If the PV does not settle before the end of the range, C2 goes to the end of the range, and the
+  check **The PV is still moving at C2** appears.
+
+If no step is found, the hint line says "No step found in the controller output in the visible
+range." Find step is a starting point. Check the cursors on the Trend afterwards.
+
+### 3. Model
+
+**Method** chooses the two points of the response that give L and T. Let ta and tb be the times at
+which the PV reaches the two points a and b (as fractions). All times are measured from the step time
+t_step, which is the time of the controller output's step.
+
+| Method | Points (a / b) | T (time constant) | L (dead time) |
+|---|---|---|---|
+| 0 % / 63.2 % (two points), the default | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
+| Smith | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
+| Sundaresan-Krishnaswamy | 35.3 % / 85.3 % | T = 0.67 (t85.3 − t35.3) | L = 1.3 t35.3 − 0.29 t85.3 |
+| Custom | **From %** (a) and **To %** (b) | see below | see below |
+
+For **Custom**:
+
+- T = (tb − ta) / (ln(1 − a) − ln(1 − b))
+- L = ta + T · ln(1 − a)
+
+**From %** and **To %** are used only for Custom. They must satisfy a < b, and both must be below 100.
+The two points do not have to be in the Setpoints list: the panel searches for their times anyway.
+
+**Results** (the table in this group):
+
+| Row | Meaning |
+|---|---|
+| y0 | The PV level at C1 (0 %). |
+| y100 | The PV level at C2 (100 %). |
+| ΔPV | y100 − y0: how much the PV moved. |
+| ΔCO | The change of the controller output between the cursors, or the typed value. |
+| K | The process gain, K = ΔPV / ΔCO, in the PV unit per CO unit, for example `°C/%`. |
+| K (%/%) | The gain in percent of the ranges. Shown only when both ranges are set. |
+| L (s) | The dead time: the delay before the PV starts to respond. |
+| T (s) | The time constant: how fast the PV follows after the dead time. |
+| L/T | The controllability ratio. Below 0.3 is easy to control. Above 1, the dead time dominates. |
+| Fit error | How far the model is from the measured PV, as an RMS value in the PV unit and as a percentage of ΔPV, with a word: **Good**, **Acceptable** or **Poor**. |
+
+The fit error is Good below 3 %, Acceptable below 8 %, and Poor otherwise. A small fit error means the
+first-order model with dead time describes the response well.
+
+A value that cannot be computed shows "—".
+
+**Show model curve** (on by default) draws the fitted model over the response: a dashed line in the
+PV's colour, from C1 to C2. It stays at the 0 % level until the step time plus L, and then rises
+towards 100 % with the time constant T. Compare it with the measured curve. If they lie on top of each
+other, the model describes the process well. The option is saved in the project.
+
+**Checks.** Below the results the panel lists the checks that apply, each with a warning icon. The
+list is hidden when there are no checks. Each message and what to do:
+
+| Message | What to do |
+|---|---|
+| "K can't be computed: choose the controller output (CO) or type ΔCO in step 1." | Choose the CO tag, or choose **Typed ΔCO** and type the step. |
+| "L and T can't be computed: the PV does not reach both model points (a % and b %) between the cursors." | The PV does not get past both levels before C2. Move C2 later, after the PV has risen past the second level, or choose another method. |
+| "The PV is still moving at C2: move C2 later." | Move C2 later, until the PV is flat. |
+| "The step is small compared with the noise: the results are uncertain." | Use a bigger step, or set **Reference** to **Mean before cursor** for a noisy signal. |
+| "L is negative: C1 is after the start of the response. Move C1 before the step." | Move C1 earlier, to before the step. Or use **Find step**. |
+| "L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be aggressive; prefer IMC / lambda or SIMC." | Choose **IMC / lambda** or **SIMC** in the Tuning group. |
+| "The model does not fit the response well (fit error > 8 %)." | Check that the cursors frame the step and that the model curve follows the PV. The response may not be first order, so K, L and T are rough. |
+
+### 4. Tuning
+
+The tuning calculator turns K, L and T into P, PI and PID settings. Choose a rule in **Rule**. The
+table shows one row for each controller type. With r = L / T, the rules are:
+
+| Rule | Controller | Kp | Ti (s) | Td (s) |
+|---|---|---|---|---|
+| Ziegler-Nichols (open loop) | P | T / (K · L) | — | — |
+| | PI | 0.9 · T / (K · L) | L / 0.3 (about 3.33 · L) | — |
+| | PID | 1.2 · T / (K · L) | 2 · L | 0.5 · L |
+| Cohen-Coon | P | (T / (K · L)) · (1 + r / 3) | — | — |
+| | PI | (T / (K · L)) · (0.9 + r / 12) | L · (30 + 3r) / (9 + 20r) | — |
+| | PID | (T / (K · L)) · (4/3 + r / 4) | L · (32 + 6r) / (13 + 8r) | 4 · L / (11 + 2r) |
+| IMC / lambda | P | not available | — | — |
+| | PI | T / (K · (λ + L)) | T | — |
+| | PID | (T + L/2) / (K · (λ + L/2)) | T + L/2 | T · L / (2T + L) |
+| SIMC | P | T / (K · (λ + L)) | — | — |
+| | PI | T / (K · (λ + L)) | min(T, 4 · (λ + L)) | — |
+| | PID | not available | not available | not available |
+
+- **λ** (lambda) is the closed-loop time constant of IMC / lambda and SIMC, in seconds. A larger λ
+  gives a slower, gentler controller. Enter 0, which is shown as **Auto (= L)**, to use λ = L. The box
+  is enabled only for IMC / lambda and SIMC.
+- The Ti and Td values are in seconds. Tick **Ti, Td in minutes** to show them in minutes. The
+  calculation is the same.
+- The controllers use the ideal (ISA) form, which the note under the table gives:
+  u = Kp (e + 1/Ti ∫e dt + Td de/dt).
+- Kp is in the CO unit per PV unit. If K is negative (the PV falls when the output rises), Kp is
+  negative too. The note then says "K is negative: the controller must be direct acting (Kp is shown
+  negative)."
+- **Kp (%/%)** is shown only when both ranges are set.
+- The table is empty while K, L or T is missing, or while L is zero or negative. Fix the results above
+  first. "not defined" means that the rule gives no setting for that controller.
+
+The rules are a starting point. Test the controller on the process before you rely on the values.
+
+### Setpoints and options
+
+This group is collapsed at first. Click its title to open it. Whether it is open is not saved.
+
+- **Show setpoints on**: tick the PV and the other plotted tags whose setpoints you want to see. The
+  panel finds their setpoint times too. Each ticked tag gets markers on the Trend, guide lines and
+  rows in the setpoint table. The list is saved in the project.
+- **Reference**: how the 0 % and 100 % levels are taken.
+  - **Value at cursor** (default): the recorded value at the cursor, interpolated between the two
+    samples around it.
+  - **Mean before cursor**: the mean of the recorded values in the window **W** seconds before the
+    cursor (0.1 to 3600 s, default 1 s). Use it when the signal is noisy.
+- **Smoothing** S (**Off** by default, up to 3600 s): a centred moving average of width S, applied to
+  the samples between the cursors before the setpoint times are searched. The levels are not smoothed.
+
+  Smoothing has a bias. A centred average starts to rise up to S/2 before the real response, so the
+  0 % time comes out early by up to S/2, and L comes out too small. With smoothing on, use a model
+  **From %** above 0 (for example 10), or keep S small compared with L.
+- **Setpoints (%)**: the percentages of the step whose times are found. The default is 0 % and 63.2 %.
+  Type a value from 0 to 100 (two decimals; the box starts at 28.3, the value Smith's method needs)
+  and click **Add**. Select an entry and click **Remove**. The list stays sorted, has no duplicates and
+  holds at most 20 values.
+- **Show time and value on plot labels**: adds two lines to each setpoint label on the plot: the time
+  (t = 15.512 s) and the target value with its unit (y = 56.32 °C).
+- **Guide lines** (on by default): for every found setpoint, a dashed line from its marker straight
+  down to the bottom of the plot, and one straight left to the Y axis. They show the time and the level
+  of each setpoint. They follow zoom and pan, and they are included in the graph image.
+- **Setpoint table**: one row for each checked tag and each setpoint, with these columns:
+
+| Column | Meaning |
+|---|---|
+| Tag | Colour swatch and name [unit]. |
+| % | The setpoint. |
+| Target | The level of the setpoint: y0 + % × ΔPV. |
+| Measured | The recorded (unsmoothed) value at the found time. |
+| Time (s) | The found time. "—" when it is not found between the cursors. |
+| t − C1 (s) | The found time minus the time of the earlier cursor. |
+
+Each found setpoint is marked on the Trend with a cross at its time and level, in the tag's colour,
+with a label such as "63.2 %". The label is drawn in a white box with a border in the tag's colour, so
+it stays readable where it crosses a curve.
+
+#### How the times are found
 
 For each setpoint, the recorded samples between the cursors are searched as follows:
 
@@ -698,123 +856,56 @@ For each setpoint, the recorded samples between the cursors are searched as foll
 
 Missing samples are skipped. When the level is never reached, the time shows "—".
 
-The search never leaves the cursors: it starts at C1 with the 0 % level and ends at C2 with the
-100 % level. So 0 % is always found and is never before C1: if the signal does not come back to
-the starting level after C1 (noise, or C1 placed on a part that is already rising), 0 % is C1
-itself. Likewise 100 % is never after C2.
+The search never leaves the cursors: it starts at C1 with the 0 % level and ends at C2 with the 100 %
+level. So 0 % is never before C1. If the signal does not come back to the starting level after C1
+(noise, or C1 placed on a part that is already rising), 0 % is C1 itself. In the same way, 100 % is
+never after C2.
 
-### Results tables
+The model points are searched in the same way, even when they are not in the Setpoints list.
 
-**Setpoints** table, one row per analysed tag and setpoint:
+### Tooltips
 
-| Column | Meaning |
-|---|---|
-| Tag | Colour swatch and `name [unit]`. |
-| % | The setpoint. |
-| Target | The level of the setpoint: 0 % level + % × ΔPV. |
-| Measured | The recorded (unsmoothed) value at the found time. |
-| Time (s) | The found time. |
-| t − C1 (s) | The found time minus the time of the earlier cursor. |
+Every value in the results, tuning and setpoint tables has a tooltip. It explains the value in three
+parts:
 
-**Model** table, one row per analysed tag:
+1. the name of the value and what it means;
+2. the general formula;
+3. the same formula with this result's numbers, and the value.
 
-| Column | Meaning |
-|---|---|
-| Tag | As above. |
-| y0, y100 | The 0 % and 100 % levels. |
-| ΔPV | y100 − y0. |
-| ΔCO | The change of the controller output (see Model). |
-| K, L (s), T (s) | The model values. |
-| Fit RMS | How well the model follows the data (see Model curve). Shown as the value and, in brackets, as a percentage of ΔPV, for example `0.12 (0.6 %)`. |
+For example, the K tooltip reads: "K, process gain: change of the PV per unit of controller output,
+once settled. K = ΔPV / ΔCO, K = 12.5 / 10 = 1.25 °C/%." The tooltips for L and T show the formula of
+the chosen method with the crossing times. The tooltips of the tuning values show the rule's formula
+with K, L, T and λ filled in. Numbers in the tooltips have 4 significant digits.
 
-A tag without a valid result shows its error text across the value columns. A value that cannot be
-computed shows "—". Numbers use 6 significant digits.
+### Copy results and export
 
-Each found setpoint is also marked on the plot with a cross at its time and target level, in the
-tag's colour and labelled, for example, "63.2 %".
-
-The label is drawn in a white box with a border in the tag's colour, so it stays readable where
-it crosses a curve. Tick **Show time and value on plot labels** (under Setpoints) to add two lines
-to each label: the time (`t = 15.512 s`) and the target value with its unit (`y = 56.32 degC`).
-This option is saved in the project.
-
-### Model
-
-The model uses two setpoints, **From %** (a) and **To %** (b). They must be below 100, with a < b.
-The defaults are 0 % and 63.2 %. Let ta and tb be their times, and a and b the fractions:
-
-- K = ΔPV / ΔCO
-- T = (tb − ta) / (ln(1 − a) − ln(1 − b))
-- L = ta − T · (−ln(1 − a)) − t_step
-
-For From 0 % and To 63.2 % this is T = t63 − t0 and L = t0 − t_step.
-
-**ΔCO** is the step of the controller output. Either choose a tag in the list (for example
-**Setpoint**), and its change between the cursors is used, or choose **Typed value** and enter the
-step in the output's units. With no ΔCO (or 0 typed), K is not computed.
-
-t_step is the 50 % time of the ΔCO tag's step between the cursors. When the ΔCO tag gives no step,
-t_step is the time of C1.
-
-The app shows K, L and T only. It does not compute controller settings. For Ziegler–Nichols
-open-loop (reaction curve) tuning, apply these rules yourself:
-
-| Controller | Kp | Ti (s) | Td (s) |
-|---|---|---|---|
-| P | T / (K · L) | — | — |
-| PI | 0.9 · T / (K · L) | L / 0.3 (about 3.33 · L) | — |
-| PID | 1.2 · T / (K · L) | 2 · L | 0.5 · L |
-
-### Model curve
-
-Tick **Show model curve** in the Model group to draw the fitted model over the response. It is a
-dashed line in the tag's colour, from C1 to C2. It starts at the 0 % level, stays there until the
-step time plus the dead time L, and then rises towards the 100 % level with the time constant T.
-It is drawn only when L and T are valid for the tag. The option is saved in the project.
-
-Compare the curve with the measured curve. If they lie on top of each other, the first-order model
-with dead time describes the process well.
-
-**Fit RMS** in the Model table is the root-mean-square of the difference between the recorded values
-and the model, over the samples between C1 and C2. It is in the units of the tag. The percentage is
-Fit RMS as a share of |ΔPV|. A small value means a good fit: a few percent of ΔPV or less is a
-close match. A large value means the response is not first order, or the times were read from
-a noisy or badly placed step. Fit RMS shows "—" when no model is valid.
-
-### Guide lines
-
-**Guide lines** (under Setpoints, on by default) draws, for every found setpoint, a dashed line from
-the marker straight down to the bottom of the plot and a dashed line from the marker straight left
-to the left edge. They show the time and the level of each setpoint. The lines follow zoom and pan,
-and are included in the graph image. Untick the box to hide them.
-
-### Copying results
-
-- **Ctrl+C** on the Setpoints or Model table copies the selected cells. With nothing selected it copies
-  the whole table, with its header row.
-- **Copy results** (below the buttons at the top of the Analysis tab) copies both tables, with a blank
-  line between them.
+- **Copy results** (the button at the top of the panel) copies the results table, the tuning table and
+  the setpoint table, with a blank line between them. The tuning rows start with the controller type
+  (P, PI or PID).
+- **Ctrl+C** on a table copies the selected cells. With nothing selected, it copies the whole table,
+  with its header row.
 
 The text is tab-separated. Pasting it into Excel or Word puts each value in its own cell.
 
-### Exporting results
+**Export results (CSV)...** on the panel, or **Export > Analysis results (CSV)...**, is enabled when
+the PV has a valid result. The default name is `analysis.csv` in the last export folder, or in
+Documents.
 
-- **Export > Analysis results (CSV)...**, or **Export results (CSV)...** on the Analysis tab, is
-  enabled when at least one tag has a valid result. The default name is `analysis.csv` in the last
-  export folder, or in Documents.
 - The file is UTF-8 with CRLF line endings and comma separators. It has two sections, separated by an
   empty line. The first has one row per setpoint (`tag,percent,target,measured,time_s,time_from_c1_s`).
   The second has one row per tag (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note`).
-  A missing value is an empty cell, so `fit_rms` and `fit_rms_percent` are empty when no model is valid.
-  For an invalid result, `note` holds the error text.
-- **Export > Graph image...** while the Analysis tab is active exports the Analysis plot, including the
-  setpoint markers. With **Include cursor readout** ticked, the box shows the results summary.
+- A missing value is an empty cell, so `fit_rms` and `fit_rms_percent` are empty when no model is
+  valid. For an invalid result, `note` holds the error text.
+
+**Export > Graph image...** exports the Trend with the setpoint markers and the model curve. With
+**Include cursor readout** ticked, the box at the top left of the image holds the analysis summary: the
+times of C1 and C2, the K, L, T and fit error of the PV, and the setpoint times of the other tags.
 
 ### Saving
 
-The Analysis settings (reference, window, smoothing, setpoints, model and ΔCO, plot labels, model
-curve and guide lines) and the **Analyze** flags are saved in the project. The cursors are not.
-A session also keeps the cursors (see [Sessions](#sessions)).
+The Analysis settings are saved in the project: the PV and CO choices, the ranges, the method, the
+setpoints, the reference, the model and tuning options, the plot labels, the model curve and the guide
+lines. The cursors are not saved in a project. A session keeps them (see [Sessions](#sessions)).
 
 ### Try it with the test server
 
@@ -822,24 +913,30 @@ A session also keeps the cursors (see [Sessions](#sessions)).
 2. Start the application with `examples\demo.mbproj` (or open it with File > Open), then click **Connect**.
 3. Double-click the **Value** cell of **Setpoint** (HR 100), type 0 and confirm. Or click **A: 0** in
    the Quick write dock. Wait a few seconds.
-4. Open the **Analysis** tab and place C1 now, before the step.
-5. Write 1000 to **Setpoint** the same way, or click **B: 1000** in the Quick write dock, and wait about 10 s. The **Lag** signal (IR 10) starts to
-   rise after its 1 s dead time, with a time constant of 2 s. When it has settled, place C2.
-6. In **Model**, select **Setpoint** as the ΔCO tag. Tick **Show model curve** to draw the fitted
-   model over the Lag response between the cursors.
-7. The Lag row shows K ≈ 1, L ≈ 1 s and T ≈ 2 s. Its **Fit RMS** should be small compared with ΔPV,
-   and the dashed model curve should follow the measured curve.
+4. Open the **Analysis** dock (View > Analysis). In **1. Signals**, choose **Lag** as the PV and
+   **Setpoint** as the CO.
+5. Place C1 now, before the step: click **Place cursors** on the Trend, then click once in the plot
+   before the step.
+6. Write 1000 to **Setpoint** the same way, or click **B: 1000** in the Quick write dock, and wait about
+   10 s. The **Lag** signal (IR 10) starts to rise after its 1 s dead time, with a time constant of 2 s.
+   When it has settled, place C2 the same way, or click **Find step** in **2. Cursors** and check the
+   cursors on the Trend.
+7. The **Lag** results show K ≈ 1, L ≈ 1 s and T ≈ 2 s. The fit error should be Good, the model curve
+   should follow the measured curve, and the checks list should be empty.
 
 ## Projects
 
 Projects are saved as `.mbproj` files. A project holds the connection settings, the register numbering
-(1-based or not), the tag list, including tag colours, the **Analyze** flags, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
+(1-based or not), the tag list, including tag colours, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
 
-In the file, each tag has an `analyzed` key, an `axis` key (`"left"` or `"right"`) and optional
-`quickA` and `quickB` keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write
-limits; a key is written only when the limit is set). The Analysis settings are in an `analysis` object
-(`percents`, `reference`, `referenceWindowS`, `smoothingS`, `modelPercents`, `deltaCoTag`, `deltaCo`,
-`showModel`, `guideLines`). A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
+In the file, each tag has an `axis` key (`"left"` or `"right"`) and optional `quickA` and `quickB`
+keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write limits; a key is written
+only when the limit is set). The Analysis settings are in an `analysis` object: `pvTag` and
+`setpointTags` (the PV and the tags whose setpoints are shown), `deltaCoTag` and `deltaCo`, `method`
+(`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
+(`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
+`guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
+and `timeUnit` (`"s"` or `"min"`). A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|
@@ -872,7 +969,7 @@ connection. It holds:
 
 - the project: connection settings, tags and Analysis settings,
 - the recording: the trend history with its start time,
-- the cursors of the Trend and of the Analysis tab.
+- the cursors (C1 and C2) of the Trend.
 
 | Menu item | Action |
 |---|---|
@@ -881,7 +978,7 @@ connection. It holds:
 
 ### Offline viewing and analysis
 
-After **Open session...** the Trend, the Cursors panel and the Analysis tab show the recorded data
+After **Open session...** the Trend, the Cursors panel and the Analysis panel show the recorded data
 and the saved cursors. Nothing is polled. The Analysis works as usual, and so do the graph image
 and CSV exports. Writes are not possible until you connect.
 
