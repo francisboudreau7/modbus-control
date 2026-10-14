@@ -683,8 +683,10 @@ void AnalysisPanel::setPlot(TrendPlot *plot)
     m_plot = plot;
     if (m_plot) {
         m_cursorsConnection = connect(m_plot->cursors(), &PlotCursors::cursorsChanged, this, [this] {
-            if (!m_settingCursors)
+            if (!m_settingCursors) {
+                m_findNotSettled = false; // the user moved a cursor: Find step's verdict is stale
                 recompute();
+            }
         });
         // The plot owns (and deletes) the overlay items when it goes away first.
         m_plotDestroyedConnection = connect(m_plot, &QObject::destroyed, this, [this] {
@@ -742,6 +744,7 @@ void AnalysisPanel::normalizeSettings()
 void AnalysisPanel::setSettings(const AnalysisSettings &settings)
 {
     m_settings = settings;
+    m_findNotSettled = false;
     normalizeSettings();
     syncControlsFromSettings();
     recompute();
@@ -770,8 +773,7 @@ const Tag *AnalysisPanel::tagById(TagId id) const
 
 bool AnalysisPanel::shownTag(const Tag *tag) const
 {
-    return tag && m_settings.setpointTagIds.contains(tag->id)
-           && (tag->plotted || tag->id == m_settings.pvTagId);
+    return tag && m_settings.setpointTagIds.contains(tag->id) && tag->plotted;
 }
 
 QString AnalysisPanel::pvUnit() const
@@ -954,6 +956,7 @@ void AnalysisPanel::onPvChanged()
     if (m_updating)
         return;
     const TagId id = m_pvCombo->currentData().toUInt();
+    m_findNotSettled = false;
     m_settings.pvTagId = id;
     if (id != 0 && !m_settings.setpointTagIds.contains(id))
         m_settings.setpointTagIds.append(id);
@@ -969,6 +972,7 @@ void AnalysisPanel::onCoChanged()
 {
     if (m_updating)
         return;
+    m_findNotSettled = false;
     m_settings.deltaCoTagId = m_coCombo->currentData().toUInt();
     m_settings.manualDeltaCo = m_deltaCoSpin->value();
     updateEnabled();
@@ -1075,6 +1079,7 @@ void AnalysisPanel::onFindStep()
     if (!m_recorder || !m_plot || co == 0 || pv == 0)
         return;
     m_hintOverride.clear();
+    m_findNotSettled = false;
     if (m_recorder->size() < 2) {
         m_hintOverride = tr("No step found in the controller output in the visible range.");
         updateHint();
@@ -1116,6 +1121,7 @@ void AnalysisPanel::onFindStep()
     cur->setC1(w->c1);
     cur->setC2(w->c2);
     m_settingCursors = false;
+    m_findNotSettled = !w->settled;
     recompute();
 }
 
@@ -1143,7 +1149,10 @@ void AnalysisPanel::recompute()
         m_results.append(
             analyzeStep(*m_recorder, m_settings.pvTagId, cur->c1(), cur->c2(), m_settings));
         for (const Tag &t : std::as_const(m_tags)) {
-            if (t.id != m_settings.pvTagId && m_settings.setpointTagIds.contains(t.id))
+            // Unplotted setpoint tags show nothing, so they are not analysed either (the CSV
+            // export then matches what the panel shows). The PV is analysed even unplotted.
+            if (t.id != m_settings.pvTagId && t.plotted
+                && m_settings.setpointTagIds.contains(t.id))
                 m_results.append(analyzeStep(*m_recorder, t.id, cur->c1(), cur->c2(), m_settings));
         }
     }
@@ -1290,15 +1299,28 @@ void AnalysisPanel::rebuildChecks()
     if (m_recorder && !m_results.isEmpty() && m_results.first().valid) {
         const auto ab = modelPercents(m_settings);
         const QIcon icon = style()->standardIcon(QStyle::SP_MessageBoxWarning);
-        const QList<StepCheck> checks = checkStep(*m_recorder, m_results.first());
+        QList<StepCheck> checks = checkStep(*m_recorder, m_results.first());
+        // Find step reported that the PV never settled before the end of the range: say so even
+        // when the slope test at C2 does not fire (noisy or flat end).
+        if (m_findNotSettled && !checks.contains(StepCheck::NotSettled)) {
+            qsizetype pos = 0;
+            while (pos < checks.size() && checks.at(pos) < StepCheck::NotSettled)
+                ++pos;
+            checks.insert(pos, StepCheck::NotSettled); // keep enum order
+        }
         const int textWidth = std::max(120, m_checksList->viewport()->width() - 40);
         int total = 4;
         for (StepCheck c : checks) {
             QString text;
             switch (c) {
             case StepCheck::NoDeltaCo:
-                text = tr("K can't be computed: choose the controller output (CO) or type ΔCO in "
-                          "step 1.");
+                if (m_settings.deltaCoTagId != 0) {
+                    text = tr("The controller output (CO) does not change between the cursors: K "
+                              "can't be computed. Move the cursors around the step.");
+                } else {
+                    text = tr("K can't be computed: choose the controller output (CO) or type ΔCO "
+                              "in step 1.");
+                }
                 break;
             case StepCheck::NoModel:
                 text = tr("L and T can't be computed: the PV does not reach both model points "
@@ -1465,7 +1487,7 @@ void AnalysisPanel::rebuildOverlays()
         const QColor color(tag->color);
         const int axis = tag->axis == YAxis::Right ? QwtPlot::yRight : QwtPlot::yLeft;
 
-        if (i == 0 && m_settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
+        if (i == 0 && tag->plotted && m_settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
             QVector<QPointF> pts;
             pts.reserve(kModelPoints + 2);
             for (int k = 0; k < kModelPoints; ++k) {
@@ -1559,8 +1581,8 @@ QString AnalysisPanel::readoutText() const
     if (!cur || !cur->hasC1() || !cur->hasC2() || m_results.isEmpty() || !m_results.first().valid)
         return {};
 
-    QStringList lines{QStringLiteral("C1 = ") + fmtSeconds(cur->c1()) + QStringLiteral(", C2 = ")
-                      + fmtSeconds(cur->c2())};
+    // No "C1 = ..., C2 = ..." line: the cursor readout composed before this text has it.
+    QStringList lines;
     const StepResult &pv = m_results.first();
     const Tag *pvTag = tagById(pv.tagId);
     const auto ab = modelPercents(m_settings);
@@ -1799,7 +1821,11 @@ QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
     const QString B = ok ? g4(tb) : QString();
     QStringList lines;
     const ModelMethod m = m_settings.method;
-    const QString approx = m == ModelMethod::Sundaresan ? QStringLiteral("≈") : QStringLiteral("=");
+    // Smith and Sundaresan use rounded textbook constants (1.5, 0.67, ...): the computed value is
+    // from the exact two-point formula, so a hand calculation can differ in the 4th digit.
+    const QString approx = (m == ModelMethod::Sundaresan || m == ModelMethod::Smith)
+                               ? QStringLiteral("≈")
+                               : QStringLiteral("=");
 
     QString name;
     QString meaning;
@@ -1815,7 +1841,7 @@ QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
         case ModelMethod::Smith:
             lines << QStringLiteral("L = %1 - T").arg(sb);
             if (ok)
-                lines << QStringLiteral("L = %1 - %2 = %3 s").arg(B, g4p(T), g4(L));
+                lines << QStringLiteral("L = %1 - %2 %3 %4 s").arg(B, g4p(T), approx, g4(L));
             break;
         case ModelMethod::Sundaresan:
             lines << QStringLiteral("L = 1.3 %1 - 0.29 %2").arg(sa, sb);
@@ -1844,7 +1870,7 @@ QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
         case ModelMethod::Smith:
             lines << QStringLiteral("T = 1.5 (%1 - %2)").arg(sb, sa);
             if (ok)
-                lines << QStringLiteral("T = 1.5 (%1 - %2) = %3 s").arg(B, g4p(ta), g4(T));
+                lines << QStringLiteral("T = 1.5 (%1 - %2) %3 %4 s").arg(B, g4p(ta), approx, g4(T));
             break;
         case ModelMethod::Sundaresan:
             lines << QStringLiteral("T = 0.67 (%1 - %2)").arg(sb, sa);

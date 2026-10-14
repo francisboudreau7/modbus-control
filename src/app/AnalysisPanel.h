@@ -54,7 +54,8 @@ class TrendPlot;
 ///   plot's visible time axis range clipped to the recording (the whole recording when that has no
 ///   samples), then sets the plot's C1/C2; nullopt -> hintLabel "No step found in the controller
 ///   output in the visible range." A step found with settled == false also shows the NotSettled
-///   check (through checkStep).
+///   check, even when checkStep() does not report it: a private flag set by Find step is cleared by
+///   the next cursor change that Find step did not make, and by a PV / CO / settings change.
 /// - Group "3. Model" ("modelGroup"):
 ///   * "methodCombo": the four ModelMethod values (toString), "fromSpin"/"toSpin" (0..99.99,
 ///     enabled for Custom only; an edit that breaks a < b is reverted).
@@ -66,7 +67,9 @@ class TrendPlot;
 ///   * "showModelCheck" "Show model curve" (AnalysisSettings::showModel, default on).
 ///   * "checksList" (QListWidget, no selection; hidden when empty): one item per checkStep() entry,
 ///     warning icon + sentence:
-///     NoDeltaCo "K can't be computed: choose the controller output (CO) or type ΔCO in step 1.";
+///     NoDeltaCo "K can't be computed: choose the controller output (CO) or type ΔCO in step 1."
+///       (typed ΔCO, i.e. no CO tag chosen); with a CO tag chosen: "The controller output (CO) does
+///       not change between the cursors: K can't be computed. Move the cursors around the step.";
 ///     NoModel "L and T can't be computed: the PV does not reach both model points (a % and b %)
 ///       between the cursors.";
 ///     NotSettled "The PV is still moving at C2: move C2 later.";
@@ -114,15 +117,18 @@ class TrendPlot;
 /// Numbers in tooltips use 4 significant digits.
 ///
 /// Plot overlays (on setPlot's TrendPlot, only while both cursors are set):
+/// - Only tags that are plotted get overlays and setpoint rows (an unplotted tag, the PV included,
+///   shows none; the PV is still analysed for the results, tuning and CSV export, unplotted
+///   non-PV setpoint tags are not analysed at all).
 /// - For every tag in setpointTagIds that is plotted, every found setpoint: a marker as before
 ///   (white disc, dark ring, dot of the tag colour; label "63.2 %" or the detailed three lines;
 ///   z above the curves), and with guideLines the dashed guide lines (tag colour) to both axes.
-/// - showModel: the PV's model curve (dashed, tag colour, ~400 points, from t1 to t2, title
+/// - showModel: the PV's model curve, only when the PV is plotted (dashed, tag colour, ~400 points, from t1 to t2, title
 ///   "<name> model", not in the legend). Overlays use each tag's Y axis.
 /// - Overlays are plot items, so the image export includes them; they are removed on
 ///   setPlot(nullptr) and when they no longer apply.
 ///
-/// Recomputes (analyzeStep for the PV and for each other tag in setpointTagIds, with the PV's ΔCO
+/// Recomputes (analyzeStep for the PV and for each other plotted tag in setpointTagIds, with the PV's ΔCO
 /// settings) when the cursors, settings or tags change, and in refresh() under the same "new data
 /// can still change the result" rule as before (last row older than max(C1, C2) + S/2). Emits
 /// resultsChanged() after every recompute.
@@ -150,8 +156,9 @@ public:
     /// cursors or without a PV. results().first() is the PV's when not empty.
     QList<StepResult> results() const;
     /// Summary for the image export (empty without both cursors or a valid PV result), e.g.
-    /// "C1 = 10.000 s, C2 = 30.000 s\nLag [degC] (0 % / 63.2 %): K = 2 degC/%, L = 2.35 s,
-    /// T = 2.01 s, fit 0.6 % (Good)" plus one line per other setpoint tag with its setpoint times.
+    /// "Lag [degC] (0 % / 63.2 %): K = 2 degC/%, L = 2.35 s, T = 2.01 s, fit 0.6 % (Good)" plus one
+    /// line per other shown setpoint tag with its setpoint times. It has no "C1 = ..., C2 = ..."
+    /// line: AppController composes CursorPanel::readoutText() followed by this text.
     QString readoutText() const;
 
 public slots:
@@ -272,6 +279,7 @@ private:
 
     bool m_updating = false;        ///< programmatic control changes: no user handling
     bool m_settingCursors = false;  ///< Find step in progress: recompute once at the end
+    bool m_findNotSettled = false;  ///< Find step found settled == false; cleared by other changes
     QString m_hintOverride;         ///< e.g. "No step found...", cleared by the next recompute
     double m_prevFrom = 0.0;
     double m_prevTo = 63.2;

@@ -239,6 +239,8 @@ private slots:
     void tooltipsTuningAndSetpoints();
     void findStep();
     void findStepNoStep();
+    void findStepNotSettledCheck();
+    void noDeltaCoWording();
     void hintLine();
     void overlays();
     void overlaysRemovedWithPlot();
@@ -710,11 +712,12 @@ void TstAnalysisPanel::tooltipsResults()
     const double tb = ta + Ts * (std::log(1.0 - 0.283) - std::log(1.0 - 0.632));
     const QString sT = t->item(rowOf(t, QStringLiteral("T")), 1)->toolTip();
     QVERIFY2(sT.contains(QStringLiteral("T = 1.5 (t63.2 - t28.3)")), qPrintable(sT));
-    QVERIFY2(sT.contains(QStringLiteral("T = 1.5 (%1 - %2) = %3 s").arg(g4(tb), g4(ta), g4(Ts))),
+    // Rounded textbook constants: "≈", like Sundaresan.
+    QVERIFY2(sT.contains(QStringLiteral(u"T = 1.5 (%1 - %2) ≈ %3 s").arg(g4(tb), g4(ta), g4(Ts))),
              qPrintable(sT));
     const QString sL = t->item(rowOf(t, QStringLiteral("L")), 1)->toolTip();
     QVERIFY2(sL.contains(QStringLiteral("L = t63.2 - T")), qPrintable(sL));
-    QVERIFY2(sL.contains(QStringLiteral("L = %1 - %2 = %3 s").arg(g4(tb), g4(Ts), g4(Ls))),
+    QVERIFY2(sL.contains(QStringLiteral(u"L = %1 - %2 ≈ %3 s").arg(g4(tb), g4(Ts), g4(Ls))),
              qPrintable(sL));
 
     // Custom: the generic two-point formula.
@@ -845,6 +848,87 @@ void TstAnalysisPanel::findStepNoStep()
              QStringLiteral("No step found in the controller output in the visible range."));
 }
 
+void TstAnalysisPanel::findStepNotSettledCheck()
+{
+    // CO step at 10 s; the PV follows a first-order response with a +-0.5 alternating ripple (5 %
+    // of the 10 degC step, above the 2 % settling band), so findStep() never sees it settle, while
+    // the least-squares slope at C2 stays tiny: checkStep() alone does not report NotSettled.
+    Recorder rec;
+    for (int i = 0; i <= 600; ++i) {
+        const double t = i * 0.1;
+        const double pv = (t < 11.5 ? 50.0 : 50.0 + 10.0 * (1.0 - std::exp(-(t - 11.5) / 4.0)))
+                          + ((i % 2) ? 0.5 : -0.5);
+        SampleBatch b;
+        b.t = t;
+        b.samples = {good(kCo, t >= 10.0 ? 30.0 : 20.0), good(kPv, pv), good(kOther, 1.0)};
+        rec.append(b);
+    }
+    const auto window = mb::findStep(rec, kCo, kPv, 0.0, 60.0);
+    QVERIFY(window.has_value());
+    QVERIFY(!window->settled);
+
+    TrendPlot plot;
+    plot.setRecorder(&rec);
+    plot.setTags(standardTags());
+    AnalysisPanel panel;
+    panel.setRecorder(&rec);
+    panel.setPlot(&plot);
+    panel.setTags(standardTags());
+    AnalysisSettings s;
+    s.pvTagId = kPv;
+    s.setpointTagIds = {kPv};
+    s.deltaCoTagId = kCo;
+    panel.setSettings(s);
+    const QString notSettled = QStringLiteral("The PV is still moving at C2: move C2 later.");
+
+    child<QPushButton>(panel, "findStepButton")->click();
+    QVERIFY(plot.cursors()->hasC1() && plot.cursors()->hasC2());
+    QVERIFY(panel.results().first().valid);
+    QVERIFY2(!checkStep(rec, panel.results().first()).contains(StepCheck::NotSettled),
+             "the slope test must not fire for this test to mean anything");
+    QVERIFY2(anyContains(checkTexts(panel), notSettled), qPrintable(checkTexts(panel).join('|')));
+    QVERIFY(!child<QListWidget>(panel, "checksList")->isHidden());
+
+    // A cursor moved by the user (not by Find step) drops the remembered verdict.
+    plot.cursors()->setC2(plot.cursors()->c2() - 1.0);
+    QVERIFY(!anyContains(checkTexts(panel), notSettled));
+
+    // Find step again brings it back; changing the CO tag clears it.
+    child<QPushButton>(panel, "findStepButton")->click();
+    QVERIFY(anyContains(checkTexts(panel), notSettled));
+    AnalysisSettings typed = panel.settings();
+    typed.deltaCoTagId = 0;
+    typed.manualDeltaCo = 10.0;
+    panel.setSettings(typed);
+    QVERIFY(!anyContains(checkTexts(panel), notSettled));
+}
+
+void TstAnalysisPanel::noDeltaCoWording()
+{
+    const QString tagText = QStringLiteral("The controller output (CO) does not change between the "
+                                           "cursors: K can't be computed. Move the cursors around "
+                                           "the step.");
+    const QString typedText = QStringLiteral(u"K can't be computed: choose the controller output (CO) "
+                                             u"or type ΔCO in step 1.");
+    // CO tag chosen, but it is flat between the cursors (its step is at 20 s) while the PV moves.
+    Fx fx(true, standardTags(), 20.0);
+    fx.setCursors(9.0, 18.0);
+    QVERIFY(fx.panel.results().at(0).valid);
+    QVERIFY(!fx.panel.results().at(0).deltaCo.has_value());
+    QStringList texts = checkTexts(fx.panel);
+    QVERIFY2(anyContains(texts, tagText), qPrintable(texts.join('|')));
+    QVERIFY(!anyContains(texts, typedText));
+
+    // Typed ΔCO of 0: the "choose the CO or type" text.
+    fx.apply([](AnalysisSettings &a) {
+        a.deltaCoTagId = 0;
+        a.manualDeltaCo = 0.0;
+    });
+    texts = checkTexts(fx.panel);
+    QVERIFY2(anyContains(texts, typedText), qPrintable(texts.join('|')));
+    QVERIFY(!anyContains(texts, tagText));
+}
+
 void TstAnalysisPanel::hintLine()
 {
     Fx fx(false);
@@ -911,12 +995,26 @@ void TstAnalysisPanel::overlays()
     QCOMPARE(tags->count(), 2); // CO and PV
     QCOMPARE(symbolMarkerCount(fx.plot), 2);
 
-    // The PV is listed and shown even when it is not plotted.
+    // The PV is listed (it is chosen) but, not being plotted, it has no markers, no guide lines,
+    // no model curve and no setpoint rows. It is still analysed (results, tuning).
     tags2[1].plotted = false;
     fx.plot.setTags(tags2);
     fx.panel.setTags(tags2);
-    QCOMPARE(symbolMarkerCount(fx.plot), 2);
+    QCOMPARE(symbolMarkerCount(fx.plot), 0);
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+    QVERIFY(guideItems(fx.plot).isEmpty());
+    QCOMPARE(table(fx.panel, "setpointTable")->rowCount(), 0);
     QCOMPARE(tags->count(), 2); // CO (plotted) and PV (chosen)
+    QCOMPARE(fx.panel.results().size(), 1); // the PV only: "Other" is neither plotted nor analysed
+    QVERIFY(fx.panel.results().at(0).valid && fx.panel.results().at(0).timeConstant);
+    QVERIFY(table(fx.panel, "tuningTable")->rowCount() > 0);
+
+    // Plotted again: everything returns.
+    tags2[1].plotted = true;
+    fx.plot.setTags(tags2);
+    fx.panel.setTags(tags2);
+    QCOMPARE(symbolMarkerCount(fx.plot), 2);
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV model")));
 
     // Unchecking the PV removes its markers.
     fx.apply([](AnalysisSettings &a) { a.setpointTagIds = {}; });
@@ -1063,21 +1161,22 @@ void TstAnalysisPanel::readoutText()
     Fx fx;
     const QString text = fx.panel.readoutText();
     const QStringList lines = text.split(u'\n');
-    QCOMPARE(lines.size(), 2);
-    QCOMPARE(lines.at(0), QStringLiteral("C1 = 9.000 s, C2 = 40.000 s"));
+    // No cursor line: the cursor panel's readout comes before this text.
+    QCOMPARE(lines.size(), 1);
+    QVERIFY(!text.contains(QStringLiteral("C1 = ")));
     const StepResult r = fx.panel.results().at(0);
     const QString expected =
         QStringLiteral("PV [degC] (0 % / 63.2 %): K = %1 degC/%, L = %2 s, T = %3 s, fit %4 % (Good)")
             .arg(g4(*r.gain), g4(*r.deadTime), g4(*r.timeConstant),
                  QString::number(*r.fitRmsPercent, 'g', 3));
-    QCOMPARE(lines.at(1), expected);
+    QCOMPARE(lines.at(0), expected);
 
     // Another setpoint tag adds a line with its setpoint times.
     fx.apply([](AnalysisSettings &a) { a.setpointTagIds = {kPv, kOther}; });
     const QStringList more = fx.panel.readoutText().split(u'\n');
-    QCOMPARE(more.size(), 3);
-    QVERIFY(more.at(2).startsWith(QStringLiteral("Other: 0 % at ")));
-    QVERIFY(more.at(2).contains(QStringLiteral(", 63.2 % at ")));
+    QCOMPARE(more.size(), 2);
+    QVERIFY(more.at(1).startsWith(QStringLiteral("Other: 0 % at ")));
+    QVERIFY(more.at(1).contains(QStringLiteral(", 63.2 % at ")));
 
     fx.apply([](AnalysisSettings &a) { a.method = ModelMethod::Smith; });
     QVERIFY(fx.panel.readoutText().contains(QStringLiteral("(28.3 % / 63.2 %)")));

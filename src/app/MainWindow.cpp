@@ -17,7 +17,6 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 #include <QToolBar>
@@ -68,14 +67,11 @@ MainWindow::MainWindow(QWidget *parent)
     addDockWidget(Qt::RightDockWidgetArea, quickDock);
     tabifyDockWidget(cursorsDock, quickDock);
 
-    auto *analysisScroll = new QScrollArea(this);
-    analysisScroll->setWidgetResizable(true);
-    analysisScroll->setFrameShape(QFrame::NoFrame);
-    analysisScroll->setWidget(m_analysisPanel);
+    // AnalysisPanel scrolls by itself: no outer scroll area (two nested ones fight for the wheel).
     auto *analysisDock = new QDockWidget(tr("Analysis"), this);
     analysisDock->setObjectName(QStringLiteral("analysisDock"));
     analysisDock->setFeatures(dockFeatures);
-    analysisDock->setWidget(analysisScroll);
+    analysisDock->setWidget(m_analysisPanel);
     addDockWidget(Qt::RightDockWidgetArea, analysisDock);
     tabifyDockWidget(quickDock, analysisDock);
     cursorsDock->raise();

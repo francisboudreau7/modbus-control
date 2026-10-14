@@ -465,7 +465,9 @@ std::optional<StepWindow> findStep(const Recorder &recorder, TagId coTag, TagId 
     }
     StepWindow w;
     w.stepTime = stepTime;
-    w.c1 = stepTime - std::min(5.0, (stepTime - prev) / 2.0);
+    // Never after the pre-step sample: with slow sampling the interpolated CO at c1 would already
+    // contain part of the jump.
+    w.c1 = std::min(stepTime - std::min(5.0, (stepTime - prev) / 2.0), co.t[jump - 1]);
 
     // 3. end: the sample before the next CO change.
     double end = to;

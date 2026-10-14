@@ -1424,6 +1424,48 @@ private slots:
                     .contains(dock));
     }
 
+    void restoreStateWithoutAnalysisDock()
+    {
+        // A window state saved by a version without the Analysis dock: only the old docks.
+        QByteArray oldState;
+        {
+            QMainWindow old;
+            old.setCentralWidget(new QWidget(&old));
+            old.resize(1200, 800);
+            auto *tags = new QDockWidget(QStringLiteral("Tags"), &old);
+            tags->setObjectName(QStringLiteral("tagsDock"));
+            tags->setWidget(new QWidget(tags));
+            old.addDockWidget(Qt::BottomDockWidgetArea, tags);
+            auto *cursors = new QDockWidget(QStringLiteral("Cursors"), &old);
+            cursors->setObjectName(QStringLiteral("cursorsDock"));
+            cursors->setWidget(new QWidget(cursors));
+            old.addDockWidget(Qt::RightDockWidgetArea, cursors);
+            auto *quick = new QDockWidget(QStringLiteral("Quick write"), &old);
+            quick->setObjectName(QStringLiteral("quickWriteDock"));
+            quick->setWidget(new QWidget(quick));
+            old.addDockWidget(Qt::RightDockWidgetArea, quick);
+            old.tabifyDockWidget(cursors, quick);
+            old.show();
+            oldState = old.saveState();
+        }
+        QVERIFY(!oldState.isEmpty());
+        stopApp();
+        QSettings s;
+        s.setValue(QStringLiteral("mainWindow/state"), oldState);
+        s.sync();
+
+        startApp();
+        win->show();
+        auto *dock = win->findChild<QDockWidget *>(QStringLiteral("analysisDock"));
+        QVERIFY(dock);
+        QVERIFY(!dock->isFloating());
+        QVERIFY(!dock->isHidden());
+        QVERIFY(dock->isVisibleTo(win.get()));
+        QVERIFY(win->tabifiedDockWidgets(win->findChild<QDockWidget *>(QStringLiteral("cursorsDock")))
+                    .contains(dock));
+        win->hide();
+    }
+
     void exportAnalysisResults()
     {
         // Nothing to export yet: no dialog even when called directly.
