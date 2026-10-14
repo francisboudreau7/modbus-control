@@ -292,10 +292,11 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     view->removeHandler = removeSelected;
 
     connect(addBtn, &QPushButton::clicked, this, [this] {
-        const int row = m_model->addTag();
-        const QModelIndex idx = m_model->index(row, TagTableModel::Name);
-        m_view->setCurrentIndex(idx);
-        m_view->scrollTo(idx);
+        if (m_addTagHandler) {
+            m_addTagHandler();
+            return;
+        }
+        showRow(m_model->addTag());
     });
     connect(dupBtn, &QPushButton::clicked, this, [this] {
         const QList<int> rows = selectedRows();
@@ -428,6 +429,20 @@ QMenu *TagTableWidget::rowMenu(int row)
     detect->setObjectName(QStringLiteral("detectEncodingAction"));
     connect(detect, &QAction::triggered, this, [this, id] { emit detectEncodingRequested(id); });
     return menu;
+}
+
+void TagTableWidget::setAddTagHandler(std::function<void()> handler)
+{
+    m_addTagHandler = std::move(handler);
+}
+
+void TagTableWidget::showRow(int row)
+{
+    const QModelIndex idx = m_model->index(row, TagTableModel::Name);
+    if (!idx.isValid())
+        return;
+    m_view->setCurrentIndex(idx);
+    m_view->scrollTo(idx);
 }
 
 } // namespace mb

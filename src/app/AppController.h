@@ -47,6 +47,13 @@ class WriteController;
 ///   incoming batch times are shifted so time continues from the loaded start time) or
 ///   "Start a new recording". New rows after loading make the unsaved-changes prompt ask
 ///   to save the session.
+/// - Add tag: the tag table's Add opens AddTagDialog (through m_prompts.exec) with the project's
+///   tags, the address base and EncodingMonitor::deviceOrder(); its read function issues
+///   PollWorker::readRegisters with request ids from kAddTagRequestBase up (the EncodingMonitor's
+///   ids stay below it) and routes PollWorker::readFinished answers with those ids back to the
+///   dialog's callbacks; setConnected follows the connection state while it is open. Accepted:
+///   TagTableModel::addTag(dialog.tag()), then EncodingMonitor::confirmDetected(id) when
+///   dialog.detectionConfirmed(), then TagTableWidget::showRow(row).
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
@@ -129,6 +136,10 @@ private:
     /// and the worker's time base. Always clears the session state.
     void discardLoadedRecording();
     static constexpr qsizetype kDefaultRecorderRows = 72000; ///< 2 h at 100 ms
+    /// First request id used for the Add tag dialog's reads.
+    static constexpr quint64 kAddTagRequestBase = quint64(1) << 62;
+    /// Opens the Add tag dialog (see the class comment).
+    void addTagDialog();
     bool recordingDirty() const;
     std::optional<double> lastRowTime() const;
 

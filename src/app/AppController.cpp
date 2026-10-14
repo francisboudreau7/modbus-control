@@ -899,4 +899,7 @@ void AppController::exportAnalysisResults()
                          QStringLiteral("Could not write \"%1\":\n%2").arg(path, error));
 }
 
+// Stub created by T180; implemented by T184.
+void AppController::addTagDialog() {}
+
 } // namespace mb

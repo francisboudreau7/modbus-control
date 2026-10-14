@@ -432,3 +432,12 @@ std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
 }
 
 } // namespace mb
+
+// Stub created by T180; implemented by T181.
+mb::LayoutSuggestion mb::suggestLayout(Area, quint16 address, const ProbeReadings &,
+                                       std::optional<ByteOrder>)
+{
+    LayoutSuggestion s;
+    s.start = address;
+    return s;
+}

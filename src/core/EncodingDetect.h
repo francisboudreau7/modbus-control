@@ -143,4 +143,65 @@ struct SplitValue {
 std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own, std::optional<quint16> below,
                                            std::optional<quint16> above);
 
+/// What the Add tag dialog read around a register `address` before the tag exists.
+struct ProbeReadings {
+    /// The register alone, read with one single-register request; nullopt when that read failed.
+    std::optional<quint16> own;
+    /// The single-register read of `address` was answered with exception 2 (illegal data address),
+    /// as devices such as the ABB CM50 do for one half of a 32-bit value.
+    bool ownRefused = false;
+    /// Neighbours, each read alone (address - 1 and address + 1); nullopt when not read, refused,
+    /// or outside 0..65535. Only read when `own` was.
+    std::optional<quint16> below;
+    std::optional<quint16> above;
+    /// Only read when ownRefused: the pairs starting at address and at address - 1 (two-register
+    /// reads); nullopt when refused, failed or outside 0..65535.
+    std::optional<RegisterPair> pairAt;
+    std::optional<RegisterPair> pairBelow;
+};
+
+enum class LayoutKind {
+    Sixteen,    ///< a 16-bit value at `address`
+    ThirtyTwo,  ///< a 32-bit value starting at LayoutSuggestion::start (address or address - 1)
+    Unknown,    ///< nothing to decide from these readings (see LayoutReason)
+};
+
+enum class LayoutReason {
+    NoFloatAround,  ///< Sixteen: own read alone, no clean float32 with a neighbour
+    SplitFound,     ///< ThirtyTwo: own read alone, but it is half of a clean float32 (detectSplitValue)
+    Refused,        ///< ThirtyTwo: own refused alone, a pair including it reads
+    OwnZero,        ///< Unknown: own reads 0 (can't tell 16 from 32-bit)
+    RefusedNoPair,  ///< Unknown: own refused and neither pair reads
+    NotRead,        ///< Unknown: own could not be read (an error other than exception 2)
+};
+
+/// Suggested layout for a new tag at (area, address).
+struct LayoutSuggestion {
+    LayoutKind kind = LayoutKind::Unknown;
+    LayoutReason reason = LayoutReason::NotRead;
+    /// First register of the suggested tag: `address`, or address - 1 for a 32-bit value that
+    /// starts one register earlier.
+    quint16 start = 0;
+    /// ThirtyTwo only: the registers at start and start + 1.
+    RegisterPair pair;
+    /// ThirtyTwo only: detectEncoding over {pair} for a Float32 tag at `start` (gain 1, offset 0,
+    /// byte order deviceOrder or ABCD; for SplitFound the split's order), options {deviceOrder}.
+    EncodingResult ranking;
+    /// SplitFound only: the clean float found by detectSplitValue.
+    std::optional<SplitValue> split;
+};
+
+/// Decides, from the probe reads, whether a new tag at `address` holds a 16-bit value or (part of)
+/// a 32-bit value. Rules, in order:
+/// - own read: own == 0 -> Unknown/OwnZero. Else detectSplitValue(<Int16 tag at address>, own,
+///   below, above): a split -> ThirtyTwo/SplitFound, start = split.address, pair from the two
+///   registers; none -> Sixteen/NoFloatAround, start = address.
+/// - ownRefused: of pairAt and pairBelow, those present are ranked with detectEncoding as above;
+///   the chosen pair is the only one, or the one whose best group scores higher (tie: pairAt) ->
+///   ThirtyTwo/Refused. Neither present -> Unknown/RefusedNoPair.
+/// - otherwise -> Unknown/NotRead.
+/// `area` is copied into the tags used for ranking; it does not change the decision.
+LayoutSuggestion suggestLayout(Area area, quint16 address, const ProbeReadings &readings,
+                               std::optional<ByteOrder> deviceOrder = {});
+
 } // namespace mb

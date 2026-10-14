@@ -1193,3 +1193,6 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
 }
 
 } // namespace mb
+
+// Stub created by T180; implemented by T184.
+void mb::EncodingMonitor::confirmDetected(mb::TagId) {}
