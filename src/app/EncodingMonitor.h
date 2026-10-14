@@ -162,6 +162,12 @@ public slots:
     void onTagsReplaced();
     /// "Detect encoding..." for one tag.
     void detectNow(mb::TagId id);
+    /// The tag was just added with a type and byte order confirmed by detection outside the
+    /// monitor (Add tag dialog). Call after the model added it (onTagsChanged has run): a 32-bit
+    /// tag is no longer pending, gets setEncodingVerified(true) and counts as checked this session;
+    /// a 16-bit tag is no longer split-pending and counts as checked this session (confirmed16Bit
+    /// is not set). Unknown ids are ignored.
+    void confirmDetected(mb::TagId id);
 
     /// Answer to a one-off read requested with readRequested (connect PollWorker::readFinished).
     void onReadFinished(quint64 requestId, const mb::ModbusResult &result,

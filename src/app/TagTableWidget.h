@@ -52,6 +52,11 @@ public:
     /// "Detect encoding..." (object name "detectEncodingAction"), enabled for every tag;
     /// it emits detectEncodingRequested(tag id). nullptr for an invalid row.
     QMenu *rowMenu(int row);
+    /// What Add does. Without a handler (default) Add appends TagTableModel::addTag() and shows
+    /// the new row; with one, Add only calls it (AppController opens the Add tag dialog).
+    void setAddTagHandler(std::function<void()> handler);
+    /// Makes `row` current (Name column), selects it and scrolls to it.
+    void showRow(int row);
 
 signals:
     /// "Write selected..." pressed; rows as selectedRows().
@@ -68,6 +73,7 @@ private:
     std::function<bool(int count)> m_confirmRemove;
     /// Keys from setHiddenColumns() that name no column of this version.
     QStringList m_unknownHidden;
+    std::function<void()> m_addTagHandler;
     /// Applies a change made from the header menu; emits hiddenColumnsChanged() if it changed.
     void changeColumnsFromMenu(const std::function<void()> &change);
     TagTableModel *m_model = nullptr;
