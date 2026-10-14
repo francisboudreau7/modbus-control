@@ -22,7 +22,7 @@ const char *const kHeaders[TagTableModel::ColumnCount] = {
     QT_TRANSLATE_NOOP("TagTableModel", "Byte order"), QT_TRANSLATE_NOOP("TagTableModel", "Gain"),
     QT_TRANSLATE_NOOP("TagTableModel", "Offset"),  QT_TRANSLATE_NOOP("TagTableModel", "Unit"),
     QT_TRANSLATE_NOOP("TagTableModel", "Writable"), QT_TRANSLATE_NOOP("TagTableModel", "Plot"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Analyze"), QT_TRANSLATE_NOOP("TagTableModel", "Axis"),
+    QT_TRANSLATE_NOOP("TagTableModel", "Axis"),
     QT_TRANSLATE_NOOP("TagTableModel", "Color"),   QT_TRANSLATE_NOOP("TagTableModel", "Raw"),
     QT_TRANSLATE_NOOP("TagTableModel", "Value"),
     QT_TRANSLATE_NOOP("TagTableModel", "Min"), QT_TRANSLATE_NOOP("TagTableModel", "Max"),
@@ -163,10 +163,6 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (role == Qt::CheckStateRole)
             return t.plotted ? Qt::Checked : Qt::Unchecked;
         break;
-    case Analyze:
-        if (role == Qt::CheckStateRole)
-            return t.analyzed ? Qt::Checked : Qt::Unchecked;
-        break;
     case Axis:
         if (disp || edit) return toString(t.axis);
         break;
@@ -241,7 +237,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
                          {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
     };
 
-    if (col == Writable || col == Plot || col == Analyze) {
+    if (col == Writable || col == Plot) {
         if (role != Qt::CheckStateRole)
             return false;
         const bool on = value.toInt() == Qt::Checked;
@@ -249,10 +245,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             if (on && t.area == mb::Area::InputRegister)
                 return false;
             t.writable = on;
-        } else if (col == Plot) {
-            t.plotted = on;
         } else {
-            t.analyzed = on;
+            t.plotted = on;
         }
         emit dataChanged(index, index, {Qt::CheckStateRole});
         if (col == Writable)
@@ -441,7 +435,6 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
             f &= ~Qt::ItemFlags(Qt::ItemIsEnabled);
         break;
     case Plot:
-    case Analyze:
         f |= Qt::ItemIsUserCheckable;
         break;
     case ByteOrder:
@@ -482,8 +475,6 @@ QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) con
         if (role == Qt::ToolTipRole && section == Type)
             return tr("Value type. int16 and uint16 use one register. int32, uint32 and float32 "
                       "use two consecutive registers.");
-        if (role == Qt::ToolTipRole && section == Analyze)
-            return tr("Show this tag in the Analysis tab");
         if (role == Qt::ToolTipRole && (section == QuickA || section == QuickB))
             return tr("Preset value for the Quick write dock");
         if (role == Qt::ToolTipRole && section == WriteMin)
@@ -781,7 +772,7 @@ namespace {
 // store them. The array size is ColumnCount, and the check below catches a missing entry.
 constexpr const char *kColumnKeys[TagTableModel::ColumnCount] = {
     "name", "area", "address", "type", "byteOrder", "gain", "offset", "unit", "writable", "plot",
-    "analyze", "axis", "color", "raw", "value", "writeMin", "writeMax", "quickA", "quickB",
+    "axis", "color", "raw", "value", "writeMin", "writeMax", "quickA", "quickB",
     "quality",
 };
 

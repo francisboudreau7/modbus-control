@@ -45,7 +45,7 @@ mc_add_qtest(tst_serverconfig LIBS mbsim)
 mc_add_qtest(tst_requestlog LIBS mbsim)
 
 # UI tests run on the offscreen platform plugin from the Qt install.
-foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage tst_analysisview
+foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage
              tst_clipboard tst_quickwrite tst_trendplot
              tst_exportcsvdialog tst_plotcursors tst_encodingdialog tst_encodingmonitor
              tst_richtext tst_addtagdialog tst_analysispanel)

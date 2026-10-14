@@ -1,6 +1,6 @@
 ﻿#include "MainWindow.h"
 
-#include "AnalysisView.h"
+#include "AnalysisPanel.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "QuickWritePanel.h"
@@ -17,9 +17,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
-#include <QTabWidget>
 #include <QToolBar>
 
 namespace mb {
@@ -31,16 +31,11 @@ MainWindow::MainWindow(QWidget *parent)
     , m_tagTable(new TagTableWidget(m_tagModel, this))
     , m_trendPlot(new TrendPlot(this))
     , m_cursorPanel(new CursorPanel(this))
-    , m_analysisView(new AnalysisView(this))
+    , m_analysisPanel(new AnalysisPanel(this))
     , m_connectionLabel(new QLabel(this))
 {
-    auto *tabs = new QTabWidget(this);
-    tabs->setObjectName(QStringLiteral("centralTabs"));
-    tabs->addTab(m_trendPlot, tr("Trend"));
-    tabs->addTab(m_analysisView, tr("Analysis"));
-    setCentralWidget(tabs);
-    connect(tabs, &QTabWidget::currentChanged, this,
-            [this](int index) { emit analysisTabActiveChanged(index == 1); });
+    setCentralWidget(m_trendPlot);
+    m_analysisPanel->setPlot(m_trendPlot);
     resize(1200, 800);
 
     // Toolbar
@@ -72,6 +67,17 @@ MainWindow::MainWindow(QWidget *parent)
     quickDock->setWidget(m_quickWritePanel);
     addDockWidget(Qt::RightDockWidgetArea, quickDock);
     tabifyDockWidget(cursorsDock, quickDock);
+
+    auto *analysisScroll = new QScrollArea(this);
+    analysisScroll->setWidgetResizable(true);
+    analysisScroll->setFrameShape(QFrame::NoFrame);
+    analysisScroll->setWidget(m_analysisPanel);
+    auto *analysisDock = new QDockWidget(tr("Analysis"), this);
+    analysisDock->setObjectName(QStringLiteral("analysisDock"));
+    analysisDock->setFeatures(dockFeatures);
+    analysisDock->setWidget(analysisScroll);
+    addDockWidget(Qt::RightDockWidgetArea, analysisDock);
+    tabifyDockWidget(quickDock, analysisDock);
     cursorsDock->raise();
 
     // File menu
@@ -105,6 +111,7 @@ MainWindow::MainWindow(QWidget *parent)
     viewMenu->addAction(tagsDock->toggleViewAction());
     viewMenu->addAction(cursorsDock->toggleViewAction());
     viewMenu->addAction(quickDock->toggleViewAction());
+    viewMenu->addAction(analysisDock->toggleViewAction());
 
     // Options menu
     auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
@@ -136,8 +143,9 @@ MainWindow::MainWindow(QWidget *parent)
     // Restore geometry and dock state
     QSettings settings;
     restoreGeometry(settings.value(QStringLiteral("mainWindow/geometry")).toByteArray());
+    // A state saved before v1.2.6 does not know the Analysis dock: Qt leaves such a dock where
+    // it was created (tabified with Cursors and Quick write, visible).
     restoreState(settings.value(QStringLiteral("mainWindow/state")).toByteArray());
-    tabs->setCurrentIndex(settings.value(QStringLiteral("mainWindow/tab"), 0).toInt() == 1 ? 1 : 0);
 }
 
 MainWindow::~MainWindow() = default;
@@ -147,21 +155,8 @@ TagTableWidget *MainWindow::tagTable() const { return m_tagTable; }
 TrendPlot *MainWindow::trendPlot() const { return m_trendPlot; }
 CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
-AnalysisView *MainWindow::analysisView() const { return m_analysisView; }
+AnalysisPanel *MainWindow::analysisPanel() const { return m_analysisPanel; }
 QuickWritePanel *MainWindow::quickWritePanel() const { return m_quickWritePanel; }
-
-bool MainWindow::isAnalysisTabActive() const
-{
-    const auto *tabs = findChild<QTabWidget *>(QStringLiteral("centralTabs"));
-    return tabs && tabs->currentWidget() == m_analysisView;
-}
-
-void MainWindow::setAnalysisTabActive(bool active)
-{
-    if (auto *tabs = findChild<QTabWidget *>(QStringLiteral("centralTabs")))
-        tabs->setCurrentWidget(active ? static_cast<QWidget *>(m_analysisView)
-                                      : static_cast<QWidget *>(m_trendPlot));
-}
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {
@@ -192,11 +187,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     QSettings settings;
     settings.setValue(QStringLiteral("mainWindow/geometry"), saveGeometry());
     settings.setValue(QStringLiteral("mainWindow/state"), saveState());
-    settings.setValue(QStringLiteral("mainWindow/tab"), isAnalysisTabActive() ? 1 : 0);
     event->accept();
 }
-
-// Stub created by T190; T195 creates the panel and the dock.
-AnalysisPanel *MainWindow::analysisPanel() const { return nullptr; }
 
 } // namespace mb

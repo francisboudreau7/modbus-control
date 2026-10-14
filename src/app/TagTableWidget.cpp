@@ -231,9 +231,9 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
                             | QAbstractItemView::SelectedClicked);
 
     // Column order: Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot,
-    // Analyze, Axis, Color, Raw, Value, Min, Max, QuickA, QuickB, Quality.
+    // Axis, Color, Raw, Value, Min, Max, QuickA, QuickB, Quality.
     const int widths[TagTableModel::ColumnCount] = {140, 70, 70, 80, 70, 60, 60, 60, 70, 50,
-                                                    60, 60, 100, 90, 90, 70, 70, 70, 70, 90};
+                                                    60, 100, 90, 90, 70, 70, 70, 70, 90};
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnWidth(c, widths[c]);
 
