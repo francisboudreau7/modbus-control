@@ -433,11 +433,99 @@ std::optional<SplitValue> detectSplitValue(const Tag &tag, quint16 own,
 
 } // namespace mb
 
-// Stub created by T180; implemented by T181.
-mb::LayoutSuggestion mb::suggestLayout(Area, quint16 address, const ProbeReadings &,
-                                       std::optional<ByteOrder>)
+namespace mb {
+
+namespace {
+
+EncodingResult rankPair(Area area, quint16 start, const RegisterPair &pair, ByteOrder order,
+                        std::optional<ByteOrder> deviceOrder)
+{
+    Tag t;
+    t.area = area;
+    t.address = start;
+    t.type = ValueType::Float32;
+    t.byteOrder = order;
+    t.gain = 1.0;
+    t.offset = 0.0;
+    EncodingOptions options;
+    options.deviceOrder = deviceOrder;
+    return detectEncoding(t, {pair}, options);
+}
+
+double bestGroupScore(const EncodingResult &r)
+{
+    return r.candidates.isEmpty() ? 0.0 : r.candidates.first().score;
+}
+
+} // namespace
+
+LayoutSuggestion suggestLayout(Area area, quint16 address, const ProbeReadings &readings,
+                               std::optional<ByteOrder> deviceOrder)
 {
     LayoutSuggestion s;
     s.start = address;
+
+    if (readings.own) {
+        if (*readings.own == 0) {
+            s.kind = LayoutKind::Unknown;
+            s.reason = LayoutReason::OwnZero;
+            return s;
+        }
+        Tag t;
+        t.area = area;
+        t.address = address;
+        t.type = ValueType::Int16;
+        const auto split = detectSplitValue(t, *readings.own, readings.below, readings.above);
+        if (!split) {
+            s.kind = LayoutKind::Sixteen;
+            s.reason = LayoutReason::NoFloatAround;
+            return s;
+        }
+        s.kind = LayoutKind::ThirtyTwo;
+        s.reason = LayoutReason::SplitFound;
+        s.start = split->address;
+        s.split = split;
+        if (split->address == address)
+            s.pair = {*readings.own, readings.above.value_or(0)};
+        else
+            s.pair = {readings.below.value_or(0), *readings.own};
+        s.ranking = rankPair(area, s.start, s.pair, split->encoding.order, deviceOrder);
+        return s;
+    }
+
+    if (readings.ownRefused) {
+        const ByteOrder order = deviceOrder.value_or(ByteOrder::ABCD);
+        std::optional<EncodingResult> rankAt;
+        std::optional<EncodingResult> rankBelow;
+        if (readings.pairAt)
+            rankAt = rankPair(area, address, *readings.pairAt, order, deviceOrder);
+        if (readings.pairBelow && address > 0)
+            rankBelow = rankPair(area, static_cast<quint16>(address - 1), *readings.pairBelow,
+                                 order, deviceOrder);
+        if (!rankAt && !rankBelow) {
+            s.kind = LayoutKind::Unknown;
+            s.reason = LayoutReason::RefusedNoPair;
+            return s;
+        }
+        const bool useBelow =
+            rankBelow && (!rankAt || bestGroupScore(*rankBelow) > bestGroupScore(*rankAt));
+        s.kind = LayoutKind::ThirtyTwo;
+        s.reason = LayoutReason::Refused;
+        if (useBelow) {
+            s.start = static_cast<quint16>(address - 1);
+            s.pair = *readings.pairBelow;
+            s.ranking = *rankBelow;
+        } else {
+            s.start = address;
+            s.pair = *readings.pairAt;
+            s.ranking = *rankAt;
+        }
+        return s;
+    }
+
+    s.kind = LayoutKind::Unknown;
+    s.reason = LayoutReason::NotRead;
     return s;
 }
+
+} // namespace mb

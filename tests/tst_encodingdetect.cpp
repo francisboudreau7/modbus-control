@@ -753,7 +753,127 @@ private slots:
         QCOMPARE(hitsD, 0L);
         QVERIFY(hitsE * 100 < totalE * 8);   // < 8 %
     }
+    // ---- suggestLayout ---------------------------------------------------------------------
+    void layoutSixteen()
+    {
+        ProbeReadings r;
+        r.own = 1234;
+        r.below = 0;
+        r.above = 7;
+        const LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 200, r);
+        QVERIFY(s.kind == LayoutKind::Sixteen);
+        QVERIFY(s.reason == LayoutReason::NoFloatAround);
+        QCOMPARE(s.start, quint16(200));
+        QVERIFY(!s.split);
+    }
+    void layoutSplitFound_data()
+    {
+        QTest::addColumn<ByteOrder>("order");
+        QTest::addColumn<bool>("first");
+        QTest::newRow("ABCD first") << ByteOrder::ABCD << true;
+        QTest::newRow("CDAB first") << ByteOrder::CDAB << true;
+        QTest::newRow("ABCD second") << ByteOrder::ABCD << false;
+        QTest::newRow("CDAB second") << ByteOrder::CDAB << false;
+    }
+    void layoutSplitFound()
+    {
+        QFETCH(ByteOrder, order);
+        QFETCH(bool, first);
+        const RegisterPair p = regsFor(makeTag(ValueType::Float32, order), 52.3);
+        ProbeReadings r;
+        if (first) {
+            r.own = p.r0;
+            r.below = 7;
+            r.above = p.r1;
+        } else {
+            r.own = p.r1;
+            r.below = p.r0;
+            r.above = 7;
+        }
+        const LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 300, r);
+        QVERIFY(s.kind == LayoutKind::ThirtyTwo);
+        QVERIFY(s.reason == LayoutReason::SplitFound);
+        QCOMPARE(s.start, first ? quint16(300) : quint16(299));
+        QVERIFY(s.pair == p);
+        QVERIFY(s.split);
+        QCOMPARE(s.split->address, s.start);
+        QVERIFY(s.split->encoding.order == order);
+        QVERIFY(s.ranking.best);
+        QCOMPARE_ENC(*s.ranking.best, (Encoding{ValueType::Float32, order}));
+    }
+    void layoutOwnZero()
+    {
+        ProbeReadings r;
+        r.own = 0;
+        r.above = 0x4252;
+        const LayoutSuggestion s = suggestLayout(Area::InputRegister, 10, r);
+        QVERIFY(s.kind == LayoutKind::Unknown);
+        QVERIFY(s.reason == LayoutReason::OwnZero);
+        QCOMPARE(s.start, quint16(10));
+    }
+    void layoutRefused()
+    {
+        const RegisterPair good = regsFor(makeTag(ValueType::Float32, ByteOrder::ABCD), 52.3);
+        const RegisterPair bad{0xFFFF, 0xFFFF};
+        ProbeReadings r;
+        r.ownRefused = true;
+
+        r.pairAt = good;
+        LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 50, r);
+        QVERIFY(s.kind == LayoutKind::ThirtyTwo);
+        QVERIFY(s.reason == LayoutReason::Refused);
+        QCOMPARE(s.start, quint16(50));
+        QVERIFY(s.pair == good);
+        QVERIFY(s.ranking.best);
+        QCOMPARE_ENC(*s.ranking.best, kF_ABCD);
+
+        r.pairAt.reset();
+        r.pairBelow = good;
+        s = suggestLayout(Area::HoldingRegister, 50, r);
+        QVERIFY(s.reason == LayoutReason::Refused);
+        QCOMPARE(s.start, quint16(49));
+        QVERIFY(s.pair == good);
+        QVERIFY(s.ranking.best);
+        QCOMPARE_ENC(*s.ranking.best, kF_ABCD);
+
+        // both present: the higher best-group score wins
+        r.pairAt = bad;
+        s = suggestLayout(Area::HoldingRegister, 50, r);
+        QCOMPARE(s.start, quint16(49));
+        r.pairAt = good;
+        r.pairBelow = bad;
+        s = suggestLayout(Area::HoldingRegister, 50, r);
+        QCOMPARE(s.start, quint16(50));
+        // tie: pairAt
+        r.pairAt = good;
+        r.pairBelow = good;
+        s = suggestLayout(Area::HoldingRegister, 50, r);
+        QCOMPARE(s.start, quint16(50));
+
+        // pairBelow is meaningless at address 0
+        r.pairAt.reset();
+        s = suggestLayout(Area::HoldingRegister, 0, r);
+        QVERIFY(s.kind == LayoutKind::Unknown);
+        QVERIFY(s.reason == LayoutReason::RefusedNoPair);
+    }
+    void layoutRefusedNoPair()
+    {
+        ProbeReadings r;
+        r.ownRefused = true;
+        const LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 77, r);
+        QVERIFY(s.kind == LayoutKind::Unknown);
+        QVERIFY(s.reason == LayoutReason::RefusedNoPair);
+        QCOMPARE(s.start, quint16(77));
+    }
+    void layoutNotRead()
+    {
+        const LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 77, ProbeReadings{});
+        QVERIFY(s.kind == LayoutKind::Unknown);
+        QVERIFY(s.reason == LayoutReason::NotRead);
+        QCOMPARE(s.start, quint16(77));
+    }
 };
+
 
 QTEST_MAIN(TstEncodingDetect)
 #include "tst_encodingdetect.moc"
