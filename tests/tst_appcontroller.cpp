@@ -1,3 +1,4 @@
+#include "AddTagDialog.h"
 #include "AnalysisView.h"
 #include "AppController.h"
 #include "ConnectionBar.h"
@@ -21,6 +22,7 @@
 
 #include <QAction>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QLabel>
@@ -427,6 +429,149 @@ private slots:
         m_server.stop();
         clearSettings();
         QVERIFY2(unexpected.isEmpty(), qPrintable(unexpected.join(QLatin1Char('\n'))));
+    }
+
+    // ---- Add tag dialog ----------------------------------------------------------------------
+
+    QPushButton *addButton() const
+    {
+        const auto buttons = win->tagTable()->findChildren<QPushButton *>();
+        for (QPushButton *b : buttons)
+            if (b->text() == QStringLiteral("Add"))
+                return b;
+        return nullptr;
+    }
+
+    static void chooseTarget(AddTagDialog &dlg, int areaIndex, const QString &address)
+    {
+        dlg.findChild<QComboBox *>(QStringLiteral("areaCombo"))->setCurrentIndex(areaIndex);
+        dlg.findChild<QLineEdit *>(QStringLiteral("addressEdit"))->setText(address);
+    }
+
+    /// Detect in the dialog, waits for the answer, accepts the EncodingDialog with 52.3.
+    static void detectAndWait(AddTagDialog &dlg)
+    {
+        dlg.m_runEncodingDialog = [](EncodingDialog &enc) {
+            enc.setDisplayValue(QStringLiteral("52.3"));
+            return true;
+        };
+        auto *detect = dlg.findChild<QPushButton *>(QStringLiteral("detectButton"));
+        QTRY_VERIFY_WITH_TIMEOUT(detect->isEnabled(), 5000);
+        detect->click();
+        auto *label = dlg.findChild<QLabel *>(QStringLiteral("detectLabel"));
+        QTRY_VERIFY_WITH_TIMEOUT(!label->text().isEmpty(), 8000);
+    }
+
+    void addTagOpensDialogAndCancelAddsNothing()
+    {
+        const int rows = model()->rowCount();
+        bool sawDialog = false;
+        d.onExec = [&](QDialog &dialog) {
+            sawDialog = qobject_cast<AddTagDialog *>(&dialog) != nullptr;
+            dialog.reject();
+        };
+        QVERIFY(addButton());
+        addButton()->click();
+        QVERIFY(sawDialog);
+        QCOMPARE(d.execCount, 1);
+        QCOMPARE(model()->rowCount(), rows);
+        noUnexpected();
+    }
+
+    void addTagAcceptedAddsTheTagOffline()
+    {
+        const int rows = model()->rowCount();
+        d.onExec = [](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("300"));
+            dlg->findChild<QLineEdit *>(QStringLiteral("nameEdit"))->setText(QStringLiteral("Mine"));
+            dlg->findChild<QLineEdit *>(QStringLiteral("unitEdit"))->setText(QStringLiteral("bar"));
+            dlg->accept();
+        };
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows + 1);
+        const Tag &t = model()->tagAt(rows);
+        QCOMPARE(t.name, QStringLiteral("Mine"));
+        QCOMPARE(t.unit, QStringLiteral("bar"));
+        QVERIFY(t.area == Area::HoldingRegister);
+        QCOMPARE(t.address, quint16(300));
+        QCOMPARE(win->tagTable()->selectedRows(), QList<int>{rows});
+        QVERIFY(modified());
+        noUnexpected();
+    }
+
+    void addTagDetectsFloat32OnLiveServer()
+    {
+        connectLive();
+        const int rows = model()->rowCount();
+        d.onExec = [](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("110"));
+            detectAndWait(*dlg);
+            QVERIFY(dlg->detectionConfirmed());
+            dlg->accept();
+        };
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows + 1);
+        const Tag &t = model()->tagAt(rows);
+        QVERIFY(t.type == ValueType::Float32);
+        QVERIFY(t.byteOrder == ByteOrder::CDAB);
+        QCOMPARE(t.address, quint16(110));
+        QVERIFY(t.encodingVerified);
+        QVERIFY(!ctl->m_encoding->isPending(t.id));
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(t.id) && qAbs(*model()->goodValue(t.id) - 52.3) < 0.01,
+                                 8000);
+        QVERIFY(d.encodingDialogs.isEmpty()); // no second dialog from the monitor
+        QVERIFY(d.splitTexts.isEmpty());
+        QVERIFY(ctl->m_addTagReads.isEmpty());
+        noUnexpected();
+    }
+
+    void addTagDetectsFloat32OnStrictServer()
+    {
+        connectLive(true);
+        const int rows = model()->rowCount();
+        d.onExec = [](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("110"));
+            detectAndWait(*dlg);
+            QVERIFY(dlg->detectionConfirmed());
+            dlg->accept();
+        };
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows + 1);
+        const Tag &t = model()->tagAt(rows);
+        QVERIFY(t.type == ValueType::Float32);
+        QVERIFY(t.byteOrder == ByteOrder::CDAB);
+        QCOMPARE(t.address, quint16(110));
+        QVERIFY(t.encodingVerified);
+        QTRY_VERIFY_WITH_TIMEOUT(model()->goodValue(t.id) && qAbs(*model()->goodValue(t.id) - 52.3) < 0.01,
+                                 8000);
+        QVERIFY(d.encodingDialogs.isEmpty());
+        QVERIFY(d.splitTexts.isEmpty());
+        noUnexpected();
+    }
+
+    void addTagConnectionLossDoesNotLeakReads()
+    {
+        connectLive();
+        d.onExec = [this](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("110"));
+            auto *read = dlg->findChild<QPushButton *>(QStringLiteral("readButton"));
+            QTRY_VERIFY_WITH_TIMEOUT(read->isEnabled(), 5000);
+            read->click();
+            disconnectLive();
+            QTRY_VERIFY_WITH_TIMEOUT(!read->isEnabled(), 5000);
+            dlg->reject();
+        };
+        addButton()->click();
+        QTRY_VERIFY_WITH_TIMEOUT(ctl->m_addTagReads.isEmpty(), 5000);
+        noUnexpected();
     }
 
     // ---- start-up and project files ------------------------------------------------------

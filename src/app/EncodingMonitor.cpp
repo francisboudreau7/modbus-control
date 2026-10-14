@@ -1194,5 +1194,23 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
 
 } // namespace mb
 
-// Stub created by T180; implemented by T184.
-void mb::EncodingMonitor::confirmDetected(mb::TagId) {}
+void mb::EncodingMonitor::confirmDetected(mb::TagId id)
+{
+    const mb::Tag *tag = findTag(id);
+    if (!tag)
+        return;
+    if (!wide(*tag)) {
+        forgetSplit(id);
+        m_sessionChecked.insert(id);
+        return;
+    }
+    finishPending(id);
+    m_readings.remove(id);
+    m_queue.removeAll(Request{id, {}, 0});
+    // The nested tagsEdited -> onTagsChanged sees only the flag change (same area/address/layout).
+    if (!tag->encodingVerified)
+        m_model->setEncodingVerified(id, true);
+    if (const mb::Tag *now = findTag(id))
+        m_snapshot.insert(id, *now);
+    m_sessionChecked.insert(id);
+}

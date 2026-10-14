@@ -4,6 +4,7 @@
 #include "ProjectIO.h"
 #include "Recorder.h"
 
+#include <QHash>
 #include <QMessageBox>
 #include <QObject>
 #include <QString>
@@ -140,6 +141,9 @@ private:
     static constexpr quint64 kAddTagRequestBase = quint64(1) << 62;
     /// Opens the Add tag dialog (see the class comment).
     void addTagDialog();
+    void onAddTagReadFinished(quint64 requestId, const ModbusResult &result, const QList<quint16> &values);
+    quint64 m_nextAddTagRequest = kAddTagRequestBase;
+    QHash<quint64, std::function<void(const ModbusResult &, const QList<quint16> &)>> m_addTagReads;
     bool recordingDirty() const;
     std::optional<double> lastRowTime() const;
 
