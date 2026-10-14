@@ -121,6 +121,18 @@ private slots:
     void analysisBoundariesAccepted();
     void analysisRejected_data();
     void analysisRejected();
+    void v126RoundTrip();
+    void v126NamesWritten();
+    void v126DefaultsWhenMissing();
+    void v126RejectedValues_data();
+    void v126RejectedValues();
+    void v126MigratesAnalyzedTags();
+    void v126MigratesWithoutAnalysisObject();
+    void v126ExplicitKeysWinOverAnalyzed();
+    void v126MethodFromModelPercents_data();
+    void v126MethodFromModelPercents();
+    void v126AnalyzedNotWritten();
+    void v126AnalyzedStillValidated();
     void axisQuickAndAnalysisFlagsRoundTrip();
     void quickWrittenOnlyWhenSet();
     void quickNullMeansNoValue();
@@ -686,15 +698,15 @@ void TstProjectIO::exampleProjectsLoad()
 void TstProjectIO::analyzedAndAnalysisRoundTrip()
 {
     Project original = sampleProject();
-    original.tags[0].analyzed = true;
-    original.tags[1].analyzed = false;
-    original.tags[3].analyzed = true;
     original.analysis.percents = {0.0, 10.0, 63.2, 100.0};
     original.analysis.reference = ReferenceMode::WindowMean;
     original.analysis.referenceWindowS = 2.5;
     original.analysis.smoothingS = 3.0;
     original.analysis.modelPercentA = 10.0;
     original.analysis.modelPercentB = 90.0;
+    original.analysis.method = ModelMethod::Custom;
+    original.analysis.pvTagId = 2;
+    original.analysis.setpointTagIds = {1, 9};
     original.analysis.deltaCoTagId = 2;
     original.analysis.manualDeltaCo = -1.5;
     original.analysis.detailedLabels = true;
@@ -704,9 +716,14 @@ void TstProjectIO::analyzedAndAnalysisRoundTrip()
     const std::optional<Project> loaded = projectFromJson(data, &error);
     QVERIFY2(loaded.has_value(), qPrintable(error));
     QCOMPARE(*loaded, original);
-    QVERIFY(loaded->tags[0].analyzed);
-    QVERIFY(!loaded->tags[1].analyzed);
-    QVERIFY(loaded->tags[3].analyzed);
+    QVERIFY(loaded->analysis.pvTagId == 2);
+
+    // The per-tag "analyzed" flag is no longer written, so it reads back false.
+    Project flagged = sampleProject();
+    flagged.tags[0].analyzed = true;
+    const auto flaggedAgain = projectFromJson(projectToJson(flagged), &error);
+    QVERIFY2(flaggedAgain.has_value(), qPrintable(error));
+    QVERIFY(!flaggedAgain->tags[0].analyzed);
 
     // The cursor reference and the typed-ΔCO default also survive a round trip.
     Project cursorMode = sampleProject();
@@ -725,7 +742,11 @@ void TstProjectIO::analysisDefaultsWhenMissing()
         "tags":[{"id":1,"analyzed":true},{"id":2}]
     })"), &error);
     QVERIFY2(project.has_value(), qPrintable(error));
-    QCOMPARE(project->analysis, AnalysisSettings{});
+    // The analyzed tag migrates to the PV and the setpoint list (see v126MigratesAnalyzedTags).
+    AnalysisSettings expected;
+    expected.pvTagId = 1;
+    expected.setpointTagIds = {1};
+    QCOMPARE(project->analysis, expected);
     QVERIFY(project->tags.at(0).analyzed);
     QVERIFY(!project->tags.at(1).analyzed);
 }
@@ -736,7 +757,9 @@ void TstProjectIO::analysisAlwaysWritten()
     QVERIFY(root.value(QStringLiteral("analysis")).isObject());
     const QJsonObject analysis = root.value(QStringLiteral("analysis")).toObject();
     for (const char *key : {"percents", "reference", "referenceWindowS", "smoothingS",
-                            "modelPercents", "deltaCoTag", "deltaCo"})
+                            "modelPercents", "deltaCoTag", "deltaCo", "method", "pvTag",
+                            "setpointTags", "pvRange", "coRange", "tuningRule", "lambdaS",
+                            "timeUnit"})
         QVERIFY2(analysis.contains(QString::fromLatin1(key)), key);
     QCOMPARE(analysis.value(QStringLiteral("reference")).toString(), QStringLiteral("cursor"));
     QCOMPARE(analysis.value(QStringLiteral("percents")).toArray().size(), qsizetype(2));
@@ -749,8 +772,7 @@ void TstProjectIO::analysisAlwaysWritten()
     const QJsonArray tags = QJsonDocument::fromJson(projectToJson(withTag)).object()
                                 .value(QStringLiteral("tags")).toArray();
     const QJsonObject tag = tags.at(0).toObject();
-    QVERIFY(tag.contains(QStringLiteral("analyzed")));
-    QCOMPARE(tag.value(QStringLiteral("analyzed")).toBool(), false);
+    QVERIFY(!tag.contains(QStringLiteral("analyzed")));
 }
 
 void TstProjectIO::analysisBoundariesAccepted()
@@ -829,6 +851,299 @@ void TstProjectIO::analysisRejected()
     const auto project = projectFromJson(text, &error);
     QVERIFY(!project.has_value());
     QVERIFY2(error.contains(fragment), qPrintable(error));
+}
+
+void TstProjectIO::v126RoundTrip()
+{
+    const ModelMethod methods[] = {ModelMethod::ZeroTo632, ModelMethod::Smith,
+                                   ModelMethod::Sundaresan, ModelMethod::Custom};
+    const TuningRule rules[] = {TuningRule::ZieglerNichols, TuningRule::CohenCoon,
+                                TuningRule::ImcLambda, TuningRule::Simc};
+    for (ModelMethod method : methods) {
+        for (TuningRule rule : rules) {
+            for (bool minutes : {false, true}) {
+                Project p = sampleProject();
+                p.analysis.method = method;
+                p.analysis.tuningRule = rule;
+                p.analysis.timeInMinutes = minutes;
+                p.analysis.pvTagId = 2;
+                p.analysis.setpointTagIds = {1, 9, 42};
+                p.analysis.pvRangeMin = -5.5;
+                p.analysis.pvRangeMax = 120.25;
+                p.analysis.coRangeMin = -10.0;
+                p.analysis.coRangeMax = 90.0;
+                p.analysis.lambdaS = 45.5;
+
+                QString error;
+                const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+                QVERIFY2(loaded.has_value(), qPrintable(error));
+                QCOMPARE(*loaded, p);
+                QVERIFY(loaded->analysis.method == method);
+                QVERIFY(loaded->analysis.tuningRule == rule);
+                QVERIFY(loaded->analysis.timeInMinutes == minutes);
+                QCOMPARE(loaded->analysis.pvRangeMax.value(), 120.25);
+            }
+        }
+    }
+
+    // pvRange null (no range) and an empty setpoint list survive as well.
+    Project none = sampleProject();
+    none.analysis.setpointTagIds.clear();
+    const auto again = projectFromJson(projectToJson(none));
+    QVERIFY(again.has_value());
+    QVERIFY(!again->analysis.pvRangeMin.has_value());
+    QVERIFY(!again->analysis.pvRangeMax.has_value());
+    QVERIFY(again->analysis.setpointTagIds.isEmpty());
+    QCOMPARE(*again, none);
+}
+
+void TstProjectIO::v126NamesWritten()
+{
+    Project p;
+    p.analysis.method = ModelMethod::Sundaresan;
+    p.analysis.tuningRule = TuningRule::CohenCoon;
+    p.analysis.timeInMinutes = true;
+    p.analysis.setpointTagIds = {3, 4};
+    p.analysis.pvTagId = 4;
+
+    const QJsonObject analysis = QJsonDocument::fromJson(projectToJson(p)).object()
+                                     .value(QStringLiteral("analysis")).toObject();
+    QCOMPARE(analysis.value(QStringLiteral("method")).toString(), QStringLiteral("sundaresan"));
+    QCOMPARE(analysis.value(QStringLiteral("tuningRule")).toString(), QStringLiteral("cohen-coon"));
+    QCOMPARE(analysis.value(QStringLiteral("timeUnit")).toString(), QStringLiteral("min"));
+    QCOMPARE(analysis.value(QStringLiteral("pvTag")).toInt(), 4);
+    QCOMPARE(analysis.value(QStringLiteral("setpointTags")).toArray().size(), qsizetype(2));
+    QVERIFY(analysis.value(QStringLiteral("pvRange")).isNull());
+    const QJsonArray coRange = analysis.value(QStringLiteral("coRange")).toArray();
+    QCOMPARE(coRange.size(), qsizetype(2));
+    QCOMPARE(coRange.at(0).toDouble(), 0.0);
+    QCOMPARE(coRange.at(1).toDouble(), 100.0);
+
+    p.analysis.method = ModelMethod::Smith;
+    p.analysis.tuningRule = TuningRule::Simc;
+    p.analysis.timeInMinutes = false;
+    p.analysis.pvRangeMin = 0.0;
+    p.analysis.pvRangeMax = 50.0;
+    const QJsonObject second = QJsonDocument::fromJson(projectToJson(p)).object()
+                                   .value(QStringLiteral("analysis")).toObject();
+    QCOMPARE(second.value(QStringLiteral("method")).toString(), QStringLiteral("smith"));
+    QCOMPARE(second.value(QStringLiteral("tuningRule")).toString(), QStringLiteral("simc"));
+    QCOMPARE(second.value(QStringLiteral("timeUnit")).toString(), QStringLiteral("s"));
+    const QJsonArray pvRange = second.value(QStringLiteral("pvRange")).toArray();
+    QCOMPARE(pvRange.at(1).toDouble(), 50.0);
+}
+
+void TstProjectIO::v126DefaultsWhenMissing()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"analysis":{}
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    const AnalysisSettings &a = project->analysis;
+    QVERIFY(a.method == ModelMethod::ZeroTo632);
+    QVERIFY(a.tuningRule == TuningRule::ZieglerNichols);
+    QVERIFY(!a.timeInMinutes);
+    QCOMPARE(a.lambdaS, 0.0);
+    QVERIFY(!a.pvRangeMin.has_value());
+    QVERIFY(!a.pvRangeMax.has_value());
+    QCOMPARE(a.coRangeMin, 0.0);
+    QCOMPARE(a.coRangeMax, 100.0);
+    QCOMPARE(a.pvTagId, TagId(0));
+    QVERIFY(a.setpointTagIds.isEmpty());
+    QVERIFY(a.showModel);
+
+    // "pvRange": null is the explicit form of "no range".
+    const auto nullRange = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"analysis":{"pvRange":null}
+    })"), &error);
+    QVERIFY2(nullRange.has_value(), qPrintable(error));
+    QVERIFY(!nullRange->analysis.pvRangeMin.has_value());
+}
+
+void TstProjectIO::v126RejectedValues_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("fragment");
+
+    const QByteArray head = R"({"format":"modbus-control-project","version":1,"analysis":)";
+    QTest::newRow("method unknown")
+        << head + R"({"method":"foo"}})" << QStringLiteral("analysis.method");
+    QTest::newRow("method not a string")
+        << head + R"({"method":5}})" << QStringLiteral("analysis.method");
+    QTest::newRow("pvTag -1")
+        << head + R"({"pvTag":-1}})" << QStringLiteral("analysis.pvTag");
+    QTest::newRow("pvTag 1.5")
+        << head + R"({"pvTag":1.5}})" << QStringLiteral("analysis.pvTag");
+    QTest::newRow("pvTag as string")
+        << head + R"({"pvTag":"3"}})" << QStringLiteral("analysis.pvTag");
+    QTest::newRow("setpointTags not an array")
+        << head + R"({"setpointTags":3}})" << QStringLiteral("analysis.setpointTags");
+    QTest::newRow("setpointTags with 0")
+        << head + R"({"setpointTags":[1,0]}})" << QStringLiteral("analysis.setpointTags");
+    QTest::newRow("setpointTags with 1.5")
+        << head + R"({"setpointTags":[1.5]}})" << QStringLiteral("analysis.setpointTags");
+    QTest::newRow("setpointTags with string")
+        << head + R"({"setpointTags":["2"]}})" << QStringLiteral("analysis.setpointTags");
+    QTest::newRow("pvRange equal ends")
+        << head + R"({"pvRange":[5,5]}})" << QStringLiteral("analysis.pvRange");
+    QTest::newRow("pvRange one number")
+        << head + R"({"pvRange":[1]}})" << QStringLiteral("analysis.pvRange");
+    QTest::newRow("pvRange not an array")
+        << head + R"({"pvRange":3}})" << QStringLiteral("analysis.pvRange");
+    QTest::newRow("pvRange with a string")
+        << head + R"({"pvRange":[0,"100"]}})" << QStringLiteral("analysis.pvRange");
+    QTest::newRow("coRange equal ends")
+        << head + R"({"coRange":[0,0]}})" << QStringLiteral("analysis.coRange");
+    QTest::newRow("coRange null")
+        << head + R"({"coRange":null}})" << QStringLiteral("analysis.coRange");
+    QTest::newRow("coRange three numbers")
+        << head + R"({"coRange":[0,50,100]}})" << QStringLiteral("analysis.coRange");
+    QTest::newRow("tuningRule unknown")
+        << head + R"({"tuningRule":"pid"}})" << QStringLiteral("analysis.tuningRule");
+    QTest::newRow("lambdaS negative")
+        << head + R"({"lambdaS":-1}})" << QStringLiteral("analysis.lambdaS");
+    QTest::newRow("lambdaS as string")
+        << head + R"({"lambdaS":"10"}})" << QStringLiteral("analysis.lambdaS");
+    QTest::newRow("timeUnit hours")
+        << head + R"({"timeUnit":"h"}})" << QStringLiteral("analysis.timeUnit");
+    QTest::newRow("timeUnit not a string")
+        << head + R"({"timeUnit":1}})" << QStringLiteral("analysis.timeUnit");
+}
+
+void TstProjectIO::v126RejectedValues()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, fragment);
+    QString error;
+    const auto project = projectFromJson(text, &error);
+    QVERIFY(!project.has_value());
+    QVERIFY2(error.contains(fragment), qPrintable(error));
+}
+
+void TstProjectIO::v126MigratesAnalyzedTags()
+{
+    // A file from before v1.2.6: no method, pvTag or setpointTags; the analysed tags are 2 and 4.
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1},{"id":2,"analyzed":true},{"id":4,"analyzed":true},{"id":5,"analyzed":false}],
+        "analysis":{"percents":[0,63.2],"modelPercents":[0,63.2]}
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    const AnalysisSettings &a = project->analysis;
+    QCOMPARE(a.pvTagId, TagId(2));
+    QVERIFY(a.setpointTagIds == (QList<TagId>{2, 4}));
+    QVERIFY(a.method == ModelMethod::ZeroTo632);
+    QVERIFY(a.showModel);
+    QVERIFY(project->tags.at(1).analyzed);
+    QVERIFY(!project->tags.at(3).analyzed);
+
+    // No analysed tag at all: no PV and no setpoint tags.
+    const auto none = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"tags":[{"id":1}]
+    })"), &error);
+    QVERIFY2(none.has_value(), qPrintable(error));
+    QCOMPARE(none->analysis.pvTagId, TagId(0));
+    QVERIFY(none->analysis.setpointTagIds.isEmpty());
+}
+
+void TstProjectIO::v126MigratesWithoutAnalysisObject()
+{
+    // The analysed flags are still the only record of the analysis when there is no "analysis".
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":3,"analyzed":true}]
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->analysis.pvTagId, TagId(3));
+    QVERIFY(project->analysis.setpointTagIds == (QList<TagId>{3}));
+    QVERIFY(project->analysis.method == ModelMethod::ZeroTo632);
+}
+
+void TstProjectIO::v126ExplicitKeysWinOverAnalyzed()
+{
+    QString error;
+    const auto project = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":2,"analyzed":true},{"id":4,"analyzed":true}],
+        "analysis":{"pvTag":4,"setpointTags":[2]}
+    })"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->analysis.pvTagId, TagId(4));
+    QVERIFY(project->analysis.setpointTagIds == (QList<TagId>{2}));
+
+    // An explicit pvTag of 0 means "none" even when tags are analysed.
+    const auto zero = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":2,"analyzed":true}],
+        "analysis":{"pvTag":0,"setpointTags":[]}
+    })"), &error);
+    QVERIFY2(zero.has_value(), qPrintable(error));
+    QCOMPARE(zero->analysis.pvTagId, TagId(0));
+    QVERIFY(zero->analysis.setpointTagIds.isEmpty());
+}
+
+void TstProjectIO::v126MethodFromModelPercents_data()
+{
+    QTest::addColumn<QByteArray>("analysis");
+    QTest::addColumn<bool>("zeroTo632");
+    QTest::addColumn<double>("a");
+    QTest::addColumn<double>("b");
+
+    QTest::newRow("0 / 63.2 is the two-point method")
+        << QByteArray(R"({"modelPercents":[0,63.2]})") << true << 0.0 << 63.2;
+    QTest::newRow("missing modelPercents is 0 / 63.2")
+        << QByteArray(R"({"percents":[0,63.2]})") << true << 0.0 << 63.2;
+    QTest::newRow("10 / 70 is Custom")
+        << QByteArray(R"({"modelPercents":[10,70]})") << false << 10.0 << 70.0;
+    QTest::newRow("0 / 63 is Custom")
+        << QByteArray(R"({"modelPercents":[0,63]})") << false << 0.0 << 63.0;
+}
+
+void TstProjectIO::v126MethodFromModelPercents()
+{
+    QFETCH(QByteArray, analysis);
+    QFETCH(bool, zeroTo632);
+    QFETCH(double, a);
+    QFETCH(double, b);
+    QString error;
+    const auto project = projectFromJson(
+        QByteArray(R"({"format":"modbus-control-project","version":1,"analysis":)") + analysis + "}",
+        &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY((project->analysis.method == ModelMethod::ZeroTo632) == zeroTo632);
+    QCOMPARE(project->analysis.modelPercentA, a);
+    QCOMPARE(project->analysis.modelPercentB, b);
+
+    // An explicit "method" always wins over the modelPercents rule.
+    const auto explicitSmith = projectFromJson(
+        QByteArray(R"({"format":"modbus-control-project","version":1,"analysis":{"method":"smith","modelPercents":[10,70]}})"),
+        &error);
+    QVERIFY2(explicitSmith.has_value(), qPrintable(error));
+    QVERIFY(explicitSmith->analysis.method == ModelMethod::Smith);
+}
+
+void TstProjectIO::v126AnalyzedNotWritten()
+{
+    Project p = sampleProject();
+    p.tags[0].analyzed = true;
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object()
+                                .value(QStringLiteral("tags")).toArray();
+    for (qsizetype i = 0; i < tags.size(); ++i)
+        QVERIFY(!tags.at(i).toObject().contains(QStringLiteral("analyzed")));
+}
+
+void TstProjectIO::v126AnalyzedStillValidated()
+{
+    QString error;
+    const auto bad = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"analyzed":"yes"}]
+    })"), &error);
+    QVERIFY(!bad.has_value());
+    QVERIFY2(error.contains(QStringLiteral("analyzed")), qPrintable(error));
 }
 
 void TstProjectIO::axisQuickAndAnalysisFlagsRoundTrip()

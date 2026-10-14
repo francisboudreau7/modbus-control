@@ -25,10 +25,13 @@ inline constexpr int kProjectFormatVersion = 1;
 ///               "type": "int16"|"uint16"|"int32"|"uint32"|"float32",
 ///               "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA", "gain": 1.0, "offset": 0.0,
 ///               "unit": "", "color": "#RRGGBB", "plotted": true, "writable": false,
-///               "analyzed": false, "axis": "left"|"right", "quickA": 0, "quickB": 1000 }, ... ],
+///               "axis": "left"|"right", "quickA": 0, "quickB": 1000 }, ... ],
 ///   "analysis": { "percents": [0, 63.2], "reference": "cursor"|"mean", "referenceWindowS": 1,
-///                 "smoothingS": 0, "modelPercents": [0, 63.2], "deltaCoTag": 0, "deltaCo": 0,
-///                 "detailedLabels": false, "showModel": false, "guideLines": true }
+///                 "smoothingS": 0, "modelPercents": [0, 63.2], "method": "0-63.2",
+///                 "pvTag": 1, "setpointTags": [1], "deltaCoTag": 0, "deltaCo": 0,
+///                 "detailedLabels": false, "showModel": false, "guideLines": true,
+///                 "pvRange": null, "coRange": [0, 100], "tuningRule": "zn", "lambdaS": 0,
+///                 "timeUnit": "s" }
 /// }
 ///
 /// Older files may contain "connection.singleRegisterWrites" (the removed FC06-only option): it
