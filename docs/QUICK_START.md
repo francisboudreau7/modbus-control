@@ -21,8 +21,12 @@ Version française : [Guide de démarrage rapide](fr/GUIDE_DEMARRAGE_RAPIDE.md).
 ## 1. Connect to the controller
 
 1. Start **Modbus Control**.
-2. In the **Options** menu, tick **Use 1-based register numbers**. The CM50 manual prints register
-   numbers starting at 1. With this option you type them exactly as printed.
+2. Check how your CM50 manual (Communications Supplement IM/CM/C-EN) numbers its registers: look at
+   the first row of the input register table.
+   - `0001` (Rev. I and other recent revisions): in the **Options** menu, tick **Use 1-based
+     register numbers**. This guide uses these numbers.
+   - `0000` (Rev. A): leave the option off, and use each number of this guide minus 1 (for example
+     `5008` instead of `5009`).
 3. In the connection bar at the top, fill in:
 
    | Field | Value |
@@ -48,7 +52,7 @@ A tag is one value read from the controller. Start with the Loop 1 process varia
 1. In the **Tags** panel at the bottom, click **Add**. The **Add tag** dialog opens.
 2. **Name**: `Loop 1 Process Variable`.
 3. **Area**: **Input register**.
-4. **Address**: `5009` (the number printed in the CM50 manual).
+4. **Address**: `5009` (`5008` with a Rev. A manual, see step 1).
 5. Wait a moment: while connected, the dialog reads the register and shows its raw value and what it
    means as a 16-bit value and as float32.
 6. Click **Detect encoding**. The CM50 stores this value as a float32 on two registers, so the

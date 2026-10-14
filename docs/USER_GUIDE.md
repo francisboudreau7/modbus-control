@@ -1041,9 +1041,19 @@ firmware and configuration.
   PC's address.
 - **Unit** is the controller's Device Address (1..247).
 
-**Register numbers.** The manual's register tables use 1-based register numbers. Tick **Options >
-Use 1-based register numbers** and type the numbers as printed (for example 5009 for the Loop 1
-process variable). The app sends address 5008.
+**Register numbers depend on the manual's revision.** The registers themselves are the same, but
+ABB changed how the tables number them:
+
+- Rev. A prints zero-based addresses: the input register table starts at `0000` (Output 1), the
+  coils start at `0`, and the Loop 1 process variable is `5008`.
+- Later revisions (for example Rev. I) print 1-based numbers: the same table starts at `0001`, the
+  coils start at `1`, and the Loop 1 process variable is `5009`.
+
+Look at the first row of your manual's input register table. If it is `0001`, tick **Options > Use
+1-based register numbers** and type the numbers as printed. If it is `0000`, leave the option off
+and type them as printed. Either way the app sends address 5008 for the Loop 1 process variable.
+If a value still looks wrong, compare it with the controller's display: a register off by one
+gives a nonsense value (or "Illegal data address").
 
 **Floating-point values** are IEEE-754 single precision, high word first: byte order `ABCD`. If the
 controller's "Reverse IEEE Data" setting is Yes, the words are swapped: use `CDAB`.
@@ -1068,7 +1078,8 @@ cannot take float32 writes from this app.
 5. Then make one small change, and check the controller's display and the trend.
 6. Keep quick-write confirmation on (**Options > Confirm quick writes**) until you know the tags.
 
-**Example tags** (register numbers as printed, with the 1-based option on):
+**Example tags** (1-based numbers, as in Rev. I, with the 1-based option on; subtract 1 for a
+Rev. A manual):
 
 | Name | Area | Register | Type | Notes |
 |---|---|---|---|---|

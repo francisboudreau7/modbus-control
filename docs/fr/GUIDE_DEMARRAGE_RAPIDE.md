@@ -24,9 +24,12 @@ menus et des champs sont donnés tels qu'ils apparaissent à l'écran.
 ## 1. Se connecter au régulateur
 
 1. Démarrez **Modbus Control**.
-2. Dans le menu **Options**, cochez **Use 1-based register numbers**. Le manuel du CM50 numérote
-   les registres à partir de 1. Avec cette option, vous les tapez exactement comme ils sont
-   imprimés.
+2. Vérifiez comment votre manuel du CM50 (Communications Supplement IM/CM/C-EN) numérote les
+   registres : regardez la première ligne du tableau des registres d'entrée.
+   - `0001` (Rev. I et autres révisions récentes) : dans le menu **Options**, cochez **Use 1-based
+     register numbers**. Ce guide utilise ces numéros.
+   - `0000` (Rev. A) : laissez l'option décochée et utilisez chaque numéro de ce guide moins 1 (par
+     exemple `5008` au lieu de `5009`).
 3. Dans la barre de connexion, en haut, remplissez :
 
    | Champ | Valeur |
@@ -56,7 +59,7 @@ boucle 1.
 1. Dans le panneau **Tags**, en bas, cliquez sur **Add**. La boîte de dialogue **Add tag** s'ouvre.
 2. **Name** : `Loop 1 Process Variable`.
 3. **Area** : **Input register**.
-4. **Address** : `5009` (le numéro imprimé dans le manuel du CM50).
+4. **Address** : `5009` (`5008` avec un manuel Rev. A, voir l'étape 1).
 5. Attendez un instant : pendant la connexion, la boîte de dialogue lit le registre et affiche sa
    valeur brute, ainsi que ce qu'elle vaut comme valeur 16 bits et comme `float32`.
 6. Cliquez sur **Detect encoding**. Le CM50 enregistre cette valeur en `float32` sur deux

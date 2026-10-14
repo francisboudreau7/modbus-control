@@ -1124,10 +1124,22 @@ micrologiciel et de la configuration de votre régulateur.
   cas, ajoutez l'adresse de ce PC.
 - **Unit** est l'adresse d'appareil (Device Address) du régulateur (1..247).
 
-**Numéros de registre.** Les tableaux de registres du manuel utilisent des numéros de registre à
-partir de 1. Cochez **Options > Use 1-based register numbers** et saisissez les numéros tels qu'ils
-sont imprimés (par exemple 5009 pour la variable de procédé de la boucle 1). L'application envoie
-l'adresse 5008.
+**Les numéros de registre dépendent de la révision du manuel.** Les registres eux-mêmes sont les
+mêmes, mais ABB a changé la façon de les numéroter dans les tableaux :
+
+- La Rev. A imprime des adresses à partir de 0 : le tableau des registres d'entrée commence à
+  `0000` (Output 1), les bobines (coils) commencent à `0` et la variable de procédé de la boucle 1
+  est `5008`.
+- Les révisions suivantes (par exemple la Rev. I) impriment des numéros à partir de 1 : le même
+  tableau commence à `0001`, les bobines commencent à `1` et la variable de procédé de la boucle 1
+  est `5009`.
+
+Regardez la première ligne du tableau des registres d'entrée de votre manuel. Si c'est `0001`,
+cochez **Options > Use 1-based register numbers** et saisissez les numéros tels qu'ils sont
+imprimés. Si c'est `0000`, laissez l'option décochée et saisissez-les aussi tels qu'ils sont
+imprimés. Dans les deux cas, l'application envoie l'adresse 5008 pour la variable de procédé de la
+boucle 1. Si une valeur semble encore fausse, comparez-la avec l'affichage du régulateur : un
+registre décalé de un donne une valeur absurde (ou « Illegal data address »).
 
 **Les valeurs à virgule flottante** sont en simple précision IEEE-754, mot de poids fort en premier :
 ordre des octets `ABCD`. Si le paramètre « Reverse IEEE Data » du régulateur est à Yes, les mots sont
@@ -1157,8 +1169,8 @@ recevoir d'écritures float32 depuis cette application.
 6. Gardez la confirmation des écritures rapides activée (**Options > Confirm quick writes**) tant que
    vous ne connaissez pas bien les étiquettes.
 
-**Exemples d'étiquettes** (numéros de registre tels qu'imprimés, avec l'option à partir de 1
-activée) :
+**Exemples d'étiquettes** (numéros à partir de 1, comme dans la Rev. I, avec l'option à partir de 1
+activée; soustrayez 1 pour un manuel Rev. A) :
 
 | Nom | Zone | Registre | Type | Remarques |
 |---|---|---|---|---|
