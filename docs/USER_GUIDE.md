@@ -13,6 +13,9 @@ This guide describes the application as built from this repository. For building
   tags (see [Quick writes](#quick-writes)).
 - **Analysis** (right dock, tabbed with Cursors and Quick write): the step-response analysis of the
   Trend (see [Analysis](#analysis-step-response)).
+- **Setpoints** (right dock, tabbed after Analysis): which curves show setpoint markers, the
+  setpoint percentages, references, smoothing and the setpoint table (see
+  [Setpoints and options](#setpoints-and-options)).
 - **Menus**: File, Export, View, Options and Help.
 - **Status bar**: short messages (left) and the connection state (right).
 
@@ -649,8 +652,9 @@ Open the panel with **View > Analysis**. It is the **Analysis** dock on the righ
 3. **Model**: the method, the results, the model curve and the checks.
 4. **Tuning**: the PID settings.
 
-Below these is **Setpoints and options**, which is collapsed at first. Hover over any value to see how
-it was calculated (see [Tooltips](#tooltips)).
+The setpoint options and the setpoint table are in their own **Setpoints** tab, next to Analysis (see
+[Setpoints and options](#setpoints-and-options)). Hover over any value to see how it was calculated
+(see [Tooltips](#tooltips)).
 
 The overlays (setpoint markers, guide lines and the model curve) are drawn on the Trend plot, and the
 graph image export includes them.
@@ -806,7 +810,8 @@ The rules are a starting point. Test the controller on the process before you re
 
 ### Setpoints and options
 
-This group is collapsed at first. Click its title to open it. Whether it is open is not saved.
+These options are in the **Setpoints** dock, a tab next to **Analysis** on the right side (View >
+Setpoints).
 
 - **Show setpoints on**: tick the PV and the other plotted tags whose setpoints you want to see. The
   panel finds their setpoint times too. Each ticked tag gets markers on the Trend, guide lines and

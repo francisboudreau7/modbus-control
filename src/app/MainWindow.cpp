@@ -74,6 +74,16 @@ MainWindow::MainWindow(QWidget *parent)
     analysisDock->setWidget(m_analysisPanel);
     addDockWidget(Qt::RightDockWidgetArea, analysisDock);
     tabifyDockWidget(quickDock, analysisDock);
+
+    // The panel's setpoint options and table get their own tab.
+    auto *setpointsDock = new QDockWidget(tr("Setpoints"), this);
+    setpointsDock->setObjectName(QStringLiteral("setpointsDock"));
+    setpointsDock->setFeatures(dockFeatures);
+    setpointsDock->setWidget(m_analysisPanel->setpointsPage());
+    m_analysisPanel->setpointsPage()->show();
+    addDockWidget(Qt::RightDockWidgetArea, setpointsDock);
+    tabifyDockWidget(analysisDock, setpointsDock);
+    m_analysisDock = analysisDock;
     cursorsDock->raise();
 
     // File menu
@@ -108,6 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
     viewMenu->addAction(cursorsDock->toggleViewAction());
     viewMenu->addAction(quickDock->toggleViewAction());
     viewMenu->addAction(analysisDock->toggleViewAction());
+    viewMenu->addAction(setpointsDock->toggleViewAction());
 
     // Options menu
     auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
@@ -144,7 +155,11 @@ MainWindow::MainWindow(QWidget *parent)
     restoreState(settings.value(QStringLiteral("mainWindow/state")).toByteArray());
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    // The panel drives the Setpoints page (in another dock): delete it while the page still exists.
+    delete m_analysisDock;
+}
 ConnectionBar *MainWindow::connectionBar() const { return m_connectionBar; }
 TagTableModel *MainWindow::tagModel() const { return m_tagModel; }
 TagTableWidget *MainWindow::tagTable() const { return m_tagTable; }

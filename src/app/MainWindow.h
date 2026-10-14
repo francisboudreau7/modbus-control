@@ -7,6 +7,7 @@
 #include <functional>
 
 class QAction;
+class QDockWidget;
 class QLabel;
 
 namespace mb {
@@ -29,6 +30,8 @@ class TrendPlot;
 /// - Right dock "Analysis" (objectName "analysisDock"): AnalysisPanel (it scrolls by itself), tabified
 ///   with Cursors and Quick write; its toggle is in the View menu. setPlot(trendPlot()) is called
 ///   by the window.
+/// - Right dock "Setpoints" (objectName "setpointsDock"): AnalysisPanel::setpointsPage(), tabified
+///   after Analysis; View menu toggle. The destructor deletes the Analysis dock first.
 /// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
 ///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
@@ -90,6 +93,7 @@ private:
     TrendPlot *m_trendPlot = nullptr;
     CursorPanel *m_cursorPanel = nullptr;
     AnalysisPanel *m_analysisPanel = nullptr;
+    QDockWidget *m_analysisDock = nullptr;
     QuickWritePanel *m_quickWritePanel = nullptr;
     QLabel *m_connectionLabel = nullptr;
     Actions m_actions;

@@ -333,6 +333,11 @@ AnalysisPanel::~AnalysisPanel()
     clearOverlays(true);
 }
 
+QWidget *AnalysisPanel::setpointsPage() const
+{
+    return m_setpointsPage;
+}
+
 // ---------------------------------------------------------------------------------------------
 // UI
 
@@ -537,16 +542,19 @@ void AnalysisPanel::buildUi()
         userChangedSettings();
     });
 
-    // Setpoints and options (collapsible)
-    m_setpointsGroup = new QGroupBox(tr("Setpoints and options"), body);
-    m_setpointsGroup->setObjectName(QStringLiteral("setpointsGroup"));
-    m_setpointsGroup->setCheckable(true);
-    m_setpointsGroup->setChecked(true);
-    auto *spOuter = new QVBoxLayout(m_setpointsGroup);
-    auto *spContent = new QWidget(m_setpointsGroup);
-    spOuter->addWidget(spContent);
+    // Setpoints page: its own dock in the main window (hidden child until reparented).
+    m_setpointsPage = new QWidget(this);
+    m_setpointsPage->setObjectName(QStringLiteral("setpointsPage"));
+    m_setpointsPage->hide();
+    auto *spOuter = new QVBoxLayout(m_setpointsPage);
+    spOuter->setContentsMargins(0, 0, 0, 0);
+    auto *spScroll = new QScrollArea(m_setpointsPage);
+    spScroll->setWidgetResizable(true);
+    spScroll->setFrameShape(QFrame::NoFrame);
+    spOuter->addWidget(spScroll);
+    auto *spContent = new QWidget;
+    spScroll->setWidget(spContent);
     auto *sp = new QGridLayout(spContent);
-    sp->setContentsMargins(0, 0, 0, 0);
 
     m_setpointTagList = new QListWidget(spContent);
     m_setpointTagList->setObjectName(QStringLiteral("setpointTagList"));
@@ -607,18 +615,8 @@ void AnalysisPanel::buildUi()
     sp->addWidget(m_detailedLabelsCheck, 9, 0, 1, 3);
     sp->addWidget(m_guideLinesCheck, 10, 0, 1, 3);
     sp->addWidget(m_setpointTable, 11, 0, 1, 3);
-    col->addWidget(m_setpointsGroup);
+    sp->setRowStretch(11, 1);
     col->addStretch(1);
-
-    // Collapse toggle: the group box would disable its contents when unchecked; keep them enabled
-    // (they are just hidden). The check state is not saved.
-    connect(m_setpointsGroup, &QGroupBox::toggled, this, [spContent](bool on) {
-        spContent->setVisible(on);
-        spContent->setEnabled(true);
-    });
-    m_setpointsGroup->setChecked(false);
-    spContent->setVisible(false);
-    spContent->setEnabled(true);
 
     connect(m_setpointTagList, &QListWidget::itemChanged, this,
             [this](QListWidgetItem *item) { onSetpointItemChanged(item); });

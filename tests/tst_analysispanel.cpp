@@ -29,6 +29,7 @@
 #include <QShortcut>
 #include <QSignalSpy>
 #include <QTableWidget>
+#include <QVBoxLayout>
 #include <QtTest>
 
 #include <cmath>
@@ -1441,21 +1442,28 @@ void TstAnalysisPanel::copyResults()
 
 void TstAnalysisPanel::collapsedGroup()
 {
+    // The setpoint options live on their own page (the main window's Setpoints dock), not in the
+    // panel's layout; the panel keeps driving them.
     Fx fx;
-    auto *group = child<QGroupBox>(fx.panel, "setpointsGroup");
-    QVERIFY(group);
-    QVERIFY(group->isCheckable());
-    QVERIFY(!group->isChecked());
+    QVERIFY(!child<QGroupBox>(fx.panel, "setpointsGroup"));
+    QWidget *page = fx.panel.setpointsPage();
+    QVERIFY(page);
+    QCOMPARE(page->objectName(), QStringLiteral("setpointsPage"));
+    QVERIFY(page->isAncestorOf(child<QListWidget>(fx.panel, "setpointTagList")));
+    QVERIFY(page->isAncestorOf(child<QTableWidget>(fx.panel, "setpointTable")));
     fx.panel.show();
-    QVERIFY(!child<QListWidget>(fx.panel, "setpointTagList")->isVisible());
-    group->setChecked(true);
-    QVERIFY(child<QListWidget>(fx.panel, "setpointTagList")->isVisible());
-    QVERIFY(child<QTableWidget>(fx.panel, "setpointTable")->isEnabled());
-    group->setChecked(false);
-    QVERIFY(!child<QListWidget>(fx.panel, "setpointTagList")->isVisible());
-    QVERIFY(child<QTableWidget>(fx.panel, "setpointTable")->isEnabled());
+    QVERIFY(!page->isVisible()); // hidden until a dock takes it
+    QWidget host;
+    auto *lay = new QVBoxLayout(&host);
+    lay->addWidget(page);
+    page->show();
+    host.show();
+    QVERIFY(page->isVisible());
+    QVERIFY(host.findChild<QTableWidget *>(QStringLiteral("setpointTable")));
     for (const char *name : {"signalsGroup", "cursorsGroup", "modelGroup", "tuningGroup"})
         QVERIFY(child<QGroupBox>(fx.panel, name));
+    lay->removeWidget(page);
+    page->setParent(&fx.panel); // the panel's own child again (deleted with it)
 }
 
 void TstAnalysisPanel::refreshRecompute()

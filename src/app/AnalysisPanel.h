@@ -5,6 +5,7 @@
 #include "Tuning.h"
 
 #include <QList>
+#include <QPointer>
 #include <QWidget>
 
 #include <optional>
@@ -88,8 +89,8 @@ class TrendPlot;
 ///   * "tuningNote": "Ideal (ISA) form: u = Kp (e + 1/Ti ∫e dt + Td de/dt). Ti and Td in s." (or
 ///     "in min"); when K < 0 it adds "K is negative: the controller must be direct acting (Kp is
 ///     shown negative)."
-/// - Group "Setpoints and options" ("setpointsGroup", checkable as a collapse toggle, collapsed by
-///   default; the check state is not saved): "Show setpoints on" list ("setpointTagList",
+/// - Setpoints page (setpointsPage(), object name "setpointsPage"; not in the panel's layout: the
+///   main window shows it in its own "Setpoints" dock): "Show setpoints on" list ("setpointTagList",
 ///   checkable items, one per plotted tag + the PV, "name [unit]", data TagId) =
 ///   AnalysisSettings::setpointTagIds; the reference controls ("referenceCombo" "Value at cursor" /
 ///   "Mean before cursor", "windowSpin" W, "smoothingSpin" S with "Off" at 0); the percent list
@@ -138,6 +139,11 @@ class AnalysisPanel : public QWidget
 public:
     explicit AnalysisPanel(QWidget *parent = nullptr);
     ~AnalysisPanel() override;
+
+    /// The setpoint options and table, as a separate page (scrolls by itself). It starts as a
+    /// hidden child of the panel; the main window reparents it into its "Setpoints" dock. The
+    /// panel keeps driving it wherever it lives, and stops using it once it is destroyed.
+    QWidget *setpointsPage() const;
 
     /// Not owned; may be null.
     void setRecorder(const Recorder *recorder);
@@ -260,7 +266,7 @@ private:
     QCheckBox *m_minutesCheck = nullptr;
     QTableWidget *m_tuningTable = nullptr;
     QLabel *m_tuningNote = nullptr;
-    QGroupBox *m_setpointsGroup = nullptr;
+    QPointer<QWidget> m_setpointsPage;
     QListWidget *m_setpointTagList = nullptr;
     QComboBox *m_referenceCombo = nullptr;
     QDoubleSpinBox *m_windowSpin = nullptr;

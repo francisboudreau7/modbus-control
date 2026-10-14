@@ -40,6 +40,7 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QtTest>
 
 #include <cmath>
@@ -1422,6 +1423,13 @@ private slots:
         QCOMPARE(win->centralWidget(), static_cast<QWidget *>(win->trendPlot()));
         QVERIFY(win->tabifiedDockWidgets(win->findChild<QDockWidget *>(QStringLiteral("cursorsDock")))
                     .contains(dock));
+        // The setpoint options have their own tab.
+        auto *sp = win->findChild<QDockWidget *>(QStringLiteral("setpointsDock"));
+        QVERIFY(sp);
+        QCOMPARE(sp->widget(), win->analysisPanel()->setpointsPage());
+        QVERIFY(sp->isAncestorOf(sp->findChild<QTableWidget *>(QStringLiteral("setpointTable"))));
+        QVERIFY(!dock->findChild<QTableWidget *>(QStringLiteral("setpointTable")));
+        QVERIFY(win->tabifiedDockWidgets(dock).contains(sp));
     }
 
     void restoreStateWithoutAnalysisDock()
