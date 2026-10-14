@@ -673,7 +673,8 @@ gains in percent of the ranges, **K (%/%)** and **Kp (%/%)**:
 
 - K (%/%) = K × CO span / PV span, where the span is max − min.
 - The PV range is used only when both PV boxes are filled in. An empty box means no range.
-- A span of 0 counts as no range.
+- A span of 0 counts as no range. This includes a range whose min and max are equal: it is ignored,
+  and a project saved with such a range still opens.
 
 ### 2. Cursors
 
@@ -697,10 +698,12 @@ nothing is visible), so zoom or scroll to the step first. It then:
 
 - finds the largest change of the controller output in that range. That change is the step;
 - puts C1 5 s before the step, or halfway back to the previous change of the output when that is
-  closer;
+  closer. C1 is never later than the last recorded sample of the output before the step, so with a
+  slow poll period ΔCO between the cursors is the whole step;
 - puts C2 after the PV has settled: at the settling time plus 20 % of the time the settling took.
-  If the PV does not settle before the end of the range, C2 goes to the end of the range, and the
-  check **The PV is still moving at C2** appears.
+  If the PV does not settle before the end of the range (for example because of noise), C2 goes to
+  the end of the range, and the check **The PV is still moving at C2** appears. It disappears when
+  you move a cursor yourself or change the PV or CO.
 
 If no step is found, the hint line says "No step found in the controller output in the visible
 range." Find step is a starting point. Check the cursors on the Trend afterwards.
@@ -757,6 +760,7 @@ list is hidden when there are no checks. Each message and what to do:
 | Message | What to do |
 |---|---|
 | "K can't be computed: choose the controller output (CO) or type ΔCO in step 1." | Choose the CO tag, or choose **Typed ΔCO** and type the step. |
+| "The controller output (CO) does not change between the cursors: K can't be computed. Move the cursors around the step." | A CO tag is chosen, but it has the same value at C1 and C2. Place C1 before the step and C2 after it, or use **Find step**. |
 | "L and T can't be computed: the PV does not reach both model points (a % and b %) between the cursors." | The PV does not get past both levels before C2. Move C2 later, after the PV has risen past the second level, or choose another method. |
 | "The PV is still moving at C2: move C2 later." | Move C2 later, until the PV is flat. |
 | "The step is small compared with the noise: the results are uncertain." | Use a bigger step, or set **Reference** to **Mean before cursor** for a noisy signal. |
@@ -806,7 +810,10 @@ This group is collapsed at first. Click its title to open it. Whether it is open
 
 - **Show setpoints on**: tick the PV and the other plotted tags whose setpoints you want to see. The
   panel finds their setpoint times too. Each ticked tag gets markers on the Trend, guide lines and
-  rows in the setpoint table. The list is saved in the project.
+  rows in the setpoint table. The list is saved in the project. A tag that is not plotted on the
+  Trend shows no markers, guide lines, model curve or rows, even when it is ticked. An unplotted PV
+  is still analysed (results and tuning), and an unplotted tag other than the PV is not analysed at
+  all, so the exported results match what the panel shows.
 - **Reference**: how the 0 % and 100 % levels are taken.
   - **Value at cursor** (default): the recorded value at the cursor, interpolated between the two
     samples around it.

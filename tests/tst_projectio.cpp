@@ -895,6 +895,24 @@ void TstProjectIO::v126RoundTrip()
     QVERIFY(!again->analysis.pvRangeMax.has_value());
     QVERIFY(again->analysis.setpointTagIds.isEmpty());
     QCOMPARE(*again, none);
+
+    // Zero-width ranges (the UI can produce them) must stay loadable. PV: written as null and
+    // read back as not set. CO: written and read back as it is.
+    Project flat = sampleProject();
+    flat.analysis.pvRangeMin = 5.0;
+    flat.analysis.pvRangeMax = 5.0;
+    flat.analysis.coRangeMin = 30.0;
+    flat.analysis.coRangeMax = 30.0;
+    const QJsonObject flatAnalysis = QJsonDocument::fromJson(projectToJson(flat)).object()
+                                         .value(QStringLiteral("analysis")).toObject();
+    QVERIFY(flatAnalysis.value(QStringLiteral("pvRange")).isNull());
+    QString flatError;
+    const auto flatLoaded = projectFromJson(projectToJson(flat), &flatError);
+    QVERIFY2(flatLoaded.has_value(), qPrintable(flatError));
+    QVERIFY(!flatLoaded->analysis.pvRangeMin.has_value());
+    QVERIFY(!flatLoaded->analysis.pvRangeMax.has_value());
+    QCOMPARE(flatLoaded->analysis.coRangeMin, 30.0);
+    QCOMPARE(flatLoaded->analysis.coRangeMax, 30.0);
 }
 
 void TstProjectIO::v126NamesWritten()
@@ -959,6 +977,17 @@ void TstProjectIO::v126DefaultsWhenMissing()
     })"), &error);
     QVERIFY2(nullRange.has_value(), qPrintable(error));
     QVERIFY(!nullRange->analysis.pvRangeMin.has_value());
+
+    // A file with equal ends loads: pvRange = not set, coRange keeps its values.
+    const auto flat = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "analysis":{"pvRange":[5,5],"coRange":[7,7]}
+    })"), &error);
+    QVERIFY2(flat.has_value(), qPrintable(error));
+    QVERIFY(!flat->analysis.pvRangeMin.has_value());
+    QVERIFY(!flat->analysis.pvRangeMax.has_value());
+    QCOMPARE(flat->analysis.coRangeMin, 7.0);
+    QCOMPARE(flat->analysis.coRangeMax, 7.0);
 }
 
 void TstProjectIO::v126RejectedValues_data()
@@ -985,16 +1014,12 @@ void TstProjectIO::v126RejectedValues_data()
         << head + R"({"setpointTags":[1.5]}})" << QStringLiteral("analysis.setpointTags");
     QTest::newRow("setpointTags with string")
         << head + R"({"setpointTags":["2"]}})" << QStringLiteral("analysis.setpointTags");
-    QTest::newRow("pvRange equal ends")
-        << head + R"({"pvRange":[5,5]}})" << QStringLiteral("analysis.pvRange");
     QTest::newRow("pvRange one number")
         << head + R"({"pvRange":[1]}})" << QStringLiteral("analysis.pvRange");
     QTest::newRow("pvRange not an array")
         << head + R"({"pvRange":3}})" << QStringLiteral("analysis.pvRange");
     QTest::newRow("pvRange with a string")
         << head + R"({"pvRange":[0,"100"]}})" << QStringLiteral("analysis.pvRange");
-    QTest::newRow("coRange equal ends")
-        << head + R"({"coRange":[0,0]}})" << QStringLiteral("analysis.coRange");
     QTest::newRow("coRange null")
         << head + R"({"coRange":null}})" << QStringLiteral("analysis.coRange");
     QTest::newRow("coRange three numbers")
@@ -1038,6 +1063,25 @@ void TstProjectIO::v126MigratesAnalyzedTags()
     QVERIFY(a.showModel);
     QVERIFY(project->tags.at(1).analyzed);
     QVERIFY(!project->tags.at(3).analyzed);
+
+    // The CO tag is analysed and listed before the PV: the PV is the first analysed non-CO tag.
+    const auto coFirst = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"analyzed":true},{"id":2,"analyzed":true}],
+        "analysis":{"deltaCoTag":1}
+    })"), &error);
+    QVERIFY2(coFirst.has_value(), qPrintable(error));
+    QCOMPARE(coFirst->analysis.pvTagId, TagId(2));
+    QVERIFY(coFirst->analysis.setpointTagIds == (QList<TagId>{1, 2}));
+
+    // Only the CO is analysed: fall back to it.
+    const auto onlyCo = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,
+        "tags":[{"id":1,"analyzed":true}],
+        "analysis":{"deltaCoTag":1}
+    })"), &error);
+    QVERIFY2(onlyCo.has_value(), qPrintable(error));
+    QCOMPARE(onlyCo->analysis.pvTagId, TagId(1));
 
     // No analysed tag at all: no PV and no setpoint tags.
     const auto none = projectFromJson(json(R"({

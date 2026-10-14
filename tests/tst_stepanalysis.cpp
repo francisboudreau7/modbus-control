@@ -925,6 +925,34 @@ private slots:
         QVERIFY2(near(w->c1, 8.0, 1e-9), qPrintable(QString::number(w->c1))); // (10 - 6) / 2
     }
 
+    void findStep_c1NeverAfterPreStepSample()
+    {
+        // Slow sampling: one row every 10 s, CO 20 -> 30 between the rows at 10 s and 20 s.
+        Recorder slow;
+        for (int i = 0; i <= 10; ++i) {
+            const double t = 10.0 * i;
+            slow.append(batch(t, {good(kPv, fopdt(t - 10.0)), good(kCo, t < 20.0 ? 20.0 : 30.0)}));
+        }
+        const auto w = findStep(slow, kCo, kPv, 0.0, 100.0);
+        QVERIFY(w.has_value());
+        QVERIFY(near(w->stepTime, 20.0, 1e-9));
+        QVERIFY2(near(w->c1, 10.0, 1e-9), qPrintable(QString::number(w->c1))); // not 15 s
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const StepResult r = analyzeStep(slow, kPv, w->c1, w->c2, s);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.deltaCo.has_value());
+        QVERIFY2(near(*r.deltaCo, 10.0, 1e-9), qPrintable(QString::number(*r.deltaCo)));
+
+        // Two-sample transition (25 at 10.0 s, 30 from 10.1 s): the previous change is the
+        // immediately preceding row, so C1 is that row, not the midpoint to it.
+        const Recorder two = build(60.0, [](double t) { return fopdt(t); }, coStep);
+        const auto t2 = findStep(two, kCo, kPv, 0.0, 60.0);
+        QVERIFY(t2.has_value());
+        QVERIFY(near(t2->stepTime, 10.1, 1e-9));
+        QVERIFY2(near(t2->c1, 10.0, 1e-9), qPrintable(QString::number(t2->c1)));
+    }
+
     void findStep_largestAndTie()
     {
         const auto pv = [](double t) { return fopdt(t); };

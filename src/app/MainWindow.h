@@ -26,7 +26,7 @@ class TrendPlot;
 /// - Bottom dock "Tags": TagTableWidget (over tagModel()).
 /// - Right dock "Cursors": CursorPanel.
 /// - Right dock "Quick write": QuickWritePanel over tagModel() (tabified with Cursors).
-/// - Right dock "Analysis" (objectName "analysisDock"): AnalysisPanel in a QScrollArea, tabified
+/// - Right dock "Analysis" (objectName "analysisDock"): AnalysisPanel (it scrolls by itself), tabified
 ///   with Cursors and Quick write; its toggle is in the View menu. setPlot(trendPlot()) is called
 ///   by the window.
 /// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,

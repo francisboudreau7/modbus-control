@@ -104,7 +104,8 @@ bool readOptionalNumber(const QJsonObject &obj, const QString &key, const QStrin
     return true;
 }
 
-// JSON [min, max]: an array of two finite numbers with min != max.
+// JSON [min, max]: an array of two finite numbers. min == max is accepted (a zero-width range is
+// what the UI can produce; the caller treats it as "not set").
 bool parseSpan(const QJsonValue &value, const QString &name, double &lo, double &hi, QString *error)
 {
     if (!value.isArray()) {
@@ -113,9 +114,8 @@ bool parseSpan(const QJsonValue &value, const QString &name, double &lo, double 
     }
     const QJsonArray pair = value.toArray();
     if (pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()
-        || !std::isfinite(pair.at(0).toDouble()) || !std::isfinite(pair.at(1).toDouble())
-        || pair.at(0).toDouble() == pair.at(1).toDouble()) {
-        setError(error, QStringLiteral("\"%1\" must be [min, max]: two different finite numbers").arg(name));
+        || !std::isfinite(pair.at(0).toDouble()) || !std::isfinite(pair.at(1).toDouble())) {
+        setError(error, QStringLiteral("\"%1\" must be [min, max]: two finite numbers").arg(name));
         return false;
     }
     lo = pair.at(0).toDouble();
@@ -374,15 +374,23 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
 
     // Before v1.2.6 the analysed tags were flagged per tag: the first one was the PV, all of them
     // were shown as setpoint tags. Used only when the keys are missing (they are read below).
+    // deltaCoTag is read first: the migrated PV is the first analysed tag that is not the CO.
+    qint64 deltaCoTag = static_cast<qint64>(out.deltaCoTagId);
+    if (!readInt(obj, QStringLiteral("deltaCoTag"), prefix, 0, kMaxTagId, deltaCoTag, error))
+        return false;
+    out.deltaCoTagId = static_cast<TagId>(deltaCoTag);
+
     out.pvTagId = 0;
     out.setpointTagIds.clear();
     for (const Tag &tag : tags) {
         if (!tag.analyzed)
             continue;
-        if (out.pvTagId == 0)
+        if (out.pvTagId == 0 && tag.id != out.deltaCoTagId)
             out.pvTagId = tag.id;
         out.setpointTagIds.append(tag.id);
     }
+    if (out.pvTagId == 0 && !out.setpointTagIds.isEmpty())
+        out.pvTagId = out.setpointTagIds.first();
 
     const QJsonValue percents = obj.value(QStringLiteral("percents"));
     if (!percents.isUndefined()) {
@@ -515,8 +523,13 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         double hi = 0.0;
         if (!parseSpan(pvRange, QStringLiteral("analysis.pvRange"), lo, hi, error))
             return false;
-        out.pvRangeMin = lo;
-        out.pvRangeMax = hi;
+        if (lo == hi) { // zero-width range = not set
+            out.pvRangeMin.reset();
+            out.pvRangeMax.reset();
+        } else {
+            out.pvRangeMin = lo;
+            out.pvRangeMax = hi;
+        }
     }
 
     const QJsonValue coRange = obj.value(QStringLiteral("coRange"));
@@ -524,11 +537,6 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         && !parseSpan(coRange, QStringLiteral("analysis.coRange"), out.coRangeMin, out.coRangeMax, error)) {
         return false;
     }
-
-    qint64 deltaCoTag = static_cast<qint64>(out.deltaCoTagId);
-    if (!readInt(obj, QStringLiteral("deltaCoTag"), prefix, 0, kMaxTagId, deltaCoTag, error))
-        return false;
-    out.deltaCoTagId = static_cast<TagId>(deltaCoTag);
 
     if (!readDouble(obj, QStringLiteral("deltaCo"), prefix, out.manualDeltaCo, error))
         return false;
@@ -675,8 +683,8 @@ QByteArray projectToJson(const Project &project)
     QJsonArray setpointTags;
     for (TagId id : a.setpointTagIds)
         setpointTags.append(static_cast<qint64>(id));
-    // pvRange is null unless both ends are set.
-    const QJsonValue pvRange = (a.pvRangeMin && a.pvRangeMax)
+    // pvRange is null unless both ends are set and different (a zero-width range means "not set").
+    const QJsonValue pvRange = (a.pvRangeMin && a.pvRangeMax && *a.pvRangeMin != *a.pvRangeMax)
                                    ? QJsonValue(QJsonArray{*a.pvRangeMin, *a.pvRangeMax})
                                    : QJsonValue(QJsonValue::Null);
     const QJsonObject analysis{

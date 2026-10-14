@@ -67,11 +67,14 @@ inline constexpr int kProjectFormatVersion = 1;
 ///
 /// Added in v1.2.6 (optional, additive): "analysis" keys "pvTag" (integer >= 0), "setpointTags"
 /// (array of integers >= 1), "method" ("0-63.2"|"smith"|"sundaresan"|"custom"), "pvRange" (null or
-/// an array of 2 finite numbers [min, max], min != max), "coRange" (array of 2 finite numbers,
-/// min != max; default [0, 100]), "tuningRule" ("zn"|"cohen-coon"|"imc"|"simc"), "lambdaS"
-/// (finite, >= 0), "timeUnit" ("s"|"min"); all written. Older files: without "method" ->
-/// ZeroTo632 when modelPercents is [0, 63.2] (or missing), else Custom; without "pvTag" -> the
-/// id of the first tag with "analyzed": true (0 if none); without "setpointTags" -> the ids of
+/// an array of 2 finite numbers [min, max]), "coRange" (array of 2 finite numbers; default
+/// [0, 100]). min == max is accepted in both (the UI can produce a zero-width range): "pvRange"
+/// then reads as not set (and is written as null for unset or equal ends); "coRange" keeps the
+/// values and the UI treats a zero span as not set. "tuningRule" ("zn"|"cohen-coon"|"imc"|"simc"),
+/// "lambdaS" (finite, >= 0), "timeUnit" ("s"|"min"); all written. Older files: without "method"
+/// -> ZeroTo632 when modelPercents is [0, 63.2] (or missing), else Custom; without "pvTag" -> the
+/// id of the first tag with "analyzed": true whose id is not "deltaCoTag" (the first analysed
+/// tag if all are the CO; 0 if none); without "setpointTags" -> the ids of
 /// every tag with "analyzed": true. "showModel" missing -> true (the new default). The per-tag
 /// "analyzed" is still read (it must be a boolean) but no longer written.
 ///

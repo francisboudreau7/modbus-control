@@ -199,7 +199,9 @@ struct StepWindow {
 /// 1. jump = the largest |co[i] - co[i-1]| between consecutive samples with both times in
 ///    [from, to] (ties: the latest). None, or 0 -> nullopt. stepTime = time of sample i.
 /// 2. prev = time of the latest earlier CO change (any nonzero difference between consecutive
-///    samples before i) or `from`; c1 = stepTime - min(5 s, (stepTime - prev) / 2).
+///    samples before i) or `from`; c1 = stepTime - min(5 s, (stepTime - prev) / 2), but never
+///    after the time of sample i-1 (the last CO sample before the jump), so the CO interpolated
+///    at C1 is the pre-step value and delta-CO between the cursors is the full jump.
 /// 3. end = time of the first CO change after i (sample time before the change), or `to`.
 /// 4. On the PV in [stepTime, end]: y0 = PV at c1 (Recorder value interpolation); final = mean of
 ///    the PV samples in the last 10 % of [stepTime, end]; settled at the first sample time ts
