@@ -83,6 +83,11 @@ Series dropNaN(const QList<double> &times, const QList<double> &values)
     return s;
 }
 
+Series dropNaN(const Series &s)
+{
+    return dropNaN(s.t, s.v);
+}
+
 /// Linear interpolation of the (NaN-free) series at time `t`; clamps outside the range.
 double interpolateAt(const Series &s, double t)
 {
@@ -349,11 +354,13 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     }
 
     // First-order plus dead-time model.
-    const double a = settings.modelPercentA / 100.0;
-    const double b = settings.modelPercentB / 100.0;
+    const auto [percentA, percentB] = modelPercents(settings);
+    const double a = percentA / 100.0;
+    const double b = percentB / 100.0;
     if (a >= 0.0 && a < b && b < 1.0) {
-        const auto ta = findCrossingTime(search.t, search.v, r.y0, r.y100, settings.modelPercentA);
-        const auto tb = findCrossingTime(search.t, search.v, r.y0, r.y100, settings.modelPercentB);
+        // Searched on the same series even when a / b are not in settings.percents.
+        const auto ta = findCrossingTime(search.t, search.v, r.y0, r.y100, percentA);
+        const auto tb = findCrossingTime(search.t, search.v, r.y0, r.y100, percentB);
         if (ta && tb) {
             const double denom = std::log(1.0 - a) - std::log(1.0 - b);
             const double T = (*tb - *ta) / denom;
@@ -385,7 +392,6 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     return r;
 }
 
-// Stubs created by T190; implemented by T191.
 QString toString(ModelMethod method)
 {
     switch (method) {
@@ -423,9 +429,88 @@ std::pair<double, double> modelPercents(const AnalysisSettings &settings)
     return {settings.modelPercentA, settings.modelPercentB};
 }
 
-std::optional<StepWindow> findStep(const Recorder &, TagId, TagId, double, double)
+std::optional<StepWindow> findStep(const Recorder &recorder, TagId coTag, TagId pvTag, double from,
+                                   double to)
 {
-    return std::nullopt;
+    if (std::isnan(from) || std::isnan(to) || !(from < to)) {
+        return std::nullopt;
+    }
+    const Series co = dropNaN(extractRows(recorder, coTag, from, to));
+    if (co.t.size() < 2 || dropNaN(extractRows(recorder, pvTag, from, to)).t.isEmpty()) {
+        return std::nullopt;
+    }
+
+    // 1. Largest jump (ties: the latest).
+    qsizetype jump = -1;
+    double best = 0.0;
+    for (qsizetype i = 1; i < co.t.size(); ++i) {
+        const double d = std::abs(co.v[i] - co.v[i - 1]);
+        if (d > 0.0 && d >= best) {
+            best = d;
+            jump = i;
+        }
+    }
+    if (jump < 0) {
+        return std::nullopt;
+    }
+    const double stepTime = co.t[jump];
+
+    // 2. c1: before the step, at most 5 s and at most half the gap to the previous CO change.
+    double prev = from;
+    for (qsizetype i = jump - 1; i >= 1; --i) {
+        if (co.v[i] != co.v[i - 1]) {
+            prev = co.t[i];
+            break;
+        }
+    }
+    StepWindow w;
+    w.stepTime = stepTime;
+    w.c1 = stepTime - std::min(5.0, (stepTime - prev) / 2.0);
+
+    // 3. end: the sample before the next CO change.
+    double end = to;
+    for (qsizetype i = jump + 1; i < co.t.size(); ++i) {
+        if (co.v[i] != co.v[i - 1]) {
+            end = co.t[i - 1];
+            break;
+        }
+    }
+    w.c2 = end;
+    if (!(end > stepTime)) {
+        return w;
+    }
+
+    // 4. Settling of the PV.
+    const double y0 = valueAtTime(recorder, pvTag, w.c1);
+    const Series pv = dropNaN(extractRows(recorder, pvTag, stepTime, end));
+    const double tailStart = end - 0.1 * (end - stepTime);
+    double sum = 0.0;
+    qsizetype count = 0;
+    for (qsizetype i = 0; i < pv.t.size(); ++i) {
+        if (pv.t[i] >= tailStart) {
+            sum += pv.v[i];
+            ++count;
+        }
+    }
+    if (count == 0 || std::isnan(y0)) {
+        return w;
+    }
+    const double finalValue = sum / double(count);
+    const double tol = 0.02 * std::abs(finalValue - y0);
+    if (!(tol > 0.0)) {
+        return w;
+    }
+    qsizetype first = pv.t.size(); // start of the trailing run within tolerance
+    while (first > 0 && std::abs(pv.v[first - 1] - finalValue) <= tol) {
+        --first;
+    }
+    if (first == pv.t.size()) {
+        return w;
+    }
+    const double ts = pv.t[first];
+    w.settled = true;
+    w.c2 = std::min(end, ts + 0.2 * (ts - stepTime));
+    return w;
 }
 
 FitQuality fitQuality(double fitRmsPercent)
@@ -437,9 +522,82 @@ FitQuality fitQuality(double fitRmsPercent)
     return FitQuality::Poor;
 }
 
-QList<StepCheck> checkStep(const Recorder &, const StepResult &)
+QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result)
 {
-    return {};
+    QList<StepCheck> out;
+    if (!result.valid) {
+        return out;
+    }
+    const double span = result.t2 - result.t1;
+    if (!result.deltaCo) {
+        out.append(StepCheck::NoDeltaCo);
+    }
+    if (!result.deadTime || !result.timeConstant) {
+        out.append(StepCheck::NoModel);
+    }
+
+    // NotSettled: least-squares slope over the last 10 % before C2.
+    {
+        const Series s = dropNaN(extractRows(recorder, result.tagId, result.t2 - 0.1 * span,
+                                             result.t2));
+        if (s.t.size() >= 3) {
+            const double n = double(s.t.size());
+            double mt = 0.0;
+            double mv = 0.0;
+            for (qsizetype i = 0; i < s.t.size(); ++i) {
+                mt += s.t[i];
+                mv += s.v[i];
+            }
+            mt /= n;
+            mv /= n;
+            double sxy = 0.0;
+            double sxx = 0.0;
+            for (qsizetype i = 0; i < s.t.size(); ++i) {
+                sxy += (s.t[i] - mt) * (s.v[i] - mv);
+                sxx += (s.t[i] - mt) * (s.t[i] - mt);
+            }
+            if (sxx > 0.0) {
+                const double slope = sxy / sxx;
+                if (std::abs(slope) * 0.1 * span > 0.05 * std::abs(result.deltaPv)) {
+                    out.append(StepCheck::NotSettled);
+                }
+            }
+        }
+    }
+
+    // SmallStep: noise before C1.
+    {
+        const Series s = dropNaN(extractRows(recorder, result.tagId, result.t1 - 0.1 * span,
+                                             result.t1));
+        if (s.t.size() >= 3) {
+            const double n = double(s.t.size());
+            double mean = 0.0;
+            for (const double v : s.v) {
+                mean += v;
+            }
+            mean /= n;
+            double ss = 0.0;
+            for (const double v : s.v) {
+                ss += (v - mean) * (v - mean);
+            }
+            const double sd = std::sqrt(ss / (n - 1.0));
+            if (std::abs(result.deltaPv) < 5.0 * sd) {
+                out.append(StepCheck::SmallStep);
+            }
+        }
+    }
+
+    if (result.deadTime && *result.deadTime < 0.0) {
+        out.append(StepCheck::NegativeDeadTime);
+    }
+    if (result.deadTime && result.timeConstant && *result.timeConstant > 0.0
+        && *result.deadTime / *result.timeConstant > 1.0) {
+        out.append(StepCheck::DeadTimeDominant);
+    }
+    if (result.fitRmsPercent && fitQuality(*result.fitRmsPercent) == FitQuality::Poor) {
+        out.append(StepCheck::FitPoor);
+    }
+    return out;
 }
 
 } // namespace mb
