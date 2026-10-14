@@ -1435,8 +1435,7 @@ private slots:
         win->trendPlot()->cursors()->setC1(9.0);
         win->trendPlot()->cursors()->setC2(29.0);
         const QList<StepResult> results = win->analysisPanel()->results();
-        if (results.isEmpty())
-            QSKIP("needs the real AnalysisPanel (T194): the stub produces no results");
+        QVERIFY(!results.isEmpty());
         QVERIFY2(results.first().valid, "the synthetic step produced no valid analysis result");
         QVERIFY(win->actions().exportAnalysisCsv->isEnabled());
 
