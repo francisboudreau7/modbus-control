@@ -1,5 +1,8 @@
 # Modbus Control user guide
 
+New to the app? Start with the [Quick Start](QUICK_START.md). En français :
+[Guide de l'utilisateur](fr/GUIDE_UTILISATEUR.md).
+
 This guide describes the application as built from this repository. For building, see the
 [README](../README.md). For the test server, see [TEST_SERVER.md](TEST_SERVER.md).
 
@@ -785,12 +788,12 @@ table shows one row for each controller type. With r = L / T, the rules are:
 | Cohen-Coon | P | (T / (K · L)) · (1 + r / 3) | — | — |
 | | PI | (T / (K · L)) · (0.9 + r / 12) | L · (30 + 3r) / (9 + 20r) | — |
 | | PID | (T / (K · L)) · (4/3 + r / 4) | L · (32 + 6r) / (13 + 8r) | 4 · L / (11 + 2r) |
-| IMC / lambda | P | not available | — | — |
+| IMC / lambda | P | not defined | — | — |
 | | PI | T / (K · (λ + L)) | T | — |
 | | PID | (T + L/2) / (K · (λ + L/2)) | T + L/2 | T · L / (2T + L) |
 | SIMC | P | T / (K · (λ + L)) | — | — |
 | | PI | T / (K · (λ + L)) | min(T, 4 · (λ + L)) | — |
-| | PID | not available | not available | not available |
+| | PID | not defined | not defined | not defined |
 
 - **λ** (lambda) is the closed-loop time constant of IMC / lambda and SIMC, in seconds. A larger λ
   gives a slower, gentler controller. Enter 0, which is shown as **Auto (= L)**, to use λ = L. The box

@@ -9,7 +9,11 @@ signals.
 ## Download
 
 Get the installer from the [latest release](https://github.com/francisboudreau7/modbus-control/releases/latest)
-and run it (Windows 10/11, 64-bit). See the [User Guide](docs/USER_GUIDE.md) to get started.
+and run it (Windows 10/11, 64-bit). Start with the [Quick Start](docs/QUICK_START.md), then see the
+[User Guide](docs/USER_GUIDE.md) for every option.
+
+En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) ·
+[Guide de l'utilisateur](docs/fr/GUIDE_UTILISATEUR.md).
 
 ## Features
 
