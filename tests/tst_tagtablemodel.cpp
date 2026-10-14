@@ -1032,6 +1032,39 @@ private slots:
         QVERIFY(!(m.flags(ix(m, 0, C::QuickB)) & Qt::ItemIsEditable));
     }
 
+    // Add: without a handler it appends a tag and shows it; with one it only calls the handler.
+    void addButtonHandlerAndShowRow()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a", Area::InputRegister, 3)}, 2);
+        mb::TagTableWidget w(&m);
+        w.resize(900, 300);
+        QPushButton *add = nullptr;
+        for (QPushButton *b : w.findChildren<QPushButton *>())
+            if (b->text() == QStringLiteral("Add"))
+                add = b;
+        QVERIFY(add);
+
+        add->click();
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(w.selectedRows(), QList<int>{1});
+
+        int calls = 0;
+        w.setAddTagHandler([&calls] { ++calls; });
+        add->click();
+        QCOMPARE(calls, 1);
+        QCOMPARE(m.rowCount(), 2);
+
+        w.showRow(0);
+        QCOMPARE(w.selectedRows(), QList<int>{0});
+        w.showRow(1);
+        QCOMPARE(w.selectedRows(), QList<int>{1});
+
+        w.setAddTagHandler({}); // back to the default
+        add->click();
+        QCOMPARE(m.rowCount(), 3);
+    }
+
     // Regression: a pick in the Type combo must be applied and the editor closed right away;
     // an open editor showed the new value over the cell's old one.
     void comboPickCommitsAndClosesEditor()

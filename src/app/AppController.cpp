@@ -1,5 +1,6 @@
 ﻿#include "AppController.h"
 
+#include "AddTagDialog.h"
 #include "AnalysisCsv.h"
 #include "AnalysisView.h"
 #include "ConnectionBar.h"
@@ -353,6 +354,8 @@ void AppController::wireWrites()
     connect(m_encoding, &EncodingMonitor::readRequested, m_worker, &PollWorker::readRegisters,
             Qt::QueuedConnection);
     connect(m_worker, &PollWorker::readFinished, m_encoding, &EncodingMonitor::onReadFinished);
+    connect(m_worker, &PollWorker::readFinished, this, &AppController::onAddTagReadFinished);
+    m_window->tagTable()->setAddTagHandler([this] { addTagDialog(); });
 }
 
 void AppController::wireActions()
@@ -899,7 +902,47 @@ void AppController::exportAnalysisResults()
                          QStringLiteral("Could not write \"%1\":\n%2").arg(path, error));
 }
 
-// Stub created by T180; implemented by T184.
-void AppController::addTagDialog() {}
+void AppController::addTagDialog()
+{
+    TagTableModel *model = m_window->tagModel();
+    AddTagDialog dialog(model->tags(), model->addressBase(), m_encoding->deviceOrder(), m_window);
+    dialog.setReadFunction([this](Area area, quint16 address, int count, AddTagDialog::ReadDone done) {
+        const quint64 id = m_nextAddTagRequest++;
+        m_addTagReads.insert(id, std::move(done));
+        QMetaObject::invokeMethod(
+            m_worker, [w = m_worker, id, area, address, count] { w->readRegisters(id, area, address, count); },
+            Qt::QueuedConnection);
+    });
+    dialog.setConnected(m_state == ConnectionState::Connected);
+    // The worker answers every read exactly once (NotConnected when not connected, and queued
+    // reads fail on disconnect), so a pending callback is never left behind.
+    const QMetaObject::Connection link = connect(
+        m_worker, &PollWorker::stateChanged, &dialog,
+        [&dialog](ConnectionState state, const QString &) {
+            dialog.setConnected(state == ConnectionState::Connected);
+        });
+    runDialog(dialog);
+    disconnect(link);
+    if (dialog.result() != QDialog::Accepted)
+        return;
+    const int row = model->addTag(dialog.tag());
+    if (dialog.detectionConfirmed() && row >= 0 && row < model->tags().size())
+        m_encoding->confirmDetected(model->tags().at(row).id);
+    m_window->tagTable()->showRow(row);
+}
+
+void AppController::onAddTagReadFinished(quint64 requestId, const ModbusResult &result,
+                                         const QList<quint16> &values)
+{
+    if (requestId < kAddTagRequestBase)
+        return;
+    const auto it = m_addTagReads.find(requestId);
+    if (it == m_addTagReads.end())
+        return;
+    AddTagDialog::ReadDone done = std::move(it.value());
+    m_addTagReads.erase(it);
+    if (done)
+        done(result, values);
+}
 
 } // namespace mb

@@ -215,6 +215,54 @@ private slots:
         QVERIFY2(unexpected.isEmpty(), qPrintable(unexpected.join(QLatin1Char('\n'))));
     }
 
+    // ---- Add tag dialog: a detection made outside the monitor -------------------------------
+
+    void confirmDetectedThirtyTwoBit()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Sp"), 110, ValueType::Float32, ByteOrder::CDAB));
+        QVERIFY(mon->isPending(id));
+        QVERIFY(!tagOf(id).encodingVerified);
+        mon->confirmDetected(id);
+        QVERIFY(!mon->isPending(id));
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(tagOf(id).byteOrder == ByteOrder::CDAB);
+        // Three readings do not reopen anything, even ones that would be ambiguous.
+        feedThree(id, kF_CDAB);
+        feedThree(id, kF_ABCD);
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(unexpected.isEmpty());
+        QVERIFY(tagOf(id).encodingVerified);
+        QVERIFY(messages->isEmpty());
+    }
+
+    void confirmDetectedSixteenBitHasNoSplitProbe()
+    {
+        splitDevice();
+        mon->onConnected();
+        const TagId id = add(mkTag(QStringLiteral("S"), 110, ValueType::Int16));
+        mon->confirmDetected(id);
+        feed({good16(id, 0x3333)});
+        QVERIFY(reads.isEmpty());
+        QVERIFY(splits.isEmpty());
+        // Checked once this session: a reconnect does not probe it either.
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(id, 0x3333)});
+        QVERIFY(reads.isEmpty());
+        QVERIFY(splits.isEmpty());
+        QVERIFY(reviews.isEmpty());
+    }
+
+    void confirmDetectedUnknownIdIsIgnored()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Sp"), 110, ValueType::Float32, ByteOrder::CDAB));
+        mon->confirmDetected(9999);
+        mon->confirmDetected(0);
+        QVERIFY(mon->isPending(id));
+        QVERIFY(!tagOf(id).encodingVerified);
+        QVERIFY(messages->isEmpty());
+    }
+
     // ---- new tags ------------------------------------------------------------------------
 
     void clearDetectionChangesOrder()

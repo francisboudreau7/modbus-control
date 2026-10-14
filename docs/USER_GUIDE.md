@@ -142,8 +142,8 @@ messages about failed reads still show protocol (zero-based) addresses.
 ### Editing the table
 
 - Edit a cell by double-clicking it or pressing F2.
-- **Add** creates a tag after the last row, with the same area as that row and the address one
-  higher. Its name is `Tag <id>`.
+- **Add** opens the Add tag dialog (see below). Nothing is guessed: you choose the area and the
+  address yourself.
 - **Duplicate** copies every selected row. The copy's name gets " (copy)".
 - **Remove**, or the Delete key, removes the selected rows. You are asked to confirm when more
   than one row is selected.
@@ -151,6 +151,30 @@ messages about failed reads still show protocol (zero-based) addresses.
   writable holding registers. See Writing values.
 
 Tag edits mark the project as modified. Live values do not.
+
+### Add tag dialog
+
+Choose the **Area** (holding or input register) and type the **Address**, in the numbering the
+Options menu shows. The area is empty and the address is blank when the dialog opens. The **Add**
+button stays disabled until both are valid and the tag does not share a register with an existing
+tag. A red line names the tag it overlaps. Name, type, byte order, unit and Writable are optional.
+A blank name becomes `Tag <id>`.
+
+While connected, the dialog reads the register for you:
+
+- **Read** shows the raw register and its neighbours (as hex), and what they mean as a 16-bit
+  value and as float32 in both directions. It also runs by itself shortly after you change the
+  area or the address.
+- **Detect encoding** decides between a 16-bit value and a float32, at the address or one register
+  earlier. If it looks like a float32, the encoding dialog opens (see Encoding detection). When you
+  apply it, the dialog sets the type, the byte order and, if needed, the address one register
+  earlier. Some devices refuse to read a single register of a 32-bit value. Detect then reads the
+  pair instead and says so. A register that reads 0 cannot be told apart: try again when the value
+  is not 0.
+- A tag added after Detect is confirmed. You do not get the encoding dialog a second time.
+
+When you are not connected, the dialog cannot read anything: it adds the tag as you set it. The tag
+is checked when you connect, like any other new tag. Cancel adds nothing. The new row is selected.
 
 ## Writing values
 
@@ -267,6 +291,9 @@ as a different number, and the device accepts it. Encoding detection compares th
 with the 12 encodings and works out which one fits. It decides by itself in the clear cases and asks
 you when the answer is not clear. It also checks 16-bit tags that may be half of a 32-bit value (see
 [A 16-bit tag on half of a 32-bit value](#a-16-bit-tag-on-half-of-a-32-bit-value)).
+
+The Add tag dialog has its own **Detect encoding** button. It decides before the tag exists, so
+the new tag starts confirmed (see Add tag dialog).
 
 ### Automatic detection
 

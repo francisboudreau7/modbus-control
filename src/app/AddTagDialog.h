@@ -19,6 +19,7 @@ class QLineEdit;
 class QPushButton;
 class QTimer;
 class TstAddTagDialog;
+class TstAppController;
 
 namespace mb {
 
@@ -111,6 +112,7 @@ public:
 
 private:
     friend class ::TstAddTagDialog;
+    friend class ::TstAppController;
 
     /// Test seam: runs the EncodingDialog; true = accepted. Default: exec() == Accepted.
     std::function<bool(EncodingDialog &dialog)> m_runEncodingDialog;
