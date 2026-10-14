@@ -61,6 +61,7 @@ struct ProbeState {
     bool forDetect = false;
     ProbeReadings readings;
     ModbusResult ownResult;
+    QList<int> unreadNeighbours; ///< neighbour addresses whose read failed
     std::deque<Pending> queue;
     Pending current;
 };
@@ -196,6 +197,22 @@ void AddTagDialog::setConnected(bool connected)
         m_preview->clear();
     }
     refresh();
+    if (connected && canProbe())
+        m_autoRead->start();
+}
+
+bool AddTagDialog::usedByExisting(Area area, int first, int count) const
+{
+    const int last = first + count - 1;
+    for (const Tag &t : std::as_const(m_existing)) {
+        if (t.area != area)
+            continue;
+        const int tFirst = t.address;
+        const int tLast = tFirst + registerCount(t.type) - 1;
+        if (first <= tLast && tFirst <= last)
+            return true;
+    }
+    return false;
 }
 
 std::optional<quint16> AddTagDialog::parsedAddress() const
@@ -321,8 +338,10 @@ void AddTagDialog::startProbe(bool forDetect)
     state->forDetect = forDetect;
     state->queue.push_back({ProbeState::Kind::Own, *address, 1});
     m_probing = true;
-    if (forDetect)
+    if (forDetect) {
         m_detect->clear();
+        m_confirmed = false; // a new Detect replaces any earlier answer, whatever it finds
+    }
     refresh();
     probeNext(state);
 }
@@ -356,25 +375,27 @@ void AddTagDialog::probeAnswered(const std::shared_ptr<ProbeState> &state, const
         state->ownResult = result;
         if (ok) {
             r.own = values.at(0);
-            if (address > 0)
+            // A neighbour used by another tag can't be the other half of this value.
+            if (address > 0 && !usedByExisting(state->area, address - 1, 1))
                 state->queue.push_back({Kind::Below, address - 1, 1});
-            if (address < 65535)
+            if (address < 65535 && !usedByExisting(state->area, address + 1, 1))
                 state->queue.push_back({Kind::Above, address + 1, 1});
         } else if (result.error == ModbusError::Exception && result.exceptionCode == 2) {
             r.ownRefused = true;
-            if (address < 65535)
+            if (address < 65535 && !usedByExisting(state->area, address, 2))
                 state->queue.push_back({Kind::PairAt, address, 2});
-            if (address > 0)
+            if (address > 0 && !usedByExisting(state->area, address - 1, 2))
                 state->queue.push_back({Kind::PairBelow, address - 1, 2});
         }
         break;
     case Kind::Below:
-        if (ok)
-            r.below = values.at(0);
-        break;
     case Kind::Above:
-        if (ok)
-            r.above = values.at(0);
+        if (ok) {
+            (state->current.kind == Kind::Below ? r.below : r.above) = values.at(0);
+        } else {
+            r.neighboursComplete = false;
+            state->unreadNeighbours.append(state->current.start);
+        }
         break;
     case Kind::PairAt:
         if (ok)
@@ -522,6 +543,18 @@ void AddTagDialog::applyDetect(const ProbeState &state)
                "0, or choose the type yourself.")
                 .arg(regLabel(a))));
         break;
+    case LayoutReason::NeighboursUnread: {
+        QStringList unread;
+        for (int n : state.unreadNeighbours)
+            unread << regLabel(n);
+        const quint16 own = r.own.value_or(0);
+        m_detect->setText(rich::paragraph(
+            tr("%1 reads %2, but %3 could not be read: a float32 can't be ruled out. Choose the type "
+               "yourself; the tag is checked when it is read.")
+                .arg(regLabel(a), QString::number(qint16(own)),
+                     unread.join(tr(" and ")))));
+        break;
+    }
     case LayoutReason::RefusedNoPair:
         m_detect->setText(rich::paragraph(
             tr("%1 can't be read, alone or as part of a 32-bit value: check the register number.")
@@ -544,7 +577,8 @@ Tag AddTagDialog::tag() const
     t.area = m_area->currentIndex() == 1 ? Area::InputRegister : Area::HoldingRegister;
     t.address = parsedAddress().value_or(0);
     t.type = ValueType(m_type->currentData().toInt());
-    t.byteOrder = ByteOrder(m_order->currentData().toInt());
+    t.byteOrder = registerCount(t.type) == 2 ? ByteOrder(m_order->currentData().toInt())
+                                             : ByteOrder::ABCD;
     t.unit = m_unit->text();
     t.writable = t.area == Area::HoldingRegister && m_writable->isChecked();
     t.encodingVerified = true;

@@ -164,14 +164,17 @@ While connected, the dialog reads the register for you:
 
 - **Read** shows the raw register and its neighbours (as hex), and what they mean as a 16-bit
   value and as float32 in both directions. It also runs by itself shortly after you change the
-  area or the address.
+  area or the address, or when you connect. Neighbours that belong to another tag are not read.
 - **Detect encoding** decides between a 16-bit value and a float32, at the address or one register
   earlier. If it looks like a float32, the encoding dialog opens (see Encoding detection). When you
   apply it, the dialog sets the type, the byte order and, if needed, the address one register
   earlier. Some devices refuse to read a single register of a 32-bit value. Detect then reads the
   pair instead and says so. A register that reads 0 cannot be told apart: try again when the value
-  is not 0.
-- A tag added after Detect is confirmed. You do not get the encoding dialog a second time.
+  is not 0. If a neighbour cannot be read, Detect can't rule out a float32 and says so: choose the
+  type yourself.
+- A tag added with Detect's answer is confirmed, as long as you did not change the area, address,
+  type or byte order afterwards. You do not get the encoding dialog a second time. Otherwise the
+  tag is checked like any other new tag.
 
 When you are not connected, the dialog cannot read anything: it adds the tag as you set it. The tag
 is checked when you connect, like any other new tag. Cancel adds nothing. The new row is selected.

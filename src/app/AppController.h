@@ -53,7 +53,10 @@ class WriteController;
 ///   PollWorker::readRegisters with request ids from kAddTagRequestBase up (the EncodingMonitor's
 ///   ids stay below it) and routes PollWorker::readFinished answers with those ids back to the
 ///   dialog's callbacks; setConnected follows the connection state while it is open. Accepted:
-///   TagTableModel::addTag(dialog.tag()), then EncodingMonitor::confirmDetected(id) when
+///   the tag is checked again against the model's current tags (they can change while the dialog
+///   is open, e.g. from an encoding prompt); if it now overlaps one, a warning ("Tag not added",
+///   "'<name or HR 110>' would overlap '<other>' (HR 110-111), changed while the dialog was open.")
+///   and nothing is added. Otherwise TagTableModel::addTag(dialog.tag()), then EncodingMonitor::confirmDetected(id) when
 ///   dialog.detectionConfirmed(), then TagTableWidget::showRow(row).
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.

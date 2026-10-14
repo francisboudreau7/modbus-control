@@ -538,14 +538,20 @@ int TagTableModel::rowOf(TagId id) const
     return -1;
 }
 
-int TagTableModel::addTag(const Tag &prototype)
+int TagTableModel::addTag()
 {
-    Tag t = prototype;
-    if (!m_tags.isEmpty() && prototype == Tag()) {
+    Tag t;
+    if (!m_tags.isEmpty()) {
         const Tag &last = m_tags.last();
         t.area = last.area;
         t.address = last.address < 65535 ? quint16(last.address + 1) : quint16(65535);
     }
+    return addTag(t);
+}
+
+int TagTableModel::addTag(const Tag &prototype)
+{
+    Tag t = prototype;
     if (t.color.compare(Tag().color, Qt::CaseInsensitive) == 0)
         t.color = nextPaletteColor(m_tags);
     t.id = m_nextId++;

@@ -925,7 +925,28 @@ void AppController::addTagDialog()
     disconnect(link);
     if (dialog.result() != QDialog::Accepted)
         return;
-    const int row = model->addTag(dialog.tag());
+    // The tags can change while the dialog is open (e.g. an encoding prompt moved one).
+    const Tag added = dialog.tag();
+    const int base = model->addressBase();
+    const auto range = [base](const Tag &t) {
+        const QString prefix = t.area == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
+        return registerCount(t.type) == 2
+                   ? QStringLiteral("%1 %2-%3").arg(prefix).arg(t.address + base).arg(t.address + 1 + base)
+                   : QStringLiteral("%1 %2").arg(prefix).arg(t.address + base);
+    };
+    const int first = added.address;
+    const int last = first + registerCount(added.type) - 1;
+    for (const Tag &t : model->tags()) {
+        const int tFirst = t.address;
+        const int tLast = tFirst + registerCount(t.type) - 1;
+        if (t.area == added.area && first <= tLast && tFirst <= last) {
+            warn(tr("Tag not added"),
+                 tr("'%1' would overlap '%2' (%3), changed while the dialog was open.")
+                     .arg(added.name.isEmpty() ? range(added) : added.name, t.name, range(t)));
+            return;
+        }
+    }
+    const int row = model->addTag(added);
     if (dialog.detectionConfirmed() && row >= 0 && row < model->tags().size())
         m_encoding->confirmDetected(model->tags().at(row).id);
     m_window->tagTable()->showRow(row);

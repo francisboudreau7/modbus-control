@@ -477,8 +477,9 @@ LayoutSuggestion suggestLayout(Area area, quint16 address, const ProbeReadings &
         t.type = ValueType::Int16;
         const auto split = detectSplitValue(t, *readings.own, readings.below, readings.above);
         if (!split) {
-            s.kind = LayoutKind::Sixteen;
-            s.reason = LayoutReason::NoFloatAround;
+            s.kind = readings.neighboursComplete ? LayoutKind::Sixteen : LayoutKind::Unknown;
+            s.reason = readings.neighboursComplete ? LayoutReason::NoFloatAround
+                                                   : LayoutReason::NeighboursUnread;
             return s;
         }
         s.kind = LayoutKind::ThirtyTwo;

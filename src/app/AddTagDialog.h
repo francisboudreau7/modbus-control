@@ -56,6 +56,9 @@ struct ProbeState;
 ///   unless uint16 was chosen; order unchanged).
 ///   ThirtyTwo: the EncodingDialog opens (below); after Apply: "float32 CDAB, HR 110-111." and,
 ///   when the start moved, "The value starts one register earlier: the address is now HR 109."
+///   NeighboursUnread: "HR 110 reads 16977, but HR 111 could not be read: a float32 can't be ruled
+///   out. Choose the type yourself; the tag is checked when it is read." (names the unread
+///   neighbour(s)).
 ///   OwnZero: "HR 110 reads 0: can't tell a 16-bit from a 32-bit value. Try again when the value
 ///   is not 0, or choose the type yourself."  RefusedNoPair: "HR 110 can't be read, alone or as
 ///   part of a 32-bit value: check the register number."  NotRead: the error as in previewLabel.
@@ -68,6 +71,11 @@ struct ProbeState;
 /// failed neighbour read just leaves it out; if refused with exception 2: (address, 2) and
 /// (address - 1, 2), skipped when outside 0..65535; any other error stops the probe. The result is
 /// a ProbeReadings. Changing area or address cancels a running probe (late answers are ignored).
+/// Neighbours used by an existing tag of the same area are not read and are left out (below /
+/// above nullopt, without clearing neighboursComplete); likewise a pair (pairAt / pairBelow) that
+/// shares a register with an existing tag is not read. A neighbour read that fails clears
+/// ProbeReadings::neighboursComplete. setConnected(true) starts the auto probe (400 ms) when an
+/// area and a valid address are chosen.
 /// Detect runs a fresh probe, then suggestLayout(area, address, readings, deviceOrder). For
 /// ThirtyTwo it opens EncodingDialog for <the new tag as Float32 at suggestion.start, byte order of
 /// suggestion.ranking.best or the device order> with readings {suggestion.pair}, `others` = the
@@ -79,7 +87,8 @@ struct ProbeState;
 ///
 /// tag() is verified (detectionConfirmed() true) when Detect's answer was applied — Sixteen, or
 /// ThirtyTwo with the EncodingDialog accepted — and area, address, type and byte order have not
-/// changed since; any later change of those fields clears it.
+/// changed since; any later change of those fields clears it, and so does starting another Detect
+/// (whatever its answer; a cancelled EncodingDialog leaves it false).
 class AddTagDialog : public QDialog
 {
     Q_OBJECT
@@ -104,7 +113,8 @@ public:
     void setConnected(bool connected);
 
     /// The tag to add, from the fields: id 0, name (trimmed; empty = automatic), area, address,
-    /// type, byteOrder, unit, writable (false for input registers), other fields default.
+    /// type, byteOrder (ABCD for 16-bit types), unit, writable (false for input registers), other
+    /// fields default.
     /// encodingVerified = true (the EncodingMonitor decides for new tags; see detectionConfirmed).
     Tag tag() const;
     /// True when the type and address come from an applied Detect answer (see above).
@@ -162,6 +172,8 @@ private:
     void finishProbe(const std::shared_ptr<ProbeState> &state);
     QString previewText(const ProbeState &state) const;
     void applyDetect(const ProbeState &state);
+    /// True when a register of [first, first + count) in `area` belongs to an existing tag.
+    bool usedByExisting(Area area, int first, int count) const;
 };
 
 } // namespace mb

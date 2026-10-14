@@ -501,6 +501,52 @@ private slots:
         noUnexpected();
     }
 
+    void addTagAtAddressZeroIsKept()
+    {
+        // A plain HR 0 int16 tag equals Tag(): it must not be moved after the last row.
+        Tag last;
+        last.area = Area::InputRegister;
+        last.address = 500;
+        model()->addTag(last);
+        const int rows = model()->rowCount();
+        d.onExec = [](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("0"));
+            dlg->accept();
+        };
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows + 1);
+        QVERIFY(model()->tagAt(rows).area == Area::HoldingRegister);
+        QCOMPARE(model()->tagAt(rows).address, quint16(0));
+        noUnexpected();
+    }
+
+    void addTagRecheckedAgainstTagsChangedMeanwhile()
+    {
+        int rows = 0;
+        d.onExec = [&](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, 0, QStringLiteral("700"));
+            // another tag lands on HR 700 while the dialog is open
+            Tag other;
+            other.name = QStringLiteral("Other");
+            other.address = 699;
+            other.type = ValueType::Float32;
+            model()->addTag(other);
+            rows = model()->rowCount();
+            dlg->accept();
+        };
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows);
+        QCOMPARE(d.warnings.size(), 1);
+        QVERIFY2(d.warnings.first().contains(QStringLiteral("would overlap 'Other' (HR 699-700)")),
+                 qPrintable(d.warnings.first()));
+        d.warnings.clear();
+        noUnexpected();
+    }
+
     void addTagDetectsFloat32OnLiveServer()
     {
         connectLive();

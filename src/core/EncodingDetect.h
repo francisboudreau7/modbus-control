@@ -154,6 +154,10 @@ struct ProbeReadings {
     /// or outside 0..65535. Only read when `own` was.
     std::optional<quint16> below;
     std::optional<quint16> above;
+    /// False when a neighbour that could be part of the same value was not read (its read failed
+    /// or was refused). A neighbour outside 0..65535 or used by another tag of the project is
+    /// left out (nullopt) but does not make this false: it cannot be the other half.
+    bool neighboursComplete = true;
     /// Only read when ownRefused: the pairs starting at address and at address - 1 (two-register
     /// reads); nullopt when refused, failed or outside 0..65535.
     std::optional<RegisterPair> pairAt;
@@ -168,6 +172,8 @@ enum class LayoutKind {
 
 enum class LayoutReason {
     NoFloatAround,  ///< Sixteen: own read alone, no clean float32 with a neighbour
+    NeighboursUnread, ///< Unknown: own read alone, no clean float32 with the neighbours that were
+                      ///< read, but a neighbour could not be read (neighboursComplete false)
     SplitFound,     ///< ThirtyTwo: own read alone, but it is half of a clean float32 (detectSplitValue)
     Refused,        ///< ThirtyTwo: own refused alone, a pair including it reads
     OwnZero,        ///< Unknown: own reads 0 (can't tell 16 from 32-bit)
@@ -195,7 +201,8 @@ struct LayoutSuggestion {
 /// a 32-bit value. Rules, in order:
 /// - own read: own == 0 -> Unknown/OwnZero. Else detectSplitValue(<Int16 tag at address>, own,
 ///   below, above): a split -> ThirtyTwo/SplitFound, start = split.address, pair from the two
-///   registers; none -> Sixteen/NoFloatAround, start = address.
+///   registers; none -> Sixteen/NoFloatAround when readings.neighboursComplete, else
+///   Unknown/NeighboursUnread; start = address.
 /// - ownRefused: of pairAt and pairBelow, those present are ranked with detectEncoding as above;
 ///   the chosen pair is the only one, or the one whose best group scores higher (tie: pairAt) ->
 ///   ThirtyTwo/Refused. Neither present -> Unknown/RefusedNoPair.

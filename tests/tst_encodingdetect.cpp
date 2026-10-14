@@ -766,6 +766,17 @@ private slots:
         QCOMPARE(s.start, quint16(200));
         QVERIFY(!s.split);
     }
+    void layoutNeighboursUnread()
+    {
+        ProbeReadings r;
+        r.own = 1234;
+        r.below = 0;
+        r.neighboursComplete = false; // above could not be read
+        const LayoutSuggestion s = suggestLayout(Area::HoldingRegister, 200, r);
+        QVERIFY(s.kind == LayoutKind::Unknown);
+        QVERIFY(s.reason == LayoutReason::NeighboursUnread);
+        QCOMPARE(s.start, quint16(200));
+    }
     void layoutSplitFound_data()
     {
         QTest::addColumn<ByteOrder>("order");

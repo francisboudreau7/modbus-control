@@ -556,6 +556,104 @@ private slots:
         QVERIFY(plain(detect(d)).contains(QStringLiteral("HR 110 could not be read: timeout.")));
     }
 
+    void detectNeighbourUnreadIsNotConfirmed()
+    {
+        // CM50-like: 110 reads alone, but 111 (the other half) refuses a single read.
+        Fake fake;
+        fake.regs[109] = 7; // not a clean float with HR 110 in either word order
+        fake.regs[110] = 0x4251;
+        fake.regs[111] = 0x3333;
+        fake.refuseSingle.insert(111);
+        AddTagDialog d({}, 0, std::nullopt);
+        d.setReadFunction(fake.fn());
+        d.setConnected(true);
+        choose(d, "110");
+        bool asked = false;
+        d.m_runEncodingDialog = [&](EncodingDialog &) {
+            asked = true;
+            return false;
+        };
+        QTest::mouseClick(detectButton(d), Qt::LeftButton);
+        QTRY_VERIFY(!detect(d)->text().isEmpty());
+        QVERIFY(!asked);
+        QVERIFY(!d.detectionConfirmed());
+        const QString text = plain(detect(d));
+        QVERIFY2(text.contains(QStringLiteral("HR 111 could not be read: a float32 can't be ruled out")),
+                 qPrintable(text));
+    }
+
+    void detectAgainClearsEarlierAnswer()
+    {
+        Fake fake;
+        fake.regs[109] = 5;
+        fake.regs[110] = 1234;
+        fake.regs[111] = 7;
+        AddTagDialog d({}, 0, std::nullopt);
+        d.setReadFunction(fake.fn());
+        d.setConnected(true);
+        choose(d, "110");
+        QTest::mouseClick(detectButton(d), Qt::LeftButton);
+        QTRY_VERIFY(d.detectionConfirmed());
+        // the value changed: now a float32 starts here, and the user cancels the encoding dialog
+        fake.putFloat(110, 52.3f, false);
+        bool asked = false;
+        d.m_runEncodingDialog = [&](EncodingDialog &) {
+            asked = true;
+            return false;
+        };
+        QTest::mouseClick(detectButton(d), Qt::LeftButton);
+        QVERIFY(!d.detectionConfirmed());
+        QTRY_VERIFY(asked);
+        QTest::qWait(50);
+        QVERIFY(!d.detectionConfirmed());
+    }
+
+    void neighboursOfOtherTagsAreSkipped()
+    {
+        // HR 108-109 is an existing float32; its low word must not pair with HR 110.
+        Fake fake;
+        fake.putFloat(108, 52.3f, false);
+        fake.regs[110] = 0x3333;
+        fake.regs[111] = 0;
+        AddTagDialog d({existingFloat(QStringLiteral("Flow"), 108)}, 0, std::nullopt);
+        d.setReadFunction(fake.fn());
+        d.setConnected(true);
+        choose(d, "110");
+        bool asked = false;
+        d.m_runEncodingDialog = [&](EncodingDialog &) {
+            asked = true;
+            return true;
+        };
+        QTest::mouseClick(detectButton(d), Qt::LeftButton);
+        QTRY_VERIFY(!detect(d)->text().isEmpty());
+        QVERIFY(!asked);
+        for (const Fake::Call &c : fake.calls)
+            QVERIFY2(c.address != 109, "read a register of another tag");
+        QVERIFY(d.detectionConfirmed()); // 16-bit: the only free neighbour was read
+        QCOMPARE(d.tag().address, quint16(110));
+    }
+
+    void reconnectStartsAutoProbe()
+    {
+        Fake fake;
+        fake.regs[110] = 1;
+        AddTagDialog d({}, 0, std::nullopt);
+        d.setReadFunction(fake.fn());
+        choose(d, "110");
+        d.setConnected(true);
+        QTRY_VERIFY(!fake.calls.isEmpty());
+    }
+
+    void sixteenBitTagUsesAbcd()
+    {
+        AddTagDialog d({}, 0, std::nullopt);
+        choose(d, "0");
+        type(d)->setCurrentIndex(type(d)->findText("float32"));
+        order(d)->setCurrentIndex(order(d)->findText("CDAB"));
+        type(d)->setCurrentIndex(type(d)->findText("int16"));
+        QVERIFY(d.tag().byteOrder == ByteOrder::ABCD);
+    }
+
     void tagContents()
     {
         AddTagDialog d({}, 0, std::nullopt);

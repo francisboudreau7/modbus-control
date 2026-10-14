@@ -96,9 +96,13 @@ public:
     /// Area, Address, Type, ByteOrder, Gain or Offset forgets the tag's live value.
     std::optional<double> goodValue(TagId id) const;
 
-    /// Appends a copy of `prototype` with a fresh id. An empty name becomes "Tag <id>".
-    /// Returns the new row.
-    int addTag(const Tag &prototype = Tag());
+    /// Appends a default tag with a fresh id, named "Tag <id>", continuing after the last tag
+    /// (same area, address + 1, capped at 65535) when there is one. Returns the new row.
+    int addTag();
+    /// Appends a copy of `prototype` exactly as given (area and address are never changed, even
+    /// when it equals Tag()) with a fresh id. An empty name becomes "Tag <id>"; the default colour
+    /// becomes the next palette colour. Returns the new row.
+    int addTag(const Tag &prototype);
     /// Appends a copy of row `row` with a fresh id, name suffixed " (copy)". Returns the new row.
     int duplicateTag(int row);
 

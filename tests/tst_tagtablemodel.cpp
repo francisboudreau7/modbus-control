@@ -342,15 +342,22 @@ private slots:
         QVERIFY(m.tagAt(r).writable);
         QCOMPARE(m.tagAt(r).id, TagId(4));
 
+        // A prototype equal to Tag() (HR 0, int16) is kept as given, not moved after the last tag.
+        const int plainRow = m.addTag(Tag());
+        QVERIFY(m.tagAt(plainRow).area == Area::HoldingRegister);
+        QCOMPARE(m.tagAt(plainRow).address, quint16(0));
+        QCOMPARE(m.tagAt(plainRow).id, TagId(5));
+        QVERIFY(m.removeRows(plainRow, 1));
+
         edited.clear();
         const int d = m.duplicateTag(r);
         QCOMPARE(d, m.rowCount() - 1);
         QCOMPARE(m.tagAt(d).name, QString("mine (copy)"));
-        QCOMPARE(m.tagAt(d).id, TagId(5));
+        QCOMPARE(m.tagAt(d).id, TagId(6));
         QCOMPARE(m.tagAt(d).address, quint16(42));
         QCOMPARE(edited.size(), 1);
         QCOMPARE(m.duplicateTag(99), -1);
-        QCOMPARE(m.nextTagId(), TagId(6));
+        QCOMPARE(m.nextTagId(), TagId(7));
 
         // Remove with live data.
         SampleBatch b;
@@ -368,7 +375,7 @@ private slots:
         QCOMPARE(reset.size(), 0);
         // Ids are never reused.
         m.addTag();
-        QCOMPARE(m.tags().last().id, TagId(6));
+        QCOMPARE(m.tags().last().id, TagId(7));
     }
 
     void newTagsGetDistinctPaletteColours()
