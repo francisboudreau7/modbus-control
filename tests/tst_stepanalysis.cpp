@@ -95,6 +95,29 @@ Recorder makeProcess(double endS, int sign = 1, double noiseStd = 0.0, unsigned 
     return rec;
 }
 
+/// Recording every 0.1 s over [0, endS] from two functions of time.
+Recorder build(double endS, const std::function<double(double)> &pv,
+               const std::function<double(double)> &co)
+{
+    Recorder rec;
+    const int n = int(std::lround(endS * 10.0));
+    for (int i = 0; i <= n; ++i) {
+        const double t = i / 10.0;
+        rec.append(batch(t, {good(kPv, pv(t)), good(kCo, co(t))}));
+    }
+    return rec;
+}
+
+double cleanCo(double t)
+{
+    return t < 10.0 ? 20.0 : 30.0;
+}
+
+double ramp(double t)
+{
+    return t < 10.0 ? 10.0 : 10.0 + (t - 10.0);
+}
+
 } // namespace
 
 class Test : public QObject
@@ -403,6 +426,7 @@ private slots:
         const Recorder rec = makeProcess(60.0);
         AnalysisSettings s;
         s.percents = {28.3, 63.2};
+        s.method = ModelMethod::Custom;
         s.modelPercentA = 28.3;
         s.modelPercentB = 63.2;
         s.deltaCoTagId = kCo;
@@ -429,6 +453,7 @@ private slots:
         s.reference = ReferenceMode::WindowMean;
         s.referenceWindowS = 1.0;
         s.smoothingS = 1.0;
+        s.method = ModelMethod::Custom;
         s.modelPercentA = 10.0;
         s.modelPercentB = 63.2;
         s.deltaCoTagId = kCo;
@@ -742,6 +767,7 @@ private slots:
     {
         const Recorder rec = makeProcess(60.0);
         AnalysisSettings s;
+        s.method = ModelMethod::Custom;
         s.modelPercentA = 63.2;
         s.modelPercentB = 28.3; // a >= b
         const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
@@ -821,6 +847,7 @@ private slots:
         n.reference = ReferenceMode::WindowMean;
         n.referenceWindowS = 1.0;
         n.smoothingS = 1.0;
+        n.method = ModelMethod::Custom;
         n.modelPercentA = 10.0;
         n.modelPercentB = 63.2;
         n.deltaCoTagId = kCo;
@@ -829,6 +856,244 @@ private slots:
         QVERIFY(nr.fitRms.has_value());
         QVERIFY2(near(*nr.fitRms, 0.2, 0.2 * 0.3), qPrintable(QString::number(*nr.fitRms)));
         QVERIFY(near(*nr.fitRmsPercent, *nr.fitRms / std::abs(nr.deltaPv) * 100.0, 1e-9));
+    }
+
+    // ---- model methods ------------------------------------------------------------------
+    void methods_smithSundaresanCustom()
+    {
+        const Recorder rec = makeProcess(80.0);
+        const auto run = [&](ModelMethod m, double a = 0.0, double b = 63.2) {
+            AnalysisSettings s;
+            s.method = m;
+            s.modelPercentA = a;
+            s.modelPercentB = b;
+            s.percents = {50.0}; // model percents are not requested setpoints
+            s.deltaCoTagId = kCo;
+            return analyzeStep(rec, kPv, 9.0, 80.0, s);
+        };
+        const QList<StepResult> results{run(ModelMethod::Smith), run(ModelMethod::Sundaresan),
+                                        run(ModelMethod::Custom, 20.0, 80.0)};
+        for (const StepResult &r : results) {
+            QVERIFY2(r.valid, qPrintable(r.error));
+            QVERIFY(r.deadTime && r.timeConstant);
+            QVERIFY2(near(*r.deadTime, kL, 0.03 * kL), qPrintable(QString::number(*r.deadTime)));
+            QVERIFY2(near(*r.timeConstant, kT, 0.03 * kT),
+                     qPrintable(QString::number(*r.timeConstant)));
+        }
+        // Custom uses A/B; other methods ignore them.
+        const StepResult smithIgnoring = run(ModelMethod::Smith, 20.0, 80.0);
+        QVERIFY(near(*smithIgnoring.timeConstant, *results[0].timeConstant, 1e-12));
+        QVERIFY(std::abs(*results[2].timeConstant - *results[0].timeConstant) > 1e-9);
+        // Default is unchanged by A/B.
+        const StepResult d1 = run(ModelMethod::ZeroTo632);
+        const StepResult d2 = run(ModelMethod::ZeroTo632, 50.0, 90.0);
+        QVERIFY(near(*d1.timeConstant, *d2.timeConstant, 1e-12));
+        QVERIFY(near(*d1.deadTime, *d2.deadTime, 1e-12));
+        QVERIFY(near(*d1.timeConstant, kT, 0.03 * kT));
+    }
+
+    // ---- findStep -----------------------------------------------------------------------
+    void findStep_clean()
+    {
+        const Recorder rec = build(60.0, [](double t) { return fopdt(t); }, cleanCo);
+        const auto w = findStep(rec, kCo, kPv, 0.0, 60.0);
+        QVERIFY(w.has_value());
+        QVERIFY(near(w->stepTime, 10.0, 1e-9));
+        QVERIFY(near(w->c1, 5.0, 1e-9)); // half of the 10 s gap to `from`
+        QVERIFY(w->settled);
+        // settles at about 27.2 s; c2 = ts + 0.2 (ts - stepTime)
+        QVERIFY2(near(w->c2, 30.6, 0.5), qPrintable(QString::number(w->c2)));
+
+        const auto near1 = findStep(rec, kCo, kPv, 8.0, 60.0);
+        QVERIFY(near1 && near(near1->c1, 9.0, 1e-9)); // half-gap rule
+
+        // 5 s cap: step at 40 s, `from` at 0.
+        const Recorder wide = build(80.0, [](double t) { return fopdt(t - 30.0); },
+                                    [](double t) { return t < 40.0 ? 20.0 : 30.0; });
+        const auto capped = findStep(wide, kCo, kPv, 0.0, 80.0);
+        QVERIFY(capped && near(capped->stepTime, 40.0, 1e-9) && near(capped->c1, 35.0, 1e-9));
+        QVERIFY(capped->settled);
+    }
+
+    void findStep_previousChangeLimitsC1()
+    {
+        const Recorder rec = build(60.0, [](double t) { return fopdt(t); }, [](double t) {
+            return t < 6.0 ? 15.0 : (t < 10.0 ? 20.0 : 30.0);
+        });
+        const auto w = findStep(rec, kCo, kPv, 0.0, 60.0);
+        QVERIFY(w && near(w->stepTime, 10.0, 1e-9));
+        QVERIFY2(near(w->c1, 8.0, 1e-9), qPrintable(QString::number(w->c1))); // (10 - 6) / 2
+    }
+
+    void findStep_largestAndTie()
+    {
+        const auto pv = [](double t) { return fopdt(t); };
+        const Recorder bigFirst = build(100.0, pv, [](double t) {
+            return t < 10.0 ? 20.0 : (t < 50.0 ? 30.0 : 35.0);
+        });
+        const auto a = findStep(bigFirst, kCo, kPv, 0.0, 100.0);
+        QVERIFY(a && near(a->stepTime, 10.0, 1e-9));
+
+        const Recorder tie = build(100.0, pv, [](double t) {
+            return t < 10.0 ? 20.0 : (t < 50.0 ? 30.0 : 40.0);
+        });
+        const auto b = findStep(tie, kCo, kPv, 0.0, 100.0);
+        QVERIFY(b && near(b->stepTime, 50.0, 1e-9));
+        QVERIFY(near(b->c1, 45.0, 1e-9)); // half of 40 s capped at 5 s
+    }
+
+    void findStep_notSettledAndEndBound()
+    {
+        const Recorder rec = build(60.0, ramp, cleanCo);
+        const auto w = findStep(rec, kCo, kPv, 0.0, 60.0);
+        QVERIFY(w.has_value());
+        QVERIFY(!w->settled);
+        QVERIFY(near(w->c2, 60.0, 1e-9));
+
+        // A later small CO change bounds `end` at the sample before it.
+        const Recorder bounded = build(60.0, ramp, [](double t) {
+            return t < 10.0 ? 20.0 : (t < 40.0 ? 30.0 : 30.5);
+        });
+        const auto b = findStep(bounded, kCo, kPv, 0.0, 60.0);
+        QVERIFY(b && near(b->stepTime, 10.0, 1e-9));
+        QVERIFY(!b->settled);
+        QVERIFY2(near(b->c2, 39.9, 1e-9), qPrintable(QString::number(b->c2)));
+    }
+
+    void findStep_noStep()
+    {
+        const Recorder flat = build(30.0, [](double t) { return fopdt(t); },
+                                    [](double) { return 20.0; });
+        QVERIFY(!findStep(flat, kCo, kPv, 0.0, 30.0).has_value());
+        const Recorder rec = build(30.0, [](double t) { return fopdt(t); }, cleanCo);
+        QVERIFY(!findStep(rec, kCo, 77, 0.0, 30.0).has_value());   // PV without samples
+        QVERIFY(!findStep(rec, 77, kPv, 0.0, 30.0).has_value());   // CO without samples
+        QVERIFY(!findStep(rec, kCo, kPv, 20.0, 30.0).has_value()); // step outside the range
+        QVERIFY(!findStep(rec, kCo, kPv, 30.0, 10.0).has_value()); // from >= to
+    }
+
+    // ---- checkStep ----------------------------------------------------------------------
+    void check_cleanAndInvalid()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(r.valid);
+        QVERIFY2(checkStep(rec, r).isEmpty(), "clean response gives no checks");
+        StepResult inv;
+        QVERIFY(checkStep(rec, inv).isEmpty());
+        QVERIFY(checkStep(rec, analyzeStep(rec, kPv, 20.0, 20.0, s)).isEmpty());
+    }
+
+    void check_noDeltaCoAndNoModel()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s; // no CO tag, no manual delta
+        const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(r.valid && r.deadTime);
+        QVERIFY(checkStep(rec, r) == QList<StepCheck>{StepCheck::NoDeltaCo});
+
+        StepResult noModel = r;
+        noModel.deltaCo = 5.0;
+        noModel.deadTime.reset();
+        noModel.timeConstant.reset();
+        noModel.fitRms.reset();
+        noModel.fitRmsPercent.reset();
+        QVERIFY(checkStep(rec, noModel) == QList<StepCheck>{StepCheck::NoModel});
+    }
+
+    void check_notSettled()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const StepResult early = analyzeStep(rec, kPv, 9.0, 16.0, s);
+        QVERIFY(early.valid);
+        QVERIFY(checkStep(rec, early).contains(StepCheck::NotSettled));
+        const StepResult late = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(!checkStep(rec, late).contains(StepCheck::NotSettled));
+        // Fewer than 3 samples in the window: not flagged.
+        Recorder sparse;
+        for (double t : {0.0, 10.0, 20.0, 30.0}) {
+            sparse.append(batch(t, {good(kPv, t), good(kCo, 0.0)}));
+        }
+        StepResult sr;
+        sr.tagId = kPv;
+        sr.valid = true;
+        sr.t1 = 0.0;
+        sr.t2 = 30.0;
+        sr.deltaPv = 30.0;
+        sr.deltaCo = 1.0;
+        sr.deadTime = 1.0;
+        sr.timeConstant = 5.0;
+        sr.fitRmsPercent = 1.0;
+        QVERIFY(!checkStep(sparse, sr).contains(StepCheck::NotSettled));
+    }
+
+    void check_smallStep()
+    {
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        s.reference = ReferenceMode::WindowMean;
+        s.referenceWindowS = 2.0;
+        const Recorder noisy = makeProcess(60.0, 1, 6.0, 7);
+        const StepResult rn = analyzeStep(noisy, kPv, 9.0, 60.0, s);
+        QVERIFY(rn.valid);
+        QVERIFY(checkStep(noisy, rn).contains(StepCheck::SmallStep));
+        const Recorder quiet = makeProcess(60.0, 1, 0.2, 7);
+        const StepResult rq = analyzeStep(quiet, kPv, 9.0, 60.0, s);
+        QVERIFY(rq.valid);
+        QVERIFY(!checkStep(quiet, rq).contains(StepCheck::SmallStep));
+    }
+
+    void check_deadTimeAndFit()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const StepResult base = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(base.valid && base.timeConstant);
+
+        StepResult r = base;
+        r.deadTime = -0.5;
+        QVERIFY(checkStep(rec, r) == QList<StepCheck>{StepCheck::NegativeDeadTime});
+        r.deadTime = 0.0;
+        QVERIFY(checkStep(rec, r).isEmpty());
+
+        r.timeConstant = 4.0;
+        r.deadTime = 4.1;
+        QVERIFY(checkStep(rec, r) == QList<StepCheck>{StepCheck::DeadTimeDominant});
+        r.deadTime = 4.0; // ratio exactly 1: not dominant
+        QVERIFY(checkStep(rec, r).isEmpty());
+
+        r = base;
+        r.fitRmsPercent = 7.9;
+        QVERIFY(checkStep(rec, r).isEmpty());
+        r.fitRmsPercent = 8.0;
+        QVERIFY(checkStep(rec, r) == QList<StepCheck>{StepCheck::FitPoor});
+    }
+
+    void check_order()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s; // no CO
+        StepResult r = analyzeStep(rec, kPv, 9.0, 16.0, s);
+        r.deadTime = -1.0;
+        r.fitRmsPercent = 50.0;
+        const QList<StepCheck> expected{StepCheck::NoDeltaCo, StepCheck::NotSettled,
+                                        StepCheck::NegativeDeadTime, StepCheck::FitPoor};
+        QVERIFY(checkStep(rec, r) == expected);
+    }
+
+    void fitQuality_thresholds()
+    {
+        QVERIFY(fitQuality(0.0) == FitQuality::Good);
+        QVERIFY(fitQuality(2.99) == FitQuality::Good);
+        QVERIFY(fitQuality(3.0) == FitQuality::Acceptable);
+        QVERIFY(fitQuality(7.99) == FitQuality::Acceptable);
+        QVERIFY(fitQuality(8.0) == FitQuality::Poor);
+        QVERIFY(fitQuality(100.0) == FitQuality::Poor);
     }
 };
 
