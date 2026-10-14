@@ -2,7 +2,7 @@
 
 #include "AddTagDialog.h"
 #include "AnalysisCsv.h"
-#include "AnalysisView.h"
+#include "AnalysisPanel.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "EncodingMonitor.h"
@@ -117,8 +117,7 @@ QList<Tag> demoTags()
                 true, false, ByteOrder::ABCD),
     };
     for (Tag &t : tags) {
-        t.analyzed = (t.id == 7); // Lag (IR 10): the step-response demo
-        if (t.id == 8) {          // Setpoint (HR 100): quick-write presets and the right Y axis
+        if (t.id == 8) { // Setpoint (HR 100): quick-write presets and the right Y axis
             t.quickA = 0.0;
             t.quickB = 1000.0;
             t.writeMin = 0.0;
@@ -144,7 +143,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_window->trendPlot()->setRecorder(&m_recorder);
     m_window->cursorPanel()->setRecorder(&m_recorder);
-    m_window->analysisView()->setRecorder(&m_recorder);
+    m_window->analysisPanel()->setRecorder(&m_recorder);
 
     m_writes = new WriteController(m_window->tagModel(), m_window, this);
     m_encoding = new EncodingMonitor(m_window->tagModel(), m_window, this);
@@ -180,11 +179,13 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     m_window->tagModel()->setTags(demoTags(), 12);
     m_encoding->onTagsReplaced();
     pushTags();
-    // Analysis of the Lag step: the controller output step (deltaCo) is the Setpoint (HR 100, id 8).
+    // Analysis of the Lag step (id 7): the controller output is the Setpoint (HR 100, id 8).
     AnalysisSettings analysis;
+    analysis.pvTagId = 7;
     analysis.deltaCoTagId = 8;
+    analysis.setpointTagIds = {7};
     analysis.showModel = true;
-    m_window->analysisView()->setSettings(analysis);
+    m_window->analysisPanel()->setSettings(analysis);
     // Compact view, but keep the Quick A/B presets of the demo Setpoint visible.
     QStringList hidden = compactHiddenColumns();
     hidden.removeAll(QStringLiteral("quickA"));
@@ -206,7 +207,7 @@ AppController::~AppController()
     // The widgets may outlive the recorder; do not leave them a dangling pointer.
     m_window->trendPlot()->setRecorder(nullptr);
     m_window->cursorPanel()->setRecorder(nullptr);
-    m_window->analysisView()->setRecorder(nullptr);
+    m_window->analysisPanel()->setRecorder(nullptr);
 }
 
 void AppController::wireConnection()
@@ -271,7 +272,7 @@ void AppController::wireData()
             return;
         m_newData = false;
         m_window->trendPlot()->refresh();
-        m_window->analysisView()->refresh();
+        m_window->analysisPanel()->refresh();
         m_window->cursorPanel()->refresh();
     });
 
@@ -298,28 +299,12 @@ void AppController::wireData()
         m_window->cursorPanel()->setCursors(c1, c2);
     });
 
-    AnalysisView *analysis = m_window->analysisView();
-    connect(analysis, &AnalysisView::settingsChanged, this, [this] { setModified(true); });
-    connect(analysis, &AnalysisView::copyCursorsRequested, this, [this] {
-        const PlotCursors *tc = m_window->trendPlot()->cursors();
-        if (!tc->hasC1() && !tc->hasC2()) {
-            m_window->showStatusMessage(QStringLiteral("Place cursors on the Trend first"));
-            return;
-        }
-        std::optional<double> c1;
-        std::optional<double> c2;
-        if (tc->hasC1())
-            c1 = tc->c1();
-        if (tc->hasC2())
-            c2 = tc->c2();
-        m_window->analysisView()->setCursors(c1, c2);
-    });
-    connect(analysis, &AnalysisView::exportResultsRequested, this, [this] { exportAnalysisResults(); });
-    connect(analysis, &AnalysisView::resultsChanged, this, [this] {
-        bool any = false;
-        for (const StepResult &r : m_window->analysisView()->results())
-            any = any || r.valid;
-        m_window->actions().exportAnalysisCsv->setEnabled(any);
+    AnalysisPanel *analysis = m_window->analysisPanel();
+    connect(analysis, &AnalysisPanel::settingsChanged, this, [this] { setModified(true); });
+    connect(analysis, &AnalysisPanel::exportResultsRequested, this, [this] { exportAnalysisResults(); });
+    connect(analysis, &AnalysisPanel::resultsChanged, this, [this] {
+        const QList<StepResult> results = m_window->analysisPanel()->results();
+        m_window->actions().exportAnalysisCsv->setEnabled(!results.isEmpty() && results.first().valid);
     });
 }
 
@@ -415,7 +400,7 @@ void AppController::pushTags()
         Qt::QueuedConnection);
     m_window->trendPlot()->setTags(tags);
     m_window->cursorPanel()->setTags(tags);
-    m_window->analysisView()->setTags(tags);
+    m_window->analysisPanel()->setTags(tags);
 }
 
 void AppController::setModified(bool modified)
@@ -466,7 +451,7 @@ Project AppController::currentProject() const
     p.tags = m_window->tagModel()->tags();
     p.nextTagId = m_window->tagModel()->nextTagId();
     p.addressBase = m_window->tagModel()->addressBase();
-    p.analysis = m_window->analysisView()->settings();
+    p.analysis = m_window->analysisPanel()->settings();
     p.hiddenColumns = m_window->tagTable()->hiddenColumns();
     return p;
 }
@@ -488,7 +473,7 @@ void AppController::applyProject(const Project &project)
     m_encoding->onTagsReplaced();
     setAddressBase(project.addressBase);
     pushTags();
-    m_window->analysisView()->setSettings(project.analysis);
+    m_window->analysisPanel()->setSettings(project.analysis);
     m_window->tagTable()->setHiddenColumns(project.hiddenColumns);
 }
 
@@ -548,7 +533,7 @@ void AppController::newProject()
     m_encoding->onTagsReplaced();
     setAddressBase(0);
     pushTags();
-    m_window->analysisView()->setSettings(AnalysisSettings{});
+    m_window->analysisPanel()->setSettings(AnalysisSettings{});
     m_window->tagTable()->setHiddenColumns(compactHiddenColumns());
     m_projectPath.clear();
     discardLoadedRecording();
@@ -599,7 +584,7 @@ void AppController::discardLoadedRecording()
     if (m_sessionLoaded) {
         m_recorder.setCapacity(kDefaultRecorderRows); // also clears
         m_window->trendPlot()->resetData();
-        m_window->analysisView()->resetData();
+        m_window->analysisPanel()->resetData();
         m_window->cursorPanel()->refresh();
         QMetaObject::invokeMethod(m_worker, &PollWorker::resetTimeBase, Qt::QueuedConnection);
     }
@@ -635,11 +620,10 @@ bool AppController::saveSessionDialog()
         cursors.trendC1 = tc->c1();
     if (tc->hasC2())
         cursors.trendC2 = tc->c2();
-    const PlotCursors *ac = m_window->analysisView()->trendPlot()->cursors();
-    if (ac->hasC1())
-        cursors.analysisC1 = ac->c1();
-    if (ac->hasC2())
-        cursors.analysisC2 = ac->c2();
+    // One set of cursors since v1.2.6; the analysis fields are written equal to them so that
+    // older versions still find cursors in the Analysis tab.
+    cursors.analysisC1 = cursors.trendC1;
+    cursors.analysisC2 = cursors.trendC2;
 
     QString error;
     if (!saveSession(path, currentProject(), m_recorder, cursors, &error)) {
@@ -703,17 +687,23 @@ bool AppController::loadSessionFile(const QString &path)
     trend->resetData();
     trend->setWindowSeconds(0.0); // All
     trend->refresh();
-    m_window->analysisView()->resetData();
-    m_window->analysisView()->refresh();
+    m_window->analysisPanel()->resetData();
+    m_window->analysisPanel()->refresh();
     m_window->cursorPanel()->refresh();
     m_newData = false;
 
     trend->cursors()->clear();
-    if (cursors.trendC1)
-        trend->cursors()->setC1(*cursors.trendC1);
-    if (cursors.trendC2)
-        trend->cursors()->setC2(*cursors.trendC2);
-    m_window->analysisView()->setCursors(cursors.analysisC1, cursors.analysisC2);
+    // Sessions from before v1.2.6 may only have cursors in the (former) Analysis tab.
+    std::optional<double> c1 = cursors.trendC1;
+    std::optional<double> c2 = cursors.trendC2;
+    if (!c1 && !c2) {
+        c1 = cursors.analysisC1;
+        c2 = cursors.analysisC2;
+    }
+    if (c1)
+        trend->cursors()->setC1(*c1);
+    if (c2)
+        trend->cursors()->setC2(*c2);
 
     setModified(false);
     m_window->showStatusMessage(
@@ -795,7 +785,7 @@ void AppController::onTimeBaseReset(const QDateTime &wall)
     m_recorder.clear();
     m_recorder.setStartTime(wall);
     m_window->trendPlot()->resetData();
-    m_window->analysisView()->resetData();
+    m_window->analysisPanel()->resetData();
     m_window->cursorPanel()->refresh();
     m_newData = false;
 }
@@ -832,17 +822,19 @@ bool AppController::openProject(const QString &path)
     return loadFrom(path);
 }
 
+QString AppController::imageReadoutText() const
+{
+    QString text = m_window->cursorPanel()->readoutText();
+    const QString analysis = m_window->analysisPanel()->readoutText();
+    if (!analysis.isEmpty())
+        text += u'\n' + analysis;
+    return text;
+}
+
 void AppController::exportImage()
 {
-    if (m_window->isAnalysisTabActive()) {
-        AnalysisView *view = m_window->analysisView();
-        ExportImageDialog dialog(view->trendPlot()->plot(), view->trendPlot()->cursors(),
-                                 view->readoutText(), m_window);
-        runDialog(dialog);
-        return;
-    }
     TrendPlot *trend = m_window->trendPlot();
-    ExportImageDialog dialog(trend->plot(), trend->cursors(), m_window->cursorPanel()->readoutText(), m_window);
+    ExportImageDialog dialog(trend->plot(), trend->cursors(), imageReadoutText(), m_window);
     runDialog(dialog);
 }
 
@@ -858,11 +850,8 @@ void AppController::exportCsv()
 
 void AppController::exportAnalysisResults()
 {
-    const QList<StepResult> results = m_window->analysisView()->results();
-    bool any = false;
-    for (const StepResult &r : results)
-        any = any || r.valid;
-    if (!any)
+    const QList<StepResult> results = m_window->analysisPanel()->results();
+    if (results.isEmpty() || !results.first().valid)
         return;
 
     QSettings settings;

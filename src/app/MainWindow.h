@@ -12,7 +12,6 @@ class QLabel;
 namespace mb {
 
 class AnalysisPanel;
-class AnalysisView;
 class ConnectionBar;
 class QuickWritePanel;
 class CursorPanel;
@@ -30,9 +29,6 @@ class TrendPlot;
 /// - Right dock "Analysis" (objectName "analysisDock"): AnalysisPanel in a QScrollArea, tabified
 ///   with Cursors and Quick write; its toggle is in the View menu. setPlot(trendPlot()) is called
 ///   by the window.
-/// v1.2.6 (T195): analysisView(), isAnalysisTabActive(), setAnalysisTabActive() and
-/// analysisTabActiveChanged() are removed together with AnalysisView; until then they still
-/// exist.
 /// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
 ///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
@@ -70,14 +66,9 @@ public:
     TagTableWidget *tagTable() const;
     TrendPlot *trendPlot() const;
     CursorPanel *cursorPanel() const;
-    AnalysisView *analysisView() const;
     /// The Analysis dock's panel (v1.2.6).
     AnalysisPanel *analysisPanel() const;
     QuickWritePanel *quickWritePanel() const;
-    /// True while the Analysis tab is the current tab (image export uses its plot).
-    bool isAnalysisTabActive() const;
-    /// Makes the Trend (false) or Analysis (true) tab current.
-    void setAnalysisTabActive(bool active);
     const Actions &actions() const;
 
     /// Permanent status bar label, e.g. "Connected to 127.0.0.1:1502 (unit 1)".
@@ -87,10 +78,6 @@ public:
     void setDocumentTitle(const QString &name, bool modified);
     /// Called from closeEvent; returning false cancels the close (unsaved changes).
     void setCloseHandler(std::function<bool()> handler);
-
-signals:
-    /// The current tab changed (Trend <-> Analysis).
-    void analysisTabActiveChanged(bool active);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -102,7 +89,7 @@ private:
     TagTableWidget *m_tagTable = nullptr;
     TrendPlot *m_trendPlot = nullptr;
     CursorPanel *m_cursorPanel = nullptr;
-    AnalysisView *m_analysisView = nullptr;
+    AnalysisPanel *m_analysisPanel = nullptr;
     QuickWritePanel *m_quickWritePanel = nullptr;
     QLabel *m_connectionLabel = nullptr;
     Actions m_actions;

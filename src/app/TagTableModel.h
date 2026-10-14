@@ -22,11 +22,9 @@ namespace mb {
 /// - ByteOrder: DisplayRole/EditRole "ABCD" | "CDAB" | "BADC" | "DCBA". For 16-bit tags the
 ///   display is an em dash, the cell is not editable and ToolTipRole explains why.
 /// - Gain (!= 0), Offset: double.
-/// - Writable, Plot, Analyze: CheckStateRole only (Writable is disabled for input registers).
-///   Analyze toggles Tag::analyzed (any tag, any area); like Plot it emits tagsEdited().
-///   v1.2.6 (T195): the Analyze column is removed (the PV is chosen in the Analysis panel); its
-///   column key "analyzed" is no longer a column (old hiddenColumns keep it as an unknown key).
-///   ToolTipRole on its header: "Show this tag in the Analysis tab".
+/// - Writable, Plot: CheckStateRole only (Writable is disabled for input registers).
+///   v1.2.6: the former Analyze column is gone (the PV is chosen in the Analysis panel); its column
+///   key "analyze" is no longer a column (an old hiddenColumns entry is kept as an unknown key).
 /// - Axis: DisplayRole/EditRole "Left" | "Right" (toString(YAxis), case-insensitive on
 ///   input); any tag; emits tagsEdited().
 /// - QuickA, QuickB: Tag::quickA/quickB. DisplayRole: the value (6 significant digits) or
@@ -65,7 +63,7 @@ class TagTableModel : public QAbstractTableModel
     Q_OBJECT
 public:
     enum Column {
-        Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Analyze, Axis,
+        Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Axis,
         Color, Raw, Value, WriteMin, WriteMax, QuickA, QuickB, Quality, ColumnCount
     };
 
@@ -88,7 +86,7 @@ public:
     int rowOf(TagId id) const; ///< -1 if absent
 
     /// Stable key of a column for project files: "name", "area", "address", "type",
-    /// "byteOrder", "gain", "offset", "unit", "writable", "plot", "analyze", "axis", "color",
+    /// "byteOrder", "gain", "offset", "unit", "writable", "plot", "axis", "color",
     /// "raw", "value", "writeMin", "writeMax", "quickA", "quickB", "quality". Empty for an
     /// invalid column.
     static QString columnKey(int column);

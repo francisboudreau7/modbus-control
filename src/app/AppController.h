@@ -43,17 +43,11 @@ class WriteController;
 ///   (when not empty). Sessions: the Trend cursors are saved (analysisC1/C2 written equal to them);
 ///   on load the Trend cursors are used, or the Analysis cursors when the session has no Trend
 ///   cursors. The demo project chooses Lag as the PV and Setpoint as the CO.
-///   Until T195 the following (old) behaviour applies:
-/// - Analysis tab: AnalysisView gets the Recorder, the tags, the 10 Hz refresh and the data
-///   reset like the Trend; its settings are saved/loaded with the project (and mark it
-///   modified); "Copy cursors from Trend" copies the Trend's cursors; the results export
-///   (button and Export menu action, enabled while a valid result exists) writes
-///   exportAnalysisCsv(); the image export uses the Analysis plot while its tab is active.
 /// - Quick writes: QuickWritePanel -> WriteController::requestQuickWrite; the Options action
 ///   "Confirm quick writes" mirrors WriteController::quickConfirm().
 /// - Sessions (.mbsession): Save/Open session. Opening disconnects, replaces the recording and
-///   the project (no project path; the title shows the session file) and restores both tabs'
-///   cursors. Connecting while a loaded recording exists asks "Continue this recording" (the
+///   the project (no project path; the title shows the session file) and restores the
+///   cursors (see above). Connecting while a loaded recording exists asks "Continue this recording" (the
 ///   worker's time base is restarted, the recording is kept, a NaN gap row is appended and
 ///   incoming batch times are shifted so time continues from the loaded start time) or
 ///   "Start a new recording". New rows after loading make the unsaved-changes prompt ask
@@ -135,6 +129,8 @@ private:
     void exportImage();
     void exportCsv();
     void exportAnalysisResults();
+    /// Cursor readout, then the Analysis readout (when not empty), for the image export.
+    QString imageReadoutText() const;
 
     enum class ContinueChoice { Continue, StartNew, Cancel };
 

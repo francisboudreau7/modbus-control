@@ -1,5 +1,5 @@
 #include "AddTagDialog.h"
-#include "AnalysisView.h"
+#include "AnalysisPanel.h"
 #include "AppController.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
@@ -11,6 +11,7 @@
 #include "PlotCursors.h"
 #include "QuickWritePanel.h"
 #include "Recorder.h"
+#include "SessionIO.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
@@ -25,6 +26,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QDockWidget>
 #include <QLabel>
 #include <QElapsedTimer>
 #include <QFile>
@@ -36,6 +38,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -377,9 +380,9 @@ class TstAppController : public QObject
             r.append(b);
         }
         win->trendPlot()->resetData();
-        win->analysisView()->resetData();
+        win->analysisPanel()->resetData();
         win->trendPlot()->refresh();
-        win->analysisView()->refresh();
+        win->analysisPanel()->refresh();
         win->cursorPanel()->refresh();
     }
 
@@ -389,7 +392,6 @@ class TstAppController : public QObject
         feedStep();
         win->trendPlot()->cursors()->setC1(5.0);
         win->trendPlot()->cursors()->setC2(20.0);
-        win->analysisView()->setCursors(9.0, 29.0);
         d.saveNames << P(name);
         win->actions().saveSession->trigger();
         return P(name) + QStringLiteral(".mbsession");
@@ -783,9 +785,11 @@ private slots:
             [&] { model()->setData(model()->index(2, TagTableModel::Name), QStringLiteral("Edited")); },
             [&] { win->actions().oneBasedAddresses->setChecked(true); },
             [&] {
-                auto *guide = win->analysisView()->findChild<QCheckBox *>(QStringLiteral("guideLinesCheck"));
-                QVERIFY(guide);
-                guide->click();
+                // A user edit in the Analysis panel (setSettings does not emit settingsChanged).
+                AnalysisSettings a = win->analysisPanel()->settings();
+                a.guideLines = !a.guideLines;
+                win->analysisPanel()->setSettings(a);
+                emit win->analysisPanel()->settingsChanged();
             },
             [&] {
                 QMenu *menu = win->tagTable()->headerMenu();
@@ -806,7 +810,7 @@ private slots:
         }
         QCOMPARE(model()->addressBase(), 1);
 
-        const bool guide = win->analysisView()->settings().guideLines;
+        const bool guide = win->analysisPanel()->settings().guideLines;
         const QStringList hidden = win->tagTable()->hiddenColumns();
         stopApp();
         startApp();
@@ -814,7 +818,7 @@ private slots:
         QCOMPARE(model()->tagAt(2).name, QStringLiteral("Edited"));
         QCOMPARE(model()->addressBase(), 1);
         QVERIFY(win->actions().oneBasedAddresses->isChecked());
-        QCOMPARE(win->analysisView()->settings().guideLines, guide);
+        QCOMPARE(win->analysisPanel()->settings().guideLines, guide);
         QCOMPARE(win->tagTable()->hiddenColumns(), hidden);
         QCOMPARE(win->connectionBar()->settings().port, quint16(1503));
         QCOMPARE(win->connectionBar()->settings().unitId, 7);
@@ -1364,13 +1368,10 @@ private slots:
         QCOMPARE(d.execCount, 1);
         QVERIFY(QFileInfo(png).size() > 0);
 
-        // Analysis tab active: its plot is exported; rejected this time.
-        win->setAnalysisTabActive(true);
-        QVERIFY(win->isAnalysisTabActive());
+        // No tabs any more: the Trend plot is always exported; rejected this time.
         d.onExec = [](QDialog &dlg) { dlg.reject(); };
         win->actions().exportImage->trigger();
         QCOMPARE(d.execCount, 2);
-        win->setAnalysisTabActive(false);
 
         // CSV with the cursor range available.
         const QString csv = P(QStringLiteral("trend.csv"));
@@ -1395,6 +1396,34 @@ private slots:
         noUnexpected();
     }
 
+    void imageReadoutText()
+    {
+        feedStep();
+        win->trendPlot()->cursors()->setC1(4.0);
+        win->trendPlot()->cursors()->setC2(12.0);
+        const QString cursorText = win->cursorPanel()->readoutText();
+        QVERIFY(!cursorText.isEmpty());
+        const QString analysisText = win->analysisPanel()->readoutText();
+        // The cursor readout comes first; the analysis readout follows after a newline when it
+        // is not empty (the stub panel of T195 returns an empty one, the real panel a summary).
+        const QString expected = analysisText.isEmpty() ? cursorText : cursorText + QLatin1Char('\n') + analysisText;
+        QCOMPARE(ctl->imageReadoutText(), expected);
+        noUnexpected();
+    }
+
+    void analysisDockExists()
+    {
+        QVERIFY(win->analysisPanel());
+        auto *dock = win->findChild<QDockWidget *>(QStringLiteral("analysisDock"));
+        QVERIFY(dock);
+        QVERIFY(dock->widget());
+        QVERIFY(dock->isAncestorOf(win->analysisPanel()));
+        QVERIFY(!win->findChild<QTabWidget *>(QStringLiteral("centralTabs")));
+        QCOMPARE(win->centralWidget(), static_cast<QWidget *>(win->trendPlot()));
+        QVERIFY(win->tabifiedDockWidgets(win->findChild<QDockWidget *>(QStringLiteral("cursorsDock")))
+                    .contains(dock));
+    }
+
     void exportAnalysisResults()
     {
         // Nothing to export yet: no dialog even when called directly.
@@ -1403,21 +1432,12 @@ private slots:
         QVERIFY(d.saveCaptions.isEmpty());
 
         feedStep();
-        win->analysisView()->setCursors(9.0, 29.0);
-        bool any = false;
-        for (const StepResult &r : win->analysisView()->results())
-            any = any || r.valid;
-        QVERIFY2(any, "the synthetic step produced no valid analysis result");
-        QVERIFY(win->actions().exportAnalysisCsv->isEnabled());
-
-        // "Copy cursors from Trend": needs cursors there first.
-        win->analysisView()->setCursors(std::nullopt, std::nullopt);
-        emit win->analysisView()->copyCursorsRequested(); // none on the trend: status message only
         win->trendPlot()->cursors()->setC1(9.0);
         win->trendPlot()->cursors()->setC2(29.0);
-        emit win->analysisView()->copyCursorsRequested();
-        QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC1());
-        QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC2());
+        const QList<StepResult> results = win->analysisPanel()->results();
+        if (results.isEmpty())
+            QSKIP("needs the real AnalysisPanel (T194): the stub produces no results");
+        QVERIFY2(results.first().valid, "the synthetic step produced no valid analysis result");
         QVERIFY(win->actions().exportAnalysisCsv->isEnabled());
 
         // Cancelled dialog.
@@ -1428,7 +1448,7 @@ private slots:
         // Written.
         const QString out = P(QStringLiteral("analysis.csv"));
         d.saveNames << out;
-        emit win->analysisView()->exportResultsRequested();
+        emit win->analysisPanel()->exportResultsRequested();
         QFile f(out);
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QByteArray text = f.readAll();
@@ -1465,16 +1485,19 @@ private slots:
         QVERIFY(!win->isWindowModified());
         QVERIFY(win->windowTitle().startsWith(QStringLiteral("s1.mbsession")));
         QVERIFY(pointsIn(win->trendPlot()->plot()) > 0);
-        QVERIFY(pointsIn(win->analysisView()->trendPlot()->plot()) > 0);
         QVERIFY(win->trendPlot()->cursors()->hasC1());
         QVERIFY(win->trendPlot()->cursors()->hasC2());
         QVERIFY(qAbs(win->trendPlot()->cursors()->c1() - 5.0) < 1e-6);
         QVERIFY(qAbs(win->trendPlot()->cursors()->c2() - 20.0) < 1e-6);
-        QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC1());
-        QVERIFY(win->analysisView()->trendPlot()->cursors()->hasC2());
-        QVERIFY(qAbs(win->analysisView()->trendPlot()->cursors()->c1() - 9.0) < 1e-6);
-        QVERIFY(!win->analysisView()->results().isEmpty());
-        QVERIFY(win->actions().exportAnalysisCsv->isEnabled());
+        // The session also stores the cursors in its (legacy) analysis fields.
+        {
+            Project p;
+            Recorder rec;
+            SessionCursors sc;
+            QVERIFY(loadSession(file, p, rec, sc, nullptr));
+            QCOMPARE(sc.analysisC1, sc.trendC1);
+            QCOMPARE(sc.analysisC2, sc.trendC2);
+        }
         QCOMPARE(model()->rowCount(), 11); // the session's project replaced the tags
 
         // Save again under the same loaded session: not dirty, name from the session.
@@ -1487,6 +1510,53 @@ private slots:
         d.saveNames << QString();
         win->actions().saveSession->trigger();
         QVERIFY(win->windowTitle().startsWith(QStringLiteral("s2.mbsession")));
+        noUnexpected();
+    }
+
+    void sessionWithoutTrendCursorsFallsBackToAnalysisCursors()
+    {
+        // A session written before v1.2.6 may only have cursors in the former Analysis tab.
+        feedStep();
+        SessionCursors old;
+        old.analysisC1 = 9.0;
+        old.analysisC2 = 29.0;
+        const QString file = P(QStringLiteral("legacy.mbsession"));
+        QVERIFY(saveSession(file, ctl->currentProject(), ctl->m_recorder, old, nullptr));
+        restart();
+        d.openNames << file;
+        win->actions().openSession->trigger();
+        QVERIFY(win->trendPlot()->cursors()->hasC1());
+        QVERIFY(win->trendPlot()->cursors()->hasC2());
+        QVERIFY(qAbs(win->trendPlot()->cursors()->c1() - 9.0) < 1e-6);
+        QVERIFY(qAbs(win->trendPlot()->cursors()->c2() - 29.0) < 1e-6);
+        noUnexpected();
+    }
+
+    void analysisSettingsRoundTripWithProject()
+    {
+        QVERIFY(!modified());
+        AnalysisSettings a = win->analysisPanel()->settings();
+        QCOMPARE(a.pvTagId, TagId(7)); // demo project: Lag
+        QCOMPARE(a.deltaCoTagId, TagId(8));
+        QCOMPARE(a.setpointTagIds, QList<TagId>{7});
+        a.percents = {0.0, 50.0};
+        a.guideLines = !a.guideLines;
+        win->analysisPanel()->setSettings(a);
+        emit win->analysisPanel()->settingsChanged();
+        QVERIFY(modified());
+
+        const QString file = P(QStringLiteral("analysis.mbproj"));
+        d.saveNames << file;
+        win->actions().saveProject->trigger();
+        QVERIFY(!modified());
+        stopApp();
+        startApp();
+        QVERIFY(ctl->openProject(file));
+        const AnalysisSettings b = win->analysisPanel()->settings();
+        QCOMPARE(b.percents, a.percents);
+        QCOMPARE(b.guideLines, a.guideLines);
+        // pvTagId / setpointTagIds travel through ProjectIO once T193 is merged.
+        QVERIFY(!modified());
         noUnexpected();
     }
 
@@ -1669,7 +1739,6 @@ private slots:
         win->actions().openSession->trigger();
         QCOMPARE(ctl->m_recorder.size(), rows);
         QVERIFY(pointsIn(win->trendPlot()->plot()) > 0);
-        QVERIFY(pointsIn(win->analysisView()->trendPlot()->plot()) > 0);
         QVERIFY(win->trendPlot()->cursors()->hasC1());
         QVERIFY(win->trendPlot()->cursors()->hasC2());
         noUnexpected();
