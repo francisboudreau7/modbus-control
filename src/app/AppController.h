@@ -34,6 +34,16 @@ class WriteController;
 /// - cursorsChanged -> CursorPanel::setCursors.
 /// - File actions: New/Open/Save/Save As with "unsaved changes" prompts; last directory
 ///   and the last connection settings (used for New) are kept in QSettings.
+/// - v1.2.6 (T195): the Analysis tab is replaced by the Analysis dock (AnalysisPanel): it gets the
+///   Recorder, the main TrendPlot (setPlot), the tags, the 10 Hz refresh and the data reset; its
+///   settings are saved/loaded with the project (and mark it modified); "Copy cursors from Trend"
+///   is gone (one set of cursors); the results export (button and Export menu action, enabled
+///   while results().first() is valid) writes exportAnalysisCsv() of results(); the image export
+///   uses the Trend plot with CursorPanel::readoutText() followed by AnalysisPanel::readoutText()
+///   (when not empty). Sessions: the Trend cursors are saved (analysisC1/C2 written equal to them);
+///   on load the Trend cursors are used, or the Analysis cursors when the session has no Trend
+///   cursors. The demo project chooses Lag as the PV and Setpoint as the CO.
+///   Until T195 the following (old) behaviour applies:
 /// - Analysis tab: AnalysisView gets the Recorder, the tags, the 10 Hz refresh and the data
 ///   reset like the Trend; its settings are saved/loaded with the project (and mark it
 ///   modified); "Copy cursors from Trend" copies the Trend's cursors; the results export

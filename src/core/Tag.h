@@ -72,7 +72,9 @@ struct Tag {
     QString color = QStringLiteral("#1f77b4"); ///< "#RRGGBB"
     bool plotted = true;
     bool writable = false; ///< only meaningful for Area::HoldingRegister tags
-    bool analyzed = false; ///< shown and analysed in the Analysis tab
+    /// Read from projects before v1.2.6 only (ProjectIO maps it to AnalysisSettings::pvTagId and
+    /// setpointTagIds); not used by the UI and no longer written.
+    bool analyzed = false;
     YAxis axis = YAxis::Left; ///< plot axis on both tabs
     /// Quick-write values (scaled, like the Value column); empty = no button. Only used for
     /// writable tags (isWritable()).

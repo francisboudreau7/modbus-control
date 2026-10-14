@@ -196,4 +196,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     event->accept();
 }
 
+// Stub created by T190; T195 creates the panel and the dock.
+AnalysisPanel *MainWindow::analysisPanel() const { return nullptr; }
+
 } // namespace mb

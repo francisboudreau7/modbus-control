@@ -385,4 +385,61 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     return r;
 }
 
+// Stubs created by T190; implemented by T191.
+QString toString(ModelMethod method)
+{
+    switch (method) {
+    case ModelMethod::ZeroTo632:
+        return QStringLiteral("0 % / 63.2 % (two points)");
+    case ModelMethod::Smith:
+        return QStringLiteral("Smith (28.3 % / 63.2 %)");
+    case ModelMethod::Sundaresan:
+        return QStringLiteral("Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
+    case ModelMethod::Custom:
+        return QStringLiteral("Custom");
+    }
+    return {};
+}
+
+std::optional<std::pair<double, double>> methodPercents(ModelMethod method)
+{
+    switch (method) {
+    case ModelMethod::ZeroTo632:
+        return std::pair{0.0, 63.2};
+    case ModelMethod::Smith:
+        return std::pair{28.3, 63.2};
+    case ModelMethod::Sundaresan:
+        return std::pair{35.3, 85.3};
+    case ModelMethod::Custom:
+        break;
+    }
+    return std::nullopt;
+}
+
+std::pair<double, double> modelPercents(const AnalysisSettings &settings)
+{
+    if (const auto p = methodPercents(settings.method))
+        return *p;
+    return {settings.modelPercentA, settings.modelPercentB};
+}
+
+std::optional<StepWindow> findStep(const Recorder &, TagId, TagId, double, double)
+{
+    return std::nullopt;
+}
+
+FitQuality fitQuality(double fitRmsPercent)
+{
+    if (fitRmsPercent < 3.0)
+        return FitQuality::Good;
+    if (fitRmsPercent < 8.0)
+        return FitQuality::Acceptable;
+    return FitQuality::Poor;
+}
+
+QList<StepCheck> checkStep(const Recorder &, const StepResult &)
+{
+    return {};
+}
+
 } // namespace mb

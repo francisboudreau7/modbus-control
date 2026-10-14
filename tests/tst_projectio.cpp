@@ -909,7 +909,7 @@ void TstProjectIO::v12KeysDefaultWhenMissing()
     QVERIFY(tag.axis == YAxis::Left);
     QVERIFY(!tag.quickA.has_value());
     QVERIFY(!tag.quickB.has_value());
-    QVERIFY(!project->analysis.showModel);
+    QVERIFY(project->analysis.showModel); // default on since v1.2.6
     QVERIFY(project->analysis.guideLines);
     QCOMPARE(project->analysis, AnalysisSettings{});
 }
