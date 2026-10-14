@@ -475,6 +475,9 @@ void TstAnalysisView::onlyAnalyzedTags()
     AnalysisView v;
     v.setRecorder(&rec);
     v.setTags(standardTags());
+    AnalysisSettings noModel; // showModel is on by default since v1.2.6
+    noModel.showModel = false;
+    v.setSettings(noModel);
     v.setCursors(9.0, 40.0);
     v.refresh();
 
@@ -552,6 +555,7 @@ static void setupFopdt(Recorder &rec, AnalysisView &v, const QList<Tag> &tags)
     v.setTags(tags);
     AnalysisSettings s;
     s.deltaCoTagId = kCo;
+    s.showModel = false; // on by default since v1.2.6
     v.setSettings(s);
     v.setCursors(9.0, 40.0);
 }

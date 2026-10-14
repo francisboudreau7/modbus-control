@@ -11,6 +11,7 @@ class QLabel;
 
 namespace mb {
 
+class AnalysisPanel;
 class AnalysisView;
 class ConnectionBar;
 class QuickWritePanel;
@@ -21,11 +22,17 @@ class TrendPlot;
 
 /// Main window layout (no application logic; AppController wires the actions):
 /// - Toolbar "Connection": ConnectionBar.
-/// - Central widget: QTabWidget with the tabs "Trend" (TrendPlot) and "Analysis" (AnalysisView).
-///   The active tab is saved/restored with QSettings ("mainWindow/tab").
+/// - Central widget: the TrendPlot (no tabs since v1.2.6; the old QSettings key "mainWindow/tab"
+///   is ignored).
 /// - Bottom dock "Tags": TagTableWidget (over tagModel()).
 /// - Right dock "Cursors": CursorPanel.
 /// - Right dock "Quick write": QuickWritePanel over tagModel() (tabified with Cursors).
+/// - Right dock "Analysis" (objectName "analysisDock"): AnalysisPanel in a QScrollArea, tabified
+///   with Cursors and Quick write; its toggle is in the View menu. setPlot(trendPlot()) is called
+///   by the window.
+/// v1.2.6 (T195): analysisView(), isAnalysisTabActive(), setAnalysisTabActive() and
+/// analysisTabActiveChanged() are removed together with AnalysisView; until then they still
+/// exist.
 /// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
 ///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
@@ -64,6 +71,8 @@ public:
     TrendPlot *trendPlot() const;
     CursorPanel *cursorPanel() const;
     AnalysisView *analysisView() const;
+    /// The Analysis dock's panel (v1.2.6).
+    AnalysisPanel *analysisPanel() const;
     QuickWritePanel *quickWritePanel() const;
     /// True while the Analysis tab is the current tab (image export uses its plot).
     bool isAnalysisTabActive() const;

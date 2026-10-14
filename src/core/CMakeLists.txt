@@ -11,6 +11,7 @@ add_library(mbcore STATIC
   ProjectIO.h ProjectIO.cpp
   CsvExporter.h CsvExporter.cpp
   StepAnalysis.h StepAnalysis.cpp
+  Tuning.h Tuning.cpp
   AnalysisCsv.h AnalysisCsv.cpp
   SessionIO.h SessionIO.cpp
   EncodingDetect.h EncodingDetect.cpp

@@ -12,6 +12,7 @@ add_library(mbui STATIC
   ExportImageDialog.h ExportImageDialog.cpp
   ExportCsvDialog.h ExportCsvDialog.cpp
   AnalysisView.h AnalysisView.cpp
+  AnalysisPanel.h AnalysisPanel.cpp
   ClipboardCopy.h ClipboardCopy.cpp
   QuickWritePanel.h QuickWritePanel.cpp
   EncodingDialog.h EncodingDialog.cpp

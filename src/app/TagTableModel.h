@@ -24,6 +24,8 @@ namespace mb {
 /// - Gain (!= 0), Offset: double.
 /// - Writable, Plot, Analyze: CheckStateRole only (Writable is disabled for input registers).
 ///   Analyze toggles Tag::analyzed (any tag, any area); like Plot it emits tagsEdited().
+///   v1.2.6 (T195): the Analyze column is removed (the PV is chosen in the Analysis panel); its
+///   column key "analyzed" is no longer a column (old hiddenColumns keep it as an unknown key).
 ///   ToolTipRole on its header: "Show this tag in the Analysis tab".
 /// - Axis: DisplayRole/EditRole "Left" | "Right" (toString(YAxis), case-insensitive on
 ///   input); any tag; emits tagsEdited().
