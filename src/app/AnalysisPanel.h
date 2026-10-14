@@ -21,6 +21,8 @@ class QTableWidget;
 class QwtPlotCurve;
 class QwtPlotItem;
 class QwtPlotMarker;
+class QListWidgetItem;
+class QResizeEvent;
 class TstAnalysisPanel;
 
 namespace mb {
@@ -166,12 +168,116 @@ signals:
 
 private:
     friend class ::TstAnalysisPanel;
-    // Implementation-defined; the task may change the private section freely.
+
+    enum class Quantity { Y0, Y100, DeltaPv, DeltaCo, K, KPct, L, T, LOverT, Fit };
+
+    void buildUi();
+    void syncControlsFromSettings();
+    void normalizeSettings();
+    void rebuildPvCombo();
+    void rebuildCoCombo();
+    void rebuildSetpointList();
+    void rebuildPercentList();
+    void syncModelSpins();
+    void updateEnabled();
+    void recompute();
+    void rebuildResultsTable();
+    void rebuildChecks();
+    void rebuildTuningTable();
+    void rebuildSetpointTable();
+    void rebuildOverlays();
+    void clearOverlays(bool detach);
+    void updateCursorLabel();
+    void updateHint();
+    void updateFindButton();
+    void rememberDataState();
+    void userChangedSettings();
+    void copyResults();
+    void onFindStep();
+    void onPvChanged();
+    void onCoChanged();
+    void onMethodChanged();
+    void onModelPercentChanged();
+    void onRangesChanged();
+    void onAddPercent();
+    void onRemovePercent();
+    void onSetpointItemChanged(QListWidgetItem *item);
+    void resizeEvent(QResizeEvent *event) override;
+
+    const Tag *tagById(TagId id) const;
+    bool shownTag(const Tag *tag) const; ///< setpoint rows / markers of this tag
+    QString pvUnit() const;
+    QString coUnit() const;
+    QString kUnit() const;
+    std::optional<double> pvSpan() const;
+    std::optional<double> coSpan() const;
+    bool percentGainsShown() const;
+
+    // Tooltips (all text built in these functions).
+    QString explainResult(Quantity quantity, const StepResult *result) const;
+    QString explainModelTime(bool forL, const StepResult *result) const;
+    QString explainSetpoint(int column, const StepResult &result, const SetpointResult &sp,
+                            const QString &tagName) const;
+    QString explainTuning(int column, ControllerKind kind, const TuningRow &row,
+                          const StepResult &result) const;
+
     const Recorder *m_recorder = nullptr;
     TrendPlot *m_plot = nullptr;
     QList<Tag> m_tags;
     AnalysisSettings m_settings;
     QList<StepResult> m_results;
+
+    QMetaObject::Connection m_cursorsConnection;
+    QMetaObject::Connection m_plotDestroyedConnection;
+
+    QPushButton *m_copyResultsButton = nullptr;
+    QPushButton *m_exportButton = nullptr;
+    QComboBox *m_pvCombo = nullptr;
+    QComboBox *m_coCombo = nullptr;
+    QDoubleSpinBox *m_deltaCoSpin = nullptr;
+    QLineEdit *m_pvMinEdit = nullptr;
+    QLineEdit *m_pvMaxEdit = nullptr;
+    QDoubleSpinBox *m_coMinSpin = nullptr;
+    QDoubleSpinBox *m_coMaxSpin = nullptr;
+    QLabel *m_cursorLabel = nullptr;
+    QPushButton *m_findStepButton = nullptr;
+    QLabel *m_hintLabel = nullptr;
+    QComboBox *m_methodCombo = nullptr;
+    QDoubleSpinBox *m_fromSpin = nullptr;
+    QDoubleSpinBox *m_toSpin = nullptr;
+    QTableWidget *m_resultsTable = nullptr;
+    QCheckBox *m_showModelCheck = nullptr;
+    QListWidget *m_checksList = nullptr;
+    QComboBox *m_ruleCombo = nullptr;
+    QDoubleSpinBox *m_lambdaSpin = nullptr;
+    QCheckBox *m_minutesCheck = nullptr;
+    QTableWidget *m_tuningTable = nullptr;
+    QLabel *m_tuningNote = nullptr;
+    QGroupBox *m_setpointsGroup = nullptr;
+    QListWidget *m_setpointTagList = nullptr;
+    QComboBox *m_referenceCombo = nullptr;
+    QDoubleSpinBox *m_windowSpin = nullptr;
+    QDoubleSpinBox *m_smoothingSpin = nullptr;
+    QListWidget *m_percentList = nullptr;
+    QDoubleSpinBox *m_percentSpin = nullptr;
+    QPushButton *m_addPercentButton = nullptr;
+    QPushButton *m_removePercentButton = nullptr;
+    QCheckBox *m_detailedLabelsCheck = nullptr;
+    QCheckBox *m_guideLinesCheck = nullptr;
+    QTableWidget *m_setpointTable = nullptr;
+
+    QList<QwtPlotMarker *> m_markers;
+    QList<QwtPlotItem *> m_guideItems;
+    QList<QwtPlotCurve *> m_modelCurves;
+
+    bool m_updating = false;        ///< programmatic control changes: no user handling
+    bool m_settingCursors = false;  ///< Find step in progress: recompute once at the end
+    QString m_hintOverride;         ///< e.g. "No step found...", cleared by the next recompute
+    double m_prevFrom = 0.0;
+    double m_prevTo = 63.2;
+    qsizetype m_lastSize = 0;
+    double m_lastTime = 0.0;
+    quint64 m_lastEvicted = 0;
 };
 
 } // namespace mb
