@@ -559,14 +559,18 @@ to a valve position.
   plotted tag uses it.
 - **Fit Y** fits each axis to its own tags.
 
+You can also fix the range of each axis: see [Y-axis ranges](#y-axis-ranges).
+
 Controls above the plot:
 
 - **Window**: 60 s (default), 5 min, 30 min or All. In a time window, the view follows the newest
   data. All shows everything in memory.
 - **Pause** / **Run**: Pause freezes the view while recording continues. Run returns to the newest
-  data and turns auto-scaling back on.
+  data. A Y axis with a fixed range keeps it; an Auto axis keeps auto-scaling.
 - **Place cursors**, **Clear cursors**: see Cursors.
-- **Fit Y**: sets the Y range to the visible data, and keeps fitting while the view follows the data.
+- **Y axes**: a menu to set the range of the left or the right Y axis (see [Y-axis ranges](#y-axis-ranges)).
+- **Fit Y**: fits both Y axes to the visible data and sets both back to Auto, so they keep fitting
+  while the view follows the data.
 - **Clear data**: discards all recorded data (after a confirmation when there is any), clears the
   cursors, and restarts the time axis at 0. The connection stays as it is.
 
@@ -575,15 +579,43 @@ Mouse:
 | Action | Effect |
 |---|---|
 | Mouse wheel | Zooms the time (X) axis. |
-| Shift + mouse wheel | Zooms both Y axes. Auto-scaling stops until Run or Fit Y. |
-| Right-button drag | Pans. |
+| Mouse wheel over a Y axis | Zooms that axis only, around the value under the pointer, and fixes its range. |
+| Shift + mouse wheel | Zooms both Y axes and fixes them. Only the left axis changes when no plotted tag uses the right axis. |
+| Right-button drag | Pans. A fixed Y range is moved too. |
+| Right-click on a Y axis | Opens the axis menu (see [Y-axis ranges](#y-axis-ranges)). |
 
-Zooming and panning pause the trend.
+Zooming and panning pause the trend. Press Fit Y to auto-scale the Y axes again.
 
 Click a tag name in the legend below the plot to hide or show its curve. The legend shows names as
 `name [unit]`.
 
 When data is missing (disconnected, a failed read, or bad quality) the line breaks.
+
+### Y-axis ranges
+
+Each Y axis is either **Auto** or **fixed**. An Auto axis fits the visible data and follows it as it
+moves. A fixed axis keeps the range you gave it, whatever the data does, so a level that moves
+between 40 and 60 % stays in a stable frame (for example 0 to 100 %). Only the time axis scrolls.
+
+To set a range:
+
+- Right-click a Y axis, or open the **Y axes** button above the plot and choose **Left** or
+  **Right**. The two submenus have the same items. **Right** is disabled while no plotted tag uses
+  the right axis.
+- **Set range...** asks for a minimum and a maximum, filled with the range now visible. OK is
+  accepted only when the minimum is less than the maximum.
+- **0 to 100** fixes the axis at 0 to 100, for a value in percent.
+- **Auto** returns the axis to auto-scaling.
+
+You can also use the mouse. The wheel over a Y axis zooms that axis around the value under the
+pointer and fixes it at the new range. Shift + wheel over the plot does the same for both Y axes.
+The right-button drag pans a fixed range too. Plain wheel over the plot still zooms the time axis.
+
+**Fit Y** fits both axes to the visible data and sets both to Auto. **Run** keeps the fixed ranges.
+Changing the tags does not change them either.
+
+The ranges are saved in the project (see [Projects](#projects)), so they are back the next time you
+open it.
 
 ## Cursors
 
@@ -950,7 +982,7 @@ For a more realistic process, with a dead time, noise and a tank that is not lin
 ## Projects
 
 Projects are saved as `.mbproj` files. A project holds the connection settings, the register numbering
-(1-based or not), the tag list, including tag colours, the Y axis and the quick-write presets, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
+(1-based or not), the tag list, including tag colours, the Y axis and the quick-write presets, the Y-axis ranges of the Trend, and the Analysis settings. Recorded data, cursors and the trend window are not saved in a project. To keep those, save a [session](#sessions).
 
 In the file, each tag has an `axis` key (`"left"` or `"right"`) and optional `quickA` and `quickB`
 keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write limits; a key is written
@@ -959,7 +991,7 @@ only when the limit is set). The Analysis settings are in an `analysis` object: 
 (`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
 (`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
 `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
-and `timeUnit` (`"s"` or `"min"`). A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
+and `timeUnit` (`"s"` or `"min"`). A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|

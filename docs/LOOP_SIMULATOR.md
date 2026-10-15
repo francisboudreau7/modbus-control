@@ -10,13 +10,15 @@ drains through a hand valve. The level transmitter and the regulator are a Modbu
 Modbus Control reads and writes them like a real controller. The program has a window with the
 P&ID, the regulator faceplate and a few controls.
 
-The regulator has no automatic mode. The valve command (OUT) changes only when a Modbus client writes
-it or when you change it on the faceplate. This is on purpose: the loop is open, so you can do step
-tests and measure the process.
+The regulator starts in **Manual** (MAN). Then the valve command (OUT) changes only when a Modbus client
+writes it or when you change it on the faceplate. The loop is open, so you can do step tests and measure
+the process. Switch the regulator to **Auto** and it becomes a PID controller that holds the level at
+SP: you then enter the tuning you calculated from the step test and see the closed loop work.
 
 Contents: [Starting it](#starting-it), [The P&ID](#the-pid), [The physics](#the-physics),
-[Modbus registers](#modbus-registers), [The window](#the-window), [Scenario files](#scenario-files),
-[Exercise: step test](#exercise-step-test-with-modbus-control).
+[Modbus registers](#modbus-registers), [The window](#the-window), [The PID controller](#the-pid-controller),
+[Scenario files](#scenario-files), [Exercise: step test](#exercise-step-test-with-modbus-control),
+[Exercise: closed loop](#exercise-closed-loop).
 
 ## Starting it
 
@@ -153,9 +155,14 @@ Rules, like the CM50:
   outside 0 to 100, or a value that is not a number, is refused with exception 3 (illegal data value).
 - Anything else is refused with exception 2 (illegal data address): FC06, a request that starts in the
   middle of a float, a count that splits a float, any other address, and the coils and discrete inputs.
-- SP is only stored. It is shown on the faceplate and on the schematic, and nothing uses it.
+- SP is stored. In Manual nothing uses it: it is only shown on the faceplate and on the schematic. In
+  Auto it is the setpoint of the PID.
+- While LIC-101 is in **Auto**, a write that includes OUT (registers 3-4) is refused with exception 3
+  (illegal data value) and nothing is written, not even the SP of the same request. Writing SP alone
+  (registers 1-2) is accepted. Reading is not affected: OUT is computed by the PID and you read it
+  as before.
 
-A written OUT takes effect at once on FCV-101 (the stem then moves at the stroke speed).
+In Manual, a written OUT takes effect at once on FCV-101 (the stem then moves at the stroke speed).
 
 ## The window
 
@@ -164,10 +171,12 @@ A written OUT takes effect at once on FCV-101 (the stem then moves at the stroke
   speed, and PV, SP and OUT on LIC-101. The overflow line is coloured while water flows.
 - **Show process data** (check box in the bottom bar): adds the level in m, the flows Qin, Qhv and
   overflow in L/min, the pump pressure in bar and the dead time.
-- **LIC-101 faceplate** (right): like a panel controller in **MAN**. It has a vertical PV bar with the SP mark,
+- **LIC-101 faceplate** (right): like a panel controller. It has a vertical PV bar with the SP mark,
   and the values PV, SP and OUT with the mA of PV and OUT. The **▲** and **▼** buttons change OUT by
   1 % (5 % with Shift held). Type a value in the OUT or SP box and press Enter. Typed values outside 0 to
-  100 are clamped. A client that writes by Modbus changes the same values.
+  100 are clamped. A client that writes by Modbus changes the same values. The mode button and the
+  tuning fields are described in [The PID controller](#the-pid-controller).
+
 - **Sliders** (bottom bar): **HV-102** opening (0 to 100 %) and **P-101 speed** (0 to 100 %). Moving
   HV-102 is the load disturbance of the loop.
 - **Speed**: ×1, ×2 or ×5. ×1 is real time: the times that Modbus Control shows are the process
@@ -179,6 +188,41 @@ A written OUT takes effect at once on FCV-101 (the stem then moves at the stroke
 - **File** menu: **Open scenario...**, **Save scenario...**, **Reset** (back to the steady state at
   OUT = SP = 50 %) and **Quit**. **Help > About** shows the version.
 - **Status bar**: the server address and the number of connected clients.
+
+## The PID controller
+
+The mode button of the faceplate shows **MAN** (amber) or **AUTO** (green). Click it to switch. The
+program starts in Manual.
+
+- **Manual**: OUT is yours, as in the step test. The tuning fields can be edited but are not used.
+- **Auto**: the controller computes OUT every 0.1 s of simulation time from SP and PV. The OUT
+  buttons and the OUT box are disabled, and Modbus writes to OUT are refused (exception 3). You can
+  still change SP, on the faceplate or by Modbus.
+- Going from MAN to AUTO is **bumpless**: OUT does not jump, because the controller starts from the
+  present OUT. The exception is a controller with no integral action (Ti = 0): its OUT is
+  Kp × e, so OUT jumps to that value when you press the button. Going back to MAN keeps the present OUT.
+
+The **Tuning** fields (type a value and press Enter; values are clamped to the range):
+
+| Field | Meaning | Range | Default |
+|---|---|---|---|
+| Kp | Proportional gain, in % of OUT per % of error | 0 to 100 | 1 |
+| Ti | Integral time, in seconds. 0 means no integral action. | 0 to 3600 | 30 |
+| Td | Derivative time, in seconds. 0 means no derivative action. | 0 to 600 | 0 |
+| Action | **Reverse** or **Direct** (see below) | | Reverse |
+
+The controller is the ideal (ISA) form, the same one as the tuning calculator of the Analysis panel:
+
+u = Kp × (e + 1/Ti × ∫e dt + Td × de/dt)
+
+- The error e is SP − PV for **Reverse** action: when PV rises, OUT falls. This is the right action
+  for this loop: more water in the tank must close the valve. **Direct** action uses e = PV − SP. With
+  it the loop has positive feedback and OUT runs away to 0 or 100 %.
+- PV is the transmitter output, noise included. The derivative acts on the PV, not on the error, and
+  the PV goes through a first-order filter of Td / 10, so a change of SP does not kick OUT and the noise
+  is limited.
+- Anti-windup: the integral is frozen while OUT is at 0 or 100 % and the error would push it further.
+- OUT is limited to 0 to 100 %. The FCV-101 stem still follows OUT at the stroke speed.
 
 ## Scenario files
 
@@ -196,6 +240,11 @@ key.
 | `ltDampingS` | 0 to 60 | 1 |
 | `fcvStrokeS` | 0 to 120 | 5 |
 | `speedFactor` | 1, 2 or 5 | 1 |
+
+The optional `pid` object holds the controller: `mode` (`"manual"` or `"auto"`), `kp` (0 to 100), `tiS`
+(0 to 3600), `tdS` (0 to 600) and `action` (`"reverse"` or `"direct"`). The defaults are those of the
+table in [The PID controller](#the-pid-controller). **Save scenario...** always writes it. With
+`"mode": "auto"` the loop starts in Auto, entered bumplessly after the `state` is applied.
 
 The optional `state` object has `levelPct` (0 to 99), `outPct`, `spPct` and `stemPct` (0 to 100). Without it,
 the loop starts at the steady state for OUT = 50 %.
@@ -253,3 +302,59 @@ Keep OUT at 70 % or below with the default settings.
 **Other things to try.** Change the dead time, the noise or the stroke time in a scenario file and
 repeat the test. Lower the pump speed to 70 %: the same OUT then gives a lower level. Close HV-102 (0 %)
 and the tank fills up to the overflow.
+
+## Exercise: closed loop
+
+You put the controller in Auto with the settings that the step test gave, and compare tuning rules.
+Do the [step test](#exercise-step-test-with-modbus-control) first, so that K, L and T are in the
+Analysis panel.
+
+**1. Read the tuning.** In the **Analysis** dock, the Tuning group turns K, L and T into settings. With
+the numbers of the step test (K about 2.2 %/%, L about 4 to 5 s, T about 28 to 34 s) you get roughly
+the values below. Yours will differ a little. The PV and the OUT of this loop are both in %, so the
+Kp of the table (in % per %) can be typed as it is.
+
+| Rule | Controller | Kp (about) | Ti (about) |
+|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | 1.6 | 31 s |
+| SIMC, λ = Auto (= L) | PI | 1.6 | 31 s |
+| Ziegler-Nichols | PI | 2.8 | 15 s |
+
+**2. Start in Auto.** Set OUT to 50 % and wait for the steady state (PV and SP are both 50 %). On the
+faceplate, type Kp and Ti (Td stays 0, Action Reverse), then click **MAN**. It becomes **AUTO**, and
+OUT does not move.
+
+**3. Step the setpoint.** In Modbus Control, write 60 to **LIC-101 SP**. Open the Trend and set its
+left axis to 0 to 100: right-click the left Y axis and choose **0 to 100** (see
+[Y-axis ranges](USER_GUIDE.md#y-axis-ranges) in the User Guide). The Trend then does not rescale while
+the loop moves. Plot PV and OUT on that axis.
+
+With the default values (Kp 1, Ti 30 s) PV rises to 60 % with no overshoot and stays within 0.5 % of
+SP after about 30 s. OUT first jumps by Kp × 10 % = 10 %, to 60 %, then falls back and settles at about
+55 %, the OUT that holds a level of 60 % with HV-102 at 50 %.
+
+**4. Compare the rules.** Return SP to 50 %, then try each pair of values in turn and write SP to 60 %
+again. Look at the overshoot (how far PV goes above 60 %) and at the settling time (the time until PV
+stays within ±0.5 % of 60 %). In general the Ziegler-Nichols PI is the most aggressive: its Kp is
+larger and its Ti shorter, so PV overshoots and may oscillate before it settles, while IMC and SIMC
+with λ = L give a smoother response. A larger λ is slower and gentler. The cursors and the
+Analysis panel can measure the times for you.
+
+**5. Load disturbance.** With the loop in Auto and PV steady at SP (60 %), move the **HV-102**
+slider from 50 to 60 %. The outlet is larger, so PV falls at first. The controller opens the valve,
+and the integral action brings PV back to SP: OUT ends at about 66 %, against about 55 % before.
+Compare the dip in PV and the movement of OUT for different tunings.
+
+Now type Ti = 0 (P-only) and repeat from a steady state. PV no longer returns to SP: an **offset**
+remains, because a P controller needs an error to give a different OUT. A larger Kp makes the offset
+smaller. Note also that switching to AUTO with Ti = 0 makes OUT jump, as explained in
+[The PID controller](#the-pid-controller).
+
+**6. The wrong action.** In Auto with Ti = 30 s, set **Action** to **Direct**. The controller now
+opens the valve when PV is above SP, which adds water. PV moves away from SP and OUT runs away to 100 %
+(PV above SP) or to 0 % (PV below SP) and stays there. Set the Action back to Reverse and click
+**AUTO** to return to **MAN**, then set OUT by hand if the level has gone to the overflow or to empty.
+
+**Other things to try.** Add Td (for example Td = L / 2) and look at the noise on OUT. Make the dead
+time longer in a scenario file and see how the same tuning behaves. Try a setpoint of 80 %: at that
+level the process is slower and its gain is higher, so a tuning made at 50 % is less stable.

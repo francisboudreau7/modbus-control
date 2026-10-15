@@ -22,6 +22,8 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
 - `int16`, `uint16`, `int32`, `uint32` and `float32` values with gain/offset scaling and a selectable
   byte order (ABCD, CDAB, BADC, DCBA)
 - Live trend with two cursors (Δt, ΔY), zoom, pan and a second Y axis
+- Y-axis ranges: fix each Y axis from its right-click menu, the axis wheel or Shift + wheel, and save them
+  in the project
 - Analysis panel for step tests: K, L and T of a first-order model with dead time, from the cursors,
   with method presets (0 % / 63.2 %, Smith, Sundaresan-Krishnaswamy, custom), plain-language checks,
   a tuning calculator (Ziegler-Nichols, Cohen-Coon, IMC / lambda, SIMC) and tooltips that show the
@@ -38,6 +40,8 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
   ([docs/TEST_SERVER.md](docs/TEST_SERVER.md))
 - Loop simulator `modbus_loop_sim`: a level control loop (P&ID, LIC-101 faceplate) that is a Modbus TCP
   server, for step tests and classes ([docs/LOOP_SIMULATOR.md](docs/LOOP_SIMULATOR.md))
+- PID auto mode in the loop simulator: switch LIC-101 to AUTO, enter Kp, Ti and Td and test a tuning on a
+  closed loop
 
 ## Try it
 
