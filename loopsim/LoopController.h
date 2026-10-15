@@ -60,6 +60,8 @@ signals:
 private:
     // Implementation-defined; T212 may change the private section freely.
     void tick();
+    void applyClientWrites(); ///< Modbus writes -> model
+    void publish();           ///< model -> Modbus registers
     LoopModel m_model;
     LoopServer m_server;
     QTimer *m_timer = nullptr;

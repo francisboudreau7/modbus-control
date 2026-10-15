@@ -21,5 +21,6 @@ set_target_properties(mbloopui PROPERTIES AUTOMOC ON)
 
 add_executable(modbus_loop_sim WIN32 main.cpp)
 target_link_libraries(modbus_loop_sim PRIVATE mbloopui mc_warnings)
+target_compile_definitions(modbus_loop_sim PRIVATE MBLOOP_VERSION="${PROJECT_VERSION}")
 
 install(TARGETS modbus_loop_sim RUNTIME DESTINATION bin)
