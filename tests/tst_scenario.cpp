@@ -199,7 +199,7 @@ void TstScenario::wrongFormatOrVersionRejected()
 
 void TstScenario::speedFactorRestricted()
 {
-    for (double ok : {1.0, 2.0, 5.0, 10.0}) {
+    for (double ok : {1.0, 2.0, 5.0}) {
         QString error;
         const QByteArray json = doc(QStringLiteral("{\"speedFactor\":%1}").arg(ok));
         const std::optional<Scenario> s = scenarioFromJson(json, &error);
@@ -208,7 +208,8 @@ void TstScenario::speedFactorRestricted()
     }
     QString error;
     QVERIFY(!scenarioFromJson(doc(QStringLiteral("{\"speedFactor\":3}")), &error).has_value());
-    QCOMPARE(error, QStringLiteral("settings.speedFactor: must be 1, 2, 5 or 10"));
+    QCOMPARE(error, QStringLiteral("settings.speedFactor: must be 1, 2 or 5"));
+    QVERIFY(!scenarioFromJson(doc(QStringLiteral("{\"speedFactor\":10}")), &error).has_value()); // removed in 1.3.0
 }
 
 void TstScenario::saveAndLoadFiles()

@@ -15,8 +15,8 @@ namespace mbloop {
 
 /// Runs level loop 101: owns the LoopModel and the LoopServer, and a 50 ms QTimer (wall clock).
 /// Each tick: applies OUT/SP written by Modbus clients (LoopServer::takeWrites), advances the
-/// model by the elapsed wall time (measured with QElapsedTimer, capped at 0.5 s) x the speed
-/// factor (nothing while paused), publishes PV/SP/OUT to the server, and emits stateChanged().
+/// model by the elapsed wall time (measured with QElapsedTimer, capped at 0.5 s) x kTimeScale x
+/// the speed factor (nothing while paused), publishes PV/SP/OUT to the server, and emits stateChanged().
 /// Used by the window and by the --headless mode. Starts with reset(LoopParams{}, 50), running.
 class LoopController : public QObject
 {
@@ -30,7 +30,11 @@ public:
     LoopServer &server();
     const LoopModel &model() const;
 
-    double speedFactor() const;    ///< 1, 2, 5 or 10
+    /// Process seconds per wall-clock second at speed x1: the tank's 141 s time constant takes
+    /// about 28 s of wall time, so a class step test settles in a few minutes.
+    static constexpr double kTimeScale = 5.0;
+
+    double speedFactor() const;    ///< 1, 2 or 5 (process time = wall time x kTimeScale x factor)
     void setSpeedFactor(double k); ///< other values are rounded to the nearest allowed one
     bool isPaused() const;
     void setPaused(bool paused);

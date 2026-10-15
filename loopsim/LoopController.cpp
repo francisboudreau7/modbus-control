@@ -10,7 +10,7 @@ namespace mbloop {
 namespace {
 
 constexpr double kMaxTickWallS = 0.5;
-constexpr double kSpeeds[] = {1.0, 2.0, 5.0, 10.0};
+constexpr double kSpeeds[] = {1.0, 2.0, 5.0};
 
 double nearestSpeed(double k)
 {
@@ -146,7 +146,7 @@ void LoopController::tickFor(double wallSeconds)
 {
     applyClientWrites();
     if (!m_paused && wallSeconds > 0.0) {
-        m_model.advance(wallSeconds * m_speed);
+        m_model.advance(wallSeconds * kTimeScale * m_speed);
     }
     publish();
     emit stateChanged();

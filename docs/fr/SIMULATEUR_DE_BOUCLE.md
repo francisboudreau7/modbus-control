@@ -23,7 +23,7 @@ Contenu : [Démarrage](#démarrage), [Le schéma TI](#le-schéma-ti), [La physiq
 Dans le menu Démarrer, choisissez **Modbus Loop Simulator**. Ou démarrez-le dans une console :
 
 ```bat
-modbus_loop_sim.exe --speed 5
+modbus_loop_sim.exe --speed 2
 ```
 
 Les programmes sont dans le dossier `bin` du dossier d'installation. Pour une installation par
@@ -57,7 +57,7 @@ la fenêtre affiche l'adresse et le nombre de clients.
 | `--port <port>` | Port TCP. 1601 par défaut. `0` laisse le système choisir. |
 | `--host <adresse>` | Adresse d'écoute. `127.0.0.1` par défaut. Utilisez `0.0.0.0` pour accepter les clients du réseau. Le serveur n'a pas d'authentification. |
 | `--scenario <fichier>` | Charger un fichier de scénario (`.mbloop`) au démarrage (voir [Fichiers de scénario](#fichiers-de-scénario)). |
-| `--speed <facteur>` | Vitesse de simulation : 1, 2, 5 ou 10. 1 par défaut. |
+| `--speed <facteur>` | Vitesse de simulation : 1, 2 ou 5 (voir **Speed** plus bas). 1 par défaut. |
 | `--headless` | Sans fenêtre. Exécute seulement la boucle et le serveur Modbus, et affiche `Listening on <hôte>:<port>`. Arrêtez-le avec Ctrl+C. |
 
 Codes de sortie : 0 pour un arrêt normal, 1 quand le serveur ne peut pas démarrer (par exemple le port
@@ -86,7 +86,7 @@ pointillés sont des signaux électriques.
 | TK-101 | Réservoir du procédé, diamètre 0.30 m, hauteur 1 m. Le niveau est la variable réglée. | Grand cylindre gradué à 0, 25, 50, 75 et 100 %. |
 | HV-102 | Vanne manuelle à la sortie du bas de TK-101. C'est la perturbation : vous la changez à la main (ouverte à 50 % par défaut). | Vanne manuelle (deux triangles) avec une poignée en T. |
 | Trop-plein | Une conduite à 99 % de la hauteur qui retourne l'excédent d'eau à TK-102. Le niveau ne peut pas dépasser 99 %. | Ligne du haut de TK-101 vers TK-102, en couleur pendant que l'eau s'écoule. |
-| LT-101 | Transmetteur de niveau : 0 à 1 m = 0 à 100 % = 4 à 20 mA. Il a un amortissement de 1 s et un bruit de ±0.2 %. Sa sortie est l'entrée du régulateur (variable de procédé, PV). | Cercle (instrument de terrain). |
+| LT-101 | Transmetteur de niveau : 0 à 1 m = 0 à 100 % = 4 à 20 mA. Il a un amortissement de 2 s et un bruit de ±0.05 %. Sa sortie est l'entrée du régulateur (variable de procédé, PV). | Cercle (instrument de terrain). |
 | LIC-101 | Régulateur indicateur de niveau. C'est le serveur Modbus. Il affiche PV, SP et OUT. | Cercle avec un trait horizontal (instrument de panneau). |
 
 ## La physique
@@ -109,7 +109,7 @@ fractions de 0 à 1) et le niveau h (en m) :
 | Débit sortant par HV-102 | Qhv = 1.4142×10⁻³ m^2.5/s × v × √h |
 | Niveau | A × dh/dt = Qin − Qhv, avec A = π × 0.15² = 0.070686 m² |
 | Trop-plein | quand h dépasserait 0.99 m, h reste à 0.99 m et l'excédent sort par le trop-plein |
-| LT-101 | 100 × h / 1 m, passé dans un filtre de premier ordre de 1 s, plus une valeur aléatoire entre −0.2 et +0.2 %, une nouvelle valeur toutes les 0.1 s de temps simulé |
+| LT-101 | 100 × h / 1 m, passé dans un filtre de premier ordre de 2 s, plus une valeur aléatoire entre −0.05 et +0.05 %, une nouvelle valeur toutes les 0.1 s de temps simulé |
 
 La simulation avance par pas de 10 ms de temps simulé.
 
@@ -180,9 +180,11 @@ course).
   qui écrit par Modbus change les mêmes valeurs.
 - **Glissières** (barre du bas) : ouverture de **HV-102** (0 à 100 %) et vitesse de **P-101 speed**
   (0 à 100 %). Déplacer HV-102 est la perturbation de la boucle.
-- **Speed** : ×1, ×2, ×5 ou ×10. La simulation va plus vite que le temps réel. Les temps affichés par
-  Modbus Control sont des temps réels (horloge murale) : multipliez-les par la vitesse pour obtenir le
-  temps simulé.
+- **Speed** : ×1, ×2 ou ×5. Même à ×1, le procédé va **5 fois plus vite que le temps réel**, pour qu'un
+  échelon se stabilise en quelques minutes plutôt qu'en un quart d'heure : une seconde d'horloge vaut
+  5 s de temps du procédé à ×1, 10 s à ×2 et 25 s à ×5. Le temps **t** sous le schéma est le temps du
+  procédé. Les temps affichés par Modbus Control sont des temps d'horloge : multipliez-les par 5 × la
+  vitesse (5 à ×1) pour obtenir les temps du procédé.
 - **Pause** / **Run** : arrête la simulation. Le serveur Modbus répond toujours, avec des valeurs
   figées, et les écritures changent encore SP et OUT.
 - **t = ...** : le temps simulé depuis le démarrage ou la dernière réinitialisation.
@@ -205,13 +207,13 @@ nomme la clé.
 | `ltNoisePct` | 0 à 5 | 0.2 |
 | `ltDampingS` | 0 à 60 | 1 |
 | `fcvStrokeS` | 0 à 120 | 5 |
-| `speedFactor` | 1, 2, 5 ou 10 | 1 |
+| `speedFactor` | 1, 2 ou 5 | 1 |
 
 L'objet facultatif `state` contient `levelPct` (0 à 99), `outPct`, `spPct` et `stemPct` (0 à 100). Sans
 lui, la boucle démarre à l'état stable pour OUT = 50 %.
 
 [examples/loop101-step.mbloop](../../examples/loop101-step.mbloop) contient les réglages par défaut à la
-vitesse ×5, pour l'essai à l'échelon ci-dessous. Un enseignant peut enregistrer d'autres scénarios :
+vitesse ×1, pour l'essai à l'échelon ci-dessous. Un enseignant peut enregistrer d'autres scénarios :
 un temps mort plus long, plus de bruit, une vanne plus lente, une pompe plus petite.
 
 ## Exercice : essai à l'échelon avec Modbus Control
@@ -222,7 +224,7 @@ dans le Guide de l'utilisateur.
 
 1. Démarrez le simulateur avec `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, depuis
    le dossier d'installation (voir [Démarrage](#démarrage))
-   (ou depuis le menu Démarrer, puis réglez **Speed** à ×5). Le niveau est stable à 50 %.
+   (ou depuis le menu Démarrer : la vitesse ×1 par défaut convient). Le niveau est stable à 50 %.
 2. Démarrez Modbus Control et ouvrez [examples/loop101.mbproj](../../examples/loop101.mbproj). Le projet
    se connecte à `127.0.0.1:1601`, unité 1, avec trois étiquettes : **LT-101 PV** (registre d'entrée 1),
    **LIC-101 SP** (registre de maintien 1) et **LIC-101 OUT** (registre de maintien 3). Cliquez sur
@@ -230,8 +232,8 @@ dans le Guide de l'utilisateur.
 3. Attendez 10 s. **LT-101 PV** est à environ 50 % et plat. Trend affiche PV et OUT.
 4. Dans le panneau **Quick write**, cliquez sur **B: 60** pour faire passer OUT de 50 à 60 % (**A: 50**
    revient en arrière). La confirmation d'écriture s'affiche si elle est activée.
-5. Attendez que PV soit stable, environ 3 à 4 minutes à ×5 (cinq constantes de temps font environ
-   12 minutes à ×1). PV monte à environ 72 %.
+5. Attendez que PV soit stable, environ 3 minutes à ×1 (cinq constantes de temps du procédé, divisées
+   par 5). PV monte à environ 72 %.
 6. Ouvrez le panneau **Analysis**. Le projet a déjà **LT-101 PV** comme PV et **LIC-101 OUT** comme CO.
    Cliquez sur **Find step**, ou placez C1 juste avant l'échelon et C2 après la stabilisation de PV avec
    **Place cursors**. Vérifiez les curseurs sur Trend.
@@ -242,11 +244,11 @@ dans le Guide de l'utilisateur.
 - **K** (environ 2.2 %/%) : ΔPV/ΔCO = (72 − 50) / (60 − 50). Il correspond au tableau des niveaux
   stabilisés.
 - **L** : le temps mort de 2 s, plus les retards de la course de FCV-101 (un déplacement de 10 % prend
-  0.5 s) et de l'amortissement de LT-101 (1 s). Cela fait environ 3 à 4 s de temps simulé. À ×5, Trend
-  l'affiche divisé par 5 : moins de 1 s, et la période de scrutation de 200 ms vaut 1 s de temps
-  simulé, donc L est une valeur approximative. Utilisez ×1 ou ×2 pour obtenir un L précis.
-- **T** : environ 150 s de temps simulé (30 s sur Trend à ×5). Multipliez les temps de Trend par la
-  vitesse. La théorie donne 2 × A × h / Qhv = 141 s à 50 % et 170 s à 72 %, et l'échelon couvre les
+  0.5 s) et de l'amortissement de LT-101 (2 s). Cela fait environ 4 à 5 s de temps du procédé, donc
+  environ 1 s sur Trend à ×1. La période de scrutation du projet (100 ms) vaut 0.5 s de temps du
+  procédé : L n'est qu'une valeur approximative, c'est le prix de l'horloge accélérée.
+- **T** : environ 150 s de temps du procédé, donc environ 30 s sur Trend à ×1. Multipliez les temps de
+  Trend par 5 (à ×1) pour obtenir les temps du procédé. La théorie donne 2 × A × h / Qhv = 141 s à 50 % et 170 s à 72 %, et l'échelon couvre les
   deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
 
 **Pourquoi un plus grand échelon donne-t-il un T plus grand ?** Le débit de sortie suit √h : le réservoir

@@ -7,7 +7,7 @@
     "port": 1601,
     "unitId": 1,
     "timeoutMs": 1000,
-    "pollPeriodMs": 200
+    "pollPeriodMs": 100
   },
   "addressBase": 1,
   "nextTagId": 4,

@@ -27,8 +27,8 @@ struct LoopParams {
     double pumpSpeedPct = 100.0;  ///< P-101 speed, 0..100 %
     double hvOpeningPct = 50.0;   ///< HV-102 opening, 0..100 %
     double deadTimeS = 2.0;       ///< pipe transport delay FCV-101 -> TK-101, 0..30 s
-    double ltNoisePct = 0.2;      ///< LT-101 noise amplitude n: uniform in [-n, +n] %, 0..5
-    double ltDampingS = 1.0;      ///< LT-101 first-order damping time constant, 0..60 s (0 = none)
+    double ltNoisePct = 0.05;      ///< LT-101 noise amplitude n: uniform in [-n, +n] %, 0..5
+    double ltDampingS = 2.0;      ///< LT-101 first-order damping time constant, 0..60 s (0 = none)
     double fcvStrokeS = 5.0;      ///< FCV-101 full-stroke time, 0..120 s (0 = instant)
     friend bool operator==(const LoopParams &, const LoopParams &) = default;
 };

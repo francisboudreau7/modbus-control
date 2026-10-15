@@ -97,7 +97,7 @@ private slots:
         auto *ov = qgraphicsitem_cast<QGraphicsPathItem *>(named(*w.schematic(), "overflow"));
         QVERIFY(ov);
         const qreal normal = ov->pen().widthF();
-        c.setSpeedFactor(10);
+        c.setSpeedFactor(5);
         c.setOut(100);
         for (int i = 0; i < 400 && !c.model().state().overflowing; ++i) {
             c.tickFor(0.5);
@@ -130,8 +130,9 @@ private slots:
         speed->setCurrentIndex(speed->findText(QString::fromUtf8("×5")));
         QCOMPARE(c.speedFactor(), 5.0);
         // Controller-side change updates the control without feeding back.
-        c.setSpeedFactor(10);
-        QCOMPARE(speed->currentText(), QString::fromUtf8("×10"));
+        c.setSpeedFactor(2);
+        QCOMPARE(speed->currentText(), QString::fromUtf8("×2"));
+        QCOMPARE(speed->count(), 3); // ×1 ×2 ×5
     }
 
     void pauseButton()
@@ -277,7 +278,7 @@ private slots:
         QCOMPARE(warnings.size(), 1);
 
         // Reset: back to OUT = SP = 50 %, time 0.
-        c.setSpeedFactor(10);
+        c.setSpeedFactor(5);
         c.tickFor(2.0);
         c.setOut(80);
         w.findChild<QAction *>("resetAction")->trigger();
@@ -324,7 +325,7 @@ private slots:
         w.resize(1200, 760);
         w.show();
         w.findChild<QCheckBox *>("processDataCheck")->setChecked(true);
-        c.setSpeedFactor(10);
+        c.setSpeedFactor(5);
         c.setOut(70);
         for (int i = 0; i < 60; ++i) {
             c.tickFor(0.5);

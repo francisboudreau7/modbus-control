@@ -106,7 +106,7 @@ private:
 
 /// Main window "Modbus Loop Simulator — Level loop 101": centre SchematicView, right Faceplate,
 /// bottom bar: "HV-102" slider ("hvSlider", 0..100 %), "P-101 speed" slider ("pumpSlider"),
-/// "Speed" combo ("speedCombo": ×1 ×2 ×5 ×10), "Pause"/"Run" toggle ("pauseButton"), simulation
+/// "Speed" combo ("speedCombo": ×1 ×2 ×5), "Pause"/"Run" toggle ("pauseButton"), simulation
 /// time label "t = 123.4 s", "Show process data" check box ("processDataCheck"). Status bar:
 /// "Modbus server on 127.0.0.1:1601, 1 client" (or the start error). File menu: "Open
 /// scenario...", "Save scenario...", "Reset", "Quit"; Help: "About". The window refreshes at the

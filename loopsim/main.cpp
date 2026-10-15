@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
                                         QStringLiteral("address"));
     const QCommandLineOption scenarioOption(QStringLiteral("scenario"), QStringLiteral("Scenario file (.mbloop) to load."),
                                             QStringLiteral("file"));
-    const QCommandLineOption speedOption(QStringLiteral("speed"), QStringLiteral("Simulation speed factor: 1, 2, 5 or 10."),
+    const QCommandLineOption speedOption(QStringLiteral("speed"), QStringLiteral("Simulation speed factor: 1, 2 or 5 (x1 runs the process 5 times faster than real time)."),
                                          QStringLiteral("factor"));
     const QCommandLineOption headlessOption(QStringLiteral("headless"),
                                             QStringLiteral("No window: run the loop and the Modbus server only."));
@@ -167,8 +167,8 @@ int main(int argc, char *argv[])
     double speed = 0.0;
     if (parser.isSet(speedOption)) {
         const int s = parser.value(speedOption).toInt(&ok);
-        if (!ok || (s != 1 && s != 2 && s != 5 && s != 10)) {
-            return fail(QStringLiteral("--speed must be 1, 2, 5 or 10"), 2);
+        if (!ok || (s != 1 && s != 2 && s != 5)) {
+            return fail(QStringLiteral("--speed must be 1, 2 or 5"), 2);
         }
         speed = s;
     }

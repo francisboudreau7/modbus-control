@@ -414,14 +414,15 @@ void TstLoopServer::controllerAdvancesByWallTimeAndSpeed()
 {
     LoopController ctl;
     const double t0 = ctl.model().state().timeS;
+    // process time = wall time x kTimeScale (5) x speed factor
     ctl.tickFor(0.2);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 0.2) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.0) < 0.02);
+    ctl.setSpeedFactor(2);
+    ctl.tickFor(0.2);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 3.0) < 0.02);
     ctl.setSpeedFactor(5);
-    ctl.tickFor(0.2);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.2) < 0.02);
-    ctl.setSpeedFactor(10);
     ctl.tickFor(0.1);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 2.2) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 5.5) < 0.02);
 }
 
 void TstLoopServer::controllerSpeedRounding()
@@ -437,13 +438,13 @@ void TstLoopServer::controllerSpeedRounding()
     QCOMPARE(ctl.speedFactor(), 5.0);
     ctl.setSpeedFactor(7.0);
     QCOMPARE(ctl.speedFactor(), 5.0);
-    ctl.setSpeedFactor(8.0);
-    QCOMPARE(ctl.speedFactor(), 10.0);
+    ctl.setSpeedFactor(10.0); // x10 no longer exists
+    QCOMPARE(ctl.speedFactor(), 5.0);
     ctl.setSpeedFactor(100.0);
-    QCOMPARE(ctl.speedFactor(), 10.0);
+    QCOMPARE(ctl.speedFactor(), 5.0);
     ctl.setSpeedFactor(-3.0);
     QCOMPARE(ctl.speedFactor(), 1.0);
-    QCOMPARE(spy.count(), 4); // 1->2, 2->5, 5->10, 10->1
+    QCOMPARE(spy.count(), 3); // 1->2, 2->5, 5->1
 }
 
 void TstLoopServer::controllerPauseStopsTime()
@@ -463,7 +464,7 @@ void TstLoopServer::controllerPauseStopsTime()
     ctl.setPaused(false);
     QCOMPARE(paused.count(), 2);
     ctl.tickFor(1.0);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.0) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - LoopController::kTimeScale) < 0.02);
 }
 
 void TstLoopServer::controllerModbusWritesReachModel()

@@ -23,7 +23,7 @@ Contents: [Starting it](#starting-it), [The P&ID](#the-pid), [The physics](#the-
 From the Start menu, choose **Modbus Loop Simulator**. Or start it from a console:
 
 ```bat
-modbus_loop_sim.exe --speed 5
+modbus_loop_sim.exe --speed 2
 ```
 
 The programs are in the `bin` folder of the installation folder. For a per-user installation (the
@@ -55,7 +55,7 @@ window shows the address and the number of clients.
 | `--port <port>` | TCP port. Default 1601. `0` lets the OS choose. |
 | `--host <address>` | Address to listen on. Default `127.0.0.1`. Use `0.0.0.0` to accept clients from the network. The server has no authentication. |
 | `--scenario <file>` | Load a scenario file (`.mbloop`) at start (see [Scenario files](#scenario-files)). |
-| `--speed <factor>` | Simulation speed: 1, 2, 5 or 10. Default 1. |
+| `--speed <factor>` | Simulation speed: 1, 2 or 5 (see **Speed** below). Default 1. |
 | `--headless` | No window. Runs the loop and the Modbus server only, and prints `Listening on <host>:<port>`. Stop it with Ctrl+C. |
 
 Exit codes: 0 for a normal stop, 1 when the server cannot start (for example the port is in use,
@@ -83,7 +83,7 @@ electric signals.
 | TK-101 | Process tank, diameter 0.30 m, height 1 m. The level is the controlled variable. | Tall cylinder with graduations 0, 25, 50, 75 and 100 %. |
 | HV-102 | Hand valve at the bottom outlet of TK-101. It is the load: you change it by hand (default 50 % open). | Hand valve (two triangles) with a T handle. |
 | Overflow | A pipe at 99 % of the height that returns the excess water to TK-102. The level cannot go above 99 %. | Line from the top of TK-101 to TK-102, drawn in colour while water flows. |
-| LT-101 | Level transmitter: 0 to 1 m = 0 to 100 % = 4 to 20 mA. It has 1 s damping and a noise of ±0.2 %. Its output is the regulator input (PV). | Circle (field instrument). |
+| LT-101 | Level transmitter: 0 to 1 m = 0 to 100 % = 4 to 20 mA. It has 2 s damping and a noise of ±0.05 %. Its output is the regulator input (PV). | Circle (field instrument). |
 | LIC-101 | Level indicating controller. It is the Modbus server. It shows PV, SP and OUT. | Circle with a horizontal line (panel instrument). |
 
 ## The physics
@@ -106,7 +106,7 @@ the level h (in m):
 | Flow out through HV-102 | Qhv = 1.4142×10⁻³ m^2.5/s × v × √h |
 | Level | A × dh/dt = Qin − Qhv, with A = π × 0.15² = 0.070686 m² |
 | Overflow | when h would exceed 0.99 m, h stays at 0.99 m and the excess leaves through the overflow |
-| LT-101 | 100 × h / 1 m, through a first-order lag of 1 s, plus a random value between −0.2 and +0.2 %, a new value every 0.1 s of simulation time |
+| LT-101 | 100 × h / 1 m, through a first-order lag of 2 s, plus a random value between −0.05 and +0.05 %, a new value every 0.1 s of simulation time |
 
 The simulation runs in steps of 10 ms of simulation time.
 
@@ -169,8 +169,11 @@ A written OUT takes effect at once on FCV-101 (the stem then moves at the stroke
   100 are clamped. A client that writes by Modbus changes the same values.
 - **Sliders** (bottom bar): **HV-102** opening (0 to 100 %) and **P-101 speed** (0 to 100 %). Moving
   HV-102 is the load disturbance of the loop.
-- **Speed**: ×1, ×2, ×5 or ×10. The simulation runs faster than real time. The times that Modbus
-  Control shows are real (wall-clock) times: multiply them by the speed to get the simulation time.
+- **Speed**: ×1, ×2 or ×5. Even at ×1 the process runs **5 times faster than real time**, so a step
+  settles in a few minutes instead of a quarter of an hour: one second on the clock is 5 s of process
+  time at ×1, 10 s at ×2 and 25 s at ×5. The time **t** under the schematic is process time. The times
+  that Modbus Control shows are clock times: multiply them by 5 × the speed (5 at ×1) to get process
+  times.
 - **Pause** / **Run**: stops the simulation. The Modbus server still answers, with frozen values, and
   writes still change SP and OUT.
 - **t = ...**: the simulation time since the start or the last reset.
@@ -193,12 +196,12 @@ key.
 | `ltNoisePct` | 0 to 5 | 0.2 |
 | `ltDampingS` | 0 to 60 | 1 |
 | `fcvStrokeS` | 0 to 120 | 5 |
-| `speedFactor` | 1, 2, 5 or 10 | 1 |
+| `speedFactor` | 1, 2 or 5 | 1 |
 
 The optional `state` object has `levelPct` (0 to 99), `outPct`, `spPct` and `stemPct` (0 to 100). Without it,
 the loop starts at the steady state for OUT = 50 %.
 
-[examples/loop101-step.mbloop](../examples/loop101-step.mbloop) has the default settings at speed ×5, for
+[examples/loop101-step.mbloop](../examples/loop101-step.mbloop) has the default settings at speed ×1, for
 the step test below. A teacher can save other scenarios: a longer dead time, more noise, a slower
 valve, a smaller pump.
 
@@ -210,15 +213,15 @@ for the panel.
 
 1. Start the simulator with `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, run
    from the installation folder (see [Starting it](#starting-it))
-   (or start it from the Start menu and set **Speed** to ×5). The level is steady at 50 %.
+   (or start it from the Start menu: the default speed ×1 is right). The level is steady at 50 %.
 2. Start Modbus Control and open [examples/loop101.mbproj](../examples/loop101.mbproj). The project
    connects to `127.0.0.1:1601`, unit 1, with three tags: **LT-101 PV** (input register 1), **LIC-101 SP**
    (holding register 1) and **LIC-101 OUT** (holding register 3). Click **Connect**.
 3. Wait 10 s. **LT-101 PV** is about 50 % and flat. The Trend shows PV and OUT.
 4. In the **Quick write** dock, click **B: 60** to step OUT from 50 to 60 % (**A: 50** goes back).
    The write confirmation appears if it is turned on.
-5. Wait until PV is steady, about 3 to 4 minutes at ×5 (five time constants are about 12 minutes at
-   ×1). The PV rises to about 72 %.
+5. Wait until PV is steady, about 3 minutes at ×1 (five time constants of process time, divided by
+   5). The PV rises to about 72 %.
 6. Open the **Analysis** dock. The project already has **LT-101 PV** as the PV and **LIC-101 OUT** as the
    CO. Click **Find step**, or place C1 just before the step and C2 after the PV has settled with
    **Place cursors**. Check the cursors on the Trend.
@@ -228,11 +231,12 @@ for the panel.
 
 - **K** (about 2.2 %/%): ΔPV/ΔCO = (72 − 50) / (60 − 50). It matches the table of settled levels.
 - **L**: the dead time of 2 s, plus the delays of the FCV-101 stroke (a 10 % move takes 0.5 s) and of the
-  LT-101 damping (1 s). This is about 3 to 4 s of simulation time. At ×5 the Trend shows it divided
-  by 5: less than 1 s, and the poll period of 200 ms is 1 s of simulation time, so L is a rough
-  value. Use ×1 or ×2 when you want L to be accurate.
-- **T**: about 150 s of simulation time (30 s on the Trend at ×5). Multiply the times of the Trend by
-  the speed. The theory says 2 × A × h / Qhv = 141 s at 50 % and 170 s at 72 %, and the step covers both.
+  LT-101 damping (2 s). This is about 4 to 5 s of process time, so about 1 s on the Trend at ×1. The
+  poll period of the project (100 ms) is 0.5 s of process time, so L is only a rough value: that is
+  the price of the faster clock.
+- **T**: about 150 s of process time, so about 30 s on the Trend at ×1. Multiply the times of the Trend
+  by 5 (at ×1) to get process times. The theory says 2 × A × h / Qhv = 141 s at 50 % and 170 s at 72 %,
+  and the step covers both.
   A model fitted on the 63.2 % point gives a value between them.
 
 **Why does a bigger step give a larger T?** The outflow follows √h, so the tank is slower at high levels.

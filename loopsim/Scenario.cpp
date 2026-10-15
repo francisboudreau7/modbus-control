@@ -83,8 +83,8 @@ bool readSpeedFactor(const QJsonObject &obj, const QString &prefix, double &out,
         return false;
     }
     const double d = value.toDouble();
-    if (d != 1.0 && d != 2.0 && d != 5.0 && d != 10.0) {
-        setError(error, QStringLiteral("%1: must be 1, 2, 5 or 10").arg(name));
+    if (d != 1.0 && d != 2.0 && d != 5.0) {
+        setError(error, QStringLiteral("%1: must be 1, 2 or 5").arg(name));
         return false;
     }
     out = d;

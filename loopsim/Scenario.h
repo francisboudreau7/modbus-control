@@ -12,7 +12,7 @@ namespace mbloop {
 /// A saved loop: settings and, optionally, the state to start from.
 struct Scenario {
     LoopParams params;
-    double speedFactor = 1.0; ///< 1, 2, 5 or 10
+    double speedFactor = 1.0; ///< 1, 2 or 5 (see LoopController::kTimeScale)
     /// When present, the loop starts from these values instead of the steady state at OUT 50 %.
     struct State {
         double levelPct = 50.0; ///< 0..99
@@ -27,12 +27,12 @@ struct Scenario {
 
 /// JSON (.mbloop, UTF-8, indented):
 /// { "format": "modbus-loop-scenario", "version": 1,
-///   "settings": { "pumpSpeedPct": 100, "hvOpeningPct": 50, "deadTimeS": 2, "ltNoisePct": 0.2,
-///                 "ltDampingS": 1, "fcvStrokeS": 5, "speedFactor": 1 },
+///   "settings": { "pumpSpeedPct": 100, "hvOpeningPct": 50, "deadTimeS": 2, "ltNoisePct": 0.05,
+///                 "ltDampingS": 2, "fcvStrokeS": 5, "speedFactor": 1 },
 ///   "state": { "levelPct": 50, "outPct": 50, "spPct": 50, "stemPct": 50 } }   ("state" optional)
 /// Every key in "settings"/"state" is optional (defaults as in the structs); ranges: pump and HV
 /// 0..100, deadTimeS 0..30, ltNoisePct 0..5, ltDampingS 0..60, fcvStrokeS 0..120, speedFactor one of
-/// 1, 2, 5, 10, levelPct 0..99, the others 0..100. Wrong format/version, unknown keys, wrong JSON
+/// 1, 2, 5, levelPct 0..99, the others 0..100. Wrong format/version, unknown keys, wrong JSON
 /// types or out-of-range values: nullopt and an error like "settings.deadTimeS: must be 0..30".
 QByteArray scenarioToJson(const Scenario &scenario);
 std::optional<Scenario> scenarioFromJson(const QByteArray &json, QString *error = nullptr);

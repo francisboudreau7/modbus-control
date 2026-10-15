@@ -682,7 +682,7 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     bar->addWidget(new QLabel(QStringLiteral("Speed"), central));
     m_speedCombo = new QComboBox(central);
     m_speedCombo->setObjectName(QStringLiteral("speedCombo"));
-    for (int k : {1, 2, 5, 10}) {
+    for (int k : {1, 2, 5}) {
         m_speedCombo->addItem(QStringLiteral("×%1").arg(k), static_cast<double>(k));
     }
     bar->addWidget(m_speedCombo);
