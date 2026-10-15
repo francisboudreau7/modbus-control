@@ -39,6 +39,14 @@ mc_add_qtest(tst_sessionio LIBS mbcore)
 mc_add_qtest(tst_encodingdetect LIBS mbcore)
 mc_add_qtest(tst_tuning LIBS mbcore)
 mc_add_qtest(tst_docslinks LIBS mbui)
+mc_add_qtest(tst_loopmodel LIBS mbloop)
+mc_add_qtest(tst_loopserver LIBS mbloop)
+mc_add_qtest(tst_scenario LIBS mbloop)
+mc_add_qtest(tst_loopwindow LIBS mbloopui)
+set_property(TEST tst_loopwindow APPEND PROPERTY ENVIRONMENT_MODIFICATION
+  "QT_QPA_PLATFORM=set:offscreen"
+  "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts"
+  "QT_PLUGIN_PATH=set:${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}")
 
 # Test server unit tests
 mc_add_qtest(tst_signalgen LIBS mbsim)

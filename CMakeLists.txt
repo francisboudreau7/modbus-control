@@ -43,6 +43,7 @@ enable_testing()
 add_subdirectory(src/core)
 add_subdirectory(src/app)
 add_subdirectory(server)
+add_subdirectory(loopsim)
 add_subdirectory(tests)
 
 # Icon renderer for tools/make_icons.ps1; not built by default.
