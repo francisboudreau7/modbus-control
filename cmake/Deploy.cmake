@@ -38,6 +38,7 @@ endfunction()
 
 mc_install_qt_runtime(modbus_control)
 mc_install_qt_runtime(modbus_test_server)
+mc_install_qt_runtime(modbus_loop_sim)
 
 # Third-party licenses. libmodbus (LGPL 2.1) ships its license text in the vcpkg copyright file.
 install(FILES "${_mc_vcpkg_prefix}/share/libmodbus/copyright" RENAME COPYING-libmodbus.txt DESTINATION licenses)
