@@ -378,6 +378,187 @@ private slots:
         QVERIFY(qAbs(m.state().qIn - m.state().qFcv) < 1e-15);
         QVERIFY(qAbs(m.state().qFcv - kFcvMaxFlowM3s * 0.8) < 1e-12);
     }
+
+    // ---- LIC-101 PID (v1.3.1) -------------------------------------------------------------
+    void pidSetpointStepSettles()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setAuto(true);
+        m.advance(60.0);
+        QVERIFY(qAbs(m.state().pvPct - 50.0) < 0.1); // stays put at SP = PV
+        m.setSp(60.0);
+        const double t0 = m.state().timeS;
+        double peak = 0.0, settledAt = -1.0;
+        for (int i = 0; i < 6000; ++i) { // 600 s in 0.1 s
+            m.advance(0.1);
+            peak = std::max(peak, m.state().pvPct);
+            const bool inBand = qAbs(m.state().pvPct - 60.0) <= 0.5;
+            if (!inBand)
+                settledAt = -1.0;
+            else if (settledAt < 0.0)
+                settledAt = m.state().timeS - t0;
+        }
+        qInfo("SP step 50->60: peak %.2f %%, enters +-0.5 %% band for good at %.1f s", peak, settledAt);
+        QVERIFY(settledAt >= 0.0 && settledAt < 300.0);
+        QVERIFY(peak < 66.0); // modest overshoot, no sustained oscillation
+        QVERIFY(qAbs(m.state().pvPct - 60.0) < 0.1);
+    }
+
+    void pidProportionalOnlyOffset()
+    {
+        LoopParams p = plain();
+        PidSettings pid;
+        pid.tiS = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setPid(pid);
+        m.setAuto(true);
+        m.advance(600.0);
+        // theory: PV = 200 (OUT/100)^2, OUT = Kp (SP - PV)  ->  4x^2 + 2x - 1 = 0, x = OUT/100
+        const double x = (-2.0 + std::sqrt(20.0)) / 8.0;
+        const double out = 100.0 * x, pv = 200.0 * x * x;
+        QVERIFY(qAbs(m.state().outPct - out) < 0.2);
+        QVERIFY(qAbs(m.state().pvPct - pv) < 0.2);
+        QVERIFY(qAbs((m.state().spPct - m.state().pvPct) - out) < 0.2); // permanent offset = Kp-scaled OUT
+        QVERIFY(m.state().spPct - m.state().pvPct > 10.0);
+    }
+
+    void pidBumplessEntryAndKpChange()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setSp(57.0); // error 7 %
+        m.setOut(40.0);
+        m.advance(5.0);
+        const double before = m.state().outPct;
+        QCOMPARE(before, 40.0);
+        m.setAuto(true);
+        QVERIFY(m.isAuto() && m.state().autoMode);
+        QCOMPARE(m.state().outPct, before); // not touched at that instant
+        m.advance(0.1);                     // first PID execution
+        QVERIFY(qAbs(m.state().outPct - before) < 0.2);
+        m.advance(10.0);
+        const double o1 = m.state().outPct;
+        PidSettings pid = m.pid();
+        pid.kp = 4.0;
+        m.setPid(pid);
+        QCOMPARE(m.state().outPct, o1);
+        m.advance(0.1);
+        QVERIFY(qAbs(m.state().outPct - o1) < 0.5); // only the natural change over 0.1 s
+    }
+
+    void pidAntiWindup()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.0;
+        p.pumpSpeedPct = 50.0; // the level cannot get above about 25 %: OUT saturates
+        LoopModel m;
+        m.reset(p, 50.0);
+        PidSettings pid;
+        pid.kp = 2.0;
+        m.setPid(pid);
+        m.setAuto(true);
+        m.setSp(100.0);
+        m.advance(200.0);
+        QVERIFY(m.state().outPct > 99.0); // saturated (P alone is about 150 %)
+        m.setSp(10.0);
+        const double t0 = m.state().timeS;
+        double leftAt = -1.0;
+        for (int i = 0; i < 600 && leftAt < 0.0; ++i) {
+            m.advance(0.1);
+            if (m.state().outPct < 90.0)
+                leftAt = m.state().timeS - t0;
+        }
+        QVERIFY(leftAt >= 0.0);
+        QVERIFY(leftAt < 1.0); // within a few PID periods
+    }
+
+    void pidDirectActionRunsAway()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        PidSettings pid;
+        pid.reverse = false;
+        m.setPid(pid);
+        m.setAuto(true);
+        m.setSp(70.0); // SP above PV: direct action closes the valve
+        m.advance(60.0);
+        QCOMPARE(m.state().outPct, 0.0);
+        QVERIFY(m.state().pvPct < 45.0);
+    }
+
+    void pidNoDerivativeKickOnSetpoint()
+    {
+        PidSettings pid;
+        pid.kp = 2.0;
+        pid.tiS = 30.0;
+        pid.tdS = 10.0;
+        LoopModel m;
+        m.reset(plain(), 50.0);
+        m.setPid(pid);
+        m.setAuto(true);
+        m.advance(0.2); // SP = PV: OUT stays at 50
+        const double o0 = m.state().outPct;
+        m.setSp(55.0);
+        m.advance(0.1); // one PID execution after the step; PV hardly moved
+        QVERIFY(qAbs((m.state().outPct - o0) - 2.0 * 5.0) < 0.2); // Kp * dSP only
+    }
+
+    void pidDerivativeStillSettles()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.0;
+        PidSettings pid;
+        pid.tdS = 5.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setPid(pid);
+        m.setAuto(true);
+        m.setSp(60.0);
+        m.advance(400.0);
+        QVERIFY(qAbs(m.state().pvPct - 60.0) < 0.5);
+    }
+
+    void pidSetOutIgnoredInAutoAndResetReturnsToManual()
+    {
+        LoopModel m;
+        m.reset(plain(), 50.0);
+        PidSettings pid;
+        pid.kp = 3.0;
+        pid.tiS = 12.0;
+        pid.reverse = false;
+        m.setPid(pid);
+        m.setAuto(true);
+        m.setOut(10.0);
+        QCOMPARE(m.state().outPct, 50.0);
+        m.reset(plain(), 50.0);
+        QVERIFY(!m.isAuto() && !m.state().autoMode);
+        QVERIFY(m.pid() == pid); // settings are kept
+        m.setOut(10.0);
+        QCOMPARE(m.state().outPct, 10.0);
+        m.advance(5.0);
+        QCOMPARE(m.state().outPct, 10.0); // Manual: the PID does not run
+    }
+
+    void pidSettingsClamped()
+    {
+        LoopModel m;
+        PidSettings pid;
+        pid.kp = 500.0;
+        pid.tiS = -3.0;
+        pid.tdS = 9999.0;
+        m.setPid(pid);
+        QCOMPARE(m.pid().kp, 100.0);
+        QCOMPARE(m.pid().tiS, 0.0);
+        QCOMPARE(m.pid().tdS, 600.0);
+    }
 };
 
 QTEST_MAIN(TstLoopModel)
