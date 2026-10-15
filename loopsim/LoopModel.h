@@ -116,7 +116,8 @@ public:
 
     /// PID (v1.3.1). Executed every kPidPeriodS of simulation time (every 10 steps) while in Auto:
     /// e = SP - PV (reverse) or PV - SP (direct) using pvPct (the transmitter output, noise
-    /// included); P = Kp e; I += Kp / Ti e dt (Ti 0: I = 0 and no integration) with conditional
+    /// included); P = Kp e; I += Kp / Ti e dt (Ti 0: I is a constant bias set at the
+    /// bumpless transfer (manual reset), no integration) with conditional
     /// integration (anti-windup): I is not integrated when OUT is at 0 or 100 and e would push it
     /// further; D = -Kp Td dPVf/dt for reverse (+ for direct) on a filtered PV (first-order filter
     /// with time constant Td / 10; Td 0: D = 0) - derivative on PV, so SP changes do not kick;

@@ -160,8 +160,11 @@ public:
 protected:
     void widgetWheelEvent(QWheelEvent *e) override
     {
-        m_y = e->modifiers().testFlag(Qt::ShiftModifier);
-        setWheelModifiers(e->modifiers()); // the base class only reacts to its configured modifiers
+        const Qt::KeyboardModifiers mods = e->modifiers();
+        if (mods != Qt::NoModifier && mods != Qt::ShiftModifier)
+            return; // Ctrl/Alt+wheel are not zoom gestures
+        m_y = mods.testFlag(Qt::ShiftModifier);
+        setWheelModifiers(mods); // the base class only reacts to its configured modifiers
         setAxisEnabled(QwtPlot::xBottom, !m_y);
         setAxisEnabled(QwtPlot::yLeft, m_y);
         setAxisEnabled(QwtPlot::yRight, m_y);
@@ -303,7 +306,8 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     panner->setMouseButton(Qt::RightButton);
     connect(panner, &QwtPanner::panned, this, [this](int, int dy) {
         setPaused(true);
-        if (dy != 0)
+        // dy is the vertical drag since the press; a slight wobble in a time pan is not a Y pan.
+        if (qAbs(dy) >= 4)
             fixVisibleAxes();
     });
 
@@ -339,12 +343,14 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     connect(escape, &QShortcut::activated, m_cursors, [this] { m_cursors->setPlacing(false); });
     connect(m_cursors, &PlotCursors::interacted, this, [this] { setPaused(true); });
     connect(fitButton, &QPushButton::clicked, this, [this] {
+        const bool wasFixed = m_leftRange || m_rightRange;
         m_leftRange.reset();
         m_rightRange.reset();
         const QwtInterval xi = m_plot->axisInterval(QwtPlot::xBottom);
         fitY(xi.minValue(), xi.maxValue());
         m_plot->replot();
-        emit axisRangesChanged();
+        if (wasFixed)
+            emit axisRangesChanged();
     });
 }
 
@@ -477,10 +483,10 @@ void TrendPlot::fitY(double x1, double x2)
     fitAxis(QwtPlot::yRight, x1, x2);
 }
 
-void TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
+bool TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
 {
     if (axisRange(axis))
-        return; // Fixed axes are never auto-scaled
+        return true; // Fixed axes are never auto-scaled
     double lo = std::numeric_limits<double>::infinity();
     double hi = -lo;
     for (CurveEntry *e : std::as_const(m_entries)) {
@@ -500,7 +506,7 @@ void TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
         }
     }
     if (!(lo <= hi))
-        return;
+        return false; // no data in the window: the scale is left as it is
     const double span = hi - lo;
     if (span < 1e-9) {
         lo -= 1.0;
@@ -510,6 +516,7 @@ void TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
         hi += span * 0.05;
     }
     m_plot->setAxisScale(axis, lo, hi);
+    return true;
 }
 
 void TrendPlot::applyAxes()
@@ -614,7 +621,9 @@ void TrendPlot::setAxisRange(QwtAxisId axis, std::optional<std::pair<double, dou
         m_plot->setAxisScale(axis, range->first, range->second);
     } else {
         const QwtInterval xi = m_plot->axisInterval(QwtPlot::xBottom);
-        fitAxis(axis, xi.minValue(), xi.maxValue());
+        // No data in the window: drop the stale fixed limits for a neutral scale.
+        if (!fitAxis(axis, xi.minValue(), xi.maxValue()))
+            m_plot->setAxisScale(axis, 0.0, 1.0);
     }
     m_plot->replot();
 }

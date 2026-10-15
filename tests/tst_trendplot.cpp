@@ -267,6 +267,73 @@ private slots:
         QVERIFY(tp.plot()->axisInterval(QwtAxis::YRight).maxValue() >= 1950.0);
     }
 
+    void fitYWithoutFixedAxesDoesNotEmit()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        for (QPushButton *b : tp.findChildren<QPushButton *>())
+            if (b->text() == QStringLiteral("Fit Y"))
+                b->click();
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void autoWithoutDataDropsStaleFixedScale()
+    {
+        TrendPlot tp; // no recorder, no data
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(-500.0, 500.0));
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 500.0);
+        tp.setAxisRange(QwtAxis::YLeft, std::nullopt);
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).minValue(), 0.0);
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 1.0);
+    }
+
+    void ctrlWheelDoesNotZoom()
+    {
+        TrendPlot tp;
+        tp.resize(800, 600);
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tp));
+        const QwtInterval x0 = tp.plot()->axisInterval(QwtAxis::XBottom);
+        const QwtInterval y0 = tp.plot()->axisInterval(QwtAxis::YLeft);
+        for (Qt::KeyboardModifiers m : {Qt::KeyboardModifiers(Qt::ControlModifier), Qt::KeyboardModifiers(Qt::AltModifier)})
+            sendWheel(tp.plot()->canvas(), 120, m);
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::XBottom).minValue(), x0.minValue());
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::XBottom).maxValue(), x0.maxValue());
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).minValue(), y0.minValue());
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), y0.maxValue());
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+    }
+
+    void rightDragWobbleDoesNotFixYAxes()
+    {
+        TrendPlot tp;
+        tp.resize(800, 600);
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tp));
+        QWidget *canvas = tp.plot()->canvas();
+        const QPoint start(canvas->width() / 2, canvas->height() / 2);
+        // Mostly horizontal drag with a 2 px vertical wobble: a time pan only.
+        QTest::mousePress(canvas, Qt::RightButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas, start + QPoint(-40, 1));
+        QTest::mouseMove(canvas, start + QPoint(-80, 2));
+        QTest::mouseRelease(canvas, Qt::RightButton, Qt::NoModifier, start + QPoint(-80, 2));
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(!tp.axisRange(QwtAxis::YRight));
+        // A real vertical drag does fix them.
+        QTest::mousePress(canvas, Qt::RightButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas, start + QPoint(0, 20));
+        QTest::mouseMove(canvas, start + QPoint(0, 40));
+        QTest::mouseRelease(canvas, Qt::RightButton, Qt::NoModifier, start + QPoint(0, 40));
+        QVERIFY(tp.axisRange(QwtAxis::YLeft));
+    }
+
     void axisMenuActions()
     {
         TrendPlot tp;
