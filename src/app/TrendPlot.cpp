@@ -528,4 +528,20 @@ void TrendPlot::resetData()
     m_plot->replot();
 }
 
+// Stubs created by T220; implemented by T221.
+std::optional<std::pair<double, double>> TrendPlot::axisRange(QwtAxisId axis) const
+{
+    return axis == QwtAxis::YRight ? m_rightRange : m_leftRange;
+}
+
+void TrendPlot::setAxisRange(QwtAxisId axis, std::optional<std::pair<double, double>> range)
+{
+    (axis == QwtAxis::YRight ? m_rightRange : m_leftRange) = range;
+}
+
+QMenu *TrendPlot::axisMenu(QwtAxisId)
+{
+    return nullptr;
+}
+
 } // namespace mb

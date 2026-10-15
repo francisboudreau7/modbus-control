@@ -41,6 +41,10 @@ public:
     void setPumpSpeed(double pct);
     void setHvOpening(double pct);
     void setParams(const LoopParams &params);
+    /// LIC-101 PID (v1.3.1): forwards to the model, and setAuto also calls
+    /// LoopServer::setOutWritable(!on); publishes and emits stateChanged().
+    void setAuto(bool on);
+    void setPid(const PidSettings &pid);
 
     /// Scenario of the current settings and state (state always present).
     Scenario currentScenario() const;

@@ -67,6 +67,9 @@ class WriteController;
 ///   system())) through m_prompts.openUrl; when that returns false, opens the installed copy
 ///   (QUrl::fromLocalFile(docs::localPath(QCoreApplication::applicationDirPath(), ...))) if the
 ///   file exists; otherwise warns "Open documentation": "Could not open <url>." (T202)
+/// - Trend Y-axis ranges (v1.3.1, T221): Project::yLeft/yRight are applied with
+///   TrendPlot::setAxisRange on load (Auto for a new project) and saved from axisRange(); the
+///   plot's axisRangesChanged() marks the project modified.
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.

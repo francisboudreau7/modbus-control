@@ -78,6 +78,10 @@ private:
 /// and the mA of PV and OUT; buttons "▲" / "▼" ("outUpButton", "outDownButton") change OUT by
 /// 1 % (5 % with Shift), "outEdit" (QLineEdit, Enter applies a typed value 0..100), "spEdit"
 /// likewise for SP. Out-of-range typed values are clamped.
+/// v1.3.1 (T224): a mode button ("modeButton", text "MAN" in Manual / "AUTO" in Auto, amber / green)
+/// switches LoopController::setAuto; in Auto the OUT buttons and "outEdit" are disabled (SP stays
+/// editable). A "Tuning" section: "kpEdit", "tiEdit" (s), "tdEdit" (s) (QLineEdit, Enter applies,
+/// clamped to PidSettings ranges) and "actionCombo" ("Reverse", "Direct") -> setPid.
 class Faceplate : public QWidget
 {
     Q_OBJECT

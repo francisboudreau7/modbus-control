@@ -459,4 +459,7 @@ void LoopServer::run()
     m_clients = 0;
 }
 
+// Stub created by T220; implemented by T223.
+void LoopServer::setOutWritable(bool) {}
+
 } // namespace mbloop

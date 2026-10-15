@@ -10,6 +10,7 @@
 #include <QStringList>
 
 #include <optional>
+#include <utility>
 
 namespace mb {
 
@@ -78,12 +79,20 @@ inline constexpr int kProjectFormatVersion = 1;
 /// every tag with "analyzed": true. "showModel" missing -> true (the new default). The per-tag
 /// "analyzed" is still read (it must be a boolean) but no longer written.
 ///
+/// Added in v1.3.1 (optional, additive): top-level "yAxes": {"left": "auto" | [min, max],
+/// "right": "auto" | [min, max]}; each key optional (missing = "auto"); [min, max] two finite
+/// numbers with min < max, anything else rejected ("yAxes.left: must be \"auto\" or [min, max] with
+/// min < max"). Always written.
+///
 /// Added in v1.2.3 (optional, additive): per tag "encodingVerified" (boolean, default true; written
 /// only when false) and "confirmed16Bit" (boolean, default false; written only when true). Any
 /// other JSON type is rejected.
 /// Column keys hidden by the tag table's compact view: "raw", "gain", "offset", "byteOrder",
 /// "axis", "color", "writeMin", "writeMax", "quickA", "quickB" (in this order).
 QStringList compactHiddenColumns();
+
+/// A fixed Y-axis range of the Trend (min < max, finite); nullopt = Auto (auto-scale).
+using YRange = std::optional<std::pair<double, double>>;
 
 struct Project {
     ConnectionSettings connection;
@@ -97,6 +106,9 @@ struct Project {
     AnalysisSettings analysis;
     /// Tag-table columns hidden in this project (column keys; JSON "hiddenColumns").
     QStringList hiddenColumns = compactHiddenColumns();
+    /// Trend Y-axis ranges (JSON top-level "yAxes", see the v1.3.1 paragraph above).
+    YRange yLeft;
+    YRange yRight;
 
     friend bool operator==(const Project &, const Project &) = default;
 };

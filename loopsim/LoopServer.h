@@ -30,6 +30,8 @@ struct RegulatorRegisters {
 ///   including FC06, FC01/02/05/15/23 and other addresses: exception 2 (illegal data address).
 /// - FC16 values must be finite and within 0..100 (both SP and OUT): otherwise exception 3
 ///   (illegal data value), nothing written.
+/// - While setOutWritable(false) (LIC-101 in Auto), a write that includes OUT (holding 2-3) is
+///   refused with exception 3 and nothing is written (also not SP in the same request).
 /// - A successful SP/OUT write updates the shared registers immediately (the model applies OUT on
 ///   its next tick through takeWrites()).
 /// Reads return the shared values at the time of the request.
@@ -61,6 +63,8 @@ public:
         float out = 0.0f;
     };
     Writes takeWrites();
+    /// False while LIC-101 is in Auto (see above). Default true.
+    void setOutWritable(bool writable);
 
 private:
     // Implementation-defined; T212 may change the private section freely.

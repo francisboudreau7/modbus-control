@@ -20,6 +20,7 @@ inline constexpr double kFcvMaxFlowM3s = 5.0e-3;         ///< 300 L/min: FCV ful
 inline constexpr double kHvCoefficient = 7.0711e-3;      ///< Chv in m^2.5/s (Qhv = Chv * v * sqrt(h))
 inline constexpr double kStepS = 0.010;                  ///< integration step, simulation time
 inline constexpr double kNoisePeriodS = 0.100;           ///< LT noise sample period
+inline constexpr double kPidPeriodS = 0.100;             ///< LIC-101 PID execution period
 } // namespace loop101
 
 /// Settings a teacher can change (window sliders, scenario file, command line).
@@ -31,6 +32,15 @@ struct LoopParams {
     double ltDampingS = 2.0;      ///< LT-101 first-order damping time constant, 0..60 s (0 = none)
     double fcvStrokeS = 5.0;      ///< FCV-101 full-stroke time, 0..120 s (0 = instant)
     friend bool operator==(const LoopParams &, const LoopParams &) = default;
+};
+
+/// LIC-101 PID settings (ideal ISA form u = Kp (e + 1/Ti integral(e dt) + Td de/dt)).
+struct PidSettings {
+    double kp = 1.0;      ///< proportional gain, 0..100 (% OUT per % error)
+    double tiS = 30.0;    ///< integral time, 0..3600 s (0 = no integral action)
+    double tdS = 0.0;     ///< derivative time, 0..600 s (0 = no derivative action)
+    bool reverse = true;  ///< Reverse: e = SP - PV (PV up -> OUT down); Direct: e = PV - SP
+    friend bool operator==(const PidSettings &, const PidSettings &) = default;
 };
 
 /// Instantaneous values (for the window, the server and tests). Flows in m^3/s.
@@ -47,6 +57,7 @@ struct LoopState {
     double qHv = 0.0;            ///< flow out through HV-102
     double qOverflow = 0.0;      ///< flow out through the overflow (> 0 only at kOverflowLevelM)
     bool overflowing = false;    ///< qOverflow > 0
+    bool autoMode = false;       ///< LIC-101 in Auto (OUT computed by the PID)
 };
 
 /// 4..20 mA for 0..100 % (not clamped).
@@ -103,6 +114,21 @@ public:
     /// Refills the whole dead-time buffer with the current qFcv (scenario load, after setStemPct).
     void fillPipe();
 
+    /// PID (v1.3.1). Executed every kPidPeriodS of simulation time (every 10 steps) while in Auto:
+    /// e = SP - PV (reverse) or PV - SP (direct) using pvPct (the transmitter output, noise
+    /// included); P = Kp e; I += Kp / Ti e dt (Ti 0: I = 0 and no integration) with conditional
+    /// integration (anti-windup): I is not integrated when OUT is at 0 or 100 and e would push it
+    /// further; D = -Kp Td dPVf/dt for reverse (+ for direct) on a filtered PV (first-order filter
+    /// with time constant Td / 10; Td 0: D = 0) - derivative on PV, so SP changes do not kick;
+    /// OUT = clamp(P + I + D, 0, 100). Bumpless: entering Auto sets I = OUT - P - D for the
+    /// current values (so OUT does not jump) and the PV filter to PV. Leaving Auto keeps OUT.
+    /// setOut() is ignored in Auto (the server and the faceplate refuse it before).
+    void setPid(const PidSettings &pid); ///< clamped to the ranges; keeps I bumpless (I adjusted so
+                                         ///< OUT does not jump when Kp changes in Auto)
+    const PidSettings &pid() const;
+    void setAuto(bool on);
+    bool isAuto() const;
+
     const LoopState &state() const;
 
     /// Steady level in m for these settings and OUT (not clamped to the overflow), for tests and
@@ -119,6 +145,7 @@ private:
     double m_noisePct = 0.0;
     int m_noiseSteps = 0; ///< steps since the last noise sample
     std::mt19937 m_rng;
+    PidSettings m_pid;
 
     void step();
     void resizePipe(std::size_t n, double padValue);

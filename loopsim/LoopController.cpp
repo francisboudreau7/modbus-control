@@ -179,4 +179,8 @@ void LoopController::publish()
     m_server.publish(static_cast<float>(st.pvPct), static_cast<float>(st.spPct), static_cast<float>(st.outPct));
 }
 
+// Stubs created by T220; implemented by T223.
+void LoopController::setAuto(bool on) { m_model.setAuto(on); }
+void LoopController::setPid(const PidSettings &pid) { m_model.setPid(pid); }
+
 } // namespace mbloop

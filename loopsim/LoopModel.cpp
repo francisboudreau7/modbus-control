@@ -202,4 +202,10 @@ double LoopModel::steadyLevelM(const LoopParams &params, double outPct)
     return x * x;
 }
 
+// Stubs created by T220; implemented by T223.
+void LoopModel::setPid(const PidSettings &pid) { m_pid = pid; }
+const PidSettings &LoopModel::pid() const { return m_pid; }
+void LoopModel::setAuto(bool on) { m_state.autoMode = on; }
+bool LoopModel::isAuto() const { return m_state.autoMode; }
+
 } // namespace mbloop
