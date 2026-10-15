@@ -1,0 +1,87 @@
+# Documentation site (https://francisboudreau7.github.io/modbus-control/).
+#
+# The sources are generated: run `python tools/build_site.py` first (it writes site_src/ from
+# docs/*.md and docs/fr/*.md and fetches the release notes), then `mkdocs build`.
+#
+# Navigation: there is no static `nav:`. The pages are in site_src/<lang>/ (folder structure
+# of mkdocs-static-i18n); MkDocs builds the navigation from that tree (guide/ becomes the
+# "User Guide" section) and tools/docs_hooks.py puts it in reading order using
+# site_src/.nav_order.json, which build_site.py writes. Titles come from the pages' headings
+# and front matter; the section title and the language-specific ones are in nav_translations.
+site_name: Modbus Control
+site_description: Windows Modbus TCP client with a live trend, cursors, export and a test server.
+site_url: https://francisboudreau7.github.io/modbus-control/
+repo_url: https://github.com/francisboudreau7/modbus-control
+repo_name: francisboudreau7/modbus-control
+edit_uri: ""
+docs_dir: site_src
+site_dir: site
+strict: true
+
+hooks:
+  - tools/docs_hooks.py
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  language: en
+  # navigation.instant is left out: mkdocs-static-i18n warns it breaks the language switcher.
+  features:
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search:
+      lang:
+        - en
+        - fr
+  - i18n:
+      docs_structure: folder
+      reconfigure_material: true
+      reconfigure_search: true
+      fallback_to_default: false
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+          nav_translations:
+            Guide: User Guide
+        - locale: fr
+          name: Français
+          build: true
+          nav_translations:
+            Guide: Guide de l'utilisateur
+
+markdown_extensions:
+  - tables
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.superfences
+  - pymdownx.details
