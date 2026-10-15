@@ -50,6 +50,39 @@ void closeSocket(int fd)
 #endif
 }
 
+/// Reads and throws away `count` bytes from the socket, waiting at most ~250 ms in total for
+/// them. False when they could not be read (peer closed, error or timeout).
+bool discardBytes(int fd, int count)
+{
+    unsigned char buffer[260];
+    int waitedMs = 0;
+    while (count > 0) {
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(native(fd), &readSet);
+        timeval timeout {};
+        timeout.tv_usec = 50 * 1000;
+        const int ready = ::select(fd + 1, &readSet, nullptr, nullptr, &timeout);
+        if (ready < 0) {
+            return false;
+        }
+        if (ready == 0) {
+            waitedMs += 50;
+            if (waitedMs >= 250) {
+                return false;
+            }
+            continue;
+        }
+        const int n = ::recv(native(fd), reinterpret_cast<char *>(buffer),
+                             std::min(count, static_cast<int>(sizeof(buffer))), 0);
+        if (n <= 0) {
+            return false;
+        }
+        count -= n;
+    }
+    return true;
+}
+
 unsigned be16(const unsigned char *p)
 {
     return (unsigned(p[0]) << 8) | unsigned(p[1]);
@@ -217,13 +250,21 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
                 } else {
                     addrOk = ::inet_pton(AF_INET, hostBytes.constData(), &probeAddr.sin_addr) == 1;
                 }
-                const bool inUse = addrOk
-                    && ::bind(probe, reinterpret_cast<sockaddr *>(&probeAddr), sizeof(probeAddr)) == SOCKET_ERROR
-                    && WSAGetLastError() == WSAEADDRINUSE;
+                int bindError = 0;
+                if (addrOk
+                    && ::bind(probe, reinterpret_cast<sockaddr *>(&probeAddr), sizeof(probeAddr)) == SOCKET_ERROR) {
+                    bindError = WSAGetLastError();
+                }
                 ::closesocket(probe);
-                if (inUse) {
+                // WSAEACCES: the port is held by another process with exclusive rights, or is in
+                // an excluded (reserved) range.
+                if (bindError == WSAEADDRINUSE) {
                     WSACleanup();
                     return fail(QStringLiteral("Port %1 is already in use.").arg(port));
+                }
+                if (bindError == WSAEACCES) {
+                    WSACleanup();
+                    return fail(QStringLiteral("Port %1 is already in use or reserved.").arg(port));
                 }
             }
             WSACleanup();
@@ -361,6 +402,22 @@ void LoopServer::run()
             const int hl = modbus_get_header_length(m_ctx);
             if (rc <= hl) {
                 continue;
+            }
+            // libmodbus frames a request by its function code and ignores the MBAP length field,
+            // so for an unknown/unframed function (FC43, FC08...) bytes of the request are left in
+            // the socket and would be parsed as the next request. Drop them, or give up the client
+            // when the length field is invalid.
+            {
+                const int mbapLength = static_cast<int>(be16(query.data() + 4));
+                const int expected = 6 + mbapLength;
+                if (mbapLength < 2 || expected > MODBUS_TCP_MAX_ADU_LENGTH || expected < rc) {
+                    closeClient(fd);
+                    continue;
+                }
+                if (expected > rc && !discardBytes(fd, expected - rc)) {
+                    closeClient(fd);
+                    continue;
+                }
             }
             const Verdict verdict = checkRequest(query[static_cast<size_t>(hl)], query.data() + hl + 1, rc - hl - 1);
             if (verdict.exception != 0) {

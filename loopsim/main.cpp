@@ -57,7 +57,9 @@ BOOL WINAPI consoleHandler(DWORD ctrlType)
 }
 
 /// The executable is a GUI-subsystem program: connect stdout/stderr to the parent console when
-/// they are not redirected, so --help, --version and --headless print there.
+/// they are not redirected. Called only for --help, --version, command-line errors and
+/// --headless; a normal GUI run never attaches, so Ctrl+C or closing the console window does not
+/// kill the simulator window.
 void attachParentConsole()
 {
     const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -86,6 +88,8 @@ int fail(const QString &message, int code)
     if (g_headless) {
         std::fprintf(stderr, "modbus_loop_sim: %s\n", qPrintable(message));
     } else {
+        attachParentConsole(); // also show it on the console it was started from
+        std::fprintf(stderr, "modbus_loop_sim: %s\n", qPrintable(message));
         QMessageBox::critical(nullptr, QStringLiteral("Modbus Loop Simulator"), message);
     }
     return code;
@@ -100,7 +104,9 @@ int main(int argc, char *argv[])
             g_headless = true;
         }
     }
-    attachParentConsole();
+    if (g_headless) {
+        attachParentConsole();
+    }
 
     std::unique_ptr<QCoreApplication> app;
     if (g_headless) {
@@ -134,11 +140,13 @@ int main(int argc, char *argv[])
         return fail(parser.errorText(), 2);
     }
     if (parser.isSet(versionOption)) {
+        attachParentConsole();
         std::printf("modbus_loop_sim %s (libmodbus %s)\n", qPrintable(QCoreApplication::applicationVersion()),
                     LIBMODBUS_VERSION_STRING);
         return 0;
     }
     if (parser.isSet(helpOption)) {
+        attachParentConsole();
         std::printf("%s", qPrintable(parser.helpText()));
         return 0;
     }

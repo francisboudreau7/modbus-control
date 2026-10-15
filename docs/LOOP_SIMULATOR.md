@@ -26,6 +26,25 @@ From the Start menu, choose **Modbus Loop Simulator**. Or start it from a consol
 modbus_loop_sim.exe --speed 5
 ```
 
+The programs are in the `bin` folder of the installation folder. For a per-user installation (the
+default) this is `%LOCALAPPDATA%\Programs\Modbus Control`; for an all-users installation it is
+`C:\Program Files\Modbus Control`. Example files such as the scenario below are in its `examples`
+folder, so with `--scenario` start from the installation folder:
+
+```bat
+cd "%LOCALAPPDATA%\Programs\Modbus Control"
+bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop
+```
+
+(For an all-users installation, use `cd "C:\Program Files\Modbus Control"`.)
+
+The window version is a Windows GUI program: started from `cmd` or PowerShell it returns to the prompt
+at once, and Ctrl+C or closing the console does not stop it (close its window instead). Its exit
+code is therefore not available to the shell. To wait for it and read the exit code, use
+`start /wait bin\modbus_loop_sim.exe --headless` in `cmd` or `Start-Process -Wait -NoNewWindow -PassThru`
+in PowerShell (then read `ExitCode` of the returned object). `--help`, `--version`, command-line
+errors and `--headless` do write to the console.
+
 The server listens on `127.0.0.1:1601` by default, so only this PC can connect. The status bar of the
 window shows the address and the number of clients.
 
@@ -189,7 +208,8 @@ You measure the process at OUT = 50 %: the K, L and T of a first-order model wit
 compare them with the theory. See [Analysis](USER_GUIDE.md#analysis-step-response) in the User Guide
 for the panel.
 
-1. Start the simulator with `modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`
+1. Start the simulator with `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, run
+   from the installation folder (see [Starting it](#starting-it))
    (or start it from the Start menu and set **Speed** to ×5). The level is steady at 50 %.
 2. Start Modbus Control and open [examples/loop101.mbproj](../examples/loop101.mbproj). The project
    connects to `127.0.0.1:1601`, unit 1, with three tags: **LT-101 PV** (input register 1), **LIC-101 SP**

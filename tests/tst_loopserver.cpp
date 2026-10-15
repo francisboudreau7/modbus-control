@@ -101,6 +101,8 @@ private slots:
     void writeBoth();
     void invalidRequests();
     void invalidValues();
+    void unframedFunctionCodes();
+    void resetAndScenarioDropPendingWrites();
     void anyUnitId();
     void clientCountFollowsConnections();
     void stopWithClientIsQuick();
@@ -285,6 +287,41 @@ void TstLoopServer::invalidRequests()
     QVERIFY(c.readSpOut(&sp, &out));
     QCOMPARE(sp, 2.0f);
     QCOMPARE(out, 3.0f);
+}
+
+void TstLoopServer::unframedFunctionCodes()
+{
+    LoopServer server;
+    QVERIFY(server.start(QStringLiteral("127.0.0.1"), 0));
+    server.publish(1.0f, 2.0f, 3.0f);
+    Client c(server.port());
+    QVERIFY(c.connected());
+
+    // libmodbus does not know how long these are: the rest of the MBAP frame must be dropped.
+    const uint8_t fc43[] = {1, 0x2B, 0x0E, 0x01, 0x00}; // read device identification
+    const uint8_t fc08[] = {1, 0x08, 0x00, 0x00, 0xA5, 0x37, 0x12, 0x34}; // diagnostics, long data
+    const struct { const uint8_t *req; int len; uint8_t fc; } cases[] = {
+        {fc43, int(sizeof(fc43)), 0x2B}, {fc08, int(sizeof(fc08)), 0x08}};
+    for (int round = 0; round < 2; ++round) {
+        for (const auto &t : cases) {
+            uint8_t rsp[MODBUS_TCP_MAX_ADU_LENGTH] = {};
+            QVERIFY(modbus_send_raw_request(c.ctx(), t.req, t.len) > 0);
+            const int rc = modbus_receive_confirmation(c.ctx(), rsp);
+            QVERIFY2(rc >= 9 || rc == -1, "reply expected");
+            if (rc >= 9) {
+                QCOMPARE(int(rsp[7]), 0x80 | t.fc);
+                QCOMPARE(int(rsp[8]), 2);
+            } else {
+                QCOMPARE(errno, kIllegalAddress); // libmodbus reports the exception as an error
+            }
+            // the connection is still in step: a normal read right after works
+            float sp = 0, out = 0;
+            QVERIFY(c.readSpOut(&sp, &out));
+            QCOMPARE(sp, 2.0f);
+            QCOMPARE(out, 3.0f);
+        }
+    }
+    QCOMPARE(server.clientCount(), 1);
 }
 
 void TstLoopServer::invalidValues()
@@ -485,6 +522,39 @@ void TstLoopServer::controllerFaceplateSetPublishesAtOnce()
     ctl.setHvOpening(25.0);
     QCOMPARE(ctl.model().params().pumpSpeedPct, 60.0);
     QCOMPARE(ctl.model().params().hvOpeningPct, 25.0);
+}
+
+void TstLoopServer::resetAndScenarioDropPendingWrites()
+{
+    LoopController ctl;
+    QString error;
+    QVERIFY2(ctl.startServer(QStringLiteral("127.0.0.1"), 0, &error), qPrintable(error));
+    Client c(ctl.server().port());
+    QVERIFY(c.connected());
+
+    QCOMPARE(c.writeFloat(2, 10.0f), 2); // not ticked yet
+    ctl.resetState();
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().outPct, 50.0);
+    float sp = 0, out = 0;
+    QVERIFY(c.readSpOut(&sp, &out));
+    QCOMPARE(out, 50.0f);
+
+    Scenario s;
+    s.state = Scenario::State{};
+    s.state->levelPct = 40.0;
+    s.state->outPct = 20.0;
+    s.state->spPct = 60.0;
+    s.state->stemPct = 20.0;
+    QCOMPARE(c.writeFloat(2, 90.0f), 2);
+    QCOMPARE(c.writeFloat(0, 5.0f), 2);
+    ctl.loadScenario(s);
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().outPct, 20.0);
+    QCOMPARE(ctl.model().state().spPct, 60.0);
+    QVERIFY(c.readSpOut(&sp, &out));
+    QCOMPARE(out, 20.0f);
+    QCOMPARE(sp, 60.0f);
 }
 
 void TstLoopServer::controllerCurrentScenarioAndReset()

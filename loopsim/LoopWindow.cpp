@@ -813,11 +813,14 @@ void LoopWindow::refresh()
     m_timeLabel->setText(
         QStringLiteral("t = %1 s").arg(m_controller->model().state().timeS, 0, 'f', 1));
     if (!m_serverStatus.isEmpty()) {
-        const int n = m_controller->server().clientCount();
-        const QString msg = QStringLiteral("%1, %2 %3")
-                                .arg(m_serverStatus)
-                                .arg(n)
-                                .arg(n == 1 ? QStringLiteral("client") : QStringLiteral("clients"));
+        QString msg = m_serverStatus;
+        if (m_controller->server().port() != 0) { // running: a client count only means something then
+            const int n = m_controller->server().clientCount();
+            msg = QStringLiteral("%1, %2 %3")
+                      .arg(m_serverStatus)
+                      .arg(n)
+                      .arg(n == 1 ? QStringLiteral("client") : QStringLiteral("clients"));
+        }
         if (statusBar()->currentMessage() != msg) {
             statusBar()->showMessage(msg);
         }

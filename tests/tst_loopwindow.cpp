@@ -290,10 +290,15 @@ private slots:
     {
         LoopController c;
         LoopWindow w(&c);
-        w.setServerStatus("Modbus server on 127.0.0.1:1601");
-        QCOMPARE(w.statusBar()->currentMessage(), QString("Modbus server on 127.0.0.1:1601, 0 clients"));
+        // server not running (failed start): the error alone, no client count
+        w.setServerStatus("Port 1601 is already in use.");
+        QCOMPARE(w.statusBar()->currentMessage(), QString("Port 1601 is already in use."));
+        c.tickFor(0.1);
+        QCOMPARE(w.statusBar()->currentMessage(), QString("Port 1601 is already in use."));
         QString error;
         QVERIFY2(c.startServer("127.0.0.1", 0, &error), qPrintable(error));
+        w.setServerStatus("Modbus server on 127.0.0.1:1601");
+        QCOMPARE(w.statusBar()->currentMessage(), QString("Modbus server on 127.0.0.1:1601, 0 clients"));
         QCOMPARE(c.server().clientCount(), 0);
         // One real client: a plain TCP connection is counted by the server loop.
         modbus_t *ctx = modbus_new_tcp("127.0.0.1", c.server().port());
