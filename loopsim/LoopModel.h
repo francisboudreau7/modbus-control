@@ -115,8 +115,12 @@ private:
     double m_carryS = 0.0;
     double m_lagPct = 0.0;
     double m_noisePct = 0.0;
-    double m_noiseClockS = 0.0;
+    int m_noiseSteps = 0; ///< steps since the last noise sample
     std::mt19937 m_rng;
+
+    void step();
+    void resizePipe(std::size_t n, double padValue);
+    void refreshPv();
 };
 
 } // namespace mbloop
