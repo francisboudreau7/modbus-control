@@ -1,6 +1,7 @@
 #include "AddTagDialog.h"
 #include "AnalysisPanel.h"
 #include "AppController.h"
+#include "DocsLinks.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "EncodingDialog.h"
@@ -25,6 +26,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+#include <QLocale>
+#include <QMenuBar>
+#include <QScopeGuard>
+#include <QUrl>
 #include <QDialog>
 #include <QDockWidget>
 #include <QLabel>
@@ -1794,6 +1801,90 @@ private slots:
         QVERIFY(pointsIn(win->trendPlot()->plot()) > 0);
         QVERIFY(win->trendPlot()->cursors()->hasC1());
         QVERIFY(win->trendPlot()->cursors()->hasC2());
+        noUnexpected();
+    }
+
+    // ---- Help menu ---------------------------------------------------------------------------
+
+    void helpMenuDocumentationActions()
+    {
+        QMenu *help = nullptr;
+        for (QAction *a : win->menuBar()->actions())
+            if (a->text() == QStringLiteral("&Help"))
+                help = a->menu();
+        QVERIFY(help);
+        const QList<QAction *> items = help->actions();
+        const int quick = items.indexOf(win->actions().quickStart);
+        const int guide = items.indexOf(win->actions().userGuide);
+        const int about = items.indexOf(win->actions().about);
+        QVERIFY(quick >= 0);
+        QVERIFY(guide > quick);
+        QVERIFY(about > guide);
+        QVERIFY(items.at(guide + 1)->isSeparator());
+        QCOMPARE(about, guide + 2);
+        noUnexpected();
+    }
+
+    void helpDocumentationOpensTheSite()
+    {
+        QList<QUrl> opened;
+        ctl->m_prompts.openUrl = [&opened](const QUrl &url) {
+            opened << url;
+            return true;
+        };
+        const docs::Language lang = docs::languageFor(QLocale::system());
+        win->actions().quickStart->trigger();
+        win->actions().userGuide->trigger();
+        QCOMPARE(opened.size(), 2);
+        QCOMPARE(opened.at(0), docs::siteUrl(docs::Page::QuickStart, lang));
+        QCOMPARE(opened.at(1), docs::siteUrl(docs::Page::UserGuide, lang));
+        QVERIFY(d.warnings.isEmpty());
+        noUnexpected();
+    }
+
+    void helpDocumentationFallsBackToTheInstalledCopy()
+    {
+        const docs::Language lang = docs::languageFor(QLocale::system());
+        const QString local = docs::localPath(QCoreApplication::applicationDirPath(),
+                                              docs::Page::QuickStart, lang);
+        if (QFileInfo::exists(local))
+            QSKIP("an installed copy exists next to the build; not overwriting it");
+        QVERIFY(QDir().mkpath(QFileInfo(local).absolutePath()));
+        {
+            QFile f(local);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("test");
+        }
+        const auto cleanup = qScopeGuard([&local] { QFile::remove(local); });
+
+        QList<QUrl> opened;
+        // The website is refused; the installed copy (a local file) opens.
+        ctl->m_prompts.openUrl = [&opened](const QUrl &url) {
+            opened << url;
+            return url.isLocalFile();
+        };
+        win->actions().quickStart->trigger();
+        QCOMPARE(opened.size(), 2);
+        QCOMPARE(opened.at(0), docs::siteUrl(docs::Page::QuickStart, lang));
+        QCOMPARE(opened.at(1), QUrl::fromLocalFile(local));
+        QVERIFY(d.warnings.isEmpty());
+        noUnexpected();
+    }
+
+    void helpDocumentationWarnsWhenNothingOpens()
+    {
+        const docs::Language lang = docs::languageFor(QLocale::system());
+        const QString local = docs::localPath(QCoreApplication::applicationDirPath(),
+                                              docs::Page::UserGuide, lang);
+        if (QFileInfo::exists(local))
+            QSKIP("an installed copy exists next to the build; the fallback would open it");
+        ctl->m_prompts.openUrl = [](const QUrl &) { return false; };
+        win->actions().userGuide->trigger();
+        QCOMPARE(d.warnings.size(), 1);
+        QVERIFY(d.warnings.first().startsWith(QStringLiteral("Open documentation")));
+        QVERIFY(d.warnings.first().contains(
+            docs::siteUrl(docs::Page::UserGuide, lang).toString()));
+        d.warnings.clear();
         noUnexpected();
     }
 
