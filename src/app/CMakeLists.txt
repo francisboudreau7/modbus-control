@@ -16,6 +16,7 @@ add_library(mbui STATIC
   QuickWritePanel.h QuickWritePanel.cpp
   EncodingDialog.h EncodingDialog.cpp
   AddTagDialog.h AddTagDialog.cpp
+  DocsLinks.h DocsLinks.cpp
   EncodingMonitor.h EncodingMonitor.cpp
   RichText.h RichText.cpp
 )

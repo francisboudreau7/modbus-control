@@ -8,3 +8,7 @@ CMakeUserPresets.json
 CLAUDE.md
 PLAN.md
 TASKS.md
+# Documentation site build (tools/build_site.py, mkdocs)
+site_src/
+site/
+.venv-docs/

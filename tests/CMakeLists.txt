@@ -38,6 +38,7 @@ mc_add_qtest(tst_analysiscsv LIBS mbcore)
 mc_add_qtest(tst_sessionio LIBS mbcore)
 mc_add_qtest(tst_encodingdetect LIBS mbcore)
 mc_add_qtest(tst_tuning LIBS mbcore)
+mc_add_qtest(tst_docslinks LIBS mbui)
 
 # Test server unit tests
 mc_add_qtest(tst_signalgen LIBS mbsim)

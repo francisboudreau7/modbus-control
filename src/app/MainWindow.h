@@ -33,7 +33,7 @@ class TrendPlot;
 /// - Right dock "Setpoints" (objectName "setpointsDock"): AnalysisPanel::setpointsPage(), tabified
 ///   after Analysis; View menu toggle. The destructor deletes the Analysis dock first.
 /// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
-///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (About).
+///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes), Help (Quick Start, User Guide, About).
 /// - Status bar: transient messages on the left, permanent connection label on the right.
 /// Window geometry and dock state are saved/restored with QSettings.
 class MainWindow : public QMainWindow
@@ -58,6 +58,10 @@ public:
         QAction *oneBasedAddresses = nullptr;
         /// Options menu, checkable, checked at start: "Confirm &quick writes".
         QAction *confirmQuickWrites = nullptr;
+        /// Help menu (before About): "&Quick Start" and "&User Guide"; AppController opens the
+        /// documentation (see DocsLinks.h).
+        QAction *quickStart = nullptr;
+        QAction *userGuide = nullptr;
         QAction *about = nullptr;
     };
 

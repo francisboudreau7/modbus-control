@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 #include <functional>
 #include <optional>
@@ -62,6 +63,10 @@ class WriteController;
 ///   "'<name or HR 110>' would overlap '<other>' (HR 110-111), changed while the dialog was open.")
 ///   and nothing is added. Otherwise TagTableModel::addTag(dialog.tag()), then EncodingMonitor::confirmDetected(id) when
 ///   dialog.detectionConfirmed(), then TagTableWidget::showRow(row).
+/// - Help > Quick Start / User Guide: opens docs::siteUrl(page, docs::languageFor(QLocale::
+///   system())) through m_prompts.openUrl; when that returns false, opens the installed copy
+///   (QUrl::fromLocalFile(docs::localPath(QCoreApplication::applicationDirPath(), ...))) if the
+///   file exists; otherwise warns "Open documentation": "Could not open <url>." (T202)
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
@@ -96,6 +101,9 @@ private:
             openFileName;
         /// Runs a modal dialog (the export dialogs).
         std::function<void(QDialog &dialog)> exec;
+        /// Opens a URL in the default browser / application; false when that failed.
+        /// Default: QDesktopServices::openUrl.
+        std::function<bool(const QUrl &url)> openUrl;
     };
     Prompts m_prompts;
     QMessageBox::StandardButton ask(const QString &title, const QString &text,
@@ -129,6 +137,8 @@ private:
     void exportImage();
     void exportCsv();
     void exportAnalysisResults();
+    /// Help > Quick Start / User Guide (see the class comment). Stub until T202.
+    void openDocumentation(bool userGuide);
     /// Cursor readout, then the Analysis readout (when not empty), for the image export.
     QString imageReadoutText() const;
 

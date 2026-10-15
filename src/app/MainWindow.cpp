@@ -132,6 +132,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Help menu
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
+    // Stub created by T200; T202 adds Quick Start and User Guide here (before About).
     m_actions.about = helpMenu->addAction(tr("&About"));
     connect(m_actions.about, &QAction::triggered, this, [this] {
         const QString name = QApplication::applicationName().isEmpty()

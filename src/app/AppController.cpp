@@ -955,4 +955,7 @@ void AppController::onAddTagReadFinished(quint64 requestId, const ModbusResult &
         done(result, values);
 }
 
+// Stub created by T200; implemented by T202.
+void AppController::openDocumentation(bool) {}
+
 } // namespace mb
