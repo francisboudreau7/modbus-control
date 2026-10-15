@@ -371,17 +371,9 @@ void LoopServer::run()
             }
 
             {
-                // Bring the mapping up to date with the shared registers before libmodbus reads it.
-                std::lock_guard lock(m_mutex);
-                encodeFloat(m_regs.pv, m_mapping->tab_input_registers);
-                encodeFloat(m_regs.sp, m_mapping->tab_registers);
-                encodeFloat(m_regs.out, m_mapping->tab_registers + 2);
-            }
-            if (modbus_reply(m_ctx, query.data(), rc, m_mapping) == -1) {
-                closeClient(fd);
-                continue;
-            }
-            if (verdict.spWrite || verdict.outWrite) {
+                // Record a validated write before replying: once the client has its answer, the
+                // model must already see the write (takeWrites), and later reads must return it.
+                // Then bring the mapping up to date with the shared registers for libmodbus.
                 std::lock_guard lock(m_mutex);
                 if (verdict.spWrite) {
                     m_regs.sp = verdict.sp;
@@ -393,6 +385,13 @@ void LoopServer::run()
                     m_writes.outWritten = true;
                     m_writes.out = verdict.out;
                 }
+                encodeFloat(m_regs.pv, m_mapping->tab_input_registers);
+                encodeFloat(m_regs.sp, m_mapping->tab_registers);
+                encodeFloat(m_regs.out, m_mapping->tab_registers + 2);
+            }
+            if (modbus_reply(m_ctx, query.data(), rc, m_mapping) == -1) {
+                closeClient(fd);
+                continue;
             }
         }
     }
