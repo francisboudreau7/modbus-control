@@ -16,8 +16,8 @@ inline constexpr double kTankAreaM2 = kPi * 0.15 * 0.15; ///< 0.070686 m^2
 inline constexpr double kTankHeightM = 1.0;              ///< LT-101 range 0..1 m = 0..100 %
 inline constexpr double kOverflowLevelM = 0.99;          ///< overflow pipe at 99 %
 inline constexpr double kPumpMaxPressureBar = 1.0;       ///< P-101 at 100 % speed
-inline constexpr double kFcvMaxFlowM3s = 1.0e-3;         ///< 60 L/min: FCV fully open, pump 100 %
-inline constexpr double kHvCoefficient = 1.4142e-3;      ///< Chv in m^2.5/s (Qhv = Chv * v * sqrt(h))
+inline constexpr double kFcvMaxFlowM3s = 5.0e-3;         ///< 300 L/min: FCV fully open, pump 100 %
+inline constexpr double kHvCoefficient = 7.0711e-3;      ///< Chv in m^2.5/s (Qhv = Chv * v * sqrt(h))
 inline constexpr double kStepS = 0.010;                  ///< integration step, simulation time
 inline constexpr double kNoisePeriodS = 0.100;           ///< LT noise sample period
 } // namespace loop101
@@ -72,7 +72,9 @@ inline double percentToMa(double pct) { return 4.0 + 16.0 * pct / 100.0; }
 ///   (std::mt19937 seeded by the constructor's seed); pvPct = clamp(L + noise, 0, 100).
 /// Steady state (no overflow): h = (kFcvMaxFlowM3s * y * s / (kHvCoefficient * v))^2; with pump
 /// 100 %, HV 50 %: OUT 50 % -> 0.50 m, 30 % -> 0.18 m, 70 % -> 0.98 m. Linearised time constant
-/// tau = 2 * kTankAreaM2 * h / qHv (about 141 s at 0.50 m, 30 L/min).
+/// tau = 2 * kTankAreaM2 * h / qHv (about 28 s at 0.50 m, 150 L/min). The flows are sized so a step
+/// test settles in about 2.5 minutes of real time (v1.3.0: 5 times the first design's flows; the
+/// settled levels and gains are unchanged).
 class LoopModel
 {
 public:

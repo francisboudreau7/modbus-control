@@ -103,10 +103,10 @@ fractions de 0 à 1) et le niveau h (en m) :
 | Grandeur | Équation |
 |---|---|
 | Pression de la pompe | p = 1 bar × s² |
-| Débit dans FCV-101 | Qfcv = 1.0×10⁻³ m³/s × y × s (60 L/min à pleine ouverture et pleine vitesse) |
+| Débit dans FCV-101 | Qfcv = 5.0×10⁻³ m³/s × y × s (300 L/min à pleine ouverture et pleine vitesse) |
 | Mouvement de la tige | va vers OUT d'au plus 100 % par 5 s (temps de course complète) |
 | Débit entrant dans TK-101 | Qin(t) = Qfcv(t − 2 s) |
-| Débit sortant par HV-102 | Qhv = 1.4142×10⁻³ m^2.5/s × v × √h |
+| Débit sortant par HV-102 | Qhv = 7.0711×10⁻³ m^2.5/s × v × √h |
 | Niveau | A × dh/dt = Qin − Qhv, avec A = π × 0.15² = 0.070686 m² |
 | Trop-plein | quand h dépasserait 0.99 m, h reste à 0.99 m et l'excédent sort par le trop-plein |
 | LT-101 | 100 × h / 1 m, passé dans un filtre de premier ordre de 2 s, plus une valeur aléatoire entre −0.05 et +0.05 %, une nouvelle valeur toutes les 0.1 s de temps simulé |
@@ -115,16 +115,16 @@ La simulation avance par pas de 10 ms de temps simulé.
 
 **Niveau stabilisé.** Quand Qin = Qhv, le niveau s'arrête :
 
-h = ( 1.0×10⁻³ × y × s / ( 1.4142×10⁻³ × v ) )²
+h = ( 5.0×10⁻³ × y × s / ( 7.0711×10⁻³ × v ) )²
 
 Avec la pompe à 100 % et HV-102 à 50 %, la tige y égale OUT :
 
 | OUT | Débit entrant | Niveau stabilisé (LT-101) |
 |---|---|---|
-| 30 % | 18 L/min | 18 % |
-| 50 % | 30 L/min | 50 % |
-| 60 % | 36 L/min | 72 % |
-| 70 % | 42 L/min | 98 % |
+| 30 % | 90 L/min | 18 % |
+| 50 % | 150 L/min | 50 % |
+| 60 % | 180 L/min | 72 % |
+| 70 % | 210 L/min | 98 % |
 | plus d'environ 70 % | | 99 % et l'eau sort par le trop-plein |
 
 **Gain et constante de temps.** Près d'un niveau h, le procédé se comporte comme un système du premier
@@ -133,8 +133,9 @@ et 60 %, et 2.4 %/% entre 50 et 70 %. Sa constante de temps est
 
 T = 2 × A × h / Qhv
 
-Elle est d'environ 141 s à un niveau de 50 % (0.50 m et 30 L/min), d'environ 85 s à un niveau de 18 % et
-d'environ 170 s à 72 %. Plus le niveau est haut, plus la boucle est lente.
+Elle est d'environ 28 s à un niveau de 50 % (0.50 m et 150 L/min), d'environ 17 s à un niveau de 18 % et
+d'environ 34 s à 72 %. Les débits sont grands pour un si petit réservoir, exprès : un échelon se
+stabilise en environ 2.5 minutes, en temps réel. Plus le niveau est haut, plus la boucle est lente.
 
 ## Registres Modbus
 
@@ -180,11 +181,10 @@ course).
   qui écrit par Modbus change les mêmes valeurs.
 - **Glissières** (barre du bas) : ouverture de **HV-102** (0 à 100 %) et vitesse de **P-101 speed**
   (0 à 100 %). Déplacer HV-102 est la perturbation de la boucle.
-- **Speed** : ×1, ×2 ou ×5. Même à ×1, le procédé va **5 fois plus vite que le temps réel**, pour qu'un
-  échelon se stabilise en quelques minutes plutôt qu'en un quart d'heure : une seconde d'horloge vaut
-  5 s de temps du procédé à ×1, 10 s à ×2 et 25 s à ×5. Le temps **t** sous le schéma est le temps du
-  procédé. Les temps affichés par Modbus Control sont des temps d'horloge : multipliez-les par 5 × la
-  vitesse (5 à ×1) pour obtenir les temps du procédé.
+- **Speed** : ×1, ×2 ou ×5. ×1 est le temps réel : les temps affichés par Modbus Control sont les temps
+  du procédé. À ×2 ou ×5, le procédé va plus vite que l'horloge : multipliez les temps de Modbus Control
+  par la vitesse pour obtenir les temps du procédé. Le temps **t** sous le schéma est le temps du
+  procédé.
 - **Pause** / **Run** : arrête la simulation. Le serveur Modbus répond toujours, avec des valeurs
   figées, et les écritures changent encore SP et OUT.
 - **t = ...** : le temps simulé depuis le démarrage ou la dernière réinitialisation.
@@ -232,8 +232,8 @@ dans le Guide de l'utilisateur.
 3. Attendez 10 s. **LT-101 PV** est à environ 50 % et plat. Trend affiche PV et OUT.
 4. Dans le panneau **Quick write**, cliquez sur **B: 60** pour faire passer OUT de 50 à 60 % (**A: 50**
    revient en arrière). La confirmation d'écriture s'affiche si elle est activée.
-5. Attendez que PV soit stable, environ 3 minutes à ×1 (cinq constantes de temps du procédé, divisées
-   par 5). PV monte à environ 72 %.
+5. Attendez que PV soit stable, environ 2.5 minutes (cinq constantes de temps). PV monte à environ
+   72 %.
 6. Ouvrez le panneau **Analysis**. Le projet a déjà **LT-101 PV** comme PV et **LIC-101 OUT** comme CO.
    Cliquez sur **Find step**, ou placez C1 juste avant l'échelon et C2 après la stabilisation de PV avec
    **Place cursors**. Vérifiez les curseurs sur Trend.
@@ -244,12 +244,10 @@ dans le Guide de l'utilisateur.
 - **K** (environ 2.2 %/%) : ΔPV/ΔCO = (72 − 50) / (60 − 50). Il correspond au tableau des niveaux
   stabilisés.
 - **L** : le temps mort de 2 s, plus les retards de la course de FCV-101 (un déplacement de 10 % prend
-  0.5 s) et de l'amortissement de LT-101 (2 s). Cela fait environ 4 à 5 s de temps du procédé, donc
-  environ 1 s sur Trend à ×1. La période de scrutation du projet (100 ms) vaut 0.5 s de temps du
-  procédé : L n'est qu'une valeur approximative, c'est le prix de l'horloge accélérée.
-- **T** : environ 150 s de temps du procédé, donc environ 30 s sur Trend à ×1. Multipliez les temps de
-  Trend par 5 (à ×1) pour obtenir les temps du procédé. La théorie donne 2 × A × h / Qhv = 141 s à 50 % et 170 s à 72 %, et l'échelon couvre les
-  deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
+  0.5 s) et de l'amortissement de LT-101 (2 s). Cela fait environ 4 à 5 s. Le projet scrute toutes les
+  100 ms : Trend le mesure bien à ×1.
+- **T** : environ 32 s. La théorie donne 2 × A × h / Qhv = 28 s à 50 % et 34 s à 72 %, et l'échelon
+  couvre les deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
 
 **Pourquoi un plus grand échelon donne-t-il un T plus grand ?** Le débit de sortie suit √h : le réservoir
 est plus lent à haut niveau. Un échelon de 50 à 70 % donne un T plus grand que de 50 à 60 %, et un K plus

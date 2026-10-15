@@ -146,7 +146,7 @@ void LoopController::tickFor(double wallSeconds)
 {
     applyClientWrites();
     if (!m_paused && wallSeconds > 0.0) {
-        m_model.advance(wallSeconds * kTimeScale * m_speed);
+        m_model.advance(wallSeconds * m_speed);
     }
     publish();
     emit stateChanged();

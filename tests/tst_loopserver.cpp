@@ -414,15 +414,15 @@ void TstLoopServer::controllerAdvancesByWallTimeAndSpeed()
 {
     LoopController ctl;
     const double t0 = ctl.model().state().timeS;
-    // process time = wall time x kTimeScale (5) x speed factor
+    // process time = wall time x speed factor (x1 = real time)
     ctl.tickFor(0.2);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.0) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 0.2) < 0.02);
     ctl.setSpeedFactor(2);
     ctl.tickFor(0.2);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 3.0) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 0.6) < 0.02);
     ctl.setSpeedFactor(5);
     ctl.tickFor(0.1);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 5.5) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.1) < 0.02);
 }
 
 void TstLoopServer::controllerSpeedRounding()
@@ -464,7 +464,7 @@ void TstLoopServer::controllerPauseStopsTime()
     ctl.setPaused(false);
     QCOMPARE(paused.count(), 2);
     ctl.tickFor(1.0);
-    QVERIFY(std::abs(ctl.model().state().timeS - t0 - LoopController::kTimeScale) < 0.02);
+    QVERIFY(std::abs(ctl.model().state().timeS - t0 - 1.0) < 0.02);
 }
 
 void TstLoopServer::controllerModbusWritesReachModel()

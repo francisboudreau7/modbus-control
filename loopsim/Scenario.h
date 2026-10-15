@@ -12,7 +12,7 @@ namespace mbloop {
 /// A saved loop: settings and, optionally, the state to start from.
 struct Scenario {
     LoopParams params;
-    double speedFactor = 1.0; ///< 1, 2 or 5 (see LoopController::kTimeScale)
+    double speedFactor = 1.0; ///< 1, 2 or 5 (1 = real time)
     /// When present, the loop starts from these values instead of the steady state at OUT 50 %.
     struct State {
         double levelPct = 50.0; ///< 0..99

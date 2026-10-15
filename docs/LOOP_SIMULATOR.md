@@ -100,10 +100,10 @@ the level h (in m):
 | Quantity | Equation |
 |---|---|
 | Pump pressure | p = 1 bar × s² |
-| Flow through FCV-101 | Qfcv = 1.0×10⁻³ m³/s × y × s (60 L/min at full opening and full speed) |
+| Flow through FCV-101 | Qfcv = 5.0×10⁻³ m³/s × y × s (300 L/min at full opening and full speed) |
 | Stem movement | moves toward OUT at most 100 % per 5 s (full stroke time) |
 | Flow into TK-101 | Qin(t) = Qfcv(t − 2 s) |
-| Flow out through HV-102 | Qhv = 1.4142×10⁻³ m^2.5/s × v × √h |
+| Flow out through HV-102 | Qhv = 7.0711×10⁻³ m^2.5/s × v × √h |
 | Level | A × dh/dt = Qin − Qhv, with A = π × 0.15² = 0.070686 m² |
 | Overflow | when h would exceed 0.99 m, h stays at 0.99 m and the excess leaves through the overflow |
 | LT-101 | 100 × h / 1 m, through a first-order lag of 2 s, plus a random value between −0.05 and +0.05 %, a new value every 0.1 s of simulation time |
@@ -112,16 +112,16 @@ The simulation runs in steps of 10 ms of simulation time.
 
 **Settled level.** When Qin = Qhv, the level stops:
 
-h = ( 1.0×10⁻³ × y × s / ( 1.4142×10⁻³ × v ) )²
+h = ( 5.0×10⁻³ × y × s / ( 7.0711×10⁻³ × v ) )²
 
 With the pump at 100 % and HV-102 at 50 %, the stem y equals OUT:
 
 | OUT | Inflow | Settled level (LT-101) |
 |---|---|---|
-| 30 % | 18 L/min | 18 % |
-| 50 % | 30 L/min | 50 % |
-| 60 % | 36 L/min | 72 % |
-| 70 % | 42 L/min | 98 % |
+| 30 % | 90 L/min | 18 % |
+| 50 % | 150 L/min | 50 % |
+| 60 % | 180 L/min | 72 % |
+| 70 % | 210 L/min | 98 % |
 | above about 70 % | | 99 % and water leaves through the overflow |
 
 **Gain and time constant.** Near a level h, the process behaves like a first-order lag. Its gain is
@@ -130,8 +130,9 @@ between 50 and 70 %. Its time constant is
 
 T = 2 × A × h / Qhv
 
-This is about 141 s at a level of 50 % (0.50 m and 30 L/min). It is about 85 s at a level of 18 % and about
-170 s at 72 %. The higher the level, the slower the loop.
+This is about 28 s at a level of 50 % (0.50 m and 150 L/min). It is about 17 s at a level of 18 % and about
+34 s at 72 %. The flows are large for such a small tank on purpose: a step settles in about 2.5 minutes,
+in real time. The higher the level, the slower the loop.
 
 ## Modbus registers
 
@@ -169,11 +170,9 @@ A written OUT takes effect at once on FCV-101 (the stem then moves at the stroke
   100 are clamped. A client that writes by Modbus changes the same values.
 - **Sliders** (bottom bar): **HV-102** opening (0 to 100 %) and **P-101 speed** (0 to 100 %). Moving
   HV-102 is the load disturbance of the loop.
-- **Speed**: ×1, ×2 or ×5. Even at ×1 the process runs **5 times faster than real time**, so a step
-  settles in a few minutes instead of a quarter of an hour: one second on the clock is 5 s of process
-  time at ×1, 10 s at ×2 and 25 s at ×5. The time **t** under the schematic is process time. The times
-  that Modbus Control shows are clock times: multiply them by 5 × the speed (5 at ×1) to get process
-  times.
+- **Speed**: ×1, ×2 or ×5. ×1 is real time: the times that Modbus Control shows are the process
+  times. At ×2 or ×5 the process runs faster than the clock: multiply the times of Modbus Control by the
+  speed to get process times. The time **t** under the schematic is process time.
 - **Pause** / **Run**: stops the simulation. The Modbus server still answers, with frozen values, and
   writes still change SP and OUT.
 - **t = ...**: the simulation time since the start or the last reset.
@@ -220,8 +219,7 @@ for the panel.
 3. Wait 10 s. **LT-101 PV** is about 50 % and flat. The Trend shows PV and OUT.
 4. In the **Quick write** dock, click **B: 60** to step OUT from 50 to 60 % (**A: 50** goes back).
    The write confirmation appears if it is turned on.
-5. Wait until PV is steady, about 3 minutes at ×1 (five time constants of process time, divided by
-   5). The PV rises to about 72 %.
+5. Wait until PV is steady, about 2.5 minutes (five time constants). The PV rises to about 72 %.
 6. Open the **Analysis** dock. The project already has **LT-101 PV** as the PV and **LIC-101 OUT** as the
    CO. Click **Find step**, or place C1 just before the step and C2 after the PV has settled with
    **Place cursors**. Check the cursors on the Trend.
@@ -231,12 +229,10 @@ for the panel.
 
 - **K** (about 2.2 %/%): ΔPV/ΔCO = (72 − 50) / (60 − 50). It matches the table of settled levels.
 - **L**: the dead time of 2 s, plus the delays of the FCV-101 stroke (a 10 % move takes 0.5 s) and of the
-  LT-101 damping (2 s). This is about 4 to 5 s of process time, so about 1 s on the Trend at ×1. The
-  poll period of the project (100 ms) is 0.5 s of process time, so L is only a rough value: that is
-  the price of the faster clock.
-- **T**: about 150 s of process time, so about 30 s on the Trend at ×1. Multiply the times of the Trend
-  by 5 (at ×1) to get process times. The theory says 2 × A × h / Qhv = 141 s at 50 % and 170 s at 72 %,
-  and the step covers both.
+  LT-101 damping (2 s). This is about 4 to 5 s. The project polls every 100 ms, so the Trend resolves it
+  well at ×1.
+- **T**: about 32 s. The theory says 2 × A × h / Qhv = 28 s at 50 % and 34 s at 72 %, and the step covers
+  both.
   A model fitted on the 63.2 % point gives a value between them.
 
 **Why does a bigger step give a larger T?** The outflow follows √h, so the tank is slower at high levels.
