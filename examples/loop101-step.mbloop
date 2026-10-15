@@ -1,0 +1,13 @@
+{
+  "format": "modbus-loop-scenario",
+  "version": 1,
+  "settings": {
+    "pumpSpeedPct": 100,
+    "hvOpeningPct": 50,
+    "deadTimeS": 2,
+    "ltNoisePct": 0.2,
+    "ltDampingS": 1,
+    "fcvStrokeS": 5,
+    "speedFactor": 5
+  }
+}

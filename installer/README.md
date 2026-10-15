@@ -1,7 +1,7 @@
 # Windows installer
 
 The installer is an Inno Setup 6 package that contains the runnable folder produced by
-`cmake --install`: `modbus_control.exe`, `modbus_test_server.exe`, the Qt, Qwt and libmodbus DLLs,
+`cmake --install`: `modbus_control.exe`, `modbus_test_server.exe`, `modbus_loop_sim.exe`, the Qt, Qwt and libmodbus DLLs,
 the Qt plugins, the MSVC runtime, the example server configuration and the license texts.
 
 ## Prerequisites
@@ -48,17 +48,18 @@ Default folder: `{autopf}\Modbus Control`. For a per-user install this is
 `%LOCALAPPDATA%\Programs\Modbus Control`; for an all-users install it is `C:\Program Files\Modbus Control`.
 
 ```
-bin\                       modbus_control.exe, modbus_test_server.exe, DLLs, Qt plugins
+bin\                       modbus_control.exe, modbus_test_server.exe, modbus_loop_sim.exe, DLLs, Qt plugins
 share\modbus-control\      server.example.json
 licenses\                  third-party license texts
-examples\*.mbproj         demo project and ABB CM50 example
-docs\                      USER_GUIDE.md, TEST_SERVER.md
+examples\*.mbproj         demo project, ABB CM50 and loop 101 examples
+examples\*.mbloop         loop simulator scenario
+docs\                      USER_GUIDE.md, TEST_SERVER.md, LOOP_SIMULATOR.md (and docs\fr)
 README.md
 unins000.exe               uninstaller
 ```
 
 Start menu entries: **Modbus Control**, **Modbus Test Server** (starts with
-`--host 127.0.0.1 --port 1502`), **User Guide** and **Uninstall Modbus Control**. A desktop icon is
+`--host 127.0.0.1 --port 1502`), **Modbus Loop Simulator**, **User Guide** and **Uninstall Modbus Control**. A desktop icon is
 optional and off by default.
 
 ## Installation mode

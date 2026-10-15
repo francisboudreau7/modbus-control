@@ -53,6 +53,7 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Sample project, documentation and readme from the repository.
 Source: "{#RepoDir}\examples\*.mbproj"; DestDir: "{app}\examples"; Flags: ignoreversion
+Source: "{#RepoDir}\examples\*.mbloop"; DestDir: "{app}\examples"; Flags: ignoreversion
 Source: "{#RepoDir}\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RepoDir}\docs\fr\*.md"; DestDir: "{app}\docs\fr"; Flags: ignoreversion
 Source: "{#RepoDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -60,6 +61,7 @@ Source: "{#RepoDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\bin\modbus_control.exe"; WorkingDir: "{app}\bin"
 Name: "{group}\Modbus Test Server"; Filename: "{app}\bin\modbus_test_server.exe"; Parameters: "--host 127.0.0.1 --port 1502"; WorkingDir: "{app}\bin"
+Name: "{group}\Modbus Loop Simulator"; Filename: "{app}\bin\modbus_loop_sim.exe"; WorkingDir: "{app}\bin"
 Name: "{group}\Quick Start"; Filename: "{app}\docs\QUICK_START.md"
 Name: "{group}\User Guide"; Filename: "{app}\docs\USER_GUIDE.md"
 Name: "{group}\Guide de démarrage rapide"; Filename: "{app}\docs\fr\GUIDE_DEMARRAGE_RAPIDE.md"

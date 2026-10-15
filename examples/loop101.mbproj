@@ -1,0 +1,76 @@
+{
+  "format": "modbus-control-project",
+  "version": 1,
+  "hiddenColumns": ["raw", "gain", "offset", "axis", "color"],
+  "connection": {
+    "host": "127.0.0.1",
+    "port": 1601,
+    "unitId": 1,
+    "timeoutMs": 1000,
+    "pollPeriodMs": 200
+  },
+  "addressBase": 1,
+  "nextTagId": 4,
+  "tags": [
+    {
+      "id": 1,
+      "name": "LT-101 PV",
+      "area": "input",
+      "address": 0,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "%",
+      "color": "#1f77b4",
+      "plotted": true,
+      "writable": false
+    },
+    {
+      "id": 2,
+      "name": "LIC-101 SP",
+      "area": "holding",
+      "address": 0,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "%",
+      "color": "#ff7f0e",
+      "plotted": false,
+      "writable": true,
+      "writeMin": 0,
+      "writeMax": 100
+    },
+    {
+      "id": 3,
+      "name": "LIC-101 OUT",
+      "area": "holding",
+      "address": 2,
+      "type": "float32",
+      "byteOrder": "ABCD",
+      "gain": 1.0,
+      "offset": 0.0,
+      "unit": "%",
+      "color": "#2ca02c",
+      "plotted": true,
+      "writable": true,
+      "writeMin": 0,
+      "writeMax": 100,
+      "quickA": 50,
+      "quickB": 60
+    }
+  ],
+  "analysis": {
+    "pvTag": 1,
+    "setpointTags": [1],
+    "deltaCoTag": 3,
+    "percents": [0, 63.2],
+    "reference": "cursor",
+    "referenceWindowS": 1,
+    "smoothingS": 0,
+    "modelPercents": [0, 63.2],
+    "showModel": true,
+    "guideLines": true
+  }
+}

@@ -36,6 +36,8 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
 - Projects (`.mbproj`) and recorded sessions (`.mbsession`) to review offline
 - Test server `modbus_test_server` with simulated signals and fault injection
   ([docs/TEST_SERVER.md](docs/TEST_SERVER.md))
+- Loop simulator `modbus_loop_sim`: a level control loop (P&ID, LIC-101 faceplate) that is a Modbus TCP
+  server, for step tests and classes ([docs/LOOP_SIMULATOR.md](docs/LOOP_SIMULATOR.md))
 
 ## Try it
 
@@ -48,6 +50,9 @@ modbus_control.exe examples\demo.mbproj
 
 Write a new value to **Setpoint** and watch **Lag** follow it, then measure its step response in the
 **Analysis** panel.
+
+Or measure a simulated level loop: start `modbus_loop_sim.exe --speed 5`, open
+`examples\loop101.mbproj` and step **LIC-101 OUT** (see the [loop simulator guide](docs/LOOP_SIMULATOR.md)).
 
 ## Build from source
 

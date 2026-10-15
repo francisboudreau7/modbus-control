@@ -693,6 +693,18 @@ void TstProjectIO::exampleProjectsLoad()
     QCOMPARE(cm50->tags.at(0).name, QStringLiteral("Loop 1 Process Variable"));
     QCOMPARE(int(cm50->tags.at(0).address) + cm50->addressBase, 5009);
     QCOMPARE(int(cm50->tags.at(0).address), 5008);
+
+    const auto loop = loadProject(dir.filePath(QStringLiteral("examples/loop101.mbproj")), &error);
+    QVERIFY2(loop.has_value(), qPrintable(error));
+    QCOMPARE(loop->addressBase, 1);
+    QCOMPARE(loop->connection.host, QStringLiteral("127.0.0.1"));
+    QCOMPARE(loop->connection.port, quint16(1601));
+    QCOMPARE(loop->tags.size(), 3);
+    QCOMPARE(loop->tags.at(2).name, QStringLiteral("LIC-101 OUT"));
+    QCOMPARE(int(loop->tags.at(2).address), 2);
+    QCOMPARE(loop->analysis.pvTagId, loop->tags.at(0).id);
+    QCOMPARE(loop->analysis.deltaCoTagId, loop->tags.at(2).id);
+    QCOMPARE(loop->analysis.setpointTagIds, QList<TagId>{loop->tags.at(0).id});
 }
 
 void TstProjectIO::analyzedAndAnalysisRoundTrip()

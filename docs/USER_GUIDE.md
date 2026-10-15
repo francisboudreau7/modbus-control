@@ -6,7 +6,8 @@ New to the app? Start with the [Quick Start](QUICK_START.md). En français :
 [Guide de l'utilisateur](fr/GUIDE_UTILISATEUR.md).
 
 This guide describes the application as built from this repository. For building, see the
-[README](../README.md). For the test server, see [TEST_SERVER.md](TEST_SERVER.md).
+[README](../README.md). For the test server, see [TEST_SERVER.md](TEST_SERVER.md). For a simulated level loop to practise step
+tests on, see the [Loop simulator](LOOP_SIMULATOR.md).
 
 ## Window layout
 
@@ -942,6 +943,9 @@ lines. The cursors are not saved in a project. A session keeps them (see [Sessio
    cursors on the Trend.
 7. The **Lag** results show K ≈ 1, L ≈ 1 s and T ≈ 2 s. The fit error should be Good, the model curve
    should follow the measured curve, and the checks list should be empty.
+
+For a more realistic process, with a dead time, noise and a tank that is not linear, use the
+[Loop simulator](LOOP_SIMULATOR.md) and the project `examples\loop101.mbproj`.
 
 ## Projects
 

@@ -6,7 +6,8 @@ English version: [User Guide](../USER_GUIDE.md) · Démarrage rapide : [Guide de
 
 Ce guide décrit le logiciel tel qu'il est construit à partir de ce dépôt. Pour la compilation,
 consultez le [README](../../README.md). Pour le serveur de test, consultez
-[TEST_SERVER.md](../TEST_SERVER.md) (en anglais).
+[TEST_SERVER.md](../TEST_SERVER.md) (en anglais). Pour une boucle de niveau simulée sur laquelle
+faire des essais à l'échelon, consultez le [Simulateur de boucle](SIMULATEUR_DE_BOUCLE.md).
 
 ## Disposition de la fenêtre
 
@@ -1015,6 +1016,9 @@ session les conserve (voir [Sessions](#sessions)).
 7. Les résultats de **Lag** montrent K ≈ 1, L ≈ 1 s et T ≈ 2 s. L'erreur d'ajustement devrait être
    Good, la courbe du modèle devrait suivre la courbe mesurée, et la liste des vérifications devrait
    être vide.
+
+Pour un procédé plus réaliste, avec un temps mort, du bruit et un réservoir non linéaire, utilisez le
+[Simulateur de boucle](SIMULATEUR_DE_BOUCLE.md) et le projet `examples\loop101.mbproj`.
 
 ## Projets
 

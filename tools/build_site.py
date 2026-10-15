@@ -4,12 +4,14 @@
 Run from anywhere:  python tools/build_site.py   then   mkdocs build
 
 Sources (kept untouched, the installer ships them as they are):
-    docs/QUICK_START.md, docs/USER_GUIDE.md,
-    docs/fr/GUIDE_DEMARRAGE_RAPIDE.md, docs/fr/GUIDE_UTILISATEUR.md
+    docs/QUICK_START.md, docs/USER_GUIDE.md, docs/LOOP_SIMULATOR.md,
+    docs/fr/GUIDE_DEMARRAGE_RAPIDE.md, docs/fr/GUIDE_UTILISATEUR.md,
+    docs/fr/SIMULATEUR_DE_BOUCLE.md
 
 Generated (site_src/ is wiped first and is git-ignored):
     en/index.md, fr/index.md                  Quick Start
     en/guide/*.md, fr/guide/*.md              the user guide, one page per "## " chapter
+    en/loop-simulator.md, fr/simulateur-de-boucle.md   the loop simulator page
     en/download.md, fr/telechargement.md      download page
     en/changelog.md, fr/changelog.md          release notes from the GitHub releases API
     .nav_order.json                           page order, read by tools/docs_hooks.py (the
@@ -47,6 +49,14 @@ SOURCES = {
     "docs/USER_GUIDE.md": ("en", "guide"),
     "docs/fr/GUIDE_DEMARRAGE_RAPIDE.md": ("fr", "quick"),
     "docs/fr/GUIDE_UTILISATEUR.md": ("fr", "guide"),
+    "docs/LOOP_SIMULATOR.md": ("en", "page"),
+    "docs/fr/SIMULATEUR_DE_BOUCLE.md": ("fr", "page"),
+}
+
+# kind "page": a single page after the guide: output file name and navigation title.
+PAGES = {
+    "docs/LOOP_SIMULATOR.md": ("loop-simulator.md", "Loop simulator"),
+    "docs/fr/SIMULATEUR_DE_BOUCLE.md": ("simulateur-de-boucle.md", "Simulateur de boucle"),
 }
 
 # Language-switch text that the theme's language selector replaces. Each pattern must
@@ -60,6 +70,10 @@ SWITCH_PATTERNS = {
                                           r"^Lire en ligne : \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
     "docs/fr/GUIDE_UTILISATEUR.md": [r"English version: \[[^\]]*\]\([^)]*\)\s*·\s*",
                                      r"^Lire en ligne : \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
+    "docs/LOOP_SIMULATOR.md": [r"^En français : \[[^\]]*\]\([^)]*\)\.?[ \t]*\n",
+                               r"^Read online: \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
+    "docs/fr/SIMULATEUR_DE_BOUCLE.md": [r"^English version: \[[^\]]*\]\([^)]*\)[ \t]*\n",
+                                        r"^Lire en ligne : \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
 }
 
 errors: list[str] = []
@@ -175,7 +189,9 @@ class Doc:
         self.doc_counts: dict[str, int] = {}
         self.order: list[tuple[str, str]] = []  # (page, title)
         if kind == "quick":
-            self._single()
+            self._single("index.md")
+        elif kind == "page":
+            self._single(PAGES[rel][0])
         else:
             self._split()
 
@@ -196,8 +212,7 @@ class Doc:
             gh = base if n_doc == 0 else f"{base}-{n_doc}"
             self.anchors[gh] = (page, new)
 
-    def _single(self) -> None:
-        page = "index.md"
+    def _single(self, page: str) -> None:
         self._register(self.text, page, 0)
         self.pages[page] = self.text
 
@@ -263,7 +278,12 @@ def rewrite_links(doc: Doc, docs_by_rel: dict[str, Doc]) -> None:
                 return None
             new_page, new_anchor = hit
         else:
-            new_page = "index.md" if target.kind == "quick" else "guide/index.md"
+            if target.kind == "quick":
+                new_page = "index.md"
+            elif target.kind == "page":
+                new_page = PAGES[target.rel][0]
+            else:
+                new_page = "guide/index.md"
             new_anchor = ""
         from_page = PurePosixPath(doc.lang) / page
         to_page = PurePosixPath(target.lang) / new_page
@@ -465,6 +485,8 @@ def main() -> int:
             if page == "index.md" and d.kind == "quick":
                 title = "Démarrage rapide" if lang == "fr" else "Quick Start"
                 text = front_matter(title) + text
+            elif d.kind == "page":
+                text = front_matter(PAGES[d.rel][1]) + text
             elif page == "guide/index.md":
                 text = front_matter("Guide de l'utilisateur" if lang == "fr" else "User Guide") + text
             write(OUT / lang / page, text)
@@ -480,6 +502,9 @@ def main() -> int:
             )
             nav_order.setdefault(lang, [])
             nav_order[lang] += ["guide/index.md"] + [p for p, _ in d.order]
+        elif d.kind == "page":
+            nav_order.setdefault(lang, [])
+            nav_order[lang].append(PAGES[d.rel][0])
         else:
             nav_order.setdefault(lang, [])
             nav_order[lang].insert(0, "index.md")
