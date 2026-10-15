@@ -20,6 +20,8 @@
 #include "TrendPlot.h"
 #include "WriteController.h"
 
+#include <qwt_axis_id.h>
+
 #include <QAction>
 #include <QCoreApplication>
 #include <QDesktopServices>
@@ -282,6 +284,7 @@ void AppController::wireData()
         m_window->cursorPanel()->refresh();
     });
 
+    connect(m_window->trendPlot(), &TrendPlot::axisRangesChanged, this, [this] { setModified(true); });
     connect(m_window->trendPlot(), &TrendPlot::clearDataRequested, this, [this] {
         if (m_recorder.size() > 0) {
             const auto answer = ask(QStringLiteral("Clear data"),
@@ -461,6 +464,8 @@ Project AppController::currentProject() const
     p.addressBase = m_window->tagModel()->addressBase();
     p.analysis = m_window->analysisPanel()->settings();
     p.hiddenColumns = m_window->tagTable()->hiddenColumns();
+    p.yLeft = m_window->trendPlot()->axisRange(QwtAxis::YLeft);
+    p.yRight = m_window->trendPlot()->axisRange(QwtAxis::YRight);
     return p;
 }
 
@@ -483,6 +488,8 @@ void AppController::applyProject(const Project &project)
     pushTags();
     m_window->analysisPanel()->setSettings(project.analysis);
     m_window->tagTable()->setHiddenColumns(project.hiddenColumns);
+    m_window->trendPlot()->setAxisRange(QwtAxis::YLeft, project.yLeft);
+    m_window->trendPlot()->setAxisRange(QwtAxis::YRight, project.yRight);
 }
 
 void AppController::setAddressBase(int base)
@@ -543,6 +550,8 @@ void AppController::newProject()
     pushTags();
     m_window->analysisPanel()->setSettings(AnalysisSettings{});
     m_window->tagTable()->setHiddenColumns(compactHiddenColumns());
+    m_window->trendPlot()->setAxisRange(QwtAxis::YLeft, std::nullopt);
+    m_window->trendPlot()->setAxisRange(QwtAxis::YRight, std::nullopt);
     m_projectPath.clear();
     discardLoadedRecording();
     setModified(false);
