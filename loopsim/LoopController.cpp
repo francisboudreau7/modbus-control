@@ -129,6 +129,9 @@ Scenario LoopController::currentScenario() const
 
 void LoopController::loadScenario(const Scenario &scenario)
 {
+    // Entering Auto: close OUT to clients first (see setAuto), then drop what they had recorded.
+    if (scenario.autoMode)
+        m_server.setOutWritable(false);
     m_server.takeWrites(); // a client write not yet applied must not override the scenario
     applyScenario(m_model, scenario);
     m_server.setOutWritable(!m_model.isAuto());
@@ -185,9 +188,17 @@ void LoopController::publish()
 
 void LoopController::setAuto(bool on)
 {
+    // Order matters. Server thread: check "OUT writable" and record the write under one lock.
+    // Entering Auto: close OUT first, so every later write is refused with an exception, then
+    // apply what was recorded before the flip (still in Manual) and only then switch the model;
+    // otherwise an acknowledged write could land after the switch and be dropped. Leaving Auto:
+    // switch the model first, then reopen OUT.
+    if (on)
+        m_server.setOutWritable(false);
     applyClientWrites(); // a pending client write is applied (or refused) in the old mode
     m_model.setAuto(on);
-    m_server.setOutWritable(!on);
+    if (!on)
+        m_server.setOutWritable(true);
     publish();
     emit stateChanged();
 }

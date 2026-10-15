@@ -130,9 +130,8 @@ void LoopModel::runPid()
         const bool pushesLow = u < 0.0 && e < 0.0;
         if (!pushesHigh && !pushesLow)
             m_integral = iNew;
-    } else {
-        m_integral = 0.0;
     }
+    // Ti 0: no integration; m_integral stays a frozen manual-reset bias.
     m_state.outPct = std::clamp(p + m_integral + d, 0.0, 100.0);
 }
 
@@ -273,8 +272,8 @@ void LoopModel::setPid(const PidSettings &pid)
     c.reverse = pid.reverse;
     m_pid = c;
     if (m_state.autoMode) {
-        // Bumpless: re-balance I so OUT does not jump with the new settings.
-        m_integral = (m_pid.tiS > 0.0) ? m_state.outPct - m_pid.kp * pidError() - pidD() : 0.0;
+        // Bumpless: re-balance I (the bias when Ti = 0) so OUT does not jump.
+        m_integral = m_state.outPct - m_pid.kp * pidError() - pidD();
     }
 }
 
@@ -289,7 +288,7 @@ void LoopModel::setAuto(bool on)
         m_pvFilt = m_state.pvPct;
         m_dPv = 0.0;
         m_pidSteps = 0;
-        m_integral = (m_pid.tiS > 0.0) ? m_state.outPct - m_pid.kp * pidError() : 0.0;
+        m_integral = m_state.outPct - m_pid.kp * pidError();
     }
 }
 

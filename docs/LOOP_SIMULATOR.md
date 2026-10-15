@@ -199,8 +199,8 @@ program starts in Manual.
   buttons and the OUT box are disabled, and Modbus writes to OUT are refused (exception 3). You can
   still change SP, on the faceplate or by Modbus.
 - Going from MAN to AUTO is **bumpless**: OUT does not jump, because the controller starts from the
-  present OUT. The exception is a controller with no integral action (Ti = 0): its OUT is
-  Kp × e, so OUT jumps to that value when you press the button. Going back to MAN keeps the present OUT.
+  present OUT. This holds with Ti = 0 too: the controller then keeps a constant bias (set at the
+  transfer, like a manual reset) so that OUT = bias + Kp × e. Going back to MAN keeps the present OUT.
 
 The **Tuning** fields (type a value and press Enter; values are clamped to the range):
 
@@ -244,7 +244,8 @@ key.
 The optional `pid` object holds the controller: `mode` (`"manual"` or `"auto"`), `kp` (0 to 100), `tiS`
 (0 to 3600), `tdS` (0 to 600) and `action` (`"reverse"` or `"direct"`). The defaults are those of the
 table in [The PID controller](#the-pid-controller). **Save scenario...** always writes it. With
-`"mode": "auto"` the loop starts in Auto, entered bumplessly after the `state` is applied.
+`"mode": "auto"` the loop starts in Auto, entered bumplessly after the `state` is applied. A scenario
+without `pid` (saved by version 1.3.0) loads with the default PID settings, in Manual.
 
 The optional `state` object has `levelPct` (0 to 99), `outPct`, `spPct` and `stemPct` (0 to 100). Without it,
 the loop starts at the steady state for OUT = 50 %.
@@ -347,7 +348,8 @@ Compare the dip in PV and the movement of OUT for different tunings.
 
 Now type Ti = 0 (P-only) and repeat from a steady state. PV no longer returns to SP: an **offset**
 remains, because a P controller needs an error to give a different OUT. A larger Kp makes the offset
-smaller. Note also that switching to AUTO with Ti = 0 makes OUT jump, as explained in
+smaller. The offset is (OUT at the new steady state - the bias) / Kp, where the bias is the OUT at the moment
+you switched to AUTO. Switching to AUTO with Ti = 0 does not make OUT jump, as explained in
 [The PID controller](#the-pid-controller).
 
 **6. The wrong action.** In Auto with Ti = 30 s, set **Action** to **Direct**. The controller now

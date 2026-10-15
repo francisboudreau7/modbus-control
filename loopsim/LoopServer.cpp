@@ -420,9 +420,6 @@ void LoopServer::run()
                 }
             }
             Verdict verdict = checkRequest(query[static_cast<size_t>(hl)], query.data() + hl + 1, rc - hl - 1);
-            if (verdict.exception == 0 && verdict.outWrite && !m_outWritable.load()) {
-                verdict.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE; // Auto: OUT is the PID's
-            }
             if (verdict.exception != 0) {
                 if (modbus_reply_exception(m_ctx, query.data(), static_cast<unsigned>(verdict.exception)) == -1) {
                     closeClient(fd);
@@ -430,24 +427,39 @@ void LoopServer::run()
                 continue;
             }
 
+            bool refusedInAuto = false;
             {
                 // Record a validated write before replying: once the client has its answer, the
                 // model must already see the write (takeWrites), and later reads must return it.
                 // Then bring the mapping up to date with the shared registers for libmodbus.
+                // The OUT-writable check is made under the same lock as the record: the
+                // controller flips the flag under this mutex and then drains the recorded writes,
+                // so a write is either recorded before the flip (and applied) or refused, never
+                // acknowledged and then lost.
                 std::lock_guard lock(m_mutex);
-                if (verdict.spWrite) {
-                    m_regs.sp = verdict.sp;
-                    m_writes.spWritten = true;
-                    m_writes.sp = verdict.sp;
+                refusedInAuto = verdict.outWrite && !m_outWritable;
+                if (!refusedInAuto) {
+                    if (verdict.spWrite) {
+                        m_regs.sp = verdict.sp;
+                        m_writes.spWritten = true;
+                        m_writes.sp = verdict.sp;
+                    }
+                    if (verdict.outWrite) {
+                        m_regs.out = verdict.out;
+                        m_writes.outWritten = true;
+                        m_writes.out = verdict.out;
+                    }
+                    encodeFloat(m_regs.pv, m_mapping->tab_input_registers);
+                    encodeFloat(m_regs.sp, m_mapping->tab_registers);
+                    encodeFloat(m_regs.out, m_mapping->tab_registers + 2);
                 }
-                if (verdict.outWrite) {
-                    m_regs.out = verdict.out;
-                    m_writes.outWritten = true;
-                    m_writes.out = verdict.out;
+            }
+            if (refusedInAuto) {
+                // Auto: OUT is the PID's. Nothing was written (the SP part of a combined write neither).
+                if (modbus_reply_exception(m_ctx, query.data(), MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE) == -1) {
+                    closeClient(fd);
                 }
-                encodeFloat(m_regs.pv, m_mapping->tab_input_registers);
-                encodeFloat(m_regs.sp, m_mapping->tab_registers);
-                encodeFloat(m_regs.out, m_mapping->tab_registers + 2);
+                continue;
             }
             if (modbus_reply(m_ctx, query.data(), rc, m_mapping) == -1) {
                 closeClient(fd);
@@ -462,6 +474,10 @@ void LoopServer::run()
     m_clients = 0;
 }
 
-void LoopServer::setOutWritable(bool writable) { m_outWritable.store(writable); }
+void LoopServer::setOutWritable(bool writable)
+{
+    std::lock_guard lock(m_mutex); // serialises with the check-and-record of a write
+    m_outWritable = writable;
+}
 
 } // namespace mbloop

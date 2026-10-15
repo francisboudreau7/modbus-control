@@ -212,8 +212,8 @@ changer de mode. Le programme démarre en Manual.
   boutons OUT et la case OUT sont désactivés, et les écritures Modbus dans OUT sont refusées
   (exception 3). Vous pouvez toujours changer SP, sur la face avant ou par Modbus.
 - Le passage de MAN à AUTO est **sans à-coup** : OUT ne saute pas, parce que le régulateur part de OUT
-  actuelle. L'exception est un régulateur sans action intégrale (Ti = 0) : sa sortie est Kp × e, donc OUT
-  saute à cette valeur quand vous appuyez sur le bouton. Le retour à MAN conserve OUT actuelle.
+  actuelle. Cela vaut aussi avec Ti = 0 : le régulateur garde alors un biais constant
+  (fixé au transfert, comme un « manual reset »), de sorte que OUT = biais + Kp × e. Le retour à MAN conserve OUT actuelle.
 
 Les champs **Tuning** (tapez une valeur et appuyez sur Entrée ; les valeurs sont ramenées dans la
 plage) :
@@ -260,7 +260,8 @@ nomme la clé.
 L'objet facultatif `pid` contient le régulateur : `mode` (`"manual"` ou `"auto"`), `kp` (0 à 100), `tiS`
 (0 à 3600), `tdS` (0 à 600) et `action` (`"reverse"` ou `"direct"`). Les valeurs par défaut sont celles
 du tableau de [Le régulateur PID](#le-régulateur-pid). **Save scenario...** l'écrit toujours. Avec
-`"mode": "auto"`, la boucle démarre en Auto, entré sans à-coup après l'application de `state`.
+`"mode": "auto"`, la boucle démarre en Auto, entré sans à-coup après l'application de `state`. Un scénario sans `pid` (enregistré par la version 1.3.0)
+charge les réglages PID par défaut, en Manual.
 
 L'objet facultatif `state` contient `levelPct` (0 à 99), `outPct`, `spPct` et `stemPct` (0 à 100). Sans
 lui, la boucle démarre à l'état stable pour OUT = 50 %.
@@ -368,8 +369,8 @@ et le mouvement de OUT pour différents réglages.
 
 Tapez maintenant Ti = 0 (P seul) et recommencez à partir d'un état stable. PV ne revient plus à SP : il
 reste un **écart permanent**, parce qu'un régulateur P a besoin d'une erreur pour donner une autre OUT.
-Un Kp plus grand réduit l'écart. Notez aussi que le passage en AUTO avec Ti = 0 fait sauter OUT, comme
-l'explique [Le régulateur PID](#le-régulateur-pid).
+Un Kp plus grand réduit l'écart. L'écart vaut (OUT au nouvel état stable - biais) / Kp, où le biais est la OUT au moment du passage
+en AUTO. Le passage en AUTO avec Ti = 0 ne fait pas sauter OUT, comme l'explique [Le régulateur PID](#le-régulateur-pid).
 
 **6. La mauvaise action.** En Auto avec Ti = 30 s, réglez **Action** à **Direct**. Le régulateur ouvre
 maintenant la vanne quand PV est au-dessus de SP, ce qui ajoute de l'eau. PV s'éloigne de SP et OUT

@@ -118,7 +118,8 @@ private:
     struct CurveEntry;
     bool pull(); ///< appends new recorder rows to the curves; true if anything changed
     void fitY(double x1, double x2);
-    void fitAxis(QwtAxisId axis, double x1, double x2);
+    /// Auto-scales one axis to the data in [x1, x2]; false when there was no data (scale unchanged).
+    bool fitAxis(QwtAxisId axis, double x1, double x2);
     void adaptPens();  ///< thinner pens when very many points are visible (speed)
     bool m_thinPens = false;
     void applyAxes(); ///< running: x window + y fit

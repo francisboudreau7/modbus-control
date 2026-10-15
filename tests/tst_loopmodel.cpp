@@ -415,15 +415,52 @@ private slots:
         LoopModel m;
         m.reset(p, 50.0);
         m.setPid(pid);
-        m.setAuto(true);
+        m.setAuto(true); // bias = OUT - Kp e = 50 (frozen, manual reset)
+        m.advance(10.0);
+        QVERIFY(qAbs(m.state().outPct - 50.0) < 0.1);
+        m.setSp(60.0);
         m.advance(600.0);
-        // theory: PV = 200 (OUT/100)^2, OUT = Kp (SP - PV)  ->  4x^2 + 2x - 1 = 0, x = OUT/100
-        const double x = (-2.0 + std::sqrt(20.0)) / 8.0;
+        // theory: PV = 200 (OUT/100)^2, OUT = 50 + Kp (60 - PV), x = OUT/100: 200x^2 + 100x - 110 = 0
+        const double x = (-100.0 + std::sqrt(10000.0 + 88000.0)) / 400.0;
         const double out = 100.0 * x, pv = 200.0 * x * x;
         QVERIFY(qAbs(m.state().outPct - out) < 0.2);
         QVERIFY(qAbs(m.state().pvPct - pv) < 0.2);
-        QVERIFY(qAbs((m.state().spPct - m.state().pvPct) - out) < 0.2); // permanent offset = Kp-scaled OUT
-        QVERIFY(m.state().spPct - m.state().pvPct > 10.0);
+        // permanent offset = (OUT_ss - bias) / Kp
+        QVERIFY(qAbs((m.state().spPct - m.state().pvPct) - (out - 50.0) / pid.kp) < 0.2);
+        QVERIFY(m.state().spPct - m.state().pvPct > 2.0);
+    }
+
+    void pidZeroTiBumpless()
+    {
+        LoopParams p = plain();
+        PidSettings pid;
+        pid.tiS = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setSp(57.0);
+        m.setOut(40.0);
+        m.advance(1.0);
+        m.setPid(pid);
+        m.setAuto(true);
+        QCOMPARE(m.state().outPct, 40.0);
+        m.advance(0.1); // first PID execution: still no jump
+        QVERIFY(qAbs(m.state().outPct - 40.0) < 0.5);
+
+        // Ti 30 -> 0 while in Auto does not jump OUT either.
+        LoopModel n;
+        n.reset(p, 50.0);
+        n.setSp(57.0);
+        n.setOut(40.0);
+        n.advance(1.0);
+        n.setAuto(true);
+        n.advance(20.0);
+        const double o = n.state().outPct;
+        PidSettings z = n.pid();
+        z.tiS = 0.0;
+        n.setPid(z);
+        QCOMPARE(n.state().outPct, o);
+        n.advance(0.1);
+        QVERIFY(qAbs(n.state().outPct - o) < 0.5);
     }
 
     void pidBumplessEntryAndKpChange()
