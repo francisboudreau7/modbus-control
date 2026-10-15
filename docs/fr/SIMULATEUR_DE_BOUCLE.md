@@ -10,13 +10,17 @@ régulation, et le réservoir se vide par une vanne manuelle. Le transmetteur de
 forment un serveur Modbus TCP : Modbus Control les lit et y écrit comme avec un vrai régulateur. Le
 programme a une fenêtre avec le schéma TI, la face avant du régulateur et quelques commandes.
 
-Le régulateur n'a pas de mode automatique. La commande de la vanne (OUT) change seulement quand un
-client Modbus l'écrit ou quand vous la changez sur la face avant. C'est voulu : la boucle est ouverte,
-ce qui permet de faire des essais à l'échelon et de mesurer le procédé.
+Le régulateur démarre en **Manual** (MAN). La commande de la vanne (OUT) change alors seulement quand
+un client Modbus l'écrit ou quand vous la changez sur la face avant. La boucle est ouverte, ce qui
+permet de faire des essais à l'échelon et de mesurer le procédé. Passez le régulateur en **Auto** et il
+devient un régulateur PID qui maintient le niveau à SP : vous entrez alors le réglage calculé à partir de
+l'essai à l'échelon et vous voyez la boucle fermée à l'œuvre.
 
 Contenu : [Démarrage](#démarrage), [Le schéma TI](#le-schéma-ti), [La physique](#la-physique),
-[Registres Modbus](#registres-modbus), [La fenêtre](#la-fenêtre), [Fichiers de scénario](#fichiers-de-scénario),
-[Exercice : essai à l'échelon](#exercice--essai-à-léchelon-avec-modbus-control).
+[Registres Modbus](#registres-modbus), [La fenêtre](#la-fenêtre), [Le régulateur PID](#le-régulateur-pid),
+[Fichiers de scénario](#fichiers-de-scénario),
+[Exercice : essai à l'échelon](#exercice--essai-à-léchelon-avec-modbus-control),
+[Exercice : boucle fermée](#exercice--boucle-fermée).
 
 ## Démarrage
 
@@ -160,11 +164,15 @@ Règles, comme le CM50 :
 - Tout le reste est refusé avec l'exception 2 (adresse de donnée illégale) : FC06, une requête qui
   commence au milieu d'un nombre, un nombre de registres qui coupe un nombre, toute autre adresse, ainsi
   que les bobines (coils) et les entrées discrètes.
-- SP est seulement mémorisée. Elle est affichée sur la face avant et sur le schéma, et rien ne
-  l'utilise.
+- SP est mémorisée. En Manual, rien ne l'utilise : elle est seulement affichée sur la face avant et sur
+  le schéma. En Auto, c'est la consigne du PID.
+- Quand LIC-101 est en **Auto**, une écriture qui touche OUT (registres 3-4) est refusée avec
+  l'exception 3 (valeur de donnée illégale) et rien n'est écrit, pas même la SP de la même requête.
+  Écrire SP seule (registres 1-2) est accepté. La lecture n'est pas touchée : OUT est calculée par le
+  PID et vous la lisez comme avant.
 
-Une valeur OUT écrite agit tout de suite sur FCV-101 (la tige se déplace ensuite à la vitesse de la
-course).
+En Manual, une valeur OUT écrite agit tout de suite sur FCV-101 (la tige se déplace ensuite à la vitesse
+de la course).
 
 ## La fenêtre
 
@@ -174,11 +182,12 @@ course).
   trop-plein est en couleur pendant que l'eau s'écoule.
 - **Show process data** (case dans la barre du bas) : ajoute le niveau en m, les débits Qin, Qhv et du
   trop-plein en L/min, la pression de la pompe en bar et le temps mort.
-- **Face avant de LIC-101** (à droite) : comme un régulateur de panneau en **MAN**. Elle a une barre
+- **Face avant de LIC-101** (à droite) : comme un régulateur de panneau. Elle a une barre
   verticale de PV avec le repère de SP, et les valeurs PV, SP et OUT avec les mA de PV et de OUT. Les
   boutons **▲** et **▼** changent OUT de 1 % (5 % avec Maj enfoncée). Tapez une valeur dans la case OUT ou
   SP et appuyez sur Entrée. Les valeurs tapées hors de 0 à 100 sont ramenées dans cette plage. Un client
-  qui écrit par Modbus change les mêmes valeurs.
+  qui écrit par Modbus change les mêmes valeurs. Le bouton de mode et les champs de réglage sont décrits
+  dans [Le régulateur PID](#le-régulateur-pid).
 - **Glissières** (barre du bas) : ouverture de **HV-102** (0 à 100 %) et vitesse de **P-101 speed**
   (0 à 100 %). Déplacer HV-102 est la perturbation de la boucle.
 - **Speed** : ×1, ×2 ou ×5. ×1 est le temps réel : les temps affichés par Modbus Control sont les temps
@@ -191,6 +200,45 @@ course).
 - Menu **File** : **Open scenario...**, **Save scenario...**, **Reset** (retour à l'état stable avec
   OUT = SP = 50 %) et **Quit**. **Help > About** affiche la version.
 - **Barre d'état** : l'adresse du serveur et le nombre de clients connectés.
+
+## Le régulateur PID
+
+Le bouton de mode de la face avant affiche **MAN** (ambre) ou **AUTO** (vert). Cliquez dessus pour
+changer de mode. Le programme démarre en Manual.
+
+- **Manual** : OUT est à vous, comme dans l'essai à l'échelon. Les champs de réglage peuvent être
+  modifiés, mais ne servent pas.
+- **Auto** : le régulateur calcule OUT toutes les 0.1 s de temps simulé à partir de SP et de PV. Les
+  boutons OUT et la case OUT sont désactivés, et les écritures Modbus dans OUT sont refusées
+  (exception 3). Vous pouvez toujours changer SP, sur la face avant ou par Modbus.
+- Le passage de MAN à AUTO est **sans à-coup** : OUT ne saute pas, parce que le régulateur part de OUT
+  actuelle. L'exception est un régulateur sans action intégrale (Ti = 0) : sa sortie est Kp × e, donc OUT
+  saute à cette valeur quand vous appuyez sur le bouton. Le retour à MAN conserve OUT actuelle.
+
+Les champs **Tuning** (tapez une valeur et appuyez sur Entrée ; les valeurs sont ramenées dans la
+plage) :
+
+| Champ | Signification | Plage | Par défaut |
+|---|---|---|---|
+| Kp | Gain proportionnel, en % de OUT par % d'erreur | 0 à 100 | 1 |
+| Ti | Temps d'intégrale, en secondes. 0 signifie pas d'action intégrale. | 0 à 3600 | 30 |
+| Td | Temps de dérivée, en secondes. 0 signifie pas d'action dérivée. | 0 à 600 | 0 |
+| Action | **Reverse** ou **Direct** (voir ci-dessous) | | Reverse |
+
+Le régulateur est de forme idéale (ISA), la même que celle du calculateur de réglage du panneau
+Analysis :
+
+u = Kp × (e + 1/Ti × ∫e dt + Td × de/dt)
+
+- L'erreur e vaut SP − PV pour l'action **Reverse** (inverse) : quand PV monte, OUT descend. C'est la
+  bonne action pour cette boucle : plus d'eau dans le réservoir doit fermer la vanne. L'action **Direct**
+  utilise e = PV − SP. Avec elle, la boucle a une rétroaction positive et OUT s'emballe vers 0 ou 100 %.
+- PV est la sortie du transmetteur, bruit compris. La dérivée agit sur PV et non sur l'erreur, et PV
+  passe par un filtre du premier ordre de Td / 10 : un changement de SP ne donne pas de coup sur OUT, et
+  le bruit est limité.
+- Anti-emballement de l'intégrale : l'intégrale est gelée tant que OUT est à 0 ou à 100 % et que l'erreur
+  la pousserait plus loin.
+- OUT est limitée à 0 à 100 %. La tige de FCV-101 suit toujours OUT à la vitesse de la course.
 
 ## Fichiers de scénario
 
@@ -208,6 +256,11 @@ nomme la clé.
 | `ltDampingS` | 0 à 60 | 1 |
 | `fcvStrokeS` | 0 à 120 | 5 |
 | `speedFactor` | 1, 2 ou 5 | 1 |
+
+L'objet facultatif `pid` contient le régulateur : `mode` (`"manual"` ou `"auto"`), `kp` (0 à 100), `tiS`
+(0 à 3600), `tdS` (0 à 600) et `action` (`"reverse"` ou `"direct"`). Les valeurs par défaut sont celles
+du tableau de [Le régulateur PID](#le-régulateur-pid). **Save scenario...** l'écrit toujours. Avec
+`"mode": "auto"`, la boucle démarre en Auto, entré sans à-coup après l'application de `state`.
 
 L'objet facultatif `state` contient `levelPct` (0 à 99), `outPct`, `spPct` et `stemPct` (0 à 100). Sans
 lui, la boucle démarre à l'état stable pour OUT = 50 %.
@@ -269,3 +322,62 @@ entre dans le trop-plein donne un K et un T faux. Gardez OUT à 70 % ou moins av
 **Autres essais.** Changez le temps mort, le bruit ou le temps de course dans un fichier de scénario et
 refaites l'essai. Baissez la vitesse de la pompe à 70 % : le même OUT donne alors un niveau plus bas.
 Fermez HV-102 (0 %) et le réservoir se remplit jusqu'au trop-plein.
+
+## Exercice : boucle fermée
+
+Vous mettez le régulateur en Auto avec le réglage obtenu de l'essai à l'échelon, puis vous comparez des
+règles de réglage. Faites d'abord l'[essai à l'échelon](#exercice--essai-à-léchelon-avec-modbus-control),
+pour que K, L et T soient dans le panneau Analysis.
+
+**1. Lire le réglage.** Dans le panneau **Analysis**, le groupe Tuning transforme K, L et T en réglages.
+Avec les nombres de l'essai à l'échelon (K environ 2.2 %/%, L environ 4 à 5 s, T environ 28 à 34 s),
+vous obtenez à peu près les valeurs ci-dessous. Les vôtres seront un peu différentes. La PV et la OUT de
+cette boucle sont toutes deux en %, de sorte que le Kp du tableau (en % par %) peut être tapé tel quel.
+
+| Règle | Régulateur | Kp (environ) | Ti (environ) |
+|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | 1.6 | 31 s |
+| SIMC, λ = Auto (= L) | PI | 1.6 | 31 s |
+| Ziegler-Nichols | PI | 2.8 | 15 s |
+
+**2. Démarrer en Auto.** Réglez OUT à 50 % et attendez l'état stable (PV et SP valent 50 %). Sur la face
+avant, tapez Kp et Ti (Td reste à 0, Action à Reverse), puis cliquez sur **MAN**. Le bouton devient
+**AUTO**, et OUT ne bouge pas.
+
+**3. Faire un échelon de consigne.** Dans Modbus Control, écrivez 60 dans **LIC-101 SP**. Ouvrez Trend et
+réglez son axe de gauche de 0 à 100 : faites un clic droit sur l'axe Y de gauche et choisissez
+**0 to 100** (voir [Plages des axes Y](GUIDE_UTILISATEUR.md#plages-des-axes-y) dans le Guide de
+l'utilisateur). Trend ne change alors pas d'échelle pendant que la boucle bouge. Tracez PV et OUT sur
+cet axe.
+
+Avec les valeurs par défaut (Kp 1, Ti 30 s), PV monte à 60 % sans dépassement et reste à moins de 0.5 %
+de SP après environ 30 s. OUT saute d'abord de Kp × 10 % = 10 %, à 60 %, puis redescend et se stabilise
+à environ 55 %, la valeur de OUT qui maintient un niveau de 60 % avec HV-102 à 50 %.
+
+**4. Comparer les règles.** Ramenez SP à 50 %, essayez chaque paire de valeurs à tour de rôle et écrivez
+de nouveau 60 dans SP. Observez le dépassement (de combien PV dépasse 60 %) et le temps de stabilisation
+(le temps jusqu'à ce que PV reste à ±0.5 % de 60 %). En général, le PI de Ziegler-Nichols est le plus
+agressif : son Kp est plus grand et son Ti plus court, de sorte que PV dépasse et peut osciller avant de
+se stabiliser, tandis qu'IMC et SIMC avec λ = L donnent une réponse plus douce. Un λ plus grand est plus
+lent et plus doux. Les curseurs et le panneau Analysis peuvent mesurer les temps pour vous.
+
+**5. Perturbation de charge.** La boucle en Auto et PV stable à SP (60 %), déplacez le curseur **HV-102**
+de 50 à 60 %. La sortie est plus grande, donc PV baisse d'abord. Le régulateur ouvre la vanne, et l'action
+intégrale ramène PV à SP : OUT finit à environ 66 %, contre environ 55 % avant. Comparez le creux de PV
+et le mouvement de OUT pour différents réglages.
+
+Tapez maintenant Ti = 0 (P seul) et recommencez à partir d'un état stable. PV ne revient plus à SP : il
+reste un **écart permanent**, parce qu'un régulateur P a besoin d'une erreur pour donner une autre OUT.
+Un Kp plus grand réduit l'écart. Notez aussi que le passage en AUTO avec Ti = 0 fait sauter OUT, comme
+l'explique [Le régulateur PID](#le-régulateur-pid).
+
+**6. La mauvaise action.** En Auto avec Ti = 30 s, réglez **Action** à **Direct**. Le régulateur ouvre
+maintenant la vanne quand PV est au-dessus de SP, ce qui ajoute de l'eau. PV s'éloigne de SP et OUT
+s'emballe vers 100 % (PV au-dessus de SP) ou vers 0 % (PV en dessous de SP) et y reste. Remettez
+Action à Reverse et cliquez sur **AUTO** pour revenir en **MAN**, puis réglez OUT à la main si le niveau
+est allé au trop-plein ou à vide.
+
+**Autres essais.** Ajoutez Td (par exemple Td = L / 2) et regardez le bruit sur OUT. Allongez le temps
+mort dans un fichier de scénario et voyez comment le même réglage se comporte. Essayez une consigne de
+80 % : à ce niveau le procédé est plus lent et son gain plus élevé, de sorte qu'un réglage fait à 50 %
+est moins stable.

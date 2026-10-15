@@ -596,15 +596,20 @@ diffère de celles des autres, par exemple une température à côté d'une posi
   lorsqu'au moins une étiquette tracée l'utilise.
 - **Fit Y** ajuste chaque axe à ses propres étiquettes.
 
+Vous pouvez aussi fixer la plage de chaque axe : voir [Plages des axes Y](#plages-des-axes-y).
+
 Commandes au-dessus du graphique :
 
 - **Window** : 60 s (par défaut), 5 min, 30 min ou All. Dans une fenêtre de temps, l'affichage suit
   les données les plus récentes. All montre tout ce qui est en mémoire.
 - **Pause** / **Run** : Pause fige l'affichage pendant que l'enregistrement des données se poursuit.
-  Run revient aux données les plus récentes et réactive la mise à l'échelle automatique.
+  Run revient aux données les plus récentes. Un axe Y dont la plage est fixée la conserve ; un axe
+  Auto continue de se mettre à l'échelle automatiquement.
 - **Place cursors**, **Clear cursors** : voir Curseurs.
-- **Fit Y** : règle la plage Y sur les données visibles, et continue de l'ajuster tant que
-  l'affichage suit les données.
+- **Y axes** : un menu pour régler la plage de l'axe Y de gauche ou de droite (voir
+  [Plages des axes Y](#plages-des-axes-y)).
+- **Fit Y** : ajuste les deux axes Y aux données visibles et remet les deux en Auto, de sorte qu'ils
+  continuent de s'ajuster tant que l'affichage suit les données.
 - **Clear data** : efface toutes les données enregistrées (après une confirmation s'il y en a),
   efface les curseurs et ramène l'axe du temps à 0. La connexion reste telle quelle.
 
@@ -613,16 +618,47 @@ Souris :
 | Action | Effet |
 |---|---|
 | Molette de la souris | Zoom sur l'axe du temps (X). |
-| Shift + molette de la souris | Zoom sur les deux axes Y. La mise à l'échelle automatique s'arrête jusqu'à Run ou Fit Y. |
-| Glisser avec le bouton droit | Déplace la vue. |
+| Molette de la souris sur un axe Y | Zoom sur cet axe seulement, autour de la valeur sous le pointeur, et fixe sa plage. |
+| Shift + molette de la souris | Zoom sur les deux axes Y et les fixe. Seul l'axe de gauche change quand aucune étiquette tracée n'utilise l'axe de droite. |
+| Glisser avec le bouton droit | Déplace la vue. Une plage Y fixée est déplacée aussi. |
+| Clic droit sur un axe Y | Ouvre le menu de l'axe (voir [Plages des axes Y](#plages-des-axes-y)). |
 
-Le zoom et le déplacement de la vue mettent la tendance en pause.
+Le zoom et le déplacement de la vue mettent la tendance en pause. Appuyez sur Fit Y pour remettre les
+axes Y à l'échelle automatique.
 
 Cliquez sur le nom d'une étiquette dans la légende sous le graphique pour masquer ou afficher sa
 courbe. La légende affiche les noms sous la forme `name [unit]`.
 
 Quand des données manquent (déconnexion, lecture échouée ou mauvaise qualité), la ligne est
 interrompue.
+
+### Plages des axes Y
+
+Chaque axe Y est soit **Auto**, soit **fixé**. Un axe Auto s'ajuste aux données visibles et les suit
+quand elles bougent. Un axe fixé garde la plage que vous lui avez donnée, quoi que fassent les
+données : un niveau qui varie entre 40 et 60 % reste dans un cadre stable (par exemple 0 à 100 %).
+Seul l'axe du temps défile.
+
+Pour régler une plage :
+
+- Faites un clic droit sur un axe Y, ou ouvrez le bouton **Y axes** au-dessus du graphique et choisissez
+  **Left** ou **Right**. Les deux sous-menus ont les mêmes éléments. **Right** est désactivé tant
+  qu'aucune étiquette tracée n'utilise l'axe de droite.
+- **Set range...** demande un minimum et un maximum, remplis avec la plage actuellement visible. OK
+  n'est accepté que si le minimum est inférieur au maximum.
+- **0 to 100** fixe l'axe de 0 à 100, pour une valeur en pourcentage.
+- **Auto** remet l'axe à l'échelle automatique.
+
+La souris fonctionne aussi. La molette sur un axe Y fait un zoom sur cet axe, autour de la valeur sous
+le pointeur, et le fixe à la nouvelle plage. Shift + molette sur le graphique fait de même pour les deux
+axes Y. Le glissement avec le bouton droit déplace aussi une plage fixée. La molette seule sur le
+graphique fait toujours un zoom sur l'axe du temps.
+
+**Fit Y** ajuste les deux axes aux données visibles et remet les deux en Auto. **Run** conserve les
+plages fixées. Un changement d'étiquettes ne les modifie pas non plus.
+
+Les plages sont enregistrées dans le projet (voir [Projets](#projets)) : elles reviennent à la prochaine
+ouverture.
 
 ## Curseurs
 
@@ -1024,7 +1060,7 @@ Pour un procédé plus réaliste, avec un temps mort, du bruit et un réservoir 
 
 Les projets sont enregistrés sous forme de fichiers `.mbproj`. Un projet contient les paramètres de
 connexion, la numérotation des registres (à partir de 1 ou non), la liste des étiquettes, y compris
-leurs couleurs, l'axe Y et les préréglages d'écriture rapide, ainsi que les paramètres d'Analysis. Les
+leurs couleurs, l'axe Y et les préréglages d'écriture rapide, les plages des axes Y de la tendance, ainsi que les paramètres d'Analysis. Les
 données enregistrées, les curseurs et la fenêtre de la tendance ne sont pas enregistrés dans un
 projet. Pour les conserver, enregistrez une [session](#sessions).
 
@@ -1035,7 +1071,8 @@ dans un objet `analysis` : `pvTag` et `setpointTags` (la PV et les étiquettes d
 affichés), `deltaCoTag` et `deltaCo`, `method` (`"0-63.2"`, `"smith"`, `"sundaresan"` ou `"custom"`),
 `modelPercents`, `percents`, `reference` (`"cursor"` ou `"mean"`), `referenceWindowS`, `smoothingS`,
 `pvRange`, `coRange`, `showModel`, `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`,
-`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un tableau
+`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un objet
+`yAxes` de premier niveau contient les plages fixées des axes Y de la tendance : `left` et `right` valent chacun `"auto"` ou une paire `[min, max]` avec min inférieur à max (par exemple `"left": [0, 100]`). Une clé absente vaut `"auto"`. Un tableau
 `hiddenColumns` de premier niveau énumère les colonnes du tableau des étiquettes masquées dans ce
 projet (par exemple `"raw"`, `"gain"`, `"quickA"`). Toutes ces clés sont facultatives : un fichier
 qui en est dépourvu se charge avec les valeurs par défaut (la vue compacte pour `hiddenColumns`).
