@@ -146,10 +146,17 @@ private:
     int m_noiseSteps = 0; ///< steps since the last noise sample
     std::mt19937 m_rng;
     PidSettings m_pid;
+    double m_integral = 0.0; ///< PID I term, % OUT
+    double m_pvFilt = 0.0;   ///< filtered PV for the derivative
+    double m_dPv = 0.0;      ///< d(filtered PV)/dt of the last PID execution, %/s
+    int m_pidSteps = 0;      ///< steps since the last PID execution
 
     void step();
     void resizePipe(std::size_t n, double padValue);
     void refreshPv();
+    void runPid();
+    double pidError() const;
+    double pidD() const;
 };
 
 } // namespace mbloop

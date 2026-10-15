@@ -113,6 +113,7 @@ private slots:
     void controllerModbusWritesReachModel();
     void controllerFaceplateSetPublishesAtOnce();
     void controllerCurrentScenarioAndReset();
+    void autoModeRefusesOutWrites();
 };
 
 void TstLoopServer::startAndPort()
@@ -587,6 +588,47 @@ void TstLoopServer::controllerCurrentScenarioAndReset()
     QCOMPARE(ctl.speedFactor(), 5.0);
     QCOMPARE(speedSpy.count(), 1);
     QCOMPARE(changed.count(), 2);
+}
+
+void TstLoopServer::autoModeRefusesOutWrites()
+{
+    LoopController ctl;
+    QString error;
+    QVERIFY2(ctl.startServer(QStringLiteral("127.0.0.1"), 0, &error), qPrintable(error));
+    Client c(ctl.server().port());
+    QVERIFY(c.connected());
+
+    ctl.setAuto(true);
+    QVERIFY(ctl.model().isAuto());
+    errno = 0;
+    QCOMPARE(c.writeFloat(2, 80.0f), -1);
+    QCOMPARE(errno, kIllegalValue);
+    uint16_t r[4];
+    Client::fromFloat(11.0f, r);
+    Client::fromFloat(22.0f, r + 2);
+    errno = 0;
+    QCOMPARE(modbus_write_registers(c.ctx(), 0, 4, r), -1); // SP + OUT together: nothing written
+    QCOMPARE(errno, kIllegalValue);
+    const LoopServer::Writes w = ctl.server().takeWrites();
+    QVERIFY(!w.outWritten && !w.spWritten);
+    ctl.tickFor(0.05);
+    QVERIFY(ctl.model().state().outPct != 80.0);
+    QCOMPARE(ctl.model().state().spPct, 50.0);
+
+    QCOMPARE(c.writeFloat(0, 63.0f), 2); // SP is still accepted
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().spPct, 63.0);
+
+    ctl.setAuto(false);
+    QCOMPARE(c.writeFloat(2, 35.0f), 2);
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().outPct, 35.0);
+
+    // resetState goes back to Manual with OUT writable
+    ctl.setAuto(true);
+    ctl.resetState();
+    QVERIFY(!ctl.model().isAuto());
+    QCOMPARE(c.writeFloat(2, 20.0f), 2);
 }
 
 QTEST_GUILESS_MAIN(TstLoopServer)

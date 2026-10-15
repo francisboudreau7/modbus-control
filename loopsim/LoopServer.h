@@ -73,6 +73,7 @@ private:
     RegulatorRegisters m_regs;
     Writes m_writes;
     std::atomic<bool> m_stop{false};
+    std::atomic<bool> m_outWritable{true};
     std::atomic<int> m_clients{0};
     std::thread m_thread;
     _modbus *m_ctx = nullptr;

@@ -121,6 +121,48 @@ bool readSettings(const QJsonObject &root, Scenario &scenario, QString *error)
     return true;
 }
 
+bool readPid(const QJsonObject &root, Scenario &scenario, QString *error)
+{
+    QJsonObject obj;
+    bool present = false;
+    if (!readObject(root, QStringLiteral("pid"), obj, present, error))
+        return false;
+    if (!present)
+        return true;
+    const QString prefix = QStringLiteral("pid.");
+    if (!checkKeys(obj,
+                   {QStringLiteral("mode"), QStringLiteral("kp"), QStringLiteral("tiS"),
+                    QStringLiteral("tdS"), QStringLiteral("action")},
+                   prefix, error)) {
+        return false;
+    }
+    PidSettings &pid = scenario.pid;
+    if (!readRange(obj, QStringLiteral("kp"), prefix, 0, 100, pid.kp, error)
+        || !readRange(obj, QStringLiteral("tiS"), prefix, 0, 3600, pid.tiS, error)
+        || !readRange(obj, QStringLiteral("tdS"), prefix, 0, 600, pid.tdS, error)) {
+        return false;
+    }
+    const QJsonValue mode = obj.value(QStringLiteral("mode"));
+    if (!mode.isUndefined()) {
+        const QString m = mode.isString() ? mode.toString() : QString();
+        if (m != QStringLiteral("manual") && m != QStringLiteral("auto")) {
+            setError(error, QStringLiteral("pid.mode: must be \"manual\" or \"auto\""));
+            return false;
+        }
+        scenario.autoMode = m == QStringLiteral("auto");
+    }
+    const QJsonValue action = obj.value(QStringLiteral("action"));
+    if (!action.isUndefined()) {
+        const QString a = action.isString() ? action.toString() : QString();
+        if (a != QStringLiteral("reverse") && a != QStringLiteral("direct")) {
+            setError(error, QStringLiteral("pid.action: must be \"reverse\" or \"direct\""));
+            return false;
+        }
+        pid.reverse = a == QStringLiteral("reverse");
+    }
+    return true;
+}
+
 bool readState(const QJsonObject &root, Scenario &scenario, QString *error)
 {
     QJsonObject obj;
@@ -166,6 +208,14 @@ QByteArray scenarioToJson(const Scenario &scenario)
         {QStringLiteral("version"), static_cast<qint64>(kScenarioVersion)},
         {QStringLiteral("settings"), settings},
     };
+    root.insert(QStringLiteral("pid"),
+                QJsonObject{
+                    {QStringLiteral("mode"), scenario.autoMode ? QStringLiteral("auto") : QStringLiteral("manual")},
+                    {QStringLiteral("kp"), scenario.pid.kp},
+                    {QStringLiteral("tiS"), scenario.pid.tiS},
+                    {QStringLiteral("tdS"), scenario.pid.tdS},
+                    {QStringLiteral("action"), scenario.pid.reverse ? QStringLiteral("reverse") : QStringLiteral("direct")},
+                });
     if (scenario.state) {
         const Scenario::State &s = *scenario.state;
         root.insert(QStringLiteral("state"), QJsonObject{
@@ -214,13 +264,14 @@ std::optional<Scenario> scenarioFromJson(const QByteArray &json, QString *error)
     }
     if (!checkKeys(root,
                    {QStringLiteral("format"), QStringLiteral("version"),
-                    QStringLiteral("settings"), QStringLiteral("state")},
+                    QStringLiteral("settings"), QStringLiteral("pid"), QStringLiteral("state")},
                    QString(), error)) {
         return std::nullopt;
     }
 
     Scenario scenario;
-    if (!readSettings(root, scenario, error) || !readState(root, scenario, error))
+    if (!readSettings(root, scenario, error) || !readPid(root, scenario, error)
+        || !readState(root, scenario, error))
         return std::nullopt;
     return scenario;
 }
@@ -266,6 +317,8 @@ std::optional<Scenario> loadScenario(const QString &path, QString *error)
 void applyScenario(LoopModel &model, const Scenario &scenario)
 {
     model.setParams(scenario.params);
+    model.setAuto(false);
+    model.setPid(scenario.pid);
     model.reset(scenario.params, 50.0);
     if (scenario.state) {
         const Scenario::State &s = *scenario.state;
@@ -275,6 +328,7 @@ void applyScenario(LoopModel &model, const Scenario &scenario)
         model.setStemPct(s.stemPct);
         model.fillPipe();
     }
+    model.setAuto(scenario.autoMode); // bumpless: OUT stays as set above
 }
 
 } // namespace mbloop

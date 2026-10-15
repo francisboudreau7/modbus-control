@@ -122,6 +122,8 @@ Scenario LoopController::currentScenario() const
     state.spPct = st.spPct;
     state.stemPct = st.stemPct;
     s.state = state;
+    s.pid = m_model.pid();
+    s.autoMode = st.autoMode;
     return s;
 }
 
@@ -129,6 +131,7 @@ void LoopController::loadScenario(const Scenario &scenario)
 {
     m_server.takeWrites(); // a client write not yet applied must not override the scenario
     applyScenario(m_model, scenario);
+    m_server.setOutWritable(!m_model.isAuto());
     setSpeedFactor(scenario.speedFactor);
     publish();
     emit stateChanged();
@@ -137,7 +140,8 @@ void LoopController::loadScenario(const Scenario &scenario)
 void LoopController::resetState()
 {
     m_server.takeWrites(); // a client write not yet applied must not override the reset
-    m_model.reset(m_model.params(), 50.0);
+    m_model.reset(m_model.params(), 50.0); // keeps the PID settings, back to Manual
+    m_server.setOutWritable(true);
     publish();
     emit stateChanged();
 }
@@ -165,7 +169,7 @@ void LoopController::tick()
 void LoopController::applyClientWrites()
 {
     const LoopServer::Writes w = m_server.takeWrites();
-    if (w.outWritten) {
+    if (w.outWritten && !m_model.isAuto()) {
         m_model.setOut(w.out);
     }
     if (w.spWritten) {
@@ -179,8 +183,20 @@ void LoopController::publish()
     m_server.publish(static_cast<float>(st.pvPct), static_cast<float>(st.spPct), static_cast<float>(st.outPct));
 }
 
-// Stubs created by T220; implemented by T223.
-void LoopController::setAuto(bool on) { m_model.setAuto(on); }
-void LoopController::setPid(const PidSettings &pid) { m_model.setPid(pid); }
+void LoopController::setAuto(bool on)
+{
+    applyClientWrites(); // a pending client write is applied (or refused) in the old mode
+    m_model.setAuto(on);
+    m_server.setOutWritable(!on);
+    publish();
+    emit stateChanged();
+}
+
+void LoopController::setPid(const PidSettings &pid)
+{
+    m_model.setPid(pid);
+    publish();
+    emit stateChanged();
+}
 
 } // namespace mbloop

@@ -419,7 +419,10 @@ void LoopServer::run()
                     continue;
                 }
             }
-            const Verdict verdict = checkRequest(query[static_cast<size_t>(hl)], query.data() + hl + 1, rc - hl - 1);
+            Verdict verdict = checkRequest(query[static_cast<size_t>(hl)], query.data() + hl + 1, rc - hl - 1);
+            if (verdict.exception == 0 && verdict.outWrite && !m_outWritable.load()) {
+                verdict.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE; // Auto: OUT is the PID's
+            }
             if (verdict.exception != 0) {
                 if (modbus_reply_exception(m_ctx, query.data(), static_cast<unsigned>(verdict.exception)) == -1) {
                     closeClient(fd);
@@ -459,7 +462,6 @@ void LoopServer::run()
     m_clients = 0;
 }
 
-// Stub created by T220; implemented by T223.
-void LoopServer::setOutWritable(bool) {}
+void LoopServer::setOutWritable(bool writable) { m_outWritable.store(writable); }
 
 } // namespace mbloop

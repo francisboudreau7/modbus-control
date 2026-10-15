@@ -56,6 +56,10 @@ private slots:
     void applyScenarioSetsParams();
     void applyScenarioWithState();
     void applyScenarioWithoutStateKeepsSteadyStart();
+    void pidRoundTripAndDefaults();
+    void pidErrors_data();
+    void pidErrors();
+    void applyScenarioSetsPidAndAuto();
 };
 
 void TstScenario::roundTripWithoutState()
@@ -273,6 +277,86 @@ void TstScenario::applyScenarioWithoutStateKeepsSteadyStart()
     // Without state the model is reset with OUT = SP = 50.
     QCOMPARE(model.state().outPct, 50.0);
     QCOMPARE(model.state().spPct, 50.0);
+}
+
+void TstScenario::pidRoundTripAndDefaults()
+{
+    Scenario s = sampleScenario();
+    s.pid.kp = 2.5;
+    s.pid.tiS = 12.0;
+    s.pid.tdS = 3.0;
+    s.pid.reverse = false;
+    s.autoMode = true;
+    const QByteArray json = scenarioToJson(s);
+    QVERIFY(json.contains("\"pid\""));
+    QVERIFY(json.contains("\"mode\": \"auto\""));
+    QVERIFY(json.contains("\"action\": \"direct\""));
+    QString error;
+    const std::optional<Scenario> back = scenarioFromJson(json, &error);
+    QVERIFY2(back.has_value(), qPrintable(error));
+    QVERIFY(*back == s);
+
+    // always written, also for the defaults
+    QVERIFY(scenarioToJson(Scenario{}).contains("\"pid\""));
+    // old files without "pid": defaults, Manual
+    const std::optional<Scenario> old = scenarioFromJson(
+        QByteArrayLiteral("{\"format\":\"modbus-loop-scenario\",\"version\":1}"), &error);
+    QVERIFY(old.has_value());
+    QVERIFY(old->pid == PidSettings{});
+    QVERIFY(!old->autoMode);
+    QVERIFY(old->pid.reverse && old->pid.kp == 1.0 && old->pid.tiS == 30.0 && old->pid.tdS == 0.0);
+    const std::optional<Scenario> partial = scenarioFromJson(
+        doc(QStringLiteral("{}"), {}, QStringLiteral("\"pid\":{\"kp\":4}")), &error);
+    QVERIFY2(partial.has_value(), qPrintable(error));
+    QCOMPARE(partial->pid.kp, 4.0);
+    QCOMPARE(partial->pid.tiS, 30.0);
+    QVERIFY(!partial->autoMode);
+}
+
+void TstScenario::pidErrors_data()
+{
+    QTest::addColumn<QString>("pid");
+    QTest::addColumn<QString>("key");
+    QTest::newRow("kp low") << QStringLiteral("{\"kp\":-1}") << QStringLiteral("pid.kp");
+    QTest::newRow("kp high") << QStringLiteral("{\"kp\":100.5}") << QStringLiteral("pid.kp");
+    QTest::newRow("ti high") << QStringLiteral("{\"tiS\":3601}") << QStringLiteral("pid.tiS");
+    QTest::newRow("ti low") << QStringLiteral("{\"tiS\":-1}") << QStringLiteral("pid.tiS");
+    QTest::newRow("td high") << QStringLiteral("{\"tdS\":601}") << QStringLiteral("pid.tdS");
+    QTest::newRow("td string") << QStringLiteral("{\"tdS\":\"1\"}") << QStringLiteral("pid.tdS");
+    QTest::newRow("mode bad") << QStringLiteral("{\"mode\":\"cascade\"}") << QStringLiteral("pid.mode");
+    QTest::newRow("mode number") << QStringLiteral("{\"mode\":1}") << QStringLiteral("pid.mode");
+    QTest::newRow("action bad") << QStringLiteral("{\"action\":\"up\"}") << QStringLiteral("pid.action");
+    QTest::newRow("unknown key") << QStringLiteral("{\"gain\":1}") << QStringLiteral("pid.gain");
+    QTest::newRow("not object") << QStringLiteral("[]") << QStringLiteral("pid");
+}
+
+void TstScenario::pidErrors()
+{
+    QFETCH(QString, pid);
+    QFETCH(QString, key);
+    QString error;
+    QVERIFY(!scenarioFromJson(doc(QStringLiteral("{}"), {}, QStringLiteral("\"pid\":") + pid), &error).has_value());
+    QVERIFY2(error.contains(key), qPrintable(error));
+}
+
+void TstScenario::applyScenarioSetsPidAndAuto()
+{
+    LoopModel model;
+    Scenario s = sampleScenario();
+    s.pid.kp = 3.0;
+    s.pid.tiS = 0.0;
+    s.pid.reverse = false;
+    s.autoMode = true;
+    s.state = Scenario::State{.levelPct = 42.0, .outPct = 30.0, .spPct = 44.0, .stemPct = 28.0};
+    applyScenario(model, s);
+    QVERIFY(model.pid() == s.pid);
+    QVERIFY(model.isAuto());
+    QCOMPARE(model.state().outPct, 30.0); // entered bumplessly
+    QCOMPARE(model.state().spPct, 44.0);
+
+    s.autoMode = false;
+    applyScenario(model, s);
+    QVERIFY(!model.isAuto());
 }
 
 QTEST_MAIN(TstScenario)

@@ -83,12 +83,70 @@ void LoopModel::reset(const LoopParams &params, double outPct)
     m_lagPct = 100.0 * h / kTankHeightM;
     m_noisePct = 0.0;
     m_noiseSteps = 0;
+    m_integral = 0.0; // Manual after a reset; the PID settings are kept
+    m_pvFilt = 0.0;
+    m_dPv = 0.0;
+    m_pidSteps = 0;
     refreshPv();
+    m_pvFilt = m_state.pvPct;
+}
+
+double LoopModel::pidError() const
+{
+    return m_pid.reverse ? m_state.spPct - m_state.pvPct : m_state.pvPct - m_state.spPct;
+}
+
+double LoopModel::pidD() const
+{
+    if (m_pid.tdS <= 0.0)
+        return 0.0;
+    const double sign = m_pid.reverse ? -1.0 : 1.0;
+    return sign * m_pid.kp * m_pid.tdS * m_dPv;
+}
+
+void LoopModel::runPid()
+{
+    const double dt = kPidPeriodS;
+    const double e = pidError();
+    const double p = m_pid.kp * e;
+
+    // Derivative on the filtered PV (first-order filter, tau = Td / 10).
+    const double oldFilt = m_pvFilt;
+    if (m_pid.tdS > 0.0) {
+        const double tau = m_pid.tdS / 10.0;
+        m_pvFilt += (m_state.pvPct - m_pvFilt) * (1.0 - std::exp(-dt / tau));
+        m_dPv = (m_pvFilt - oldFilt) / dt;
+    } else {
+        m_pvFilt = m_state.pvPct;
+        m_dPv = 0.0;
+    }
+    const double d = pidD();
+
+    if (m_pid.tiS > 0.0) {
+        // Conditional integration: no integrating further into a saturated OUT.
+        const double iNew = m_integral + m_pid.kp / m_pid.tiS * e * dt;
+        const double u = p + iNew + d;
+        const bool pushesHigh = u > 100.0 && e > 0.0;
+        const bool pushesLow = u < 0.0 && e < 0.0;
+        if (!pushesHigh && !pushesLow)
+            m_integral = iNew;
+    } else {
+        m_integral = 0.0;
+    }
+    m_state.outPct = std::clamp(p + m_integral + d, 0.0, 100.0);
 }
 
 void LoopModel::step()
 {
     LoopState &st = m_state;
+
+    if (st.autoMode) {
+        static const int pidEvery = static_cast<int>(std::llround(kPidPeriodS / kStepS));
+        if (++m_pidSteps >= pidEvery) {
+            m_pidSteps = 0;
+            runPid();
+        }
+    }
 
     // Stem moves toward OUT at the stroke rate.
     if (m_params.fcvStrokeS <= 0.0) {
@@ -167,7 +225,11 @@ void LoopModel::setParams(const LoopParams &params)
         m_pipe.clear();
 }
 
-void LoopModel::setOut(double pct) { m_state.outPct = clampd(pct, 0.0, 100.0); }
+void LoopModel::setOut(double pct)
+{
+    if (!m_state.autoMode)
+        m_state.outPct = clampd(pct, 0.0, 100.0);
+}
 void LoopModel::setSp(double pct) { m_state.spPct = clampd(pct, 0.0, 100.0); }
 
 void LoopModel::setLevelM(double h)
@@ -202,10 +264,35 @@ double LoopModel::steadyLevelM(const LoopParams &params, double outPct)
     return x * x;
 }
 
-// Stubs created by T220; implemented by T223.
-void LoopModel::setPid(const PidSettings &pid) { m_pid = pid; }
+void LoopModel::setPid(const PidSettings &pid)
+{
+    PidSettings c;
+    c.kp = clampd(pid.kp, 0.0, 100.0);
+    c.tiS = clampd(pid.tiS, 0.0, 3600.0);
+    c.tdS = clampd(pid.tdS, 0.0, 600.0);
+    c.reverse = pid.reverse;
+    m_pid = c;
+    if (m_state.autoMode) {
+        // Bumpless: re-balance I so OUT does not jump with the new settings.
+        m_integral = (m_pid.tiS > 0.0) ? m_state.outPct - m_pid.kp * pidError() - pidD() : 0.0;
+    }
+}
+
 const PidSettings &LoopModel::pid() const { return m_pid; }
-void LoopModel::setAuto(bool on) { m_state.autoMode = on; }
+
+void LoopModel::setAuto(bool on)
+{
+    if (on == m_state.autoMode)
+        return;
+    m_state.autoMode = on;
+    if (on) {
+        m_pvFilt = m_state.pvPct;
+        m_dPv = 0.0;
+        m_pidSteps = 0;
+        m_integral = (m_pid.tiS > 0.0) ? m_state.outPct - m_pid.kp * pidError() : 0.0;
+    }
+}
+
 bool LoopModel::isAuto() const { return m_state.autoMode; }
 
 } // namespace mbloop
