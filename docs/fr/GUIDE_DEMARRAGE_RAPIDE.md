@@ -1,5 +1,7 @@
 # Modbus Control — Guide de démarrage rapide
 
+Lire en ligne : [https://francisboudreau7.github.io/modbus-control/fr/](https://francisboudreau7.github.io/modbus-control/fr/)
+
 English version: [Quick Start](../QUICK_START.md) · Guide complet : [Guide de l'utilisateur](GUIDE_UTILISATEUR.md)
 
 Ce guide présente le déroulement de base avec un régulateur ABB ControlMaster CM50 :

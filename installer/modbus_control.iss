@@ -2,11 +2,11 @@
 ;
 ; Normally compiled by installer\build_installer.ps1, which passes the defines below.
 ; Manual compile (all paths absolute):
-;   ISCC.exe /DAppVersion=1.2.6 /DSourceDir=<repo>\out\install /DRepoDir=<repo> ^
+;   ISCC.exe /DAppVersion=1.2.7 /DSourceDir=<repo>\out\install /DRepoDir=<repo> ^
 ;            /O<repo>\out\installer installer\modbus_control.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.2.6"
+  #define AppVersion "1.2.7"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\out\install"

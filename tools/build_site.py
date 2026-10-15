@@ -52,10 +52,14 @@ SOURCES = {
 # Language-switch text that the theme's language selector replaces. Each pattern must
 # match exactly once in its source, otherwise the build fails (the source changed).
 SWITCH_PATTERNS = {
-    "docs/QUICK_START.md": [r"^Version française : \[[^\]]*\]\([^)]*\)\.?[ \t]*\n"],
-    "docs/USER_GUIDE.md": [r"[ \t]*En français :\s*\[[^\]]*\]\([^)]*\)"],
-    "docs/fr/GUIDE_DEMARRAGE_RAPIDE.md": [r"English version: \[[^\]]*\]\([^)]*\)\s*·\s*"],
-    "docs/fr/GUIDE_UTILISATEUR.md": [r"English version: \[[^\]]*\]\([^)]*\)\s*·\s*"],
+    "docs/QUICK_START.md": [r"^Version française : \[[^\]]*\]\([^)]*\)\.?[ \t]*\n",
+                            r"^Read online: \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
+    "docs/USER_GUIDE.md": [r"[ \t]*En français :\s*\[[^\]]*\]\([^)]*\)",
+                           r"^Read online: \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
+    "docs/fr/GUIDE_DEMARRAGE_RAPIDE.md": [r"English version: \[[^\]]*\]\([^)]*\)\s*·\s*",
+                                          r"^Lire en ligne : \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
+    "docs/fr/GUIDE_UTILISATEUR.md": [r"English version: \[[^\]]*\]\([^)]*\)\s*·\s*",
+                                     r"^Lire en ligne : \[[^\]]*\]\([^)]*\)[ \t]*\n\n"],
 }
 
 errors: list[str] = []

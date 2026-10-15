@@ -1,5 +1,7 @@
 # Modbus Control — Quick Start
 
+Read online: [https://francisboudreau7.github.io/modbus-control/](https://francisboudreau7.github.io/modbus-control/)
+
 This guide walks through the basic workflow with an ABB ControlMaster CM50 controller:
 
 1. [Connect to the controller](#1-connect-to-the-controller)

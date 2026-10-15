@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("modbus_test_server"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.2.6"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.2.7"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Modbus TCP test server with simulated signals and fault injection"));

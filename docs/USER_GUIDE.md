@@ -1,5 +1,7 @@
 # Modbus Control user guide
 
+Read online: [https://francisboudreau7.github.io/modbus-control/guide/](https://francisboudreau7.github.io/modbus-control/guide/)
+
 New to the app? Start with the [Quick Start](QUICK_START.md). En français :
 [Guide de l'utilisateur](fr/GUIDE_UTILISATEUR.md).
 
@@ -19,7 +21,9 @@ This guide describes the application as built from this repository. For building
 - **Setpoints** (right dock, tabbed after Analysis): which curves show setpoint markers, the
   setpoint percentages, references, smoothing and the setpoint table (see
   [Setpoints and options](#setpoints-and-options)).
-- **Menus**: File, Export, View, Options and Help.
+- **Menus**: File, Export, View, Options and Help. **Help > Quick Start** and **Help > User Guide**
+  open these guides online (in French when Windows is in French), or the copy installed with the
+  application when the browser cannot be opened.
 - **Status bar**: short messages (left) and the connection state (right).
 
 Docks can be closed and reopened from the View menu. Window size and dock layout are remembered.

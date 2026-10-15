@@ -1,5 +1,7 @@
 # Guide de l'utilisateur de Modbus Control
 
+Lire en ligne : [https://francisboudreau7.github.io/modbus-control/fr/guide/](https://francisboudreau7.github.io/modbus-control/fr/guide/)
+
 English version: [User Guide](../USER_GUIDE.md) · Démarrage rapide : [Guide de démarrage rapide](GUIDE_DEMARRAGE_RAPIDE.md)
 
 Ce guide décrit le logiciel tel qu'il est construit à partir de ce dépôt. Pour la compilation,
@@ -19,7 +21,9 @@ consultez le [README](../../README.md). Pour le serveur de test, consultez
 - **Setpoints** (panneau de droite, onglet placé après Analysis) : les courbes qui affichent des repères, les
   pourcentages des repères, les références, le lissage et le tableau des repères (voir
   [Repères et options](#repères-et-options)).
-- **Menus** : File, Export, View, Options et Help.
+- **Menus** : File, Export, View, Options et Help. **Help > Quick Start** et **Help > User Guide**
+  ouvrent ces guides en ligne (en français quand Windows est en français), ou la copie installée
+  avec le logiciel quand le navigateur ne peut pas être ouvert.
 - **Barre d'état** : de courts messages (à gauche) et l'état de la connexion (à droite).
 
 Les panneaux peuvent être fermés et rouverts à partir du menu View. La taille de la fenêtre et la disposition des panneaux sont mémorisées.

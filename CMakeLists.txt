@@ -9,7 +9,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
   endif()
 endif()
 
-project(ModbusControl VERSION 1.2.6 LANGUAGES CXX)
+project(ModbusControl VERSION 1.2.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
