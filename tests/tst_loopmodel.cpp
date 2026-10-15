@@ -2,12 +2,382 @@
 
 #include <QtTest>
 
+#include <cmath>
+#include <limits>
+#include <vector>
+
+using namespace mbloop;
+using namespace mbloop::loop101;
+
+namespace {
+
+/// Parameters with all the dynamics removed (exact, noise-free) unless a test turns them on.
+LoopParams plain()
+{
+    LoopParams p;
+    p.deadTimeS = 0.0;
+    p.ltNoisePct = 0.0;
+    p.ltDampingS = 0.0;
+    p.fcvStrokeS = 0.0;
+    return p;
+}
+
+} // namespace
+
 class TstLoopModel : public QObject
 {
     Q_OBJECT
 private slots:
-    // Placeholder created by T210; the implementing task writes the real tests.
-    void builds() { QVERIFY(true); }
+    void steadyLevel()
+    {
+        LoopParams p;
+        QVERIFY(qAbs(LoopModel::steadyLevelM(p, 50) - 0.50) < 1e-3);
+        QVERIFY(qAbs(LoopModel::steadyLevelM(p, 30) - 0.18) < 1e-3);
+        QVERIFY(qAbs(LoopModel::steadyLevelM(p, 70) - 0.98) < 1e-3);
+        p.pumpSpeedPct = 50.0; // half the flow -> a quarter of the level
+        QVERIFY(qAbs(LoopModel::steadyLevelM(p, 50) - 0.125) < 1e-3);
+        p = LoopParams{};
+        p.hvOpeningPct = 0.0;
+        QVERIFY(std::isinf(LoopModel::steadyLevelM(p, 50)));
+        QCOMPARE(LoopModel::steadyLevelM(LoopParams{}, 0.0), 0.0);
+        LoopParams q;
+        q.pumpSpeedPct = 0.0;
+        QCOMPARE(LoopModel::steadyLevelM(q, 50.0), 0.0);
+    }
+
+    void resetIsSteady()
+    {
+        LoopParams p = plain();
+        LoopModel m;
+        m.reset(p, 50.0);
+        QVERIFY(qAbs(m.state().levelM - 0.5) < 1e-3);
+        QVERIFY(qAbs(m.state().pvPct - 50.0) < 0.1);
+        const double h0 = m.state().levelM;
+        m.advance(600.0);
+        QVERIFY(qAbs(m.state().levelM - h0) < 1e-4);
+        QVERIFY(qAbs(m.state().pvPct - 50.0) < 0.1);
+        QVERIFY(qAbs(m.state().timeS - 600.0) < 1e-6);
+        QVERIFY(!m.state().overflowing);
+    }
+
+    void stepResponseTau()
+    {
+        LoopParams p = plain();
+        LoopModel m;
+        m.reset(p, 50.0);
+        const double h0 = m.state().levelM;
+        const double h1 = LoopModel::steadyLevelM(p, 60.0);
+        // Linearised time constant tau = 2 A h / Qhv, taken at the mean of the two operating points.
+        const double hMean = 0.5 * (h0 + h1);
+        const double qMean = kHvCoefficient * 0.5 * std::sqrt(hMean);
+        const double tau = 2.0 * kTankAreaM2 * hMean / qMean;
+
+        m.setOut(60.0);
+        const double target = h0 + 0.632 * (h1 - h0);
+        double t632 = -1.0;
+        for (int i = 0; i < 100000 && t632 < 0.0; ++i) {
+            m.advance(0.1);
+            if (m.state().levelM >= target)
+                t632 = m.state().timeS;
+        }
+        qInfo() << "t63.2 =" << t632 << "expected tau =" << tau;
+        QVERIFY(t632 > 0.0);
+        QVERIFY(qAbs(t632 - tau) / tau < 0.10);
+
+        m.advance(20.0 * tau);
+        QVERIFY(qAbs(m.state().levelM - h1) < 5e-4);
+    }
+
+    void smallStepMatchesLinearTau()
+    {
+        // For a small step the response is the exponential with the operating-point tau.
+        LoopParams p = plain();
+        LoopModel m;
+        m.reset(p, 50.0);
+        const double h0 = m.state().levelM;
+        const double h1 = LoopModel::steadyLevelM(p, 51.0);
+        const double tau = 2.0 * kTankAreaM2 * h0 / (kHvCoefficient * 0.5 * std::sqrt(h0));
+        m.setOut(51.0);
+        const double target = h0 + 0.632 * (h1 - h0);
+        double t632 = -1.0;
+        for (int i = 0; i < 100000 && t632 < 0.0; ++i) {
+            m.advance(0.1);
+            if (m.state().levelM >= target)
+                t632 = m.state().timeS;
+        }
+        QVERIFY(t632 > 0.0);
+        QVERIFY(qAbs(t632 - tau) / tau < 0.03);
+    }
+
+    void deadTime()
+    {
+        LoopParams p = plain();
+        p.deadTimeS = 5.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        const double h0 = m.state().levelM;
+        m.setOut(70.0);
+        m.advance(4.9);
+        QVERIFY(qAbs(m.state().levelM - h0) < 1e-9);
+        QVERIFY(m.state().qFcv > m.state().qIn);
+        m.advance(0.3);
+        QVERIFY(m.state().levelM > h0 + 1e-6);
+    }
+
+    void deadTimeChangeKeepsHistory()
+    {
+        LoopParams p = plain();
+        p.deadTimeS = 5.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setOut(70.0);
+        m.advance(2.0);
+        p.deadTimeS = 10.0; // longer: padded with the oldest value
+        m.setParams(p);
+        const double qOld = m.state().qIn;
+        m.advance(0.5);
+        QVERIFY(qAbs(m.state().qIn - qOld) < 1e-12);
+        p.deadTimeS = 0.0;
+        m.setParams(p);
+        m.advance(0.01);
+        QVERIFY(qAbs(m.state().qIn - m.state().qFcv) < 1e-15);
+    }
+
+    void stroke()
+    {
+        LoopParams p = plain();
+        p.fcvStrokeS = 5.0;
+        LoopModel m;
+        m.reset(p, 0.0);
+        m.setOut(100.0);
+        m.advance(2.5);
+        QVERIFY(qAbs(m.state().stemPct - 50.0) < 0.5);
+        m.advance(2.5);
+        QVERIFY(qAbs(m.state().stemPct - 100.0) < 0.5);
+        m.advance(1.0);
+        QCOMPARE(m.state().stemPct, 100.0);
+        m.setOut(0.0);
+        m.advance(5.1);
+        QCOMPARE(m.state().stemPct, 0.0);
+    }
+
+    void overflow()
+    {
+        LoopParams p = plain();
+        LoopModel m;
+        m.reset(p, 100.0); // steady level 1.96 m -> clamped to the overflow
+        QVERIFY(qAbs(m.state().levelM - kOverflowLevelM) < 1e-12);
+        m.advance(0.05);
+        QVERIFY(m.state().overflowing);
+        m.advance(100.0);
+        QVERIFY(qAbs(m.state().levelM - kOverflowLevelM) < 1e-9);
+        QVERIFY(m.state().overflowing);
+        const double expected = m.state().qIn - m.state().qHv;
+        QVERIFY(qAbs(m.state().qOverflow - expected) < 1e-9);
+        QVERIFY(m.state().qOverflow > 1e-4);
+
+        // Drops back below the overflow when OUT is reduced.
+        m.setOut(40.0);
+        m.advance(300.0);
+        QVERIFY(!m.state().overflowing);
+        QVERIFY(m.state().levelM < kOverflowLevelM);
+        QCOMPARE(m.state().qOverflow, 0.0);
+    }
+
+    void ltDamping()
+    {
+        LoopParams p = plain();
+        p.ltDampingS = 5.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        m.setOut(70.0);
+        m.advance(20.0);
+        const double truePct = m.state().levelM * 100.0;
+        QVERIFY(truePct > 50.0);
+        QVERIFY(m.state().pvPct < truePct);
+        QVERIFY(m.state().pvPct > 50.0);
+        // The lag converges to the true level in a steady state.
+        LoopModel s;
+        s.reset(p, 50.0);
+        s.setLevelM(0.2);
+        QVERIFY(qAbs(s.state().pvPct - 20.0) < 1e-9); // setLevelM sets the lag too
+        s.setOut(0.0);
+        s.setStemPct(0.0);
+        s.setLevelM(0.0);
+        QCOMPARE(s.state().pvPct, 0.0);
+    }
+
+    void ltNoise()
+    {
+        LoopParams p = plain();
+        p.ltNoisePct = 0.2;
+        LoopModel m(7);
+        m.reset(p, 50.0);
+        std::vector<double> pv;
+        bool nonzero = false;
+        double prev = m.state().pvPct;
+        int changes = 0;
+        for (int i = 0; i < 1000; ++i) {
+            m.advance(kStepS);
+            const double pct = m.state().levelM * 100.0;
+            QVERIFY(qAbs(m.state().pvPct - pct) <= 0.2 + 1e-9);
+            if (qAbs(m.state().pvPct - pct) > 1e-6)
+                nonzero = true;
+            if (m.state().pvPct != prev)
+                ++changes;
+            prev = m.state().pvPct;
+        }
+        QVERIFY(nonzero);
+        QVERIFY(changes <= 101); // new value only every 100 ms of simulation time
+        QVERIFY(changes >= 50);
+
+        // Constant within each 100 ms window.
+        LoopModel w(7);
+        w.reset(p, 50.0);
+        for (int k = 0; k < 20; ++k) {
+            w.advance(kStepS);
+            const double first = w.state().pvPct;
+            for (int i = 1; i < 10; ++i) {
+                w.advance(kStepS);
+                if (i < 9)
+                    QCOMPARE(w.state().pvPct, first);
+            }
+        }
+    }
+
+    void noiseSeed()
+    {
+        LoopParams p = plain();
+        p.ltNoisePct = 1.0;
+        LoopModel a(5), b(5), c(6);
+        a.reset(p, 50.0);
+        b.reset(p, 50.0);
+        c.reset(p, 50.0);
+        bool diff = false;
+        for (int i = 0; i < 300; ++i) {
+            a.advance(0.1);
+            b.advance(0.1);
+            c.advance(0.1);
+            QCOMPARE(a.state().pvPct, b.state().pvPct);
+            if (a.state().pvPct != c.state().pvPct)
+                diff = true;
+        }
+        QVERIFY(diff);
+    }
+
+    void advanceCarry()
+    {
+        LoopParams p;
+        p.ltNoisePct = 0.5;
+        LoopModel a(3), b(3);
+        a.reset(p, 40.0);
+        b.reset(p, 40.0);
+        a.setOut(60.0);
+        b.setOut(60.0);
+        a.advance(1.0);
+        for (int i = 0; i < 100; ++i)
+            b.advance(0.01);
+        QCOMPARE(a.state().levelM, b.state().levelM);
+        QCOMPARE(a.state().pvPct, b.state().pvPct);
+        QCOMPARE(a.state().stemPct, b.state().stemPct);
+        QCOMPARE(a.state().qIn, b.state().qIn);
+        QCOMPARE(a.state().timeS, b.state().timeS);
+
+        // Sub-step calls accumulate.
+        LoopModel c(3), d(3);
+        c.reset(p, 40.0);
+        d.reset(p, 40.0);
+        for (int i = 0; i < 10; ++i)
+            c.advance(0.004);
+        d.advance(0.04);
+        QCOMPARE(c.state().timeS, d.state().timeS);
+        QCOMPARE(c.state().levelM, d.state().levelM);
+        c.advance(0.0);
+        QCOMPARE(c.state().timeS, d.state().timeS);
+    }
+
+    void clamping()
+    {
+        LoopParams p;
+        p.pumpSpeedPct = 150.0;
+        p.hvOpeningPct = -5.0;
+        p.deadTimeS = 99.0;
+        p.ltNoisePct = 50.0;
+        p.ltDampingS = 500.0;
+        p.fcvStrokeS = 1000.0;
+        LoopModel m;
+        m.setParams(p);
+        QCOMPARE(m.params().pumpSpeedPct, 100.0);
+        QCOMPARE(m.params().hvOpeningPct, 0.0);
+        QCOMPARE(m.params().deadTimeS, 30.0);
+        QCOMPARE(m.params().ltNoisePct, 5.0);
+        QCOMPARE(m.params().ltDampingS, 60.0);
+        QCOMPARE(m.params().fcvStrokeS, 120.0);
+        p.pumpSpeedPct = -1.0;
+        p.deadTimeS = -2.0;
+        m.setParams(p);
+        QCOMPARE(m.params().pumpSpeedPct, 0.0);
+        QCOMPARE(m.params().deadTimeS, 0.0);
+
+        m.setOut(150.0);
+        QCOMPARE(m.state().outPct, 100.0);
+        m.setOut(-1.0);
+        QCOMPARE(m.state().outPct, 0.0);
+        m.setSp(120.0);
+        QCOMPARE(m.state().spPct, 100.0);
+        m.setSp(-3.0);
+        QCOMPARE(m.state().spPct, 0.0);
+        m.setStemPct(130.0);
+        QCOMPARE(m.state().stemPct, 100.0);
+        m.setStemPct(-1.0);
+        QCOMPARE(m.state().stemPct, 0.0);
+        m.setLevelM(5.0);
+        QCOMPARE(m.state().levelM, kOverflowLevelM);
+        m.setLevelM(-1.0);
+        QCOMPARE(m.state().levelM, 0.0);
+    }
+
+    void hvClosedAndPumpOff()
+    {
+        // HV closed: nothing drains, the level only rises.
+        LoopParams p = plain();
+        p.hvOpeningPct = 0.0;
+        LoopModel m;
+        m.reset(p, 50.0);
+        QCOMPARE(m.state().levelM, kOverflowLevelM); // steady state is infinite -> overflow level
+        m.setLevelM(0.2);
+        m.advance(10.0);
+        QCOMPARE(m.state().qHv, 0.0);
+        QVERIFY(m.state().levelM > 0.2);
+
+        // Pump off: no inflow, the tank drains.
+        LoopParams q = plain();
+        q.pumpSpeedPct = 0.0;
+        LoopModel n;
+        n.reset(q, 50.0);
+        n.setLevelM(0.5);
+        n.advance(10.0);
+        QCOMPARE(n.state().qFcv, 0.0);
+        QCOMPARE(n.state().qIn, 0.0);
+        QVERIFY(n.state().levelM < 0.5);
+        n.advance(20000.0);
+        QVERIFY(n.state().levelM >= 0.0);
+        QVERIFY(n.state().levelM < 0.01);
+    }
+
+    void fillPipe()
+    {
+        LoopParams p = plain();
+        p.deadTimeS = 3.0;
+        LoopModel m;
+        m.reset(p, 20.0);
+        m.setOut(80.0);
+        m.setStemPct(80.0);
+        m.fillPipe();
+        m.advance(0.01);
+        QVERIFY(qAbs(m.state().qIn - m.state().qFcv) < 1e-15);
+        QVERIFY(qAbs(m.state().qFcv - kFcvMaxFlowM3s * 0.8) < 1e-12);
+    }
 };
 
 QTEST_MAIN(TstLoopModel)
