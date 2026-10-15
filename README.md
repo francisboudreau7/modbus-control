@@ -80,6 +80,8 @@ Qwt 6.3.0 is downloaded and built during configuration. Binaries land in `build\
 `msvc-release` for a release build, and `-DQT_ROOT=<path>` for another Qt location. The installer is
 built with `installer\build_installer.ps1` (Inno Setup 6; see [installer/README.md](installer/README.md)).
 
+## AI disclosure
+Claude Code(Opus 5.5) was used to generate almost all the code in this project.
 ## License
 
 MIT (see [LICENSE](LICENSE)). Modbus Control links dynamically to Qt 6 (LGPL-3.0), Qwt 6.3
