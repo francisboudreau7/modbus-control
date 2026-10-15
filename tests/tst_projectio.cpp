@@ -161,6 +161,15 @@ private slots:
     void confirmed16BitMissingIsFalse();
     void confirmed16BitRejected_data();
     void confirmed16BitRejected();
+    void yAxesRoundTrip_data();
+    void yAxesRoundTrip();
+    void yAxesValuesLoaded();
+    void yAxesMissingIsAuto();
+    void yAxesAlwaysWritten();
+    void yAxesRejected_data();
+    void yAxesRejected();
+    void yAxesUnknownKeysRejected();
+    void yAxesMessageNamesSide();
 };
 
 void TstProjectIO::roundTrip()
@@ -1605,6 +1614,152 @@ void TstProjectIO::confirmed16BitRejected()
     QString error;
     QVERIFY(!projectFromJson(text, &error).has_value());
     QVERIFY2(error.contains(QStringLiteral("confirmed16Bit")), qPrintable(error));
+}
+
+void TstProjectIO::yAxesRoundTrip_data()
+{
+    QTest::addColumn<QByteArray>("left");
+    QTest::addColumn<QByteArray>("right");
+    QTest::newRow("auto/auto") << json("\"auto\"") << json("\"auto\"");
+    QTest::newRow("[0,100]/auto") << json("[0,100]") << json("\"auto\"");
+    QTest::newRow("auto/[-5.5,12]") << json("\"auto\"") << json("[-5.5, 12]");
+}
+
+void TstProjectIO::yAxesRoundTrip()
+{
+    QFETCH(QByteArray, left);
+    QFETCH(QByteArray, right);
+    const QByteArray text = QByteArrayLiteral(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":)")
+                            + left + QByteArrayLiteral(R"(,"right":)") + right + QByteArrayLiteral("}}");
+    QString error;
+    const auto loaded = projectFromJson(text, &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+
+    const auto again = projectFromJson(projectToJson(*loaded), &error);
+    QVERIFY2(again.has_value(), qPrintable(error));
+    QCOMPARE(*again, *loaded);
+    QCOMPARE(again->yLeft, loaded->yLeft);
+    QCOMPARE(again->yRight, loaded->yRight);
+}
+
+void TstProjectIO::yAxesValuesLoaded()
+{
+    QString error;
+    const auto project = projectFromJson(
+        json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[0,100],"right":[-5.5,12]}})"),
+        &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QCOMPARE(project->yLeft, (YRange{std::pair<double, double>{0.0, 100.0}}));
+    QCOMPARE(project->yRight, (YRange{std::pair<double, double>{-5.5, 12.0}}));
+}
+
+void TstProjectIO::yAxesMissingIsAuto()
+{
+    QString error;
+    const auto absent = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"), &error);
+    QVERIFY2(absent.has_value(), qPrintable(error));
+    QVERIFY(!absent->yLeft);
+    QVERIFY(!absent->yRight);
+
+    const auto empty = projectFromJson(
+        json(R"({"format":"modbus-control-project","version":1,"yAxes":{}})"), &error);
+    QVERIFY2(empty.has_value(), qPrintable(error));
+    QVERIFY(!empty->yLeft);
+    QVERIFY(!empty->yRight);
+
+    const auto onlyRight = projectFromJson(
+        json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":[2,3]}})"), &error);
+    QVERIFY2(onlyRight.has_value(), qPrintable(error));
+    QVERIFY(!onlyRight->yLeft);
+    QCOMPARE(onlyRight->yRight, (YRange{std::pair<double, double>{2.0, 3.0}}));
+}
+
+void TstProjectIO::yAxesAlwaysWritten()
+{
+    const QJsonObject root = QJsonDocument::fromJson(projectToJson(Project{})).object();
+    QVERIFY(root.value(QStringLiteral("yAxes")).isObject());
+    const QJsonObject yAxes = root.value(QStringLiteral("yAxes")).toObject();
+    QVERIFY(yAxes.contains(QStringLiteral("left")));
+    QVERIFY(yAxes.contains(QStringLiteral("right")));
+    QCOMPARE(yAxes.value(QStringLiteral("left")).toString(), QStringLiteral("auto"));
+    QCOMPARE(yAxes.value(QStringLiteral("right")).toString(), QStringLiteral("auto"));
+
+    Project p;
+    p.yRight = std::pair<double, double>{-1.0, 4.0};
+    const QJsonObject set = QJsonDocument::fromJson(projectToJson(p))
+                                .object().value(QStringLiteral("yAxes")).toObject();
+    QCOMPARE(set.value(QStringLiteral("left")).toString(), QStringLiteral("auto"));
+    QVERIFY(set.value(QStringLiteral("right")).isArray());
+    QCOMPARE(set.value(QStringLiteral("right")).toArray().size(), qsizetype(2));
+}
+
+void TstProjectIO::yAxesRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::newRow("min above max")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[100,0]}})");
+    QTest::newRow("min equal to max")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[1,1]}})");
+    QTest::newRow("one number")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[1]}})");
+    QTest::newRow("three numbers")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[1,2,3]}})");
+    QTest::newRow("string entry")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":["a",2]}})");
+    QTest::newRow("null entry")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":[null,2]}})");
+    QTest::newRow("boolean entry")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[true,2]}})");
+    QTest::newRow("wrong case auto")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":"Auto"}})");
+    QTest::newRow("other string")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":"fixed"}})");
+    QTest::newRow("number instead of array")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":5}})");
+    QTest::newRow("null side")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":null}})");
+    QTest::newRow("yAxes is an array")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":[]})");
+    QTest::newRow("yAxes is a number")
+        << json(R"({"format":"modbus-control-project","version":1,"yAxes":1})");
+}
+
+void TstProjectIO::yAxesRejected()
+{
+    QFETCH(QByteArray, text);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QVERIFY2(error.contains(QStringLiteral("yAxes")), qPrintable(error));
+}
+
+void TstProjectIO::yAxesUnknownKeysRejected()
+{
+    // Unknown keys inside "yAxes" are rejected (not ignored), so a typo such as "middle" cannot
+    // silently leave the Trend on Auto.
+    QString error;
+    QVERIFY(!projectFromJson(
+                 json(R"({"format":"modbus-control-project","version":1,"yAxes":{"middle":[0,1]}})"), &error)
+                 .has_value());
+    QVERIFY2(error.contains(QStringLiteral("middle")), qPrintable(error));
+    QVERIFY(!projectFromJson(
+                 json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":"auto","Left":"auto"}})"),
+                 &error)
+                 .has_value());
+    QVERIFY2(error.contains(QStringLiteral("Left")), qPrintable(error));
+}
+
+void TstProjectIO::yAxesMessageNamesSide()
+{
+    QString error;
+    QVERIFY(!projectFromJson(
+                 json(R"({"format":"modbus-control-project","version":1,"yAxes":{"left":[100,0]}})"), &error)
+                 .has_value());
+    QCOMPARE(error, QStringLiteral("yAxes.left: must be \"auto\" or [min, max] with min < max"));
+
+    QVERIFY(!projectFromJson(
+                 json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":[1,1]}})"), &error)
+                 .has_value());
+    QVERIFY2(error.startsWith(QStringLiteral("yAxes.right:")), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

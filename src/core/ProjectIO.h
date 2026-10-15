@@ -32,7 +32,8 @@ inline constexpr int kProjectFormatVersion = 1;
 ///                 "pvTag": 1, "setpointTags": [1], "deltaCoTag": 0, "deltaCo": 0,
 ///                 "detailedLabels": false, "showModel": false, "guideLines": true,
 ///                 "pvRange": null, "coRange": [0, 100], "tuningRule": "zn", "lambdaS": 0,
-///                 "timeUnit": "s" }
+///                 "timeUnit": "s" },
+///   "yAxes": { "left": "auto", "right": [0, 100] }
 /// }
 ///
 /// Older files may contain "connection.singleRegisterWrites" (the removed FC06-only option): it

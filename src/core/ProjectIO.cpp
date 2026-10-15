@@ -627,6 +627,69 @@ bool readHiddenColumns(const QJsonObject &root, QStringList &out, QString *error
     return true;
 }
 
+// One side of the optional top-level "yAxes" object: "auto" or [min, max] (two finite numbers,
+// min < max). A missing key means "auto". Anything else is rejected.
+bool readYRange(const QJsonObject &yAxes, const QString &side, YRange &out, QString *error)
+{
+    const QJsonValue value = yAxes.value(side);
+    if (value.isUndefined() || (value.isString() && value.toString() == QStringLiteral("auto"))) {
+        out.reset();
+        return true;
+    }
+    const QString message = QStringLiteral("yAxes.%1: must be \"auto\" or [min, max] with min < max").arg(side);
+    if (!value.isArray()) {
+        setError(error, message);
+        return false;
+    }
+    const QJsonArray pair = value.toArray();
+    if (pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()) {
+        setError(error, message);
+        return false;
+    }
+    const double lo = pair.at(0).toDouble();
+    const double hi = pair.at(1).toDouble();
+    if (!std::isfinite(lo) || !std::isfinite(hi) || !(lo < hi)) {
+        setError(error, message);
+        return false;
+    }
+    out = std::pair<double, double>{lo, hi};
+    return true;
+}
+
+// Optional top-level "yAxes": an object with the optional keys "left" and "right" (see
+// readYRange). Unknown keys are rejected so that a typo does not silently mean "auto".
+bool readYAxes(const QJsonObject &root, YRange &left, YRange &right, QString *error)
+{
+    const QString key = QStringLiteral("yAxes");
+    const QJsonValue value = root.value(key);
+    if (value.isUndefined()) {
+        left.reset();
+        right.reset();
+        return true;
+    }
+    if (!value.isObject()) {
+        setError(error, QStringLiteral("\"yAxes\" must be an object with \"left\" and \"right\""));
+        return false;
+    }
+    const QJsonObject obj = value.toObject();
+    const QString leftKey = QStringLiteral("left");
+    const QString rightKey = QStringLiteral("right");
+    for (const QString &name : obj.keys()) {
+        if (name != leftKey && name != rightKey) {
+            setError(error, QStringLiteral("yAxes: unknown key \"%1\" (expected \"left\" or \"right\")").arg(name));
+            return false;
+        }
+    }
+    return readYRange(obj, leftKey, left, error) && readYRange(obj, rightKey, right, error);
+}
+
+QJsonValue yRangeJson(const YRange &range)
+{
+    if (!range)
+        return QJsonValue(QStringLiteral("auto"));
+    return QJsonValue(QJsonArray{range->first, range->second});
+}
+
 } // namespace
 
 QByteArray projectToJson(const Project &project)
@@ -722,6 +785,10 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("tags"), tags},
         {QStringLiteral("analysis"), analysis},
         {QStringLiteral("hiddenColumns"), hiddenColumns},
+        {QStringLiteral("yAxes"), QJsonObject{
+             {QStringLiteral("left"), yRangeJson(project.yLeft)},
+             {QStringLiteral("right"), yRangeJson(project.yRight)},
+         }},
     };
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
@@ -809,6 +876,9 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
         return std::nullopt;
 
     if (!readHiddenColumns(root, project.hiddenColumns, error))
+        return std::nullopt;
+
+    if (!readYAxes(root, project.yLeft, project.yRight, error))
         return std::nullopt;
 
     project.nextTagId = static_cast<TagId>(std::max<qint64>(storedNextId, static_cast<qint64>(maxId) + 1));
