@@ -3,8 +3,15 @@
 #include "PlotCursors.h"
 #include "Recorder.h"
 
+#include <QAction>
 #include <QComboBox>
+#include <QContextMenuEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QPainter>
 #include <QPen>
 #include <QPushButton>
@@ -23,6 +30,7 @@
 #include <qwt_plot_grid.h>
 #include <qwt_plot_magnifier.h>
 #include <qwt_plot_panner.h>
+#include <qwt_scale_widget.h>
 #include <qwt_scale_map.h>
 #include <qwt_series_data.h>
 
@@ -143,8 +151,8 @@ private:
 class TrendMagnifier : public QwtPlotMagnifier
 {
 public:
-    TrendMagnifier(QWidget *canvas, std::function<void(bool yAxis)> onZoom)
-        : QwtPlotMagnifier(canvas), m_onZoom(std::move(onZoom))
+    TrendMagnifier(QWidget *canvas, std::function<void(bool yAxis)> onZoom, std::function<void()> afterYZoom)
+        : QwtPlotMagnifier(canvas), m_onZoom(std::move(onZoom)), m_afterYZoom(std::move(afterYZoom))
     {
         setMouseButton(Qt::NoButton);
     }
@@ -153,6 +161,7 @@ protected:
     void widgetWheelEvent(QWheelEvent *e) override
     {
         m_y = e->modifiers().testFlag(Qt::ShiftModifier);
+        setWheelModifiers(e->modifiers()); // the base class only reacts to its configured modifiers
         setAxisEnabled(QwtPlot::xBottom, !m_y);
         setAxisEnabled(QwtPlot::yLeft, m_y);
         setAxisEnabled(QwtPlot::yRight, m_y);
@@ -162,12 +171,54 @@ protected:
     {
         m_onZoom(m_y); // pause first so the new scale is not overwritten
         QwtPlotMagnifier::rescale(factor);
+        if (m_y)
+            m_afterYZoom(); // the Y axes are now Fixed at the zoomed range
     }
 
 private:
     std::function<void(bool)> m_onZoom;
+    std::function<void()> m_afterYZoom;
     bool m_y = false;
 };
+
+bool validRange(const std::pair<double, double> &r)
+{
+    return std::isfinite(r.first) && std::isfinite(r.second) && r.first < r.second;
+}
+
+/// Default for TrendPlot::m_askRange: Min/Max spin boxes, OK only while min < max.
+std::optional<std::pair<double, double>> askRangeDialog(QWidget *parent, QwtAxisId axis,
+                                                        std::pair<double, double> current)
+{
+    QDialog dlg(parent);
+    dlg.setWindowTitle(axis == QwtAxis::YRight ? QObject::tr("Right Y axis range")
+                                               : QObject::tr("Left Y axis range"));
+    auto makeSpin = [&dlg](double v) {
+        auto *spin = new QDoubleSpinBox(&dlg);
+        spin->setRange(-1e12, 1e12);
+        spin->setDecimals(4);
+        spin->setValue(v);
+        return spin;
+    };
+    QDoubleSpinBox *minSpin = makeSpin(current.first);
+    QDoubleSpinBox *maxSpin = makeSpin(current.second);
+    auto *form = new QFormLayout(&dlg);
+    form->addRow(QObject::tr("Min"), minSpin);
+    form->addRow(QObject::tr("Max"), maxSpin);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form->addRow(buttons);
+    auto update = [=] {
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(minSpin->value() < maxSpin->value());
+    };
+    QObject::connect(minSpin, &QDoubleSpinBox::valueChanged, &dlg, update);
+    QObject::connect(maxSpin, &QDoubleSpinBox::valueChanged, &dlg, update);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    update();
+    if (dlg.exec() != QDialog::Accepted)
+        return std::nullopt;
+    return std::make_pair(minSpin->value(), maxSpin->value());
+}
 
 } // namespace
 
@@ -195,6 +246,11 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     auto *clearButton = new QPushButton(tr("Clear cursors"), this);
     auto *fitButton = new QPushButton(tr("Fit Y"), this);
     auto *clearDataButton = new QPushButton(tr("Clear data"), this);
+    m_yAxesButton = new QToolButton(this);
+    m_yAxesButton->setObjectName(QStringLiteral("yAxesButton"));
+    m_yAxesButton->setText(tr("Y axes"));
+    m_yAxesButton->setPopupMode(QToolButton::InstantPopup);
+    m_askRange = [this](QwtAxisId axis, std::pair<double, double> cur) { return askRangeDialog(this, axis, cur); };
 
     auto *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
@@ -203,6 +259,7 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     row->addWidget(m_placeButton);
     row->addWidget(clearButton);
     row->addWidget(fitButton);
+    row->addWidget(m_yAxesButton);
     row->addWidget(clearDataButton);
     row->addStretch(1);
 
@@ -240,18 +297,29 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
 
     m_cursors = new PlotCursors(m_plot);
 
-    new TrendMagnifier(canvas, [this](bool yAxis) {
-        setPaused(true);
-        if (yAxis)
-            m_autoY = false;
-    });
+    new TrendMagnifier(
+        canvas, [this](bool) { setPaused(true); }, [this] { fixVisibleAxes(); });
     auto *panner = new QwtPlotPanner(canvas);
     panner->setMouseButton(Qt::RightButton);
     connect(panner, &QwtPanner::panned, this, [this](int, int dy) {
         setPaused(true);
         if (dy != 0)
-            m_autoY = false;
+            fixVisibleAxes();
     });
+
+    // Y axes menu in the control row, wheel/right-click on the axis widgets.
+    auto *yMenu = new QMenu(m_yAxesButton);
+    for (QwtAxisId axis : {QwtAxisId(QwtAxis::YLeft), QwtAxisId(QwtAxis::YRight)}) {
+        QMenu *sub = axisMenu(axis);
+        sub->setTitle(axis == QwtAxis::YRight ? tr("Right") : tr("Left"));
+        yMenu->addMenu(sub);
+        if (axis == QwtAxis::YRight)
+            m_rightMenuAction = sub->menuAction();
+    }
+    m_rightMenuAction->setEnabled(false);
+    m_yAxesButton->setMenu(yMenu);
+    for (QwtAxisId axis : {QwtAxisId(QwtAxis::YLeft), QwtAxisId(QwtAxis::YRight)})
+        m_plot->axisWidget(axis)->installEventFilter(this);
 
     // Wiring
     connect(m_windowCombo, &QComboBox::currentIndexChanged, this,
@@ -271,10 +339,12 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     connect(escape, &QShortcut::activated, m_cursors, [this] { m_cursors->setPlacing(false); });
     connect(m_cursors, &PlotCursors::interacted, this, [this] { setPaused(true); });
     connect(fitButton, &QPushButton::clicked, this, [this] {
-        m_autoY = true;
+        m_leftRange.reset();
+        m_rightRange.reset();
         const QwtInterval xi = m_plot->axisInterval(QwtPlot::xBottom);
         fitY(xi.minValue(), xi.maxValue());
         m_plot->replot();
+        emit axisRangesChanged();
     });
 }
 
@@ -344,6 +414,8 @@ void TrendPlot::setTags(const QList<Tag> &tags)
     m_plot->setAxisTitle(QwtPlot::yLeft, leftUnits.join(QStringLiteral(", ")));
     m_plot->setAxisTitle(QwtPlot::yRight, rightUnits.join(QStringLiteral(", ")));
     m_plot->setAxisVisible(QwtPlot::yRight, anyRight);
+    if (m_rightMenuAction)
+        m_rightMenuAction->setEnabled(anyRight);
 
     pull(); // new curves backfill from the recorder
     if (auto *legend = qobject_cast<QwtLegend *>(m_plot->legend())) {
@@ -407,6 +479,8 @@ void TrendPlot::fitY(double x1, double x2)
 
 void TrendPlot::fitAxis(QwtAxisId axis, double x1, double x2)
 {
+    if (axisRange(axis))
+        return; // Fixed axes are never auto-scaled
     double lo = std::numeric_limits<double>::infinity();
     double hi = -lo;
     for (CurveEntry *e : std::as_const(m_entries)) {
@@ -448,8 +522,7 @@ void TrendPlot::applyAxes()
     if (x2 - x1 < 1e-6)
         x2 = x1 + 1.0;
     m_plot->setAxisScale(QwtPlot::xBottom, x1, x2);
-    if (m_autoY)
-        fitY(x1, x2);
+    fitY(x1, x2);
 }
 
 void TrendPlot::adaptPens()
@@ -509,7 +582,6 @@ void TrendPlot::setPaused(bool paused)
         return;
     m_paused = paused;
     if (!paused) {
-        m_autoY = true;
         applyAxes();
         m_plot->replot();
     }
@@ -528,7 +600,6 @@ void TrendPlot::resetData()
     m_plot->replot();
 }
 
-// Stubs created by T220; implemented by T221.
 std::optional<std::pair<double, double>> TrendPlot::axisRange(QwtAxisId axis) const
 {
     return axis == QwtAxis::YRight ? m_rightRange : m_leftRange;
@@ -536,12 +607,90 @@ std::optional<std::pair<double, double>> TrendPlot::axisRange(QwtAxisId axis) co
 
 void TrendPlot::setAxisRange(QwtAxisId axis, std::optional<std::pair<double, double>> range)
 {
+    if (range && !validRange(*range))
+        return;
     (axis == QwtAxis::YRight ? m_rightRange : m_leftRange) = range;
+    if (range) {
+        m_plot->setAxisScale(axis, range->first, range->second);
+    } else {
+        const QwtInterval xi = m_plot->axisInterval(QwtPlot::xBottom);
+        fitAxis(axis, xi.minValue(), xi.maxValue());
+    }
+    m_plot->replot();
 }
 
-QMenu *TrendPlot::axisMenu(QwtAxisId)
+void TrendPlot::userSetRange(QwtAxisId axis, std::optional<std::pair<double, double>> range)
 {
-    return nullptr;
+    if (range && !validRange(*range))
+        return;
+    setAxisRange(axis, range);
+    emit axisRangesChanged();
+}
+
+void TrendPlot::fixVisibleAxes()
+{
+    // Called after a Shift+wheel zoom or a pan changed the scales: keep them as Fixed ranges.
+    for (QwtAxisId axis : {QwtAxisId(QwtAxis::YLeft), QwtAxisId(QwtAxis::YRight)}) {
+        if (axis == QwtAxis::YRight && !m_plot->isAxisVisible(axis))
+            continue;
+        const QwtInterval iv = m_plot->axisInterval(axis);
+        const std::pair<double, double> r{iv.minValue(), iv.maxValue()};
+        if (validRange(r))
+            (axis == QwtAxis::YRight ? m_rightRange : m_leftRange) = r;
+    }
+    emit axisRangesChanged();
+}
+
+QMenu *TrendPlot::axisMenu(QwtAxisId axis)
+{
+    auto *menu = new QMenu(this);
+    QAction *set = menu->addAction(tr("Set range..."));
+    QAction *zeroHundred = menu->addAction(tr("0 to 100"));
+    QAction *autoAction = menu->addAction(tr("Auto"));
+    connect(set, &QAction::triggered, this, [this, axis] {
+        const QwtInterval iv = m_plot->axisInterval(axis);
+        if (!m_askRange)
+            return;
+        const auto answer = m_askRange(axis, {iv.minValue(), iv.maxValue()});
+        if (answer && validRange(*answer))
+            userSetRange(axis, answer);
+    });
+    connect(zeroHundred, &QAction::triggered, this,
+            [this, axis] { userSetRange(axis, std::make_pair(0.0, 100.0)); });
+    connect(autoAction, &QAction::triggered, this, [this, axis] { userSetRange(axis, std::nullopt); });
+    return menu;
+}
+
+bool TrendPlot::eventFilter(QObject *watched, QEvent *event)
+{
+    for (QwtAxisId axis : {QwtAxisId(QwtAxis::YLeft), QwtAxisId(QwtAxis::YRight)}) {
+        if (watched != m_plot->axisWidget(axis))
+            continue;
+        if (event->type() == QEvent::Wheel) {
+            auto *we = static_cast<QWheelEvent *>(event);
+            const int dy = we->angleDelta().y();
+            if (dy != 0) {
+                const QwtInterval iv = m_plot->axisInterval(axis);
+                const QPoint canvasPos = m_plot->canvas()->mapFromGlobal(we->globalPosition().toPoint());
+                double v = m_plot->invTransform(axis, canvasPos.y());
+                if (!std::isfinite(v) || v < iv.minValue() || v > iv.maxValue())
+                    v = 0.5 * (iv.minValue() + iv.maxValue());
+                const double f = std::pow(dy > 0 ? 0.8 : 1.25, std::abs(dy) / 120.0);
+                userSetRange(axis, std::make_pair(v - (v - iv.minValue()) * f, v + (iv.maxValue() - v) * f));
+            }
+            we->accept();
+            return true;
+        }
+        if (event->type() == QEvent::ContextMenu) {
+            auto *ce = static_cast<QContextMenuEvent *>(event);
+            QMenu *menu = axisMenu(axis);
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+            menu->popup(ce->globalPos());
+            ce->accept();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 } // namespace mb

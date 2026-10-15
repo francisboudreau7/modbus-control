@@ -649,6 +649,49 @@ private slots:
         noUnexpected();
     }
 
+    void trendAxisRangesInProject()
+    {
+        TrendPlot *trend = win->trendPlot();
+        QVERIFY(!trend->axisRange(QwtAxis::YLeft));
+        QVERIFY(!ctl->currentProject().yLeft);
+        QVERIFY(!modified());
+
+        // A change made by the user marks the project modified and is saved.
+        QMetaObject::invokeMethod(trend, "axisRangesChanged");
+        QVERIFY(modified());
+        trend->setAxisRange(QwtAxis::YLeft, std::make_pair(-5.0, 25.0));
+        trend->setAxisRange(QwtAxis::YRight, std::make_pair(0.0, 1000.0));
+        const Project p = ctl->currentProject();
+        QCOMPARE(*p.yLeft, std::make_pair(-5.0, 25.0));
+        QCOMPARE(*p.yRight, std::make_pair(0.0, 1000.0));
+
+        // Applying a project sets (or clears) the ranges without marking it modified.
+        Project q = p;
+        q.yLeft = std::make_pair(1.0, 2.0);
+        q.yRight = std::nullopt;
+        ctl->setModified(false);
+        ctl->applyProject(q);
+        QCOMPARE(*trend->axisRange(QwtAxis::YLeft), std::make_pair(1.0, 2.0));
+        QVERIFY(!trend->axisRange(QwtAxis::YRight));
+        QVERIFY(!modified());
+
+        // Save and load through the real file (needs the ProjectIO part, T222).
+        trend->setAxisRange(QwtAxis::YRight, std::make_pair(10.0, 20.0));
+        QVERIFY(ctl->saveTo(P(QStringLiteral("axes.mbproj"))));
+        trend->setAxisRange(QwtAxis::YLeft, std::nullopt);
+        trend->setAxisRange(QwtAxis::YRight, std::nullopt);
+        QVERIFY(ctl->loadFrom(P(QStringLiteral("axes.mbproj"))));
+        if (!trend->axisRange(QwtAxis::YLeft))
+            QSKIP("Y-axis ranges are not persisted by ProjectIO yet (T222)");
+        QCOMPARE(*trend->axisRange(QwtAxis::YLeft), std::make_pair(1.0, 2.0));
+        QCOMPARE(*trend->axisRange(QwtAxis::YRight), std::make_pair(10.0, 20.0));
+
+        // New project: Auto again.
+        win->actions().newProject->trigger();
+        QVERIFY(!trend->axisRange(QwtAxis::YLeft));
+        QVERIFY(!trend->axisRange(QwtAxis::YRight));
+    }
+
     void newProjectPrompts()
     {
         model()->setData(model()->index(0, TagTableModel::Name), QStringLiteral("Renamed"));

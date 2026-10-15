@@ -10,6 +10,7 @@
 
 #include <qwt_axis_id.h>
 
+class QAction;
 class QComboBox;
 class QMenu;
 class TestTrendPlot;
@@ -108,7 +109,11 @@ private:
     const Recorder *m_recorder = nullptr;
     double m_window = 60.0;
     bool m_paused = false;
-    bool m_autoY = true;
+    QToolButton *m_yAxesButton = nullptr;
+    QAction *m_rightMenuAction = nullptr;
+    void userSetRange(QwtAxisId axis, std::optional<std::pair<double, double>> range); ///< + emit
+    void fixVisibleAxes(); ///< current Y scales become Fixed ranges (zoom/pan) + emit
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     struct CurveEntry;
     bool pull(); ///< appends new recorder rows to the curves; true if anything changed

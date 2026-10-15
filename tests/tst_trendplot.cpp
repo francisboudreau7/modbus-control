@@ -3,12 +3,18 @@
 #include "Tag.h"
 #include "TrendPlot.h"
 
+#include <QAction>
+#include <QMenu>
 #include <QPushButton>
+#include <QSignalSpy>
+#include <QToolButton>
+#include <QWheelEvent>
 #include <QtTest>
 
 #include <qwt_plot.h>
 #include <qwt_plot_curve.h>
 #include <qwt_scale_div.h>
+#include <qwt_scale_widget.h>
 #include <qwt_text.h>
 
 #include <cmath>
@@ -76,6 +82,22 @@ QList<Tag> threeTags()
     return {makeTag(1, QStringLiteral("A"), QStringLiteral("V"), YAxis::Left),
             makeTag(2, QStringLiteral("B"), QStringLiteral("%"), YAxis::Left),
             makeTag(3, QStringLiteral("C"), QStringLiteral("degC"), YAxis::Right)};
+}
+
+QAction *findAction(QMenu *menu, const QString &text)
+{
+    for (QAction *a : menu->actions())
+        if (a->text() == text)
+            return a;
+    return nullptr;
+}
+
+void sendWheel(QWidget *w, int delta, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    const QPointF pos(w->width() / 2.0, w->height() / 2.0);
+    QWheelEvent e(pos, w->mapToGlobal(pos), QPoint(), QPoint(0, delta), Qt::NoButton, mods,
+                  Qt::NoScrollPhase, false);
+    QApplication::sendEvent(w, &e);
 }
 
 } // namespace
@@ -183,6 +205,188 @@ private slots:
         tags[1].plotted = false;
         tp.setTags(tags);
         QCOMPARE(curves(tp.plot()).size(), 2);
+    }
+
+    void axisRangeRoundTrip()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(-5.0, 7.0));
+        tp.setAxisRange(QwtAxis::YRight, std::make_pair(0.0, 3000.0));
+        QCOMPARE(*tp.axisRange(QwtAxis::YLeft), std::make_pair(-5.0, 7.0));
+        QCOMPARE(*tp.axisRange(QwtAxis::YRight), std::make_pair(0.0, 3000.0));
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).minValue(), -5.0);
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 7.0);
+        // Invalid ranges are ignored.
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(3.0, 3.0));
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(4.0, 1.0));
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(0.0, std::numeric_limits<double>::infinity()));
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(std::nan(""), 1.0));
+        QCOMPARE(*tp.axisRange(QwtAxis::YLeft), std::make_pair(-5.0, 7.0));
+        tp.setAxisRange(QwtAxis::YLeft, std::nullopt);
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue() < 10.0); // refitted
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void fixedAxisSurvivesRefreshAndTags()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(-10.0, 10.0));
+        addRow(*m_rec, 20, {good(1, 5000.0), good(2, 0.5), good(3, 9000.0)});
+        tp.refresh();
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).minValue(), -10.0);
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 10.0);
+        QVERIFY(tp.plot()->axisInterval(QwtAxis::YRight).maxValue() >= 9000.0); // Auto follows
+        tp.setTags(threeTags());
+        tp.setPaused(true);
+        tp.setPaused(false); // Run keeps fixed ranges
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 10.0);
+    }
+
+    void fitYSetsAutoAndEmitsOnce()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.setAxisRange(QwtAxis::YLeft, std::make_pair(-500.0, 500.0));
+        tp.setAxisRange(QwtAxis::YRight, std::make_pair(0.0, 10.0));
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        for (QPushButton *b : tp.findChildren<QPushButton *>())
+            if (b->text() == QStringLiteral("Fit Y"))
+                b->click();
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(!tp.axisRange(QwtAxis::YRight));
+        QVERIFY(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue() < 10.0);
+        QVERIFY(tp.plot()->axisInterval(QwtAxis::YRight).maxValue() >= 1950.0);
+    }
+
+    void axisMenuActions()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        QMenu *menu = tp.axisMenu(QwtAxis::YLeft);
+        QVERIFY(menu);
+        QAction *set = findAction(menu, QStringLiteral("Set range..."));
+        QAction *zero = findAction(menu, QStringLiteral("0 to 100"));
+        QAction *autoA = findAction(menu, QStringLiteral("Auto"));
+        QVERIFY(set && zero && autoA);
+
+        int asked = 0;
+        std::pair<double, double> seen;
+        tp.m_askRange = [&](QwtAxisId, std::pair<double, double> cur) {
+            ++asked;
+            seen = cur;
+            return std::optional<std::pair<double, double>>(std::make_pair(2.0, 4.0));
+        };
+        set->trigger();
+        QCOMPARE(asked, 1);
+        QVERIFY(seen.first < seen.second);
+        QCOMPARE(*tp.axisRange(QwtAxis::YLeft), std::make_pair(2.0, 4.0));
+        QCOMPARE(spy.count(), 1);
+
+        tp.m_askRange = [&](QwtAxisId, std::pair<double, double>) {
+            ++asked;
+            return std::optional<std::pair<double, double>>();
+        };
+        set->trigger(); // cancelled
+        QCOMPARE(asked, 2);
+        QCOMPARE(*tp.axisRange(QwtAxis::YLeft), std::make_pair(2.0, 4.0));
+        QCOMPARE(spy.count(), 1);
+
+        zero->trigger();
+        QCOMPARE(*tp.axisRange(QwtAxis::YLeft), std::make_pair(0.0, 100.0));
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue(), 100.0);
+        QCOMPARE(spy.count(), 2);
+        QVERIFY(!tp.axisRange(QwtAxis::YRight));
+
+        autoA->trigger();
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(tp.plot()->axisInterval(QwtAxis::YLeft).maxValue() < 10.0);
+        QCOMPARE(spy.count(), 3);
+    }
+
+    void yAxesButtonSubmenus()
+    {
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        QList<Tag> tags = threeTags();
+        tags[2].axis = YAxis::Left;
+        tp.setTags(tags);
+        auto *button = tp.findChild<QToolButton *>(QStringLiteral("yAxesButton"));
+        QVERIFY(button && button->menu());
+        QAction *left = findAction(button->menu(), QStringLiteral("Left"));
+        QAction *right = findAction(button->menu(), QStringLiteral("Right"));
+        QVERIFY(left && right && left->menu() && right->menu());
+        QVERIFY(left->isEnabled());
+        QVERIFY(!right->isEnabled());
+        tp.setTags(threeTags());
+        QVERIFY(right->isEnabled());
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        findAction(right->menu(), QStringLiteral("0 to 100"))->trigger();
+        QCOMPARE(*tp.axisRange(QwtAxis::YRight), std::make_pair(0.0, 100.0));
+        QVERIFY(!tp.axisRange(QwtAxis::YLeft));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    void wheelOverAxisZoomsOnlyThatAxis()
+    {
+        TrendPlot tp;
+        tp.resize(800, 600);
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tp));
+        const QwtInterval before = tp.plot()->axisInterval(QwtAxis::YLeft);
+        const QwtInterval rightBefore = tp.plot()->axisInterval(QwtAxis::YRight);
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        QWidget *axisWidget = tp.plot()->axisWidget(QwtAxis::YLeft);
+        sendWheel(axisWidget, 120); // zoom in
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(!tp.axisRange(QwtAxis::YRight));
+        const auto r = *tp.axisRange(QwtAxis::YLeft);
+        QVERIFY(qAbs((r.second - r.first) - (before.maxValue() - before.minValue()) * 0.8) < 1e-9);
+        QVERIFY(r.first >= before.minValue() && r.second <= before.maxValue());
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YRight).minValue(), rightBefore.minValue());
+        QCOMPARE(tp.plot()->axisInterval(QwtAxis::YRight).maxValue(), rightBefore.maxValue());
+        sendWheel(axisWidget, -120); // zoom out
+        QCOMPARE(spy.count(), 2);
+        const auto r2 = *tp.axisRange(QwtAxis::YLeft);
+        QVERIFY(r2.second - r2.first > r.second - r.first);
+    }
+
+    void shiftWheelOverCanvasFixesBoth()
+    {
+        TrendPlot tp;
+        tp.resize(800, 600);
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        tp.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tp));
+        QSignalSpy spy(&tp, &TrendPlot::axisRangesChanged);
+        sendWheel(tp.plot()->canvas(), 120, Qt::ShiftModifier);
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(tp.axisRange(QwtAxis::YLeft));
+        QVERIFY(tp.axisRange(QwtAxis::YRight));
+        // Plain wheel zooms time only.
+        TrendPlot tp2;
+        tp2.resize(800, 600);
+        tp2.setRecorder(m_rec.get());
+        tp2.setTags(threeTags());
+        tp2.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tp2));
+        sendWheel(tp2.plot()->canvas(), 120);
+        QVERIFY(!tp2.axisRange(QwtAxis::YLeft));
+        QVERIFY(!tp2.axisRange(QwtAxis::YRight));
     }
 
 private:
