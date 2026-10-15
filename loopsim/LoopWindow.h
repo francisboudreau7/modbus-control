@@ -1,13 +1,20 @@
 #pragma once
 
+#include <QHash>
 #include <QMainWindow>
 
 #include <functional>
 
 class QCheckBox;
 class QComboBox;
+class QGraphicsItem;
+class QGraphicsPathItem;
+class QGraphicsRectItem;
+class QGraphicsScene;
+class QGraphicsSimpleTextItem;
 class QGraphicsView;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QSlider;
 class TstLoopWindow;
@@ -56,8 +63,14 @@ public:
 private:
     friend class ::TstLoopWindow;
     // Implementation-defined; T214 may change the private section freely.
+    void build();
     QGraphicsView *m_view = nullptr;
+    QGraphicsScene *m_scene = nullptr;
     bool m_processData = false;
+    QHash<QString, QGraphicsSimpleTextItem *> m_labels;
+    QGraphicsRectItem *m_water101 = nullptr;
+    QGraphicsPathItem *m_overflow = nullptr;
+    QGraphicsItem *m_processGroup = nullptr;
 };
 
 /// LIC-101 faceplate, like a panel controller in manual: title "LIC-101", "MAN" mode label, a
@@ -76,7 +89,19 @@ public:
 private:
     friend class ::TstLoopWindow;
     // Implementation-defined; T214 may change the private section freely.
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void changeOut(double delta);
+    void applyEdit(bool isOut);
     LoopController *m_controller = nullptr;
+    QWidget *m_bar = nullptr;
+    QLabel *m_pvLabel = nullptr;
+    QLabel *m_pvMaLabel = nullptr;
+    QLabel *m_spLabel = nullptr;
+    QLabel *m_outLabel = nullptr;
+    QLabel *m_outMaLabel = nullptr;
+    QLineEdit *m_outEdit = nullptr;
+    QLineEdit *m_spEdit = nullptr;
+    Qt::KeyboardModifiers m_lastModifiers;
 };
 
 /// Main window "Modbus Loop Simulator — Level loop 101": centre SchematicView, right Faceplate,
@@ -100,7 +125,20 @@ public:
 private:
     friend class ::TstLoopWindow;
     // Implementation-defined; T214 may change the private section freely.
+    void refresh();
+    void syncControls();
+    void openScenario();
+    void saveScenario();
     LoopController *m_controller = nullptr;
+    QSlider *m_hvSlider = nullptr;
+    QSlider *m_pumpSlider = nullptr;
+    QLabel *m_hvValue = nullptr;
+    QLabel *m_pumpValue = nullptr;
+    QComboBox *m_speedCombo = nullptr;
+    QPushButton *m_pauseButton = nullptr;
+    QLabel *m_timeLabel = nullptr;
+    QCheckBox *m_processDataCheck = nullptr;
+    QString m_serverStatus;
     SchematicView *m_schematic = nullptr;
     Faceplate *m_faceplate = nullptr;
     std::function<QString(const QString &caption)> m_openFileName;
