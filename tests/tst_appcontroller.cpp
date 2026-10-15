@@ -681,8 +681,7 @@ private slots:
         trend->setAxisRange(QwtAxis::YLeft, std::nullopt);
         trend->setAxisRange(QwtAxis::YRight, std::nullopt);
         QVERIFY(ctl->loadFrom(P(QStringLiteral("axes.mbproj"))));
-        if (!trend->axisRange(QwtAxis::YLeft))
-            QSKIP("Y-axis ranges are not persisted by ProjectIO yet (T222)");
+        QVERIFY(trend->axisRange(QwtAxis::YLeft).has_value()); // persisted by ProjectIO "yAxes"
         QCOMPARE(*trend->axisRange(QwtAxis::YLeft), std::make_pair(1.0, 2.0));
         QCOMPARE(*trend->axisRange(QwtAxis::YRight), std::make_pair(10.0, 20.0));
 
