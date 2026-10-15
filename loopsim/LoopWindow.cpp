@@ -18,6 +18,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
 #include <QGraphicsView>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -473,8 +474,14 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
         "QPushButton { background: #36404a; color: #e8eef4; border: 1px solid #66717c;"
         " border-radius: 3px; font-size: 16px; min-height: 30px; }"
         "QPushButton:pressed { background: #55606b; }"
+        "QPushButton:disabled { color: #6b7782; }"
         "QLineEdit { background: #0c1014; color: #6dfc9a; border: 1px solid #66717c;"
-        " font: bold 15px 'Consolas'; padding: 2px; }"));
+        " font: bold 15px 'Consolas'; padding: 2px; }"
+        "QLineEdit:disabled { color: #3f6b51; }"
+        "QComboBox { background: #0c1014; color: #e8eef4; border: 1px solid #66717c;"
+        " padding: 2px 6px; min-height: 22px; }"
+        "QComboBox QAbstractItemView { background: #1d2227; color: #e8eef4;"
+        " selection-background-color: #36404a; }"));
 
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(10, 8, 10, 10);
@@ -483,15 +490,19 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     auto *head = new QHBoxLayout;
     auto *title = new QLabel(QStringLiteral("LIC-101"), this);
     title->setStyleSheet(QStringLiteral("color: #e8eef4; font: bold 18px 'Segoe UI';"));
-    auto *mode = new QLabel(QStringLiteral("MAN"), this);
-    mode->setObjectName(QStringLiteral("modeLabel"));
-    mode->setAlignment(Qt::AlignCenter);
-    mode->setStyleSheet(QStringLiteral(
-        "color: #1d2227; background: #ffb428; font: bold 14px 'Consolas'; padding: 1px 6px;"
-        " border-radius: 3px;"));
+    m_modeButton = new QPushButton(QStringLiteral("MAN"), this);
+    m_modeButton->setObjectName(QStringLiteral("modeButton"));
+    m_modeButton->setFocusPolicy(Qt::NoFocus);
+    m_modeButton->setToolTip(QStringLiteral("Switch LIC-101 between Manual and Auto (PID)"));
+    connect(m_modeButton, &QPushButton::clicked, this, [this] {
+        if (m_controller) {
+            m_controller->setAuto(!m_controller->model().isAuto());
+        }
+        refresh();
+    });
     head->addWidget(title);
     head->addStretch();
-    head->addWidget(mode);
+    head->addWidget(m_modeButton);
     root->addLayout(head);
 
     auto *mid = new QHBoxLayout;
@@ -525,6 +536,8 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     down->setObjectName(QStringLiteral("outDownButton"));
     down->setToolTip(QStringLiteral("OUT -1 % (Shift: -5 %)"));
     down->setFocusPolicy(Qt::NoFocus);
+    m_outUp = up;
+    m_outDown = down;
     btns->addWidget(up);
     btns->addWidget(down);
     root->addLayout(btns);
@@ -559,9 +572,123 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     form2->addWidget(m_spEdit);
     root->addLayout(form2);
 
+    // Tuning (v1.3.1): PID parameters and the action, applied with Enter / on selection.
+    auto *tuningCaption = new QLabel(QStringLiteral("Tuning"), this);
+    tuningCaption->setStyleSheet(QStringLiteral("color: #e8eef4; font: bold 12px 'Segoe UI';"));
+    root->addWidget(tuningCaption);
+    auto *grid = new QGridLayout;
+    grid->setHorizontalSpacing(6);
+    grid->setVerticalSpacing(4);
+    const QString captionStyle = QStringLiteral("color: #9aa7b3; font: 12px 'Segoe UI';");
+    auto *kpCaption = new QLabel(QStringLiteral("Kp"), this);
+    auto *tiCaption = new QLabel(QStringLiteral("Ti s"), this);
+    auto *tdCaption = new QLabel(QStringLiteral("Td s"), this);
+    auto *actCaption = new QLabel(QStringLiteral("Action"), this);
+    for (QLabel *c : {kpCaption, tiCaption, tdCaption, actCaption}) {
+        c->setStyleSheet(captionStyle);
+    }
+    m_kpEdit = new QLineEdit(this);
+    m_kpEdit->setObjectName(QStringLiteral("kpEdit"));
+    m_kpEdit->setToolTip(QStringLiteral("Proportional gain Kp, 0..100 (Enter applies)"));
+    m_tiEdit = new QLineEdit(this);
+    m_tiEdit->setObjectName(QStringLiteral("tiEdit"));
+    m_tiEdit->setToolTip(QStringLiteral("Integral time Ti in s, 0..3600 (0 = no I) (Enter applies)"));
+    m_tdEdit = new QLineEdit(this);
+    m_tdEdit->setObjectName(QStringLiteral("tdEdit"));
+    m_tdEdit->setToolTip(QStringLiteral("Derivative time Td in s, 0..600 (0 = no D) (Enter applies)"));
+    m_actionCombo = new QComboBox(this);
+    m_actionCombo->setObjectName(QStringLiteral("actionCombo"));
+    m_actionCombo->setToolTip(QStringLiteral("Reverse: PV up -> OUT down; Direct: PV up -> OUT up"));
+    m_actionCombo->addItem(QStringLiteral("Reverse"));
+    m_actionCombo->addItem(QStringLiteral("Direct"));
+    grid->addWidget(kpCaption, 0, 0);
+    grid->addWidget(m_kpEdit, 0, 1);
+    grid->addWidget(tiCaption, 1, 0);
+    grid->addWidget(m_tiEdit, 1, 1);
+    grid->addWidget(tdCaption, 2, 0);
+    grid->addWidget(m_tdEdit, 2, 1);
+    grid->addWidget(actCaption, 3, 0);
+    grid->addWidget(m_actionCombo, 3, 1);
+    root->addLayout(grid);
+
     connect(m_outEdit, &QLineEdit::returnPressed, this, [this] { applyEdit(true); });
     connect(m_spEdit, &QLineEdit::returnPressed, this, [this] { applyEdit(false); });
+    connect(m_kpEdit, &QLineEdit::returnPressed, this,
+            [this] { applyTuning(m_kpEdit, &PidSettings::kp, 100.0); });
+    connect(m_tiEdit, &QLineEdit::returnPressed, this,
+            [this] { applyTuning(m_tiEdit, &PidSettings::tiS, 3600.0); });
+    connect(m_tdEdit, &QLineEdit::returnPressed, this,
+            [this] { applyTuning(m_tdEdit, &PidSettings::tdS, 600.0); });
+    connect(m_actionCombo, &QComboBox::currentIndexChanged, this, [this](int i) { applyAction(i); });
 
+    applyMode(controller && controller->model().isAuto());
+    refresh();
+}
+
+namespace {
+/// Number typed in a faceplate field (comma or point decimal); false when not a finite number.
+double parseFieldNumber(const QString &text, bool *ok)
+{
+    QString str = text.trimmed();
+    str.replace(QLatin1Char(','), QLatin1Char('.'));
+    const double v = QLocale::c().toDouble(str, ok);
+    if (!std::isfinite(v)) {
+        *ok = false;
+    }
+    return v;
+}
+
+/// Shortest faithful text of a tuning value (no rounding of what was typed).
+QString tuningText(double v)
+{
+    return QString::number(v, 'g', 6);
+}
+} // namespace
+
+void Faceplate::applyMode(bool isAuto)
+{
+    m_modeButton->setText(isAuto ? QStringLiteral("AUTO") : QStringLiteral("MAN"));
+    m_modeButton->setStyleSheet(QStringLiteral(
+        "QPushButton { color: #1d2227; background: %1; border: none; border-radius: 3px;"
+        " font: bold 14px 'Consolas'; padding: 1px 8px; min-height: 0px; }"
+        "QPushButton:pressed { background: %1; }")
+                                    .arg(isAuto ? QStringLiteral("#3ccf6a")
+                                                : QStringLiteral("#ffb428")));
+    // In Auto the PID computes OUT: the OUT buttons and the OUT edit are disabled.
+    m_outUp->setEnabled(!isAuto);
+    m_outDown->setEnabled(!isAuto);
+    m_outEdit->setEnabled(!isAuto);
+}
+
+void Faceplate::applyTuning(QLineEdit *edit, double PidSettings::*member, double max)
+{
+    if (!m_controller) {
+        return;
+    }
+    bool ok = false;
+    const double v = parseFieldNumber(edit->text(), &ok);
+    if (ok) {
+        PidSettings pid = m_controller->model().pid();
+        pid.*member = std::clamp(v, 0.0, max);
+        m_controller->setPid(pid); // the model clamps too; emits stateChanged()
+    }
+    // Show what is in effect (the typed text is replaced by the applied, clamped value).
+    edit->setText(tuningText(m_controller->model().pid().*member));
+    refresh();
+}
+
+void Faceplate::applyAction(int index)
+{
+    if (!m_controller) {
+        return;
+    }
+    const PidSettings &current = m_controller->model().pid();
+    if (current.reverse == (index == 0)) {
+        return; // already so (e.g. refresh-driven change): nothing to send
+    }
+    PidSettings pid = current;
+    pid.reverse = (index == 0);
+    m_controller->setPid(pid);
     refresh();
 }
 
@@ -626,6 +753,26 @@ void Faceplate::refresh()
     }
     if (!m_spEdit->hasFocus()) {
         m_spEdit->setText(pct1(s.spPct));
+    }
+
+    const bool isAuto = m_controller->model().isAuto();
+    if (m_modeButton->text() != (isAuto ? QStringLiteral("AUTO") : QStringLiteral("MAN"))) {
+        applyMode(isAuto);
+    }
+    const PidSettings &pid = m_controller->model().pid();
+    if (!m_kpEdit->hasFocus()) {
+        m_kpEdit->setText(tuningText(pid.kp));
+    }
+    if (!m_tiEdit->hasFocus()) {
+        m_tiEdit->setText(tuningText(pid.tiS));
+    }
+    if (!m_tdEdit->hasFocus()) {
+        m_tdEdit->setText(tuningText(pid.tdS));
+    }
+    {
+        // Shows the controller's action without emitting currentIndexChanged (no feedback).
+        const QSignalBlocker b(m_actionCombo);
+        m_actionCombo->setCurrentIndex(pid.reverse ? 0 : 1);
     }
 }
 

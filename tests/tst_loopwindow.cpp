@@ -213,6 +213,150 @@ private slots:
         QVERIFY(w.schematic()->labelText("lic-value").contains("SP 35.0 %"));
     }
 
+    void faceplateModeButton()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        auto *mb = w.faceplate()->findChild<QPushButton *>("modeButton");
+        QVERIFY(mb);
+        QCOMPARE(mb->text(), QString("MAN"));
+        QVERIFY(!c.model().isAuto());
+        QTest::mouseClick(mb, Qt::LeftButton);
+        QVERIFY(c.model().isAuto());
+        QVERIFY(c.model().state().autoMode);
+        QCOMPARE(mb->text(), QString("AUTO"));
+        QTest::mouseClick(mb, Qt::LeftButton);
+        QVERIFY(!c.model().isAuto());
+        QCOMPARE(mb->text(), QString("MAN"));
+    }
+
+    void faceplateAutoDisablesOut()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        auto *up = w.faceplate()->findChild<QPushButton *>("outUpButton");
+        auto *down = w.faceplate()->findChild<QPushButton *>("outDownButton");
+        auto *outEdit = w.faceplate()->findChild<QLineEdit *>("outEdit");
+        auto *spEdit = w.faceplate()->findChild<QLineEdit *>("spEdit");
+        QVERIFY(up && down && outEdit && spEdit);
+        QVERIFY(up->isEnabled() && down->isEnabled() && outEdit->isEnabled());
+        c.setAuto(true);
+        QVERIFY(!up->isEnabled());
+        QVERIFY(!down->isEnabled());
+        QVERIFY(!outEdit->isEnabled());
+        QVERIFY(spEdit->isEnabled());
+        c.setAuto(false);
+        QVERIFY(up->isEnabled() && down->isEnabled() && outEdit->isEnabled());
+    }
+
+    void faceplateTuningEdits()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        w.show();
+        auto *kp = w.faceplate()->findChild<QLineEdit *>("kpEdit");
+        auto *ti = w.faceplate()->findChild<QLineEdit *>("tiEdit");
+        auto *td = w.faceplate()->findChild<QLineEdit *>("tdEdit");
+        QVERIFY(kp && ti && td);
+        QCOMPARE(kp->text(), QString("1"));
+        QCOMPARE(ti->text(), QString("30"));
+        QCOMPARE(td->text(), QString("0"));
+        kp->clear();
+        QTest::keyClicks(kp, "2.5");
+        QTest::keyClick(kp, Qt::Key_Return);
+        QCOMPARE(c.model().pid().kp, 2.5);
+        ti->clear();
+        QTest::keyClicks(ti, "150");
+        QTest::keyClick(ti, Qt::Key_Return);
+        QCOMPARE(c.model().pid().tiS, 150.0);
+        td->clear();
+        QTest::keyClicks(td, "12");
+        QTest::keyClick(td, Qt::Key_Return);
+        QCOMPARE(c.model().pid().tdS, 12.0);
+        // Out of range values are clamped to the PidSettings ranges.
+        kp->clear();
+        QTest::keyClicks(kp, "250");
+        QTest::keyClick(kp, Qt::Key_Return);
+        QCOMPARE(c.model().pid().kp, 100.0);
+        QCOMPARE(kp->text(), QString("100"));
+        ti->clear();
+        QTest::keyClicks(ti, "9000");
+        QTest::keyClick(ti, Qt::Key_Return);
+        QCOMPARE(c.model().pid().tiS, 3600.0);
+        td->clear();
+        QTest::keyClicks(td, "-4");
+        QTest::keyClick(td, Qt::Key_Return);
+        QCOMPARE(c.model().pid().tdS, 0.0);
+        QCOMPARE(td->text(), QString("0"));
+        // Invalid text restores the current value.
+        kp->clear();
+        QTest::keyClicks(kp, "abc");
+        QTest::keyClick(kp, Qt::Key_Return);
+        QCOMPARE(c.model().pid().kp, 100.0);
+        QCOMPARE(kp->text(), QString("100"));
+    }
+
+    void faceplateActionCombo()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        auto *combo = w.faceplate()->findChild<QComboBox *>("actionCombo");
+        QVERIFY(combo);
+        QCOMPARE(combo->currentText(), QString("Reverse"));
+        QVERIFY(c.model().pid().reverse);
+        combo->setCurrentIndex(combo->findText("Direct"));
+        QVERIFY(!c.model().pid().reverse);
+        combo->setCurrentIndex(combo->findText("Reverse"));
+        QVERIFY(c.model().pid().reverse);
+    }
+
+    void faceplateRefreshFromController()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        auto *mb = w.faceplate()->findChild<QPushButton *>("modeButton");
+        auto *kp = w.faceplate()->findChild<QLineEdit *>("kpEdit");
+        auto *ti = w.faceplate()->findChild<QLineEdit *>("tiEdit");
+        auto *td = w.faceplate()->findChild<QLineEdit *>("tdEdit");
+        auto *combo = w.faceplate()->findChild<QComboBox *>("actionCombo");
+        auto *outEdit = w.faceplate()->findChild<QLineEdit *>("outEdit");
+        PidSettings p = c.model().pid();
+        p.kp = 3.25;
+        p.tiS = 60;
+        p.tdS = 5;
+        p.reverse = false;
+        c.setPid(p);
+        QCOMPARE(kp->text(), QString("3.25"));
+        QCOMPARE(ti->text(), QString("60"));
+        QCOMPARE(td->text(), QString("5"));
+        QCOMPARE(combo->currentText(), QString("Direct"));
+        // The refresh from the controller side does not send anything back.
+        QCOMPARE(c.model().pid().kp, 3.25);
+        c.setAuto(true);
+        QCOMPARE(mb->text(), QString("AUTO"));
+        QVERIFY(!outEdit->isEnabled());
+        c.setAuto(false);
+        QCOMPARE(mb->text(), QString("MAN"));
+        QVERIFY(outEdit->isEnabled());
+    }
+
+    void faceplateFocusedTuningKept()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        w.show();
+        w.activateWindow();
+        (void)QTest::qWaitForWindowActive(&w);
+        auto *kp = w.faceplate()->findChild<QLineEdit *>("kpEdit");
+        kp->setFocus();
+        if (!kp->hasFocus()) {
+            QSKIP("no keyboard focus on this platform");
+        }
+        kp->setText("7");
+        c.tickFor(0.5);
+        QCOMPARE(kp->text(), QString("7"));
+    }
+
     void refreshKeepsTypedText()
     {
         LoopController c;

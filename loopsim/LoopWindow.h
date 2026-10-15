@@ -23,6 +23,7 @@ namespace mbloop {
 
 class Faceplate;
 class LoopController;
+struct PidSettings;
 class SchematicView;
 
 /// The ISA schematic of level loop 101 (QGraphicsScene, scales with the view; ISA-5.1-style
@@ -96,6 +97,9 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void changeOut(double delta);
     void applyEdit(bool isOut);
+    void applyMode(bool isAuto);
+    void applyTuning(QLineEdit *edit, double PidSettings::*member, double max);
+    void applyAction(int index);
     LoopController *m_controller = nullptr;
     QWidget *m_bar = nullptr;
     QLabel *m_pvLabel = nullptr;
@@ -103,8 +107,15 @@ private:
     QLabel *m_spLabel = nullptr;
     QLabel *m_outLabel = nullptr;
     QLabel *m_outMaLabel = nullptr;
+    QPushButton *m_modeButton = nullptr;
+    QPushButton *m_outUp = nullptr;
+    QPushButton *m_outDown = nullptr;
     QLineEdit *m_outEdit = nullptr;
     QLineEdit *m_spEdit = nullptr;
+    QLineEdit *m_kpEdit = nullptr;
+    QLineEdit *m_tiEdit = nullptr;
+    QLineEdit *m_tdEdit = nullptr;
+    QComboBox *m_actionCombo = nullptr;
     Qt::KeyboardModifiers m_lastModifiers;
 };
 
