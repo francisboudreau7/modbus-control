@@ -5,9 +5,9 @@
     "pumpSpeedPct": 100,
     "hvOpeningPct": 50,
     "deadTimeS": 2,
-    "ltNoisePct": 0.2,
-    "ltDampingS": 1,
+    "ltNoisePct": 0.05,
+    "ltDampingS": 2,
     "fcvStrokeS": 5,
-    "speedFactor": 5
+    "speedFactor": 1
   }
 }
