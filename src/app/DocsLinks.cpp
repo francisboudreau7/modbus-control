@@ -1,6 +1,6 @@
 #include "DocsLinks.h"
 
-// Stubs created by T200; implemented by T202.
+#include <QDir>
 
 namespace mb::docs {
 
@@ -9,24 +9,36 @@ QString siteRoot()
     return QStringLiteral("https://francisboudreau7.github.io/modbus-control/");
 }
 
-Language languageFor(const QLocale &)
+Language languageFor(const QLocale &locale)
 {
-    return Language::English;
+    return locale.language() == QLocale::French ? Language::French : Language::English;
 }
 
-QUrl siteUrl(Page, Language)
+QUrl siteUrl(Page page, Language language)
 {
-    return QUrl(siteRoot());
+    const bool french = language == Language::French;
+    QString path;
+    if (page == Page::QuickStart)
+        path = french ? QStringLiteral("fr/") : QString();
+    else
+        path = french ? QStringLiteral("fr/guide/") : QStringLiteral("guide/");
+    return QUrl(siteRoot() + path);
 }
 
-QString localRelativePath(Page, Language)
+QString localRelativePath(Page page, Language language)
 {
-    return {};
+    const bool french = language == Language::French;
+    if (page == Page::QuickStart)
+        return french ? QStringLiteral("docs/fr/GUIDE_DEMARRAGE_RAPIDE.md")
+                      : QStringLiteral("docs/QUICK_START.md");
+    return french ? QStringLiteral("docs/fr/GUIDE_UTILISATEUR.md")
+                  : QStringLiteral("docs/USER_GUIDE.md");
 }
 
-QString localPath(const QString &, Page, Language)
+QString localPath(const QString &appDir, Page page, Language language)
 {
-    return {};
+    const QDir base(appDir + QStringLiteral("/.."));
+    return QDir::cleanPath(base.filePath(localRelativePath(page, language)));
 }
 
 } // namespace mb::docs

@@ -4,6 +4,7 @@
 #include "AnalysisCsv.h"
 #include "AnalysisPanel.h"
 #include "ConnectionBar.h"
+#include "DocsLinks.h"
 #include "CursorPanel.h"
 #include "EncodingMonitor.h"
 #include "ExportCsvDialog.h"
@@ -20,10 +21,13 @@
 #include "WriteController.h"
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDateTime>
 #include <QPushButton>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QLocale>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
@@ -36,6 +40,7 @@
 #include <QSignalBlocker>
 #include <QThread>
 #include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <optional>
@@ -164,6 +169,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
         return QFileDialog::getOpenFileName(m_window, caption, dir, filter);
     };
     m_prompts.exec = [](QDialog &dialog) { dialog.exec(); };
+    m_prompts.openUrl = [](const QUrl &url) { return QDesktopServices::openUrl(url); };
 
     wireConnection();
     wireData();
@@ -361,6 +367,8 @@ void AppController::wireActions()
                                   Qt::QueuedConnection);
         setModified(true);
     });
+    connect(a.quickStart, &QAction::triggered, this, [this] { openDocumentation(false); });
+    connect(a.userGuide, &QAction::triggered, this, [this] { openDocumentation(true); });
 }
 
 void AppController::wireQuickWrites()
@@ -955,7 +963,18 @@ void AppController::onAddTagReadFinished(quint64 requestId, const ModbusResult &
         done(result, values);
 }
 
-// Stub created by T200; implemented by T202.
-void AppController::openDocumentation(bool) {}
+void AppController::openDocumentation(bool userGuide)
+{
+    const docs::Page page = userGuide ? docs::Page::UserGuide : docs::Page::QuickStart;
+    const docs::Language language = docs::languageFor(QLocale::system());
+    const QUrl url = docs::siteUrl(page, language);
+    if (m_prompts.openUrl(url))
+        return;
+    const QString local = docs::localPath(QCoreApplication::applicationDirPath(), page, language);
+    if (QFileInfo::exists(local) && m_prompts.openUrl(QUrl::fromLocalFile(local)))
+        return;
+    warn(QStringLiteral("Open documentation"),
+         QStringLiteral("Could not open %1.").arg(url.toString()));
+}
 
 } // namespace mb
