@@ -26,6 +26,27 @@ Dans le menu Démarrer, choisissez **Modbus Loop Simulator**. Ou démarrez-le da
 modbus_loop_sim.exe --speed 5
 ```
 
+Les programmes sont dans le dossier `bin` du dossier d'installation. Pour une installation par
+utilisateur (par défaut), c'est `%LOCALAPPDATA%\Programs\Modbus Control` ; pour une installation pour
+tous les utilisateurs, c'est `C:\Program Files\Modbus Control`. Les fichiers d'exemple, comme le
+scénario ci-dessous, sont dans son dossier `examples` : avec `--scenario`, partez donc du dossier
+d'installation :
+
+```bat
+cd "%LOCALAPPDATA%\Programs\Modbus Control"
+bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop
+```
+
+(Pour une installation pour tous les utilisateurs, utilisez `cd "C:\Program Files\Modbus Control"`.)
+
+La version avec fenêtre est un programme graphique Windows : lancée depuis `cmd` ou PowerShell, elle
+rend l'invite tout de suite, et Ctrl+C ou la fermeture de la console ne l'arrête pas (fermez plutôt sa
+fenêtre). Son code de sortie n'est donc pas disponible pour l'interpréteur. Pour l'attendre et lire le
+code de sortie, utilisez `start /wait bin\modbus_loop_sim.exe --headless` dans `cmd` ou
+`Start-Process -Wait -NoNewWindow -PassThru` dans PowerShell (puis lisez `ExitCode` de l'objet
+retourné). `--help`, `--version`, les erreurs de ligne de commande et `--headless` écrivent bien dans
+la console.
+
 Par défaut, le serveur écoute sur `127.0.0.1:1601` : seul ce PC peut s'y connecter. La barre d'état de
 la fenêtre affiche l'adresse et le nombre de clients.
 
@@ -199,7 +220,8 @@ Vous mesurez le procédé à OUT = 50 % : le K, le L et le T d'un modèle du pre
 Ensuite, vous les comparez à la théorie. Pour le panneau, voir [Analyse](GUIDE_UTILISATEUR.md#analyse-réponse-à-léchelon)
 dans le Guide de l'utilisateur.
 
-1. Démarrez le simulateur avec `modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`
+1. Démarrez le simulateur avec `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, depuis
+   le dossier d'installation (voir [Démarrage](#démarrage))
    (ou depuis le menu Démarrer, puis réglez **Speed** à ×5). Le niveau est stable à 50 %.
 2. Démarrez Modbus Control et ouvrez [examples/loop101.mbproj](../../examples/loop101.mbproj). Le projet
    se connecte à `127.0.0.1:1601`, unité 1, avec trois étiquettes : **LT-101 PV** (registre d'entrée 1),

@@ -119,7 +119,9 @@ public:
 
     SchematicView *schematic() const;
     Faceplate *faceplate() const;
-    /// Status text of the server (set by main after LoopController::startServer).
+    /// Status text of the server (set by main after LoopController::startServer). While the
+    /// controller's server is running ", N client(s)" is appended; when it is not running (failed
+    /// start) the text, the error, is shown alone.
     void setServerStatus(const QString &text);
 
 private:

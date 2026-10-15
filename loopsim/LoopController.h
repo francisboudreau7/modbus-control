@@ -44,9 +44,11 @@ public:
 
     /// Scenario of the current settings and state (state always present).
     Scenario currentScenario() const;
-    /// applyScenario + speed factor; emits stateChanged().
+    /// applyScenario + speed factor; emits stateChanged(). Client writes not yet applied are
+    /// discarded, so the scenario's SP/OUT win.
     void loadScenario(const Scenario &scenario);
-    /// Back to the initial state with the current settings (OUT = SP = 50 %).
+    /// Back to the initial state with the current settings (OUT = SP = 50 %). Client writes not
+    /// yet applied are discarded.
     void resetState();
 
     /// Test seam: advances by `wallSeconds` of wall time as one tick would (ignores the timer).
@@ -66,6 +68,7 @@ private:
     LoopServer m_server;
     QTimer *m_timer = nullptr;
     QElapsedTimer m_clock;
+    qint64 m_lastNs = 0; ///< m_clock reading at the previous tick
     double m_speed = 1.0;
     bool m_paused = false;
 };

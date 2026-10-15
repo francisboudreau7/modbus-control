@@ -76,7 +76,7 @@ void LoopController::setPaused(bool paused)
         return;
     }
     m_paused = paused;
-    m_clock.restart(); // no catch-up of the time spent paused
+    m_lastNs = m_clock.nsecsElapsed(); // no catch-up of the time spent paused
     emit pausedChanged(m_paused);
 }
 
@@ -127,6 +127,7 @@ Scenario LoopController::currentScenario() const
 
 void LoopController::loadScenario(const Scenario &scenario)
 {
+    m_server.takeWrites(); // a client write not yet applied must not override the scenario
     applyScenario(m_model, scenario);
     setSpeedFactor(scenario.speedFactor);
     publish();
@@ -135,6 +136,7 @@ void LoopController::loadScenario(const Scenario &scenario)
 
 void LoopController::resetState()
 {
+    m_server.takeWrites(); // a client write not yet applied must not override the reset
     m_model.reset(m_model.params(), 50.0);
     publish();
     emit stateChanged();
@@ -152,7 +154,11 @@ void LoopController::tickFor(double wallSeconds)
 
 void LoopController::tick()
 {
-    const double wall = static_cast<double>(m_clock.restart()) / 1000.0;
+    // Nanosecond differences: QElapsedTimer::restart() returns whole milliseconds and drops the
+    // remainder, which made the simulated clock run 1-2 % slow at the 50 ms tick.
+    const qint64 now = m_clock.nsecsElapsed();
+    const double wall = static_cast<double>(now - m_lastNs) / 1e9;
+    m_lastNs = now;
     tickFor(std::min(wall, kMaxTickWallS));
 }
 

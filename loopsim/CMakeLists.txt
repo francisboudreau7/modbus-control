@@ -19,7 +19,7 @@ add_library(mbloopui STATIC
 target_link_libraries(mbloopui PUBLIC mbloop Qt6::Widgets PRIVATE mc_warnings)
 set_target_properties(mbloopui PROPERTIES AUTOMOC ON)
 
-add_executable(modbus_loop_sim WIN32 main.cpp)
+add_executable(modbus_loop_sim WIN32 main.cpp modbus_loop_sim.rc)
 target_link_libraries(modbus_loop_sim PRIVATE mbloopui mc_warnings)
 target_compile_definitions(modbus_loop_sim PRIVATE MBLOOP_VERSION="${PROJECT_VERSION}")
 
