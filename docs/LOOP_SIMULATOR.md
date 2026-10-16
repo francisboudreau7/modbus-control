@@ -108,7 +108,7 @@ the level h (in m):
 | Flow out through HV-102 | Qhv = 7.0711×10⁻³ m^2.5/s × v × √h |
 | Level | A × dh/dt = Qin − Qhv, with A = π × 0.15² = 0.070686 m² |
 | Overflow | when h would exceed 0.99 m, h stays at 0.99 m and the excess leaves through the overflow |
-| LT-101 | 100 × h / 1 m, through a first-order lag of 2 s, plus a random value between −0.05 and +0.05 %, a new value every 0.1 s of simulation time |
+| LT-101 | The sensor reads 100 × h / 1 m plus a random value between −0.05 and +0.05 % (a new value every 0.1 s of simulation time); the transmitter damping, a first-order lag of 2 s, filters that reading, noise included |
 
 The simulation runs in steps of 10 ms of simulation time.
 
@@ -356,6 +356,13 @@ you switched to AUTO. Switching to AUTO with Ti = 0 does not make OUT jump, as e
 opens the valve when PV is above SP, which adds water. PV moves away from SP and OUT runs away to 100 %
 (PV above SP) or to 0 % (PV below SP) and stays there. Set the Action back to Reverse and click
 **AUTO** to return to **MAN**, then set OUT by hand if the level has gone to the overflow or to empty.
+
+**Derivative and noise.** Derivative action reacts to how fast PV changes, and noise changes fast, so
+D amplifies it: OUT jitters even when the level is steady, and the valve works for nothing. The
+transmitter damping (2 s by default) smooths the noise before the regulator sees it. Set
+`ltDampingS` to 0 in a scenario file and add Td: OUT chatters by several %. With the damping back, it
+calms down, but the damping also adds a lag to the loop. This is why most level loops are run as PI
+(Td = 0).
 
 **Other things to try.** Add Td (for example Td = L / 2) and look at the noise on OUT. Make the dead
 time longer in a scenario file and see how the same tuning behaves. Try a setpoint of 80 %: at that

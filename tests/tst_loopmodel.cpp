@@ -548,6 +548,45 @@ private slots:
         QVERIFY(qAbs((m.state().outPct - o0) - 2.0 * 5.0) < 0.2); // Kp * dSP only
     }
 
+    void dampingFiltersNoise()
+    {
+        // v1.3.2: the noise enters before the transmitter damping, so the damping smooths it.
+        LoopParams p = plain();
+        p.ltNoisePct = 0.2;
+        p.ltDampingS = 2.0;
+        LoopModel m(11);
+        m.reset(p, 50.0);
+        m.advance(20.0);
+        double maxDev = 0.0;
+        for (int i = 0; i < 3000; ++i) {
+            m.advance(kStepS);
+            maxDev = std::max(maxDev, qAbs(m.state().pvPct - m.state().levelM * 100.0));
+        }
+        QVERIFY2(maxDev < 0.08, qPrintable(QString::number(maxDev))); // undamped: up to 0.2
+    }
+
+    void derivativeCalmWithDefaultTransmitter()
+    {
+        // Default LT-101 (noise 0.05 %, damping 2 s) and an aggressive PID with derivative:
+        // at steady state OUT must not chatter (the derivative sees the damped reading).
+        LoopModel m(5);
+        m.reset(LoopParams{}, 50.0);
+        PidSettings pid;
+        pid.kp = 2.8;
+        pid.tiS = 15.0;
+        pid.tdS = 5.0;
+        m.setPid(pid);
+        m.setAuto(true);
+        m.advance(300.0);
+        double lo = 100.0, hi = 0.0;
+        for (int i = 0; i < 600; ++i) { // 60 s
+            m.advance(0.1);
+            lo = std::min(lo, m.state().outPct);
+            hi = std::max(hi, m.state().outPct);
+        }
+        QVERIFY2(hi - lo < 1.0, qPrintable(QStringLiteral("OUT swing %1 %").arg(hi - lo)));
+    }
+
     void pidDerivativeStillSettles()
     {
         LoopParams p;

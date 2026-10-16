@@ -57,7 +57,7 @@ void LoopModel::resizePipe(std::size_t n, double padValue)
 
 void LoopModel::refreshPv()
 {
-    m_state.pvPct = std::clamp(m_lagPct + m_noisePct, 0.0, 100.0);
+    m_state.pvPct = std::clamp(m_lagPct, 0.0, 100.0);
 }
 
 void LoopModel::reset(const LoopParams &params, double outPct)
@@ -185,18 +185,19 @@ void LoopModel::step()
     st.levelM = h;
     st.overflowing = st.qOverflow > 0.0;
 
-    const double target = 100.0 * h / kTankHeightM;
-    if (m_params.ltDampingS <= 0.0)
-        m_lagPct = target;
-    else
-        m_lagPct += (target - m_lagPct) * (1.0 - std::exp(-kStepS / m_params.ltDampingS));
-
+    // The sensor noise enters before the transmitter damping, as on a real level transmitter:
+    // the damping smooths it (and with it the PID's derivative action).
     const int noiseEvery = static_cast<int>(std::llround(kNoisePeriodS / kStepS));
     if (++m_noiseSteps >= noiseEvery) {
         m_noiseSteps = 0;
         const double u = static_cast<double>(m_rng()) / 4294967296.0; // [0, 1)
         m_noisePct = m_params.ltNoisePct * (2.0 * u - 1.0);
     }
+    const double target = 100.0 * h / kTankHeightM + m_noisePct;
+    if (m_params.ltDampingS <= 0.0)
+        m_lagPct = target;
+    else
+        m_lagPct += (target - m_lagPct) * (1.0 - std::exp(-kStepS / m_params.ltDampingS));
     refreshPv();
 
     st.timeS += kStepS;

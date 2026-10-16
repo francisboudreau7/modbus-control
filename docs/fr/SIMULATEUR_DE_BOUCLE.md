@@ -113,7 +113,7 @@ fractions de 0 à 1) et le niveau h (en m) :
 | Débit sortant par HV-102 | Qhv = 7.0711×10⁻³ m^2.5/s × v × √h |
 | Niveau | A × dh/dt = Qin − Qhv, avec A = π × 0.15² = 0.070686 m² |
 | Trop-plein | quand h dépasserait 0.99 m, h reste à 0.99 m et l'excédent sort par le trop-plein |
-| LT-101 | 100 × h / 1 m, passé dans un filtre de premier ordre de 2 s, plus une valeur aléatoire entre −0.05 et +0.05 %, une nouvelle valeur toutes les 0.1 s de temps simulé |
+| LT-101 | Le capteur lit 100 × h / 1 m plus une valeur aléatoire entre −0.05 et +0.05 % (une nouvelle valeur toutes les 0.1 s de temps simulé); l'amortissement du transmetteur, un filtre du premier ordre de 2 s, filtre cette lecture, bruit compris |
 
 La simulation avance par pas de 10 ms de temps simulé.
 
@@ -377,6 +377,13 @@ maintenant la vanne quand PV est au-dessus de SP, ce qui ajoute de l'eau. PV s'�
 s'emballe vers 100 % (PV au-dessus de SP) ou vers 0 % (PV en dessous de SP) et y reste. Remettez
 Action à Reverse et cliquez sur **AUTO** pour revenir en **MAN**, puis réglez OUT à la main si le niveau
 est allé au trop-plein ou à vide.
+
+**Dérivée et bruit.** L'action dérivée réagit à la vitesse de variation de PV, et le bruit varie vite :
+la dérivée l'amplifie. OUT tremble même quand le niveau est stable, et la vanne travaille pour rien.
+L'amortissement du transmetteur (2 s par défaut) lisse le bruit avant que le régulateur le voie. Mettez
+`ltDampingS` à 0 dans un fichier de scénario et ajoutez Td : OUT oscille de plusieurs %. Avec
+l'amortissement, il se calme, mais l'amortissement ajoute aussi un retard à la boucle. C'est pourquoi la
+plupart des boucles de niveau sont réglées en PI (Td = 0).
 
 **Autres essais.** Ajoutez Td (par exemple Td = L / 2) et regardez le bruit sur OUT. Allongez le temps
 mort dans un fichier de scénario et voyez comment le même réglage se comporte. Essayez une consigne de

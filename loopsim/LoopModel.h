@@ -77,10 +77,12 @@ inline double percentToMa(double pct) { return 4.0 + 16.0 * pct / 100.0; }
 /// - dh/dt = (qIn - qHv) / kTankAreaM2, explicit Euler with kStepS; then if h > kOverflowLevelM:
 ///   qOverflow = (h - kOverflowLevelM) * kTankAreaM2 / kStepS and h = kOverflowLevelM; h < 0 ->
 ///   h = 0;
-/// - LT-101: lagged level % L follows 100 * h / kTankHeightM with a first-order lag ltDampingS
-///   (exact discretisation L += (target - L) * (1 - exp(-dt / tau)); tau 0: L = target); a new
-///   noise value uniform in [-ltNoisePct, +ltNoisePct] every kNoisePeriodS of simulation time
-///   (std::mt19937 seeded by the constructor's seed); pvPct = clamp(L + noise, 0, 100).
+/// - LT-101: the sensor reads 100 * h / kTankHeightM + noise, where a new noise value uniform in
+///   [-ltNoisePct, +ltNoisePct] is drawn every kNoisePeriodS of simulation time (std::mt19937
+///   seeded by the constructor's seed); the transmitter damping, a first-order lag ltDampingS,
+///   filters that reading (exact discretisation L += (target - L) * (1 - exp(-dt / tau)); tau 0:
+///   L = target), so the damping also smooths the noise (v1.3.2; before, the noise was added after
+///   the damping); pvPct = clamp(L, 0, 100).
 /// Steady state (no overflow): h = (kFcvMaxFlowM3s * y * s / (kHvCoefficient * v))^2; with pump
 /// 100 %, HV 50 %: OUT 50 % -> 0.50 m, 30 % -> 0.18 m, 70 % -> 0.98 m. Linearised time constant
 /// tau = 2 * kTankAreaM2 * h / qHv (about 28 s at 0.50 m, 150 L/min). The flows are sized so a step
