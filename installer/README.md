@@ -83,7 +83,7 @@ other settings for that extension are kept.
 Per-user silent install into a folder of your choice:
 
 ```bat
-ModbusControl-1.3.1-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /NOICONS /DIR="C:\Tools\ModbusControl" /LOG="%TEMP%\mc_install.log"
+ModbusControl-1.3.2-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /NOICONS /DIR="C:\Tools\ModbusControl" /LOG="%TEMP%\mc_install.log"
 ```
 
 `/CURRENTUSER` selects the per-user mode without a prompt. `/ALLUSERS` selects an all-users install and
