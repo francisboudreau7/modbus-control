@@ -616,6 +616,10 @@ private slots:
         QVERIFY(r.model.goodValue(2).has_value()); // unit does not change decoding
         r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::ByteOrder), QStringLiteral("CDAB"));
         QVERIFY(!r.model.goodValue(2).has_value());
+        // v1.3.3: changing the register of a writable tag clears Writable; tick it again.
+        QVERIFY(!r.model.tagAt(r.model.rowOf(2)).writable);
+        QVERIFY(r.model.setData(r.model.index(r.model.rowOf(2), TagTableModel::Writable), Qt::Checked,
+                                Qt::CheckStateRole));
         r.wc->requestWrite(2, 20.0);
         QCOMPARE(r.writes->size(), 0);
         QVERIFY(r.warns.last().contains("No valid reading of 'Flow'"));

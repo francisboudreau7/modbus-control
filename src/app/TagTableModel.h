@@ -222,6 +222,11 @@ signals:
 private:
     /// dataChanged for the live columns (Raw..Value, Quality) of rows first..last.
     void emitLiveChanged(int firstRow, int lastRow, const QList<int> &roles);
+    /// True when the lock state forbids editing `column` (register settings while connected;
+    /// those plus Gain/Offset/Min/Max/Quick A/B under the teacher lock).
+    bool isColumnBlocked(int column) const;
+    /// "HR 5009-5010" / "IR 100": registers with the address base, without type and order.
+    QString registersOnly(const Tag &tag) const;
     // Implementation-defined; the task may change the private section freely.
     struct Live {
         bool valid = false;

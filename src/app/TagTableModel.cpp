@@ -86,7 +86,26 @@ QString nextPaletteColor(const QList<Tag> &existing)
     return QLatin1String(kPalette[existing.size() % kPaletteSize]);
 }
 
+bool isRegisterSettingColumn(int c)
+{
+    return c == TagTableModel::Area || c == TagTableModel::Address || c == TagTableModel::Type
+           || c == TagTableModel::ByteOrder || c == TagTableModel::Writable;
+}
+
+bool isTeacherLockedColumn(int c)
+{
+    return isRegisterSettingColumn(c) || c == TagTableModel::Gain || c == TagTableModel::Offset
+           || c == TagTableModel::WriteMin || c == TagTableModel::WriteMax
+           || c == TagTableModel::QuickA || c == TagTableModel::QuickB;
+}
+
 } // namespace
+
+bool TagTableModel::isColumnBlocked(int column) const
+{
+    return (m_locked && isTeacherLockedColumn(column))
+           || (m_connected && isRegisterSettingColumn(column));
+}
 
 TagTableModel::TagTableModel(QObject *parent) : QAbstractTableModel(parent) {}
 
@@ -110,6 +129,14 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     const bool edit = role == Qt::EditRole;
     const bool disp = role == Qt::DisplayRole;
     const bool is32 = registerCount(t.type) == 2;
+
+    if (role == Qt::ToolTipRole) {
+        if (m_locked && isTeacherLockedColumn(index.column()))
+            return tr("The tag configuration is locked (Options > Lock tag configuration)");
+        if (m_connected && isRegisterSettingColumn(index.column())
+            && !(index.column() == ByteOrder && !is32))
+            return tr("Disconnect to change the register settings");
+    }
 
     switch (index.column()) {
     case Name:
@@ -237,6 +264,9 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
                          {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
     };
 
+    if ((role == Qt::EditRole || role == Qt::CheckStateRole) && isColumnBlocked(col))
+        return false;
+
     if (col == Writable || col == Plot) {
         if (role != Qt::CheckStateRole)
             return false;
@@ -244,6 +274,25 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         if (col == Writable) {
             if (on && t.area == mb::Area::InputRegister)
                 return false;
+            if (on && !t.writable) {
+                if (m_confirmWritable) {
+                    WritableAsk ask;
+                    ask.id = t.id;
+                    ask.tagName = t.name;
+                    ask.registerText = registerText(t);
+                    ask.wasInput = m_wasInput.contains(t.id);
+                    if (ask.wasInput) {
+                        Tag asInput = t;
+                        asInput.area = mb::Area::InputRegister;
+                        ask.inputRegisterText = registersOnly(asInput);
+                    }
+                    if (!m_confirmWritable(ask))
+                        return false;
+                }
+                m_writeNeedsRead.insert(t.id);
+            } else if (!on) {
+                m_writeNeedsRead.remove(t.id);
+            }
             t.writable = on;
         } else {
             t.plotted = on;
@@ -259,6 +308,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
 
     bool writableCleared = false;
     bool rowChanged = false;
+    const Tag before = t;
     // A note describes the register's current use: any edit of where it is or what it is clears it.
     const bool placementChanged = col == Area || col == Address || col == Type;
     switch (col) {
@@ -277,11 +327,9 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             a = mb::Area::InputRegister;
         else
             return false;
+        if (a != t.area && a == mb::Area::HoldingRegister)
+            m_wasInput.insert(t.id);
         t.area = a;
-        if (a == mb::Area::InputRegister && t.writable) {
-            t.writable = false;
-            writableCleared = true;
-        }
         break;
     }
     case Address: {
@@ -390,6 +438,15 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         return false;
     }
 
+    // A writable tag that moves or changes shape is no longer what the user agreed to write to.
+    const QString textBefore = registerText(before);
+    if (t.writable && (t.area != before.area || t.address != before.address
+                       || t.type != before.type || t.byteOrder != before.byteOrder)) {
+        t.writable = false;
+        m_writeNeedsRead.remove(t.id);
+        writableCleared = true;
+    }
+
     // The last reading was decoded with the old configuration: it must not vouch for a write
     // (TagTableModel::goodValue) or show as current until the next poll with the new one.
     const bool decodingChanged = col == Area || col == Address || col == Type || col == ByteOrder
@@ -418,6 +475,8 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         const QModelIndex n = this->index(index.row(), Name);
         emit dataChanged(n, n, {Qt::DecorationRole, Qt::ToolTipRole});
     }
+    if (writableCleared)
+        emit this->writableCleared(t.id, textBefore, registerText(t));
     emit tagsEdited();
     return true;
 }
@@ -456,6 +515,8 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
         f |= Qt::ItemIsEditable;
         break;
     }
+    if (isColumnBlocked(index.column()))
+        f &= ~Qt::ItemFlags(Qt::ItemIsEditable | Qt::ItemIsUserCheckable);
     return f;
 }
 
@@ -491,12 +552,14 @@ QVariant TagTableModel::headerData(int section, Qt::Orientation o, int role) con
 
 bool TagTableModel::removeRows(int row, int count, const QModelIndex &parent)
 {
-    if (parent.isValid() || count <= 0 || row < 0 || row + count > m_tags.size())
+    if (m_locked || parent.isValid() || count <= 0 || row < 0 || row + count > m_tags.size())
         return false;
     beginRemoveRows(QModelIndex(), row, row + count - 1);
     for (int i = row; i < row + count; ++i) {
         m_live.remove(m_tags.at(i).id);
         m_encodingNotes.remove(m_tags.at(i).id);
+        m_writeNeedsRead.remove(m_tags.at(i).id);
+        m_wasInput.remove(m_tags.at(i).id);
     }
     m_tags.remove(row, count);
     endRemoveRows();
@@ -510,6 +573,8 @@ void TagTableModel::setTags(const QList<Tag> &tags, TagId nextTagId)
     m_tags = tags;
     m_live.clear();
     m_encodingNotes.clear();
+    m_writeNeedsRead.clear();
+    m_wasInput.clear();
     TagId next = nextTagId;
     for (const Tag &t : tags)
         next = std::max<TagId>(next, t.id + 1);
@@ -542,6 +607,8 @@ int TagTableModel::addTag()
 
 int TagTableModel::addTag(const Tag &prototype)
 {
+    if (m_locked)
+        return -1;
     Tag t = prototype;
     if (t.color.compare(Tag().color, Qt::CaseInsensitive) == 0)
         t.color = nextPaletteColor(m_tags);
@@ -551,6 +618,8 @@ int TagTableModel::addTag(const Tag &prototype)
     const int row = int(m_tags.size());
     beginInsertRows(QModelIndex(), row, row);
     m_tags.append(t);
+    if (t.isWritable())
+        m_writeNeedsRead.insert(t.id);
     endInsertRows();
     emit tagsEdited();
     return row;
@@ -558,7 +627,7 @@ int TagTableModel::addTag(const Tag &prototype)
 
 int TagTableModel::duplicateTag(int row)
 {
-    if (row < 0 || row >= m_tags.size())
+    if (m_locked || row < 0 || row >= m_tags.size())
         return -1;
     Tag t = m_tags.at(row);
     t.id = m_nextId++;
@@ -566,6 +635,8 @@ int TagTableModel::duplicateTag(int row)
     const int newRow = int(m_tags.size());
     beginInsertRows(QModelIndex(), newRow, newRow);
     m_tags.append(t);
+    if (t.isWritable())
+        m_writeNeedsRead.insert(t.id);
     endInsertRows();
     emit tagsEdited();
     return newRow;
@@ -574,7 +645,7 @@ int TagTableModel::duplicateTag(int row)
 bool TagTableModel::setEncoding(TagId id, ValueType type, mb::ByteOrder order, bool verified)
 {
     const int row = rowOf(id);
-    if (row < 0 || registerCount(type) != 2)
+    if (m_locked || row < 0 || registerCount(type) != 2)
         return false;
     Tag &t = m_tags[row];
     if (registerCount(t.type) != 2)
@@ -583,6 +654,12 @@ bool TagTableModel::setEncoding(TagId id, ValueType type, mb::ByteOrder order, b
     const bool verifiedChanged = t.encodingVerified != verified;
     if (!encodingChanged && !verifiedChanged)
         return true;
+    const QString textBefore = registerText(t);
+    const bool clearWritable = encodingChanged && t.writable;
+    if (clearWritable) {
+        t.writable = false;
+        m_writeNeedsRead.remove(id);
+    }
     t.type = type;
     t.byteOrder = order;
     t.encodingVerified = verified;
@@ -592,6 +669,8 @@ bool TagTableModel::setEncoding(TagId id, ValueType type, mb::ByteOrder order, b
     if (encodingChanged)
         m_live.remove(t.id);
     emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+    if (clearWritable)
+        emit writableCleared(id, textBefore, registerText(t));
     emit tagsEdited();
     return true;
 }
@@ -635,7 +714,7 @@ QString TagTableModel::encodingNote(TagId id) const
 bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::ByteOrder order, bool verified)
 {
     const int row = rowOf(id);
-    if (row < 0)
+    if (m_locked || row < 0)
         return false;
     Tag &t = m_tags[row];
     Tag probe = t;
@@ -652,6 +731,13 @@ bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::Byt
     if (!decodingChanged && !verifiedChanged && !noteRemoved && !otherChanged)
         return true;
 
+    const QString textBefore = registerText(t);
+    const bool clearWritable =
+        t.writable && (t.address != address || t.type != type || t.byteOrder != order);
+    if (clearWritable) {
+        t.writable = false;
+        m_writeNeedsRead.remove(id);
+    }
     t.address = address;
     t.type = type;
     t.byteOrder = order;
@@ -666,6 +752,8 @@ bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::Byt
     if (decodingChanged)
         m_live.remove(id);
     emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+    if (clearWritable)
+        emit writableCleared(id, textBefore, registerText(t));
     if (decodingChanged || verifiedChanged || otherChanged)
         emit tagsEdited();
     return true;
@@ -709,6 +797,8 @@ void TagTableModel::updateSamples(const SampleBatch &batch)
             continue;
         Live &l = m_live[s.tagId];
         l.valid = s.quality == mb::Quality::Good;
+        if (l.valid)
+            m_writeNeedsRead.remove(s.tagId);
         l.raw = s.raw;
         l.value = s.value;
         l.quality = s.quality;
@@ -766,10 +856,17 @@ int TagTableModel::addressBase() const
     return m_addressBase;
 }
 
-// v1.3.3 classroom safety. T230 stubs: T231 implements the rules of the class comment.
+// v1.3.3 classroom safety.
 void TagTableModel::setConnected(bool connected)
 {
+    if (m_connected == connected)
+        return;
     m_connected = connected;
+    if (m_tags.isEmpty())
+        return;
+    const int last = int(m_tags.size()) - 1;
+    emit dataChanged(index(0, Area), index(last, ByteOrder));
+    emit dataChanged(index(0, Writable), index(last, Writable));
 }
 
 bool TagTableModel::isConnected() const
@@ -782,6 +879,12 @@ void TagTableModel::setLocked(bool locked)
     if (m_locked == locked)
         return;
     m_locked = locked;
+    if (!m_tags.isEmpty()) {
+        const int last = int(m_tags.size()) - 1;
+        emit dataChanged(index(0, Area), index(last, Offset));
+        emit dataChanged(index(0, Writable), index(last, Writable));
+        emit dataChanged(index(0, WriteMin), index(last, QuickB));
+    }
     emit lockedChanged(locked);
 }
 
@@ -800,14 +903,18 @@ bool TagTableModel::writeNeedsRead(TagId id) const
     return m_writeNeedsRead.contains(id);
 }
 
-QString TagTableModel::registerText(const Tag &tag) const
+QString TagTableModel::registersOnly(const Tag &tag) const
 {
     const QString prefix = tag.area == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
     const int first = tag.address + m_addressBase;
+    return registerCount(tag.type) == 2 ? QStringLiteral("%1 %2-%3").arg(prefix).arg(first).arg(first + 1)
+                                        : QStringLiteral("%1 %2").arg(prefix).arg(first);
+}
+
+QString TagTableModel::registerText(const Tag &tag) const
+{
     const bool wide = registerCount(tag.type) == 2;
-    const QString registers = wide ? QStringLiteral("%1 %2-%3").arg(prefix).arg(first).arg(first + 1)
-                                   : QStringLiteral("%1 %2").arg(prefix).arg(first);
-    QString text = registers + QStringLiteral(" · ") + toString(tag.type);
+    QString text = registersOnly(tag) + QStringLiteral(" · ") + toString(tag.type);
     if (wide)
         text += QLatin1Char(' ') + toString(tag.byteOrder);
     return text;
