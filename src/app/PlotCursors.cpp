@@ -39,8 +39,10 @@ QwtPlotMarker *makeMarker(const char *label, const QColor &color)
 
 PlotCursors::PlotCursors(QwtPlot *plot) : QObject(plot), m_plot(plot)
 {
-    m_c1 = makeMarker("C1", QColor(0xd6, 0x27, 0x28));
-    m_c2 = makeMarker("C2", QColor(0x1f, 0x77, 0xb4));
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        const QByteArray label = "C" + QByteArray::number(n);
+        m_markers[size_t(n - 1)] = makeMarker(label.constData(), colorOf(n));
+    }
     if (m_plot && m_plot->canvas()) {
         m_canvas = m_plot->canvas();
         m_plot->canvas()->setMouseTracking(true);
@@ -52,24 +54,23 @@ PlotCursors::PlotCursors(QwtPlot *plot) : QObject(plot), m_plot(plot)
 PlotCursors::~PlotCursors()
 {
     // Attached markers are owned (and deleted) by the plot; only free detached ones.
-    if (!m_has1)
-        delete m_c1;
-    if (!m_has2)
-        delete m_c2;
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        if (!m_has[size_t(n - 1)])
+            delete m_markers[size_t(n - 1)];
+    }
 }
 
-bool PlotCursors::hasC1() const { return m_has1; }
-bool PlotCursors::hasC2() const { return m_has2; }
-double PlotCursors::c1() const { return m_c1->xValue(); }
-double PlotCursors::c2() const { return m_c2->xValue(); }
+bool PlotCursors::hasC1() const { return hasCursor(1); }
+bool PlotCursors::hasC2() const { return hasCursor(2); }
+double PlotCursors::c1() const { return m_markers[0]->xValue(); }
+double PlotCursors::c2() const { return m_markers[1]->xValue(); }
 
-void PlotCursors::setMarker(int which, double t)
+void PlotCursors::setMarker(int n, double t)
 {
-    QwtPlotMarker *m = which == 1 ? m_c1 : m_c2;
-    bool &has = which == 1 ? m_has1 : m_has2;
+    QwtPlotMarker *m = m_markers[size_t(n - 1)];
     m->setXValue(t);
-    if (!has) {
-        has = true;
+    if (!m_has[size_t(n - 1)]) {
+        m_has[size_t(n - 1)] = true;
         m->setVisible(m_visible);
         m->attach(m_plot);
     }
@@ -80,39 +81,36 @@ void PlotCursors::setMarker(int which, double t)
 void PlotCursors::setC1(double t) { setMarker(1, t); }
 void PlotCursors::setC2(double t) { setMarker(2, t); }
 
-// T240 stubs for C3..C6 (no markers yet): T242 implements the contract.
 bool PlotCursors::hasCursor(int n) const
 {
-    if (n == 1) return m_has1;
-    if (n == 2) return m_has2;
-    return n >= 3 && n <= kMaxCursors && m_extra[size_t(n - 1)].has_value();
+    return n >= 1 && n <= kMaxCursors && m_has[size_t(n - 1)];
 }
 
 std::optional<double> PlotCursors::cursor(int n) const
 {
     if (!hasCursor(n))
         return std::nullopt;
-    if (n == 1) return c1();
-    if (n == 2) return c2();
-    return m_extra[size_t(n - 1)];
+    return m_markers[size_t(n - 1)]->xValue();
 }
 
 void PlotCursors::setCursor(int n, double t)
 {
-    if (n == 1 || n == 2) {
+    if (n >= 1 && n <= kMaxCursors)
         setMarker(n, t);
-    } else if (n >= 3 && n <= kMaxCursors) {
-        m_extra[size_t(n - 1)] = t;
-        emit cursorsChanged();
-    }
 }
 
 void PlotCursors::removeCursor(int n)
 {
-    if (n >= 3 && n <= kMaxCursors && m_extra[size_t(n - 1)]) {
-        m_extra[size_t(n - 1)].reset();
-        emit cursorsChanged();
+    if (!hasCursor(n))
+        return;
+    if (m_drag == n) {
+        m_drag = 0;
+        m_swallowRelease = false;
     }
+    m_markers[size_t(n - 1)]->detach();
+    m_has[size_t(n - 1)] = false;
+    m_plot->replot();
+    emit cursorsChanged();
 }
 
 QList<int> PlotCursors::cursorNumbers() const
@@ -135,13 +133,22 @@ QColor PlotCursors::colorOf(int n)
 
 bool PlotCursors::isPlacing() const { return m_placing; }
 
+int PlotCursors::lowestMissing() const
+{
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        if (!hasCursor(n))
+            return n;
+    }
+    return 0;
+}
+
 void PlotCursors::setMarkersVisible(bool visible)
 {
     if (m_visible == visible)
         return;
     m_visible = visible;
-    m_c1->setVisible(visible);
-    m_c2->setVisible(visible);
+    for (QwtPlotMarker *m : m_markers)
+        m->setVisible(visible);
     m_plot->replot();
 }
 
@@ -149,8 +156,10 @@ void PlotCursors::setPlacing(bool on)
 {
     if (m_placing == on)
         return;
+    if (on && lowestMissing() == 0)
+        return; // all six exist: nothing to place
     m_placing = on;
-    m_placeStep = 0;
+    m_placeSingle = on && hasC1() && hasC2();
     emit placingChanged(on);
 }
 
@@ -158,9 +167,10 @@ void PlotCursors::clear()
 {
     m_drag = 0;
     m_swallowRelease = false;
-    m_c1->detach();
-    m_c2->detach();
-    m_has1 = m_has2 = false;
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        m_markers[size_t(n - 1)]->detach();
+        m_has[size_t(n - 1)] = false;
+    }
     setPlacing(false);
     m_plot->replot();
     emit cursorsChanged();
@@ -168,20 +178,19 @@ void PlotCursors::clear()
 
 int PlotCursors::markerAt(double px) const
 {
+    if (!m_visible)
+        return 0;
     const QwtScaleMap map = m_plot->canvasMap(QwtAxis::XBottom);
     double best = kGrabPx + 1.0;
     int which = 0;
-    if (m_has1 && m_visible) {
-        const double d = std::abs(map.transform(m_c1->xValue()) - px);
-        if (d <= kGrabPx && d < best) {
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        if (!hasCursor(n))
+            continue;
+        const double d = std::abs(map.transform(m_markers[size_t(n - 1)]->xValue()) - px);
+        if (d <= kGrabPx && d <= best) { // ties: the highest number wins
             best = d;
-            which = 1;
+            which = n;
         }
-    }
-    if (m_has2 && m_visible) {
-        const double d = std::abs(map.transform(m_c2->xValue()) - px);
-        if (d <= kGrabPx && d <= best)
-            which = 2;
     }
     return which;
 }
@@ -221,13 +230,11 @@ bool PlotCursors::eventFilter(QObject *obj, QEvent *event)
         const double px = me->position().x();
         if (m_placing) {
             const double t = m_plot->canvasMap(QwtAxis::XBottom).invTransform(px);
-            const int step = m_placeStep;
-            if (step == 0) {
-                m_placeStep = 1;
-                setC1(t);
-            } else {
-                setC2(t);
-                setPlacing(false);
+            const int n = lowestMissing();
+            if (n != 0) {
+                setMarker(n, t);
+                if (m_placeSingle || (hasC1() && hasC2()))
+                    setPlacing(false);
             }
             m_swallowRelease = true;
             emit interacted();

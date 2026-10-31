@@ -49,6 +49,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QTableWidget>
 #include <QtTest>
 
@@ -2175,6 +2176,60 @@ private slots:
         ctl->m_writeLog.setFolder(P(QStringLiteral("good")));
         emit ctl->m_writes->writeLogged(e);
         QVERIFY(QFileInfo::exists(ctl->m_writeLog.pathFor(e.time.date())));
+        noUnexpected();
+    }
+
+    void extraCursorsSavedWithSessionAndRestored()
+    {
+        feedStep();
+        PlotCursors *pc = win->trendPlot()->cursors();
+        pc->setC1(5.0);
+        pc->setC2(20.0);
+        pc->setCursor(3, 8.0);
+        pc->setCursor(4, 12.0);
+        // The panel shows all four; Analysis keeps C1/C2.
+        QVERIFY(win->cursorPanel()->findChild<QToolButton *>(QStringLiteral("removeCursor4")));
+
+        const QString file = P(QStringLiteral("extra.mbsession"));
+        d.saveNames << file;
+        win->actions().saveSession->trigger();
+        {
+            Project p;
+            Recorder rec;
+            SessionCursors sc;
+            QVERIFY(loadSession(file, p, rec, sc, nullptr));
+            QCOMPARE(sc.trendExtra.keys(), (QList<int>{3, 4}));
+            QCOMPARE(sc.trendExtra.value(4), 12.0);
+        }
+
+        restart();
+        d.openNames << file;
+        win->actions().openSession->trigger();
+        pc = win->trendPlot()->cursors();
+        QCOMPARE(pc->cursorNumbers(), (QList<int>{1, 2, 3, 4}));
+        QVERIFY(qAbs(*pc->cursor(3) - 8.0) < 1e-6);
+        QVERIFY(qAbs(*pc->cursor(4) - 12.0) < 1e-6);
+        QVERIFY(win->cursorPanel()->findChild<QToolButton *>(QStringLiteral("removeCursor3")));
+        noUnexpected();
+    }
+
+    void cursorPanelRemoveButtonRemovesCursor()
+    {
+        PlotCursors *pc = win->trendPlot()->cursors();
+        pc->setC1(5.0);
+        pc->setC2(20.0);
+        pc->setCursor(3, 8.0);
+        auto *button = win->cursorPanel()->findChild<QToolButton *>(QStringLiteral("removeCursor3"));
+        QVERIFY(button);
+        button->click();
+        QVERIFY(!pc->hasCursor(3));
+        QCOMPARE(pc->cursorNumbers(), (QList<int>{1, 2}));
+        QVERIFY(!win->cursorPanel()->findChild<QToolButton *>(QStringLiteral("removeCursor3")));
+
+        // Removing C1 leaves C2; the Analysis side sees hasC1() false.
+        win->cursorPanel()->findChild<QToolButton *>(QStringLiteral("removeCursor1"))->click();
+        QVERIFY(!pc->hasC1());
+        QVERIFY(pc->hasC2());
         noUnexpected();
     }
 

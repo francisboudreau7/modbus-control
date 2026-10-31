@@ -77,21 +77,19 @@ protected:
 
 private:
     // Implementation-defined; T242 may change the private section freely.
-    void setMarker(int which, double t);
+    void setMarker(int n, double t);
     int markerAt(double px) const;
+    int lowestMissing() const; ///< lowest number without a cursor, 0 when all exist
     void updateHoverCursor(bool near);
 
     QwtPlot *m_plot = nullptr;
     QPointer<QWidget> m_canvas;
-    QwtPlotMarker *m_c1 = nullptr;
-    QwtPlotMarker *m_c2 = nullptr;
-    bool m_has1 = false;
-    bool m_has2 = false;
-    std::array<std::optional<double>, kMaxCursors> m_extra{}; ///< T240 stub storage (index n-1)
+    std::array<QwtPlotMarker *, kMaxCursors> m_markers{}; ///< index n-1; owned while detached
+    std::array<bool, kMaxCursors> m_has{};
     bool m_visible = true;
     bool m_placing = false;
-    int m_placeStep = 0;
-    int m_drag = 0; ///< 0 none, 1 = C1, 2 = C2
+    bool m_placeSingle = false; ///< placing started with C1 and C2: one click, then done
+    int m_drag = 0; ///< 0 none, else the number being dragged
     bool m_swallowRelease = false;
     bool m_cursorShown = false;
     QCursor m_savedCursor; ///< canvas cursor to restore after the hover shape

@@ -11,6 +11,7 @@
 class QComboBox;
 class QLabel;
 class QTableWidget;
+class QVBoxLayout;
 
 namespace mb {
 
@@ -23,7 +24,7 @@ class Recorder;
 /// "compareFromCombo" and "compareToCombo" (items "C1".."C6" of the existing cursors; default
 /// C1 -> C2; when a chosen cursor disappears the pair falls back to the two lowest existing
 /// cursors), and the labels "Δt = 3.500 s", "1/Δt = 0.2857 Hz" for that pair ("—" when the pair
-/// is incomplete; 1/Δt "—" when Δt == 0). No cursor: the line "No cursors. Use Cursors on the
+/// is incomplete; 1/Δt "—" when Δt == 0). No cursor: the line "No cursors. Use Place cursors on the
 /// Trend to place them."
 /// Table: one row per plotted tag: Tag ("name [unit]", tag colour swatch), one column "Y@Cn" per
 /// existing cursor in ascending order (header text in the cursor's colour), then "ΔY Ca→Cb"
@@ -60,12 +61,34 @@ public slots:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    struct CursorRow
+    {
+        QWidget *widget = nullptr;
+        QLabel *time = nullptr;
+    };
+
+    void apply(const QMap<int, double> &cursors);
+    void rebuildCursorRows();
+    void updatePair();
+    void rebuildCompareCombos();
+    void onComboChanged();
+    bool pairComplete() const;
+
     const Recorder *m_recorder = nullptr;
     QList<Tag> m_tags;
-    std::optional<double> m_t1;
-    std::optional<double> m_t2;
     QMap<int, double> m_cursors;
-    QLabel *m_header = nullptr;
+    int m_from = 1;
+    int m_to = 2;
+    bool m_updating = false;
+    QMap<int, CursorRow> m_rows;
+    QLabel *m_noCursors = nullptr;
+    QWidget *m_list = nullptr;
+    QVBoxLayout *m_listLayout = nullptr;
+    QWidget *m_compare = nullptr;
+    QComboBox *m_fromCombo = nullptr;
+    QComboBox *m_toCombo = nullptr;
+    QLabel *m_dtLabel = nullptr;
+    QLabel *m_freqLabel = nullptr;
     QTableWidget *m_table = nullptr;
 };
 

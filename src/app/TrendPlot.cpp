@@ -331,7 +331,13 @@ TrendPlot::TrendPlot(QWidget *parent) : QWidget(parent), m_plot(new QwtPlot(this
     connect(m_windowCombo, &QComboBox::currentIndexChanged, this,
             [this](int idx) { setWindowSeconds(m_windowCombo->itemData(idx).toDouble()); });
     connect(m_pauseButton, &QToolButton::toggled, this, &TrendPlot::setPaused);
-    connect(m_placeButton, &QPushButton::toggled, m_cursors, &PlotCursors::setPlacing);
+    connect(m_placeButton, &QPushButton::toggled, this, [this](bool on) {
+        m_cursors->setPlacing(on);
+        if (on && !m_cursors->isPlacing()) { // all six cursors exist: nothing to place
+            const QSignalBlocker b(m_placeButton);
+            m_placeButton->setChecked(false);
+        }
+    });
     connect(m_cursors, &PlotCursors::placingChanged, this, [this](bool on) {
         const QSignalBlocker b(m_placeButton);
         m_placeButton->setChecked(on);
