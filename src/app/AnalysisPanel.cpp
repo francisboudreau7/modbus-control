@@ -2,6 +2,7 @@
 
 #include "ClipboardCopy.h"
 #include "PlotCursors.h"
+#include "NumberSpinBox.h"
 #include "Recorder.h"
 #include "RichText.h"
 #include "TrendPlot.h"
@@ -19,6 +20,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QColor>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QDoubleValidator>
@@ -148,7 +150,7 @@ QTableWidgetItem *makeItem(const QString &text, bool alignRight, const QString &
 QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, double value,
                          QWidget *parent)
 {
-    auto *spin = new QDoubleSpinBox(parent);
+    auto *spin = new NumberSpinBox(parent);
     spin->setObjectName(QLatin1String(name));
     spin->setDecimals(decimals);
     spin->setRange(lo, hi);
@@ -477,12 +479,21 @@ void AnalysisPanel::buildUi()
     mg->addWidget(new QLabel(tr("To %"), modelGroup), 1, 2);
     mg->addWidget(m_toSpin, 1, 3);
     mg->addWidget(m_resultsTable, 2, 0, 1, 4);
-    mg->addWidget(m_showModelCheck, 3, 0, 1, 4);
+    m_modelColorButton = new QPushButton(modelGroup);
+    m_modelColorButton->setObjectName(QStringLiteral("modelColorButton"));
+    m_modelColorButton->setToolTip(tr("Colour of the model curve"));
+    m_modelColorButton->setFixedSize(28, 20);
+    m_pickColor = [](const QColor &initial, QWidget *parent) {
+        return QColorDialog::getColor(initial, parent, tr("Colour of the model curve"));
+    };
+    mg->addWidget(m_showModelCheck, 3, 0, 1, 3);
+    mg->addWidget(m_modelColorButton, 3, 3, Qt::AlignRight);
     mg->addWidget(m_checksList, 4, 0, 1, 4);
     col->addWidget(modelGroup);
     connect(m_methodCombo, &QComboBox::currentIndexChanged, this, [this] { onMethodChanged(); });
     connect(m_fromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
     connect(m_toSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
+    connect(m_modelColorButton, &QPushButton::clicked, this, [this] { onPickModelColor(); });
     connect(m_showModelCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (m_updating)
             return;
@@ -922,6 +933,7 @@ void AnalysisPanel::syncControlsFromSettings()
         const QSignalBlocker b15(m_minutesCheck);
         m_guideLinesCheck->setChecked(m_settings.guideLines);
         m_showModelCheck->setChecked(m_settings.showModel);
+        updateModelColorButton();
         m_detailedLabelsCheck->setChecked(m_settings.detailedLabels);
         m_referenceCombo->setCurrentIndex(m_settings.reference == ReferenceMode::WindowMean ? 1 : 0);
         m_windowSpin->setValue(m_settings.referenceWindowS);
@@ -1470,6 +1482,29 @@ void AnalysisPanel::clearOverlays(bool detach)
     m_modelCurves.clear();
 }
 
+void AnalysisPanel::updateModelColorButton()
+{
+    QColor c(m_settings.modelColor);
+    if (!c.isValid())
+        c = QColor(0x20, 0x20, 0x20);
+    m_modelColorButton->setStyleSheet(
+        QStringLiteral("QPushButton { background-color: %1; border: 1px solid #808080; }")
+            .arg(c.name()));
+}
+
+void AnalysisPanel::onPickModelColor()
+{
+    QColor initial(m_settings.modelColor);
+    if (!initial.isValid())
+        initial = QColor(0x20, 0x20, 0x20);
+    const QColor chosen = m_pickColor ? m_pickColor(initial, this) : QColor();
+    if (!chosen.isValid())
+        return;
+    m_settings.modelColor = chosen.name();
+    updateModelColorButton();
+    userChangedSettings();
+}
+
 void AnalysisPanel::rebuildOverlays()
 {
     clearOverlays(true);
@@ -1500,7 +1535,22 @@ void AnalysisPanel::rebuildOverlays()
             }
             auto *curve = new QwtPlotCurve(tag->name + QStringLiteral(" model"));
             curve->setSamples(pts);
-            curve->setPen(QPen(color, 1.5, Qt::DashLine));
+            // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
+            double penWidth = 1.5;
+            const QString pvTitle = tag->unit.isEmpty()
+                                        ? tag->name
+                                        : QStringLiteral("%1 [%2]").arg(tag->name, tag->unit);
+            const QwtPlotItemList curves = plot->itemList(QwtPlotItem::Rtti_PlotCurve);
+            for (QwtPlotItem *item : curves) {
+                if (item->title().text() == pvTitle) {
+                    penWidth = static_cast<QwtPlotCurve *>(item)->pen().widthF();
+                    break;
+                }
+            }
+            QColor modelColor(m_settings.modelColor);
+            if (!modelColor.isValid())
+                modelColor = QColor(0x20, 0x20, 0x20);
+            curve->setPen(QPen(modelColor, penWidth + 1.0, Qt::DashLine));
             curve->setItemAttribute(QwtPlotItem::Legend, false);
             curve->setYAxis(axis);
             curve->setZ(12.0);
@@ -1924,9 +1974,15 @@ QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const Se
         break;
     case 4:
         name = tr("Time");
-        meaning = tr("time at which the PV reaches y0 + p (y100 - y0) = %1.")
-                      .arg(withUnit(g4(sp.target), unit));
-        lines << QStringLiteral("t = first time the PV crosses the target");
+        if (sp.percent == 0.0) {
+            meaning = tr("0 % is placed at C1, where the PV is at y0 = %1.")
+                          .arg(withUnit(g4(sp.target), unit));
+            lines << QStringLiteral("t = time of C1");
+        } else {
+            meaning = tr("time at which the PV reaches y0 + p (y100 - y0) = %1.")
+                          .arg(withUnit(g4(sp.target), unit));
+            lines << QStringLiteral("t = first time the PV crosses the target");
+        }
         if (sp.found)
             lines << QStringLiteral("t = %1").arg(fmtSeconds(sp.time));
         else

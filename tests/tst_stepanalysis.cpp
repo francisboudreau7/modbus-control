@@ -403,7 +403,8 @@ private slots:
         QCOMPARE(r.setpoints[1].percent, 63.2);
         QVERIFY(r.setpoints[0].found);
         QVERIFY(r.setpoints[1].found);
-        QVERIFY(near(r.setpoints[0].time, 10.0 + kL, 1e-9));
+        QVERIFY(near(r.setpoints[0].time, 9.0, 1e-12)); // 0 % is C1 itself (v1.3.3)
+        QVERIFY(near(r.setpoints[0].target, r.y0, 1e-12));
         QVERIFY2(near(r.setpoints[1].time, 10.0 + kL + kT, 0.05),
                  qPrintable(QString::number(r.setpoints[1].time)));
         QVERIFY(near(r.setpoints[1].target, r.y0 + 0.632 * r.deltaPv, 1e-9));
@@ -599,6 +600,28 @@ private slots:
         QCOMPARE(r.setpoints[2].percent, 50.0);
         QVERIFY(r.setpoints[0].time > r.setpoints[2].time);
         QVERIFY(r.setpoints[2].time > r.setpoints[1].time);
+    }
+
+    void analyze_zeroPercentIsC1()
+    {
+        // Periodic PV, "Mean before cursor" reference: y0 (the mean) is crossed after C1, but
+        // the 0 % setpoint stays at C1 with Y = y0.
+        Recorder rec;
+        for (int i = 0; i <= 400; ++i) {
+            const double t = i / 10.0;
+            rec.append(batch(t, {good(kPv, 10.0 * std::sin(2.0 * 3.14159265358979 * t / 10.0))}));
+        }
+        AnalysisSettings s;
+        s.reference = ReferenceMode::WindowMean;
+        s.referenceWindowS = 1.0;
+        s.percents = {0.0, 50.0};
+        const StepResult r = analyzeStep(rec, kPv, 12.0, 17.0, s);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.setpoints[0].found);
+        QCOMPARE(r.setpoints[0].time, 12.0);
+        QCOMPARE(r.setpoints[0].target, r.y0);
+        QVERIFY(r.setpoints[1].found);
+        QVERIFY(r.setpoints[1].time > 12.0);
     }
 
     void analyze_percentNotReached()

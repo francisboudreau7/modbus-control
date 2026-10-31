@@ -4,10 +4,12 @@
 #include "Tag.h"
 #include "Tuning.h"
 
+#include <QColor>
 #include <QList>
 #include <QPointer>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 class QCheckBox;
@@ -202,6 +204,8 @@ private:
     void rebuildPercentList();
     void syncModelSpins();
     void updateEnabled();
+    void updateModelColorButton();
+    void onPickModelColor();
     void recompute();
     void rebuildResultsTable();
     void rebuildChecks();
@@ -269,6 +273,10 @@ private:
     QDoubleSpinBox *m_toSpin = nullptr;
     QTableWidget *m_resultsTable = nullptr;
     QCheckBox *m_showModelCheck = nullptr;
+    QPushButton *m_modelColorButton = nullptr;
+    /// Seam for the colour dialog: (current colour, parent) -> chosen colour, invalid when
+    /// cancelled. Tests replace it.
+    std::function<QColor(const QColor &, QWidget *)> m_pickColor;
     QListWidget *m_checksList = nullptr;
     QComboBox *m_ruleCombo = nullptr;
     QDoubleSpinBox *m_lambdaSpin = nullptr;

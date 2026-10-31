@@ -1,5 +1,6 @@
 #include "AnalysisPanel.h"
 #include "PlotCursors.h"
+#include "NumberSpinBox.h"
 #include "Recorder.h"
 #include "SampleBatch.h"
 #include "StepAnalysis.h"
@@ -15,6 +16,7 @@
 #include <qwt_text.h>
 
 #include <QCheckBox>
+#include <QColor>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -262,6 +264,9 @@ private slots:
     void refreshRecompute();
     void evictionRecomputes();
     void manyRecomputes();
+    void modelColorButton();
+    void zeroPercentAtC1();
+    void numberInputAcceptsComma();
 };
 
 void TstAnalysisPanel::constructs()
@@ -966,7 +971,7 @@ void TstAnalysisPanel::overlays()
     QVERIFY(!model->testItemAttribute(QwtPlotItem::Legend));
     QVERIFY(model->dataSize() >= 400);
     QCOMPARE(model->pen().style(), Qt::DashLine);
-    QCOMPARE(model->pen().color(), QColor(QStringLiteral("#0000ff")));
+    QCOMPARE(model->pen().color(), QColor(QStringLiteral("#202020"))); // not the tag colour (v1.3.3)
 
     // Markers on a second tag only while it is checked.
     auto *tags = child<QListWidget>(fx.panel, "setpointTagList");
@@ -1398,7 +1403,7 @@ void TstAnalysisPanel::setpointTable()
     QCOMPARE(cell(sp, 0, 0), QStringLiteral("PV [degC]"));
     QCOMPARE(cell(sp, 0, 1), QStringLiteral("0"));
     QCOMPARE(cell(sp, 1, 1), QStringLiteral("63.2"));
-    QVERIFY(std::abs(cell(sp, 0, 4).toDouble() - 11.5) < 0.15);
+    QCOMPARE(cell(sp, 0, 4).toDouble(), 9.0); // 0 % is C1 itself (v1.3.3)
     QVERIFY(std::abs(cell(sp, 1, 4).toDouble() - 15.5) < 0.15);
     QVERIFY(std::abs(cell(sp, 1, 5).toDouble() - (cell(sp, 1, 4).toDouble() - 9.0)) < 0.01);
     QCOMPARE(sp->selectionMode(), QAbstractItemView::ExtendedSelection);
@@ -1563,6 +1568,120 @@ void TstAnalysisPanel::manyRecomputes()
     QCOMPARE(symbolMarkerCount(plot), 0);
     QVERIFY(!findCurve(plot, QStringLiteral("PV model")));
     QVERIFY(guideItems(plot).isEmpty());
+}
+
+void TstAnalysisPanel::modelColorButton()
+{
+    // Default: model curve off, colour #202020.
+    AnalysisPanel fresh;
+    QVERIFY(!child<QCheckBox>(fresh, "showModelCheck")->isChecked());
+    QCOMPARE(fresh.settings().modelColor, QStringLiteral("#202020"));
+
+    Fx fx;
+    auto *button = child<QPushButton>(fx.panel, "modelColorButton");
+    QVERIFY(button);
+    QCOMPARE(button->toolTip(), QStringLiteral("Colour of the model curve"));
+    QwtPlotCurve *model = findCurve(fx.plot, QStringLiteral("PV [degC] model"));
+    if (!model)
+        model = findCurve(fx.plot, QStringLiteral("PV model"));
+    QVERIFY(model);
+    QCOMPARE(model->pen().color(), QColor(QStringLiteral("#202020")));
+    const QwtPlotCurve *pv = findCurve(fx.plot, QStringLiteral("PV [degC]"));
+    QVERIFY(pv);
+    QCOMPARE(model->pen().widthF(), pv->pen().widthF() + 1.0);
+    QCOMPARE(model->pen().style(), Qt::DashLine);
+
+    QColor offered;
+    fx.panel.m_pickColor = [&](const QColor &initial, QWidget *) {
+        offered = initial;
+        return QColor(QStringLiteral("#FF8000"));
+    };
+    QSignalSpy spy(&fx.panel, &AnalysisPanel::settingsChanged);
+    button->click();
+    QCOMPARE(offered, QColor(QStringLiteral("#202020")));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(fx.panel.settings().modelColor, QStringLiteral("#ff8000"));
+    model = findCurve(fx.plot, QStringLiteral("PV model"));
+    QVERIFY(model);
+    QCOMPARE(model->pen().color(), QColor(QStringLiteral("#ff8000")));
+    QVERIFY(button->styleSheet().contains(QStringLiteral("#ff8000")));
+
+    // Cancelled dialog: nothing changes.
+    fx.panel.m_pickColor = [](const QColor &, QWidget *) { return QColor(); };
+    button->click();
+    QCOMPARE(spy.count(), 1);
+
+    // setSettings updates the swatch without emitting.
+    fx.apply([](AnalysisSettings &a) { a.modelColor = QStringLiteral("#00FF00"); });
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(button->styleSheet().contains(QStringLiteral("#00ff00")));
+}
+
+void TstAnalysisPanel::zeroPercentAtC1()
+{
+    // Periodic PV; the mean before C1 is crossed after C1, but 0 % stays at C1 with Y = y0.
+    Recorder rec;
+    for (int i = 0; i <= 400; ++i) {
+        const double t = i / 10.0;
+        SampleBatch b;
+        b.t = t;
+        b.samples = {good(kPv, 10.0 * std::sin(2.0 * 3.14159265358979 * t / 10.0))};
+        rec.append(b);
+    }
+    TrendPlot plot;
+    AnalysisPanel panel;
+    const QList<Tag> tags = standardTags();
+    plot.setRecorder(&rec);
+    plot.setTags(tags);
+    plot.refresh();
+    panel.setRecorder(&rec);
+    panel.setPlot(&plot);
+    panel.setTags(tags);
+    AnalysisSettings s;
+    s.pvTagId = kPv;
+    s.setpointTagIds = {kPv};
+    s.reference = ReferenceMode::WindowMean;
+    s.referenceWindowS = 1.0;
+    s.percents = {0.0, 50.0};
+    panel.setSettings(s);
+    plot.cursors()->setC1(12.0);
+    plot.cursors()->setC2(17.0);
+
+    const StepResult r = panel.results().at(0);
+    QVERIFY(r.valid);
+    QVERIFY(r.setpoints.at(0).found);
+    QCOMPARE(r.setpoints.at(0).time, 12.0);
+    QCOMPARE(r.setpoints.at(0).target, r.y0);
+    QVERIFY(r.setpoints.at(1).time > 12.0);
+
+    QTableWidget *sp = table(panel, "setpointTable");
+    QCOMPARE(sp->rowCount(), 2);
+    QCOMPARE(cell(sp, 0, 4).toDouble(), 12.0);
+    QCOMPARE(cell(sp, 0, 5).toDouble(), 0.0);
+    QVERIFY(cell(sp, 1, 5).toDouble() > 0.0);
+    const QString tip = sp->item(0, 4)->toolTip();
+    QVERIFY2(tip.contains(QStringLiteral("placed at C1")), qPrintable(tip));
+    QVERIFY(!tip.contains(QStringLiteral("time at which the PV reaches")));
+    QVERIFY(sp->item(1, 4)->toolTip().contains(QStringLiteral("time at which the PV reaches")));
+}
+
+void TstAnalysisPanel::numberInputAcceptsComma()
+{
+    QLocale::setDefault(QLocale(QLocale::French, QLocale::Canada));
+    {
+        AnalysisPanel panel;
+        auto *spin = child<QDoubleSpinBox>(panel, "lambdaSpin");
+        QVERIFY(spin);
+        QVERIFY(dynamic_cast<NumberSpinBox *>(spin));
+        spin->findChild<QLineEdit *>()->setText(QStringLiteral("2,5"));
+        spin->interpretText();
+        QCOMPARE(spin->value(), 2.5);
+        QVERIFY(spin->text().contains(u'.'));
+        for (const char *name : {"deltaCoSpin", "coMinSpin", "coMaxSpin", "fromSpin", "toSpin",
+                                 "windowSpin", "smoothingSpin", "percentSpin"})
+            QVERIFY2(dynamic_cast<NumberSpinBox *>(child<QDoubleSpinBox>(panel, name)), name);
+    }
+    QLocale::setDefault(QLocale::c());
 }
 
 QTEST_MAIN(TstAnalysisPanel)
