@@ -22,7 +22,8 @@ Version française : [Guide de démarrage rapide](fr/GUIDE_DEMARRAGE_RAPIDE.md).
 
 ## 1. Connect to the controller
 
-1. Start **Modbus Control**.
+1. Start **Modbus Control**. It opens with an empty project: you add the tags yourself in step 2, or
+   open the CM50 example (see the shortcut at the end of this step).
 2. Check how your CM50 manual (Communications Supplement IM/CM/C-EN) numbers its registers: look at
    the first row of the input register table.
    - `0001` (Rev. I and other recent revisions): in the **Options** menu, tick **Use 1-based
@@ -44,12 +45,14 @@ Version française : [Guide de démarrage rapide](fr/GUIDE_DEMARRAGE_RAPIDE.md).
 If it stays yellow or turns orange, check the cable, the IP address, the port and the unit. The controller
 may also restrict clients by IP address: ask for this PC's address to be allowed.
 
-**Shortcut:** **File > Open** `examples\cm50.mbproj` (in the installation folder) loads the
-connection and the tags of this guide. Change the host to your controller's address.
+**Shortcut:** **File > Open example...** and choose `cm50.mbproj` (in the examples folder of the
+installation) loads the connection and the tags of this guide. Change the host to your controller's
+address.
 
 ## 2. Add a tag
 
-A tag is one value read from the controller. Start with the Loop 1 process variable (PV).
+A tag is one value read from the controller. The tag table starts empty. Start with the Loop 1
+process variable (PV).
 
 1. In the **Tags** panel at the bottom, click **Add**. The **Add tag** dialog opens.
 2. **Name**: `Loop 1 Process Variable`.
@@ -87,7 +90,7 @@ greyed out. Disconnect to change them. Your teacher may also lock the tag config
 ## 3. Put cursors on the trend
 
 The trend shows every plotted tag as a curve. Two cursors, **C1** (red) and **C2** (blue), measure
-times and values on it.
+times and values on it. You can add up to four more (**C3** to **C6**) to compare more times.
 
 1. Make something happen: double-click the **Value** cell of **Loop 1 Local Setpoint 1**, type a
    new setpoint (a small change, for example 2 °C above the current one) and confirm. Wait until
@@ -97,11 +100,15 @@ times and values on it.
 3. Click **Place cursors**. Click on the trend just before the change: that is **C1**. Click again
    after the process value has settled: that is **C2**.
 4. To move a cursor, drag its line with the left button.
-5. Open the **Cursors** tab on the right. It shows the times `t1`, `t2`, `Δt`, and for every curve
-   its value at C1 and C2 and the change `ΔY`.
+5. To add more cursors, click **Place cursors** again: each click places the next free cursor (C3,
+   then C4, up to C6), and placing stops after it. Remove one with the remove button on its line in
+   the **Cursors** panel.
+6. Open the **Cursors** tab on the right. It shows the time of each cursor, and `Δt` and `1/Δt` for
+   the pair you choose in its two lists (C1 and C2 by default). For every curve it shows its value at
+   each cursor and the change `ΔY` of the pair.
 
 Placing a cursor pauses the trend so the cursors stay put. Click **Run** to follow the newest data
-again; **Clear cursors** removes both cursors.
+again; **Clear cursors** removes all the cursors.
 
 ## 4. Show setpoints on a curve
 

@@ -286,7 +286,8 @@ dans le Guide de l'utilisateur.
 1. Démarrez le simulateur avec `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, depuis
    le dossier d'installation (voir [Démarrage](#démarrage))
    (ou depuis le menu Démarrer : la vitesse ×1 par défaut convient). Le niveau est stable à 50 %.
-2. Démarrez Modbus Control et ouvrez [examples/loop101.mbproj](../../examples/loop101.mbproj). Le projet
+2. Démarrez Modbus Control. Il démarre avec un projet vide : choisissez **File > Open example...** et ouvrez
+   [examples/loop101.mbproj](../../examples/loop101.mbproj). Le projet
    se connecte à `127.0.0.1:1601`, unité 1, avec trois étiquettes : **LT-101 PV** (registre d'entrée 1),
    **LIC-101 SP** (registre de maintien 1) et **LIC-101 OUT** (registre de maintien 3). Cliquez sur
    **Connect**.

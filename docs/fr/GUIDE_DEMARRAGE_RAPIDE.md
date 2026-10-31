@@ -25,7 +25,8 @@ menus et des champs sont donnés tels qu'ils apparaissent à l'écran.
 
 ## 1. Se connecter au régulateur
 
-1. Démarrez **Modbus Control**.
+1. Démarrez **Modbus Control**. Il s'ouvre avec un projet vide : vous ajoutez vous-même les étiquettes à
+   l'étape 2, ou vous ouvrez l'exemple CM50 (voir le raccourci à la fin de cette étape).
 2. Vérifiez comment votre manuel du CM50 (Communications Supplement IM/CM/C-EN) numérote les
    registres : regardez la première ligne du tableau des registres d'entrée.
    - `0001` (Rev. I et autres révisions récentes) : dans le menu **Options**, cochez **Use 1-based
@@ -49,14 +50,14 @@ Si le voyant reste jaune ou devient orange, vérifiez le câble, l'adresse IP, l
 d'unité. Le régulateur peut aussi n'accepter que certaines adresses IP : demandez que l'adresse de
 ce PC soit autorisée.
 
-**Raccourci :** **File > Open** `examples\cm50.mbproj` (dans le dossier d'installation) charge la
-connexion et les étiquettes de ce guide. Remplacez l'adresse du champ **Host** par celle de votre
+**Raccourci :** **File > Open example...** puis `cm50.mbproj` (dans le dossier des exemples de
+l'installation) charge la connexion et les étiquettes de ce guide. Remplacez l'adresse du champ **Host** par celle de votre
 régulateur.
 
 ## 2. Ajouter une étiquette
 
-Une étiquette est une valeur lue dans le régulateur. Commencez par la variable de procédé (PV) de la
-boucle 1.
+Une étiquette est une valeur lue dans le régulateur. La table des étiquettes est vide au départ.
+Commencez par la variable de procédé (PV) de la boucle 1.
 
 1. Dans le panneau **Tags**, en bas, cliquez sur **Add**. La boîte de dialogue **Add tag** s'ouvre.
 2. **Name** : `Loop 1 Process Variable`.
@@ -95,7 +96,8 @@ grisés. Déconnectez-vous pour les modifier. Votre enseignant peut aussi verrou
 ## 3. Placer les curseurs sur la tendance
 
 La tendance affiche chaque étiquette tracée sous forme de courbe. Deux curseurs, **C1** (rouge) et
-**C2** (bleu), servent à y mesurer des temps et des valeurs.
+**C2** (bleu), servent à y mesurer des temps et des valeurs. Vous pouvez en ajouter jusqu'à quatre de
+plus (**C3** à **C6**) pour comparer davantage d'instants.
 
 1. Provoquez un changement : double-cliquez sur la cellule **Value** de **Loop 1 Local Setpoint 1**,
    tapez une nouvelle consigne (un petit changement, par exemple 2 °C au-dessus de la consigne
@@ -105,11 +107,15 @@ La tendance affiche chaque étiquette tracée sous forme de courbe. Deux curseur
 3. Cliquez sur **Place cursors**. Cliquez sur la tendance juste avant le changement : c'est **C1**.
    Cliquez de nouveau une fois la variable de procédé stabilisée : c'est **C2**.
 4. Pour déplacer un curseur, faites glisser sa ligne avec le bouton gauche.
-5. Ouvrez l'onglet **Cursors**, à droite. Il affiche les temps `t1`, `t2`, `Δt` et, pour chaque
-   courbe, sa valeur à C1 et à C2 et la variation `ΔY`.
+5. Pour ajouter d'autres curseurs, cliquez de nouveau sur **Place cursors** : chaque clic place le
+   prochain curseur libre (C3, puis C4, jusqu'à C6), et le placement s'arrête ensuite. Retirez-en un
+   avec le bouton de retrait de sa ligne dans le panneau **Cursors**.
+6. Ouvrez l'onglet **Cursors**, à droite. Il affiche l'instant de chaque curseur, ainsi que `Δt` et
+   `1/Δt` pour la paire que vous choisissez dans ses deux listes (C1 et C2 par défaut). Pour chaque
+   courbe, il affiche sa valeur à chaque curseur et la variation `ΔY` de la paire.
 
 Placer un curseur met la tendance en pause pour que les curseurs restent en place. Cliquez sur
-**Run** pour suivre de nouveau les données les plus récentes; **Clear cursors** retire les deux
+**Run** pour suivre de nouveau les données les plus récentes; **Clear cursors** retire tous les
 curseurs.
 
 ## 4. Afficher les repères sur une courbe
