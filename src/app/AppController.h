@@ -3,6 +3,7 @@
 #include "PollWorker.h"
 #include "ProjectIO.h"
 #include "Recorder.h"
+#include "WriteLog.h"
 
 #include <QHash>
 #include <QMessageBox>
@@ -132,6 +133,8 @@ private:
         /// Opens a URL in the default browser / application; false when that failed.
         /// Default: QDesktopServices::openUrl.
         std::function<bool(const QUrl &url)> openUrl;
+        /// Rich-text information box with an OK button (Writable turned off).
+        std::function<void(const QString &title, const QString &text)> information;
     };
     Prompts m_prompts;
     QMessageBox::StandardButton ask(const QString &title, const QString &text,
@@ -142,6 +145,16 @@ private:
     QString saveFileName(const QString &caption, const QString &path, const QString &filter);
     QString openFileName(const QString &caption, const QString &dir, const QString &filter);
     void runDialog(QDialog &dialog);
+    /// Yes/Cancel question (Cancel is the default) whose Yes button reads `yesLabel`.
+    bool askYesCancel(const QString &title, const QString &text, const QString &yesLabel);
+    /// Applies the teacher lock to the model, the action and the window without marking modified.
+    void applyLocked(bool locked);
+    /// Connection state -> model and the 1-based action (disabled while connected or locked).
+    void updateRegisterLocks();
+    void onLockActionToggled(bool on);
+    void onWriteLogged(const WriteLogEntry &entry);
+    void wireClassroomSafety();
+    static QString lockedMessage();
 
     void wireConnection();
     void wireData();
@@ -215,6 +228,10 @@ private:
     quint64 m_tagsGeneration = 0;    ///< bumped by every pushTags()
     quint64 m_tagsApplied = 0;       ///< last generation the worker has applied
     std::function<ContinueChoice()> m_continuePrompt;
+
+    WriteLogFile m_writeLog;            ///< one CSV per day; tests point it at a temporary folder
+    bool m_writeLogErrorShown = false;  ///< the status message was shown this session
+    QString m_yesLabel;                 ///< label of the Yes button for the next default question
 };
 
 } // namespace mb
