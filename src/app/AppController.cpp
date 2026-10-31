@@ -322,14 +322,13 @@ void AppController::wireData()
 
     PlotCursors *cursors = m_window->trendPlot()->cursors();
     connect(cursors, &PlotCursors::cursorsChanged, this, [this, cursors] {
-        std::optional<double> c1;
-        std::optional<double> c2;
-        if (cursors->hasC1())
-            c1 = cursors->c1();
-        if (cursors->hasC2())
-            c2 = cursors->c2();
-        m_window->cursorPanel()->setCursors(c1, c2);
+        QMap<int, double> all;
+        for (int n : cursors->cursorNumbers())
+            all.insert(n, *cursors->cursor(n));
+        m_window->cursorPanel()->setCursors(all);
     });
+    connect(m_window->cursorPanel(), &CursorPanel::removeCursorRequested, cursors,
+            &PlotCursors::removeCursor);
 
     AnalysisPanel *analysis = m_window->analysisPanel();
     connect(analysis, &AnalysisPanel::settingsChanged, this, [this] { setModified(true); });
@@ -777,6 +776,10 @@ bool AppController::saveSessionDialog()
     // older versions still find cursors in the Analysis tab.
     cursors.analysisC1 = cursors.trendC1;
     cursors.analysisC2 = cursors.trendC2;
+    for (int n = 3; n <= PlotCursors::kMaxCursors; ++n) {
+        if (const auto t = tc->cursor(n))
+            cursors.trendExtra.insert(n, *t);
+    }
 
     QString error;
     if (!saveSession(path, currentProject(), m_recorder, cursors, &error)) {
@@ -857,6 +860,8 @@ bool AppController::loadSessionFile(const QString &path)
         trend->cursors()->setC1(*c1);
     if (c2)
         trend->cursors()->setC2(*c2);
+    for (auto it = cursors.trendExtra.cbegin(); it != cursors.trendExtra.cend(); ++it)
+        trend->cursors()->setCursor(it.key(), it.value());
 
     setModified(false);
     m_window->showStatusMessage(

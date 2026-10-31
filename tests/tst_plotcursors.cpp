@@ -11,6 +11,7 @@
 
 #include <QApplication>
 #include <QCursor>
+#include <QPen>
 
 using namespace mb;
 
@@ -361,6 +362,176 @@ private slots:
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(canvas(), &leave);
         QVERIFY(canvas()->cursor().shape() != Qt::SizeHorCursor);
+    }
+
+    void placingFromNothingTakesTwoClicksThenEnds()
+    {
+        m_cursors->setPlacing(true);
+        QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(10));
+        QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(30));
+        QVERIFY(!m_cursors->isPlacing());
+        QCOMPARE(m_cursors->cursorNumbers(), (QList<int>{1, 2}));
+        // A third click does nothing.
+        QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(60));
+        QCOMPARE(m_cursors->cursorNumbers(), (QList<int>{1, 2}));
+    }
+
+    void placingWithBothAddsOneAtATime()
+    {
+        m_cursors->setC1(10.0);
+        m_cursors->setC2(30.0);
+        double t = 40.0;
+        for (int n = 3; n <= PlotCursors::kMaxCursors; ++n) {
+            QSignalSpy placingSpy(m_cursors, &PlotCursors::placingChanged);
+            m_cursors->setPlacing(true);
+            QVERIFY(m_cursors->isPlacing());
+            QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(t));
+            QVERIFY(m_cursors->hasCursor(n));
+            QVERIFY(qAbs(*m_cursors->cursor(n) - t) <= tol());
+            QVERIFY(!m_cursors->isPlacing()); // one click, then done
+            QCOMPARE(placingSpy.count(), 2);
+            QCOMPARE(m_cursors->cursorNumbers().size(), n);
+            QVERIFY(markerNamed(QStringLiteral("C%1").arg(n)));
+            t += 10.0;
+        }
+        // All six exist: placing cannot start.
+        QSignalSpy placingSpy(m_cursors, &PlotCursors::placingChanged);
+        m_cursors->setPlacing(true);
+        QVERIFY(!m_cursors->isPlacing());
+        QCOMPARE(placingSpy.count(), 0);
+    }
+
+    void placingFillsLowestMissing()
+    {
+        m_cursors->setC1(10.0);
+        m_cursors->setC2(20.0);
+        m_cursors->setCursor(3, 30.0);
+        m_cursors->setCursor(4, 40.0);
+        m_cursors->removeCursor(3);
+        m_cursors->setPlacing(true);
+        QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(70));
+        QVERIFY(m_cursors->hasCursor(3));
+        QVERIFY(qAbs(*m_cursors->cursor(3) - 70.0) <= tol());
+        QVERIFY(qAbs(*m_cursors->cursor(4) - 40.0) <= tol());
+    }
+
+    void placingWithOnlyC2PlacesC1ThenEnds()
+    {
+        m_cursors->setC2(50.0);
+        m_cursors->setPlacing(true);
+        QTest::mouseClick(canvas(), Qt::LeftButton, Qt::NoModifier, at(20));
+        QVERIFY(m_cursors->hasC1());
+        QVERIFY(!m_cursors->isPlacing());
+        QCOMPARE(m_cursors->cursorNumbers(), (QList<int>{1, 2}));
+    }
+
+    void dragAnyCursor()
+    {
+        for (int n = 1; n <= PlotCursors::kMaxCursors; ++n)
+            m_cursors->setCursor(n, 10.0 + 15.0 * n); // 25, 40, 55, 70, 85, 100
+        QSignalSpy interactedSpy(m_cursors, &PlotCursors::interacted);
+        QTest::mousePress(canvas(), Qt::LeftButton, Qt::NoModifier, at(55.0));
+        QTest::mouseMove(canvas(), at(60.0));
+        QTest::mouseRelease(canvas(), Qt::LeftButton, Qt::NoModifier, at(60.0));
+        QCOMPARE(interactedSpy.count(), 1);
+        QVERIFY(qAbs(*m_cursors->cursor(3) - 60.0) <= tol());
+        QVERIFY(qAbs(*m_cursors->cursor(2) - 40.0) <= tol());
+        QVERIFY(qAbs(*m_cursors->cursor(4) - 70.0) <= tol());
+    }
+
+    void overlappingCursorsHighestNumberWins()
+    {
+        m_cursors->setCursor(1, 50.0);
+        m_cursors->setCursor(3, 50.0);
+        m_cursors->setCursor(2, 50.0);
+        QTest::mousePress(canvas(), Qt::LeftButton, Qt::NoModifier, at(50.0));
+        QTest::mouseMove(canvas(), at(80.0));
+        QTest::mouseRelease(canvas(), Qt::LeftButton, Qt::NoModifier, at(80.0));
+        QVERIFY(qAbs(*m_cursors->cursor(3) - 80.0) <= tol());
+        QVERIFY(qAbs(*m_cursors->cursor(1) - 50.0) <= tol());
+        QVERIFY(qAbs(*m_cursors->cursor(2) - 50.0) <= tol());
+    }
+
+    void removeCursorOnly()
+    {
+        for (int n = 1; n <= 4; ++n)
+            m_cursors->setCursor(n, 10.0 * n);
+        QSignalSpy cursorsSpy(m_cursors, &PlotCursors::cursorsChanged);
+        m_cursors->removeCursor(3);
+        QCOMPARE(cursorsSpy.count(), 1);
+        QVERIFY(!m_cursors->hasCursor(3));
+        QVERIFY(!m_cursors->cursor(3).has_value());
+        QCOMPARE(m_cursors->cursorNumbers(), (QList<int>{1, 2, 4}));
+        QVERIFY(markerNamed(QStringLiteral("C3")) == nullptr);
+        QVERIFY(markerNamed(QStringLiteral("C4")) != nullptr);
+        // Removing a missing / invalid cursor is a no-op.
+        m_cursors->removeCursor(3);
+        m_cursors->removeCursor(0);
+        m_cursors->removeCursor(7);
+        QCOMPARE(cursorsSpy.count(), 1);
+        // C1 and C2 can be removed too, and come back at the same marker.
+        m_cursors->removeCursor(1);
+        QVERIFY(!m_cursors->hasC1());
+        m_cursors->setC1(15.0);
+        QVERIFY(m_cursors->hasC1());
+        // Invalid numbers are ignored by the setters.
+        m_cursors->setCursor(7, 1.0);
+        QVERIFY(!m_cursors->hasCursor(7));
+    }
+
+    void coloursAreDistinctAndC1C2Keep()
+    {
+        QCOMPARE(PlotCursors::colorOf(1), QColor(0xd6, 0x27, 0x28));
+        QCOMPARE(PlotCursors::colorOf(2), QColor(0x1f, 0x77, 0xb4));
+        for (int a = 1; a <= PlotCursors::kMaxCursors; ++a) {
+            for (int b = a + 1; b <= PlotCursors::kMaxCursors; ++b)
+                QVERIFY(PlotCursors::colorOf(a) != PlotCursors::colorOf(b));
+        }
+        m_cursors->setCursor(5, 50.0);
+        QwtPlotMarker *m = markerNamed(QStringLiteral("C5"));
+        QVERIFY(m);
+        QCOMPARE(m->linePen().color(), PlotCursors::colorOf(5));
+        QCOMPARE(m->label().text(), QStringLiteral("C5"));
+        QCOMPARE(m->label().color(), PlotCursors::colorOf(5));
+    }
+
+    void clearAndVisibilityCoverAllSix()
+    {
+        for (int n = 1; n <= PlotCursors::kMaxCursors; ++n)
+            m_cursors->setCursor(n, 10.0 * n);
+        m_cursors->setMarkersVisible(false);
+        for (int n = 1; n <= PlotCursors::kMaxCursors; ++n)
+            QVERIFY(!markerNamed(QStringLiteral("C%1").arg(n))->isVisible());
+        m_cursors->setMarkersVisible(true);
+        for (int n = 1; n <= PlotCursors::kMaxCursors; ++n)
+            QVERIFY(markerNamed(QStringLiteral("C%1").arg(n))->isVisible());
+        // Placed while hidden stays hidden.
+        m_cursors->removeCursor(6);
+        m_cursors->setMarkersVisible(false);
+        m_cursors->setCursor(6, 60.0);
+        QVERIFY(!markerNamed(QStringLiteral("C6"))->isVisible());
+        m_cursors->setMarkersVisible(true);
+
+        m_cursors->setPlacing(false);
+        m_cursors->clear();
+        QVERIFY(m_cursors->cursorNumbers().isEmpty());
+        for (int n = 1; n <= PlotCursors::kMaxCursors; ++n)
+            QVERIFY(markerNamed(QStringLiteral("C%1").arg(n)) == nullptr);
+        // And they can be placed again.
+        m_cursors->setCursor(4, 40.0);
+        QVERIFY(markerNamed(QStringLiteral("C4")) != nullptr);
+    }
+
+    void detachedMarkersAreFreedWithTheObject()
+    {
+        // Never attached, and removed ones: destroying the object must not leak or double-free
+        // (the plot owns attached markers).
+        m_cursors->setCursor(3, 30.0);
+        m_cursors->removeCursor(3);
+        m_cursors->setCursor(5, 50.0);
+        delete m_cursors;
+        m_cursors = nullptr;
+        m_plot->replot();
     }
 };
 

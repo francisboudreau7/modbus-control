@@ -1,17 +1,21 @@
 #include "CursorPanel.h"
+#include "PlotCursors.h"
 #include "Recorder.h"
 #include "SampleBatch.h"
 #include "Tag.h"
 
 #include <QAbstractItemView>
 #include <QColor>
+#include <QComboBox>
 #include <QHeaderView>
-#include <QStringList>
 #include <QLabel>
+#include <QStringList>
 #include <QTableWidget>
+#include <QToolButton>
 #include <QtTest>
 
 #include <optional>
+#include <utility>
 
 using namespace mb;
 
@@ -84,9 +88,25 @@ QTableWidget *tableOf(const CursorPanel &panel)
     return panel.findChild<QTableWidget *>();
 }
 
-QLabel *headerOf(const CursorPanel &panel)
+QLabel *labelOf(const CursorPanel &panel, const char *name)
 {
-    return panel.findChild<QLabel *>();
+    return panel.findChild<QLabel *>(QString::fromLatin1(name));
+}
+
+QString dtText(const CursorPanel &panel)
+{
+    return labelOf(panel, "deltaTLabel")->text();
+}
+
+QString freqText(const CursorPanel &panel)
+{
+    return labelOf(panel, "freqLabel")->text();
+}
+
+QString headerText(const CursorPanel &panel, int col)
+{
+    QTableWidgetItem *item = tableOf(panel)->horizontalHeaderItem(col);
+    return item ? item->text() : QString();
 }
 
 QString cell(const CursorPanel &panel, int row, int col)
@@ -103,6 +123,8 @@ int rowCount(const CursorPanel &panel)
     QTableWidget *table = tableOf(panel);
     return table ? table->rowCount() : -1;
 }
+
+const QString kDashText = QStringLiteral(u"—");
 
 } // namespace
 
@@ -124,23 +146,34 @@ private slots:
     void nullRecorderShowsDashes();
     void refreshPicksUpNewData();
     void readoutTextLines();
+    void sixCursorsColumns();
+    void pairCombosAndFallback();
+    void pairChoiceChangesDelta();
+    void removeButtonsEmitSignal();
+    void noCursorsText();
+    void cursorListShowsColoursAndTimes();
+    void decimalPointIsDot();
 };
 
 void TstCursorPanel::layoutContract()
 {
     CursorPanel panel;
     QVERIFY(tableOf(panel));
-    QVERIFY(headerOf(panel));
     QTableWidget *table = tableOf(panel);
-    QCOMPARE(table->columnCount(), 4);
-    QCOMPARE(table->horizontalHeaderItem(0)->text(), QStringLiteral("Tag"));
-    QCOMPARE(table->horizontalHeaderItem(1)->text(), QStringLiteral("Y@C1"));
-    QCOMPARE(table->horizontalHeaderItem(2)->text(), QStringLiteral("Y@C2"));
-    QCOMPARE(table->horizontalHeaderItem(3)->text(), QString(QStringLiteral(u"ΔY")));
     QVERIFY(table->verticalHeader()->isHidden());
     QVERIFY(table->editTriggers() == QAbstractItemView::NoEditTriggers);
-    QCOMPARE(table->horizontalHeader()->sectionResizeMode(0), QHeaderView::Stretch);
-    QVERIFY(headerOf(panel)->wordWrap());
+
+    // Two cursors: Tag, Y@C1, Y@C2, then the dY of C1 -> C2.
+    panel.setCursors(1.0, 2.0);
+    QCOMPARE(table->columnCount(), 4);
+    QCOMPARE(headerText(panel, 0), QStringLiteral("Tag"));
+    QCOMPARE(headerText(panel, 1), QStringLiteral("Y@C1"));
+    QCOMPARE(headerText(panel, 2), QStringLiteral("Y@C2"));
+    QCOMPARE(headerText(panel, 3), QString(QStringLiteral(u"ΔY C1→C2")));
+    QCOMPARE(table->horizontalHeaderItem(1)->foreground().color(), PlotCursors::colorOf(1));
+    QCOMPARE(table->horizontalHeaderItem(2)->foreground().color(), PlotCursors::colorOf(2));
+    QVERIFY(panel.findChild<QComboBox *>(QStringLiteral("compareFromCombo")));
+    QVERIFY(panel.findChild<QComboBox *>(QStringLiteral("compareToCombo")));
 }
 
 void TstCursorPanel::noCursors()
@@ -148,18 +181,18 @@ void TstCursorPanel::noCursors()
     Recorder rec;
     fillStandardRecorder(rec);
     CursorPanel panel;
+    panel.show();
     panel.setRecorder(&rec);
     panel.setTags(standardTags());
 
     QCOMPARE(panel.readoutText(), QString());
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = —   t2 = —   Δt = —   1/Δt = —")));
+    QVERIFY(labelOf(panel, "noCursorsLabel")->isVisible());
+    QCOMPARE(labelOf(panel, "noCursorsLabel")->text(),
+             QStringLiteral("No cursors. Use Place cursors on the Trend to place them."));
 
-    // Only plotted tags are listed: A, C, D.
+    // Only plotted tags are listed: A, C, D; no value columns.
     QCOMPARE(rowCount(panel), 3);
-    QCOMPARE(cell(panel, 0, 1), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 0, 2), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 0, 3), QString(QStringLiteral(u"—")));
+    QCOMPARE(tableOf(panel)->columnCount(), 1);
 }
 
 void TstCursorPanel::onlyFirstCursor()
@@ -171,19 +204,19 @@ void TstCursorPanel::onlyFirstCursor()
     panel.setTags(standardTags());
     panel.setCursors(1.5, std::nullopt);
 
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 1.500 s   t2 = —   Δt = —   1/Δt = —")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = —")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = —")));
+    // Tag, Y@C1 only: the pair is incomplete, so there is no dY column.
+    QCOMPARE(tableOf(panel)->columnCount(), 2);
     // t = 1.5 uses the row at t = 1.
     QCOMPARE(cell(panel, 0, 0), QStringLiteral("A [V]"));
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("20"));
-    QCOMPARE(cell(panel, 0, 2), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 0, 3), QString(QStringLiteral(u"—")));
     QCOMPARE(cell(panel, 1, 1), QStringLiteral("200"));
 
     const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
-    QCOMPARE(lines.size(), qsizetype(4));
-    QCOMPARE(lines.at(0), headerOf(panel)->text());
-    QCOMPARE(lines.at(1), QString(QStringLiteral(u"A [V]: Y1 = 20, Y2 = —, ΔY = —")));
+    QCOMPARE(lines.size(), qsizetype(4)); // cursor times + A, C, D
+    QCOMPARE(lines.at(0), QStringLiteral("C1 = 1.500 s"));
+    QCOMPARE(lines.at(1), QStringLiteral("A [V]: C1 20"));
 }
 
 void TstCursorPanel::bothCursors()
@@ -195,8 +228,8 @@ void TstCursorPanel::bothCursors()
     panel.setTags(standardTags());
     panel.setCursors(1.5, 3.0);
 
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 1.500 s   t2 = 3.000 s   Δt = 1.500 s   1/Δt = 0.6667 Hz")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 1.500 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 0.6667 Hz")));
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("20"));
     QCOMPARE(cell(panel, 0, 2), QStringLiteral("40"));
     QCOMPARE(cell(panel, 0, 3), QStringLiteral("20"));
@@ -206,8 +239,10 @@ void TstCursorPanel::bothCursors()
     QCOMPARE(cell(panel, 2, 3), QStringLiteral("2"));
 
     const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
-    QCOMPARE(lines.size(), qsizetype(4));
-    QCOMPARE(lines.at(1), QString(QStringLiteral(u"A [V]: Y1 = 20, Y2 = 40, ΔY = 20")));
+    QCOMPARE(lines.size(), qsizetype(5));
+    QCOMPARE(lines.at(0), QStringLiteral("C1 = 1.500 s   C2 = 3.000 s"));
+    QCOMPARE(lines.at(1), QString(QStringLiteral(u"Δt (C1→C2) = 1.500 s   1/Δt = 0.6667 Hz")));
+    QCOMPARE(lines.at(2), QString(QStringLiteral(u"A [V]: C1 20   C2 40   ΔY 20")));
 }
 
 void TstCursorPanel::deltaSignNegative()
@@ -219,13 +254,13 @@ void TstCursorPanel::deltaSignNegative()
     panel.setTags(standardTags());
     panel.setCursors(3.0, 1.0);
 
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 3.000 s   t2 = 1.000 s   Δt = -2.000 s   1/Δt = 0.5 Hz")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = -2.000 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 0.5 Hz")));
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("40"));
     QCOMPARE(cell(panel, 0, 2), QStringLiteral("20"));
     QCOMPARE(cell(panel, 0, 3), QStringLiteral("-20"));
-    QCOMPARE(panel.readoutText().split(QLatin1Char('\n')).at(1),
-             QString(QStringLiteral(u"A [V]: Y1 = 40, Y2 = 20, ΔY = -20")));
+    QCOMPARE(panel.readoutText().split(QLatin1Char('\n')).at(2),
+             QString(QStringLiteral(u"A [V]: C1 40   C2 20   ΔY -20")));
 }
 
 void TstCursorPanel::zeroDeltaHasNoFrequency()
@@ -237,8 +272,8 @@ void TstCursorPanel::zeroDeltaHasNoFrequency()
     panel.setTags(standardTags());
     panel.setCursors(2.0, 2.0);
 
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 2.000 s   t2 = 2.000 s   Δt = 0.000 s   1/Δt = —")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 0.000 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = —")));
     QCOMPARE(cell(panel, 0, 3), QStringLiteral("0"));
 }
 
@@ -252,19 +287,19 @@ void TstCursorPanel::missingSampleIsDash()
 
     // C has a timeout (NaN) at t = 2; both cursors land on that row.
     panel.setCursors(2.0, 2.5);
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 2.000 s   t2 = 2.500 s   Δt = 0.500 s   1/Δt = 2 Hz")));
-    QCOMPARE(cell(panel, 1, 1), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 1, 2), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 1, 3), QString(QStringLiteral(u"—")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 0.500 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 2 Hz")));
+    QCOMPARE(cell(panel, 1, 1), kDashText);
+    QCOMPARE(cell(panel, 1, 2), kDashText);
+    QCOMPARE(cell(panel, 1, 3), kDashText);
     // A is unaffected.
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("30"));
 
     // Cursor before the first row: no value at all.
     panel.setCursors(-1.0, 0.5);
-    QCOMPARE(cell(panel, 0, 1), QString(QStringLiteral(u"—")));
+    QCOMPARE(cell(panel, 0, 1), kDashText);
     QCOMPARE(cell(panel, 0, 2), QStringLiteral("10"));
-    QCOMPARE(cell(panel, 0, 3), QString(QStringLiteral(u"—")));
+    QCOMPARE(cell(panel, 0, 3), kDashText);
 }
 
 void TstCursorPanel::hiddenTagNotListed()
@@ -302,8 +337,8 @@ void TstCursorPanel::tagOrderFollowsSetTags()
     QCOMPARE(cell(panel, 1, 1), QStringLiteral("20"));
 
     const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
-    QCOMPARE(lines.at(1), QString(QStringLiteral(u"D: Y1 = 6, Y2 = 7, ΔY = 1")));
-    QCOMPARE(lines.at(2), QString(QStringLiteral(u"A [V]: Y1 = 20, Y2 = 30, ΔY = 10")));
+    QCOMPARE(lines.at(2), QString(QStringLiteral(u"D: C1 6   C2 7   ΔY 1")));
+    QCOMPARE(lines.at(3), QString(QStringLiteral(u"A [V]: C1 20   C2 30   ΔY 10")));
 }
 
 void TstCursorPanel::tagLabelsAndColours()
@@ -341,14 +376,17 @@ void TstCursorPanel::numberFormatting()
     panel.setCursors(12.3, 15.8);
 
     // Times: 3 decimals; frequency: 4 significant digits.
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 12.300 s   t2 = 15.800 s   Δt = 3.500 s   1/Δt = 0.2857 Hz")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 3.500 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 0.2857 Hz")));
+    QCOMPARE(panel.readoutText().split(QLatin1Char('\n')).at(0),
+             QStringLiteral("C1 = 12.300 s   C2 = 15.800 s"));
     // Values: 6 significant digits, last row at or before the cursor.
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("0.123457"));
 
     panel.setCursors(0.0, std::nullopt);
     QCOMPARE(cell(panel, 0, 1), QStringLiteral("1.23457e+06"));
-    QVERIFY(headerOf(panel)->text().startsWith(QString(QStringLiteral(u"t1 = 0.000 s   t2 = —"))));
+    QCOMPARE(panel.findChild<QLabel *>(QStringLiteral("cursorTime1"))->text(),
+             QStringLiteral("0.000 s"));
 }
 
 void TstCursorPanel::nullRecorderShowsDashes()
@@ -358,13 +396,13 @@ void TstCursorPanel::nullRecorderShowsDashes()
     panel.setTags(standardTags());
     panel.setCursors(1.5, 3.0);
 
-    QCOMPARE(headerOf(panel)->text(),
-             QString(QStringLiteral(u"t1 = 1.500 s   t2 = 3.000 s   Δt = 1.500 s   1/Δt = 0.6667 Hz")));
-    QCOMPARE(cell(panel, 0, 1), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 0, 2), QString(QStringLiteral(u"—")));
-    QCOMPARE(cell(panel, 0, 3), QString(QStringLiteral(u"—")));
-    QCOMPARE(panel.readoutText().split(QLatin1Char('\n')).at(1),
-             QString(QStringLiteral(u"A [V]: Y1 = —, Y2 = —, ΔY = —")));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 1.500 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 0.6667 Hz")));
+    QCOMPARE(cell(panel, 0, 1), kDashText);
+    QCOMPARE(cell(panel, 0, 2), kDashText);
+    QCOMPARE(cell(panel, 0, 3), kDashText);
+    QCOMPARE(panel.readoutText().split(QLatin1Char('\n')).at(2),
+             QString(QStringLiteral(u"A [V]: C1 —   C2 —   ΔY —")));
 }
 
 void TstCursorPanel::refreshPicksUpNewData()
@@ -393,9 +431,169 @@ void TstCursorPanel::readoutTextLines()
     QCOMPARE(panel.readoutText(), QString());
     panel.setCursors(std::nullopt, 2.0);
     const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
-    QCOMPARE(lines.size(), qsizetype(4)); // header + A, C, D
-    QVERIFY(lines.at(0).startsWith(QString(QStringLiteral(u"t1 = —"))));
-    QCOMPARE(lines.at(3), QString(QStringLiteral(u"D: Y1 = —, Y2 = 7, ΔY = —")));
+    QCOMPARE(lines.size(), qsizetype(4)); // cursor times + A, C, D
+    QCOMPARE(lines.at(0), QStringLiteral("C2 = 2.000 s"));
+    QCOMPARE(lines.at(3), QString(QStringLiteral(u"D: C2 7")));
+}
+
+void TstCursorPanel::sixCursorsColumns()
+{
+    Recorder rec;
+    fillStandardRecorder(rec);
+    CursorPanel panel;
+    panel.setRecorder(&rec);
+    panel.setTags(standardTags());
+    QMap<int, double> c;
+    for (int n = 1; n <= 6; ++n)
+        c.insert(n, double(n) - 0.5); // 0.5 .. 5.5
+    panel.setCursors(c);
+
+    QTableWidget *table = tableOf(panel);
+    QCOMPARE(table->columnCount(), 8); // Tag, six values, dY
+    for (int n = 1; n <= 6; ++n) {
+        QCOMPARE(headerText(panel, n), QStringLiteral("Y@C%1").arg(n));
+        QCOMPARE(table->horizontalHeaderItem(n)->foreground().color(), PlotCursors::colorOf(n));
+    }
+    QCOMPARE(headerText(panel, 7), QString(QStringLiteral(u"ΔY C1→C2")));
+    // A: t 0.5 -> 10, 1.5 -> 20, 2.5 -> 30, 3.5 -> 40, 4.5 and 5.5 -> 40
+    QCOMPARE(cell(panel, 0, 1), QStringLiteral("10"));
+    QCOMPARE(cell(panel, 0, 3), QStringLiteral("30"));
+    QCOMPARE(cell(panel, 0, 6), QStringLiteral("40"));
+    QCOMPARE(cell(panel, 0, 7), QStringLiteral("10"));
+
+    const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
+    QCOMPARE(lines.at(0), QStringLiteral("C1 = 0.500 s   C2 = 1.500 s   C3 = 2.500 s   "
+                                         "C4 = 3.500 s   C5 = 4.500 s   C6 = 5.500 s"));
+    QCOMPARE(lines.at(2),
+             QString(QStringLiteral(u"A [V]: C1 10   C2 20   C3 30   C4 40   C5 40   C6 40   ΔY 10")));
+
+    // Fewer cursors again: the columns shrink.
+    panel.setCursors(c.value(1), c.value(2));
+    QCOMPARE(table->columnCount(), 4);
+}
+
+void TstCursorPanel::pairCombosAndFallback()
+{
+    Recorder rec;
+    fillStandardRecorder(rec);
+    CursorPanel panel;
+    panel.setRecorder(&rec);
+    panel.setTags(standardTags());
+    auto *from = panel.findChild<QComboBox *>(QStringLiteral("compareFromCombo"));
+    auto *to = panel.findChild<QComboBox *>(QStringLiteral("compareToCombo"));
+    QVERIFY(from && to);
+
+    QCOMPARE(panel.comparedPair(), std::make_pair(1, 2)); // default
+
+    panel.setCursors(QMap<int, double>{{1, 0.5}, {2, 1.5}, {4, 3.0}});
+    QCOMPARE(from->count(), 3);
+    QCOMPARE(from->itemText(2), QStringLiteral("C4"));
+    QCOMPARE(from->currentText(), QStringLiteral("C1"));
+    QCOMPARE(to->currentText(), QStringLiteral("C2"));
+
+    // Choose C2 -> C4.
+    from->setCurrentIndex(1);
+    to->setCurrentIndex(2);
+    QCOMPARE(panel.comparedPair(), std::make_pair(2, 4));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 1.500 s")));
+    QCOMPARE(headerText(panel, 4), QString(QStringLiteral(u"ΔY C2→C4")));
+    QCOMPARE(cell(panel, 0, 4), QStringLiteral("20")); // 40 - 20
+
+    // C1 disappears: the pair stays.
+    panel.setCursors(QMap<int, double>{{2, 1.5}, {4, 3.0}});
+    QCOMPARE(panel.comparedPair(), std::make_pair(2, 4));
+
+    // C4 disappears: fall back to the two lowest existing cursors.
+    panel.setCursors(QMap<int, double>{{2, 1.5}, {3, 2.0}, {5, 4.0}});
+    QCOMPARE(panel.comparedPair(), std::make_pair(2, 3));
+    QCOMPARE(from->currentText(), QStringLiteral("C2"));
+    QCOMPARE(to->currentText(), QStringLiteral("C3"));
+
+    // One cursor only: no pair, no dY column.
+    panel.setCursors(QMap<int, double>{{3, 2.0}});
+    QCOMPARE(tableOf(panel)->columnCount(), 2);
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = —")));
+}
+
+void TstCursorPanel::pairChoiceChangesDelta()
+{
+    Recorder rec;
+    fillStandardRecorder(rec);
+    CursorPanel panel;
+    panel.setRecorder(&rec);
+    panel.setTags(standardTags());
+    panel.setCursors(QMap<int, double>{{1, 0.0}, {2, 1.0}, {3, 3.0}});
+    auto *to = panel.findChild<QComboBox *>(QStringLiteral("compareToCombo"));
+    to->setCurrentIndex(2); // C1 -> C3
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 3.000 s")));
+    QCOMPARE(freqText(panel), QString(QStringLiteral(u"1/Δt = 0.3333 Hz")));
+    QCOMPARE(cell(panel, 0, 4), QStringLiteral("30")); // 40 - 10
+    QVERIFY(panel.readoutText().contains(QString(QStringLiteral(u"Δt (C1→C3) = 3.000 s"))));
+}
+
+void TstCursorPanel::removeButtonsEmitSignal()
+{
+    CursorPanel panel;
+    panel.show();
+    panel.setCursors(QMap<int, double>{{1, 0.5}, {3, 2.0}});
+    QSignalSpy spy(&panel, &CursorPanel::removeCursorRequested);
+
+    QVERIFY(!panel.findChild<QToolButton *>(QStringLiteral("removeCursor2")));
+    auto *b3 = panel.findChild<QToolButton *>(QStringLiteral("removeCursor3"));
+    QVERIFY(b3);
+    QCOMPARE(b3->toolTip(), QStringLiteral("Remove C3"));
+    b3->click();
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 3);
+
+    panel.findChild<QToolButton *>(QStringLiteral("removeCursor1"))->click();
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toInt(), 1);
+
+    // The panel itself removes nothing: that is the owner's job.
+    QVERIFY(panel.findChild<QToolButton *>(QStringLiteral("removeCursor3")));
+}
+
+void TstCursorPanel::noCursorsText()
+{
+    CursorPanel panel;
+    panel.show();
+    panel.setCursors(QMap<int, double>{{1, 1.0}});
+    QVERIFY(!labelOf(panel, "noCursorsLabel")->isVisible());
+    panel.setCursors(QMap<int, double>{});
+    QVERIFY(labelOf(panel, "noCursorsLabel")->isVisible());
+    QVERIFY(!panel.findChild<QToolButton *>(QStringLiteral("removeCursor1")));
+    QCOMPARE(panel.readoutText(), QString());
+}
+
+void TstCursorPanel::cursorListShowsColoursAndTimes()
+{
+    CursorPanel panel;
+    panel.setCursors(QMap<int, double>{{2, 15.8}, {5, 20.0}});
+    QCOMPARE(panel.findChild<QLabel *>(QStringLiteral("cursorTime2"))->text(),
+             QStringLiteral("15.800 s"));
+    QCOMPARE(panel.findChild<QLabel *>(QStringLiteral("cursorTime5"))->text(),
+             QStringLiteral("20.000 s"));
+    QLabel *name = panel.findChild<QLabel *>(QStringLiteral("cursorName5"));
+    QVERIFY(name);
+    QCOMPARE(name->text(), QStringLiteral("C5"));
+    QCOMPARE(name->palette().color(QPalette::WindowText), PlotCursors::colorOf(5));
+    QVERIFY(!panel.findChild<QLabel *>(QStringLiteral("cursorTime1")));
+}
+
+void TstCursorPanel::decimalPointIsDot()
+{
+    const QLocale previous = QLocale();
+    QLocale::setDefault(QLocale(QLocale::French, QLocale::France));
+    Recorder rec;
+    rec.append(batch(0, {good(9, 0.5)}));
+    CursorPanel panel;
+    panel.setRecorder(&rec);
+    panel.setTags({makeTag(9, QStringLiteral("E"), QString(), QStringLiteral("#123456"), true)});
+    panel.setCursors(0.5, 1.5);
+    QCOMPARE(cell(panel, 0, 1), QStringLiteral("0.5"));
+    QCOMPARE(dtText(panel), QString(QStringLiteral(u"Δt = 1.000 s")));
+    QLocale::setDefault(previous);
 }
 
 QTEST_MAIN(TstCursorPanel)
