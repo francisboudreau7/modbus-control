@@ -2585,6 +2585,7 @@ private slots:
             QCOMPARE(m.tagAt(0).offset, -3.5);
 
             QSignalSpy wr(&m, &TagTableModel::writeRequested);
+            m.updateSamples(batch); // the Gain and Offset edits forgot the live value
             edit = openEditor<QLineEdit>(w, m.index(0, C::Value));
             QVERIFY(edit);
             QCOMPARE(edit->text(), QStringLiteral("12.5"));

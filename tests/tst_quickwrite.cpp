@@ -1457,7 +1457,11 @@ private slots:
             }
             dlg->reject();
         });
-        r.wc->requestWriteSelection({3});
+        // Setpoint, Flow and Next are contiguous (HR 101-104); each needs a Good reading first.
+        feed(r, 1, 50.0);
+        feed(r, 2, 20.0);
+        feed(r, 3, 7.0);
+        r.wc->requestWriteSelection({0, 1, 2});
         QVERIFY(seen.dialog);
         QVERIFY(!seen.initial.contains(','));
         QVERIFY(seen.comma);

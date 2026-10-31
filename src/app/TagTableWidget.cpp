@@ -1,5 +1,6 @@
 #include "TagTableWidget.h"
 
+#include "NumberText.h"
 #include "ProjectIO.h"
 #include "TagTableModel.h"
 
