@@ -20,6 +20,10 @@ class TagTableModel;
 /// Installs delegates: combo boxes for Area and Type, a spin box for Address, a colour
 /// picker (QColorDialog) for Color. Remove asks for confirmation when more than one row is
 /// selected. "Write selected..." is enabled when the selection is 2+ writable tags.
+/// v1.3.3: while the model isLocked(), Add, Duplicate and Remove are disabled (tooltip "The tag
+/// configuration is locked (Options > Lock tag configuration)") and the Delete key removes
+/// nothing; they follow TagTableModel::lockedChanged. "Detect encoding..." stays
+/// enabled (detection reads only; AppController refuses applying a change while locked).
 ///
 /// Column visibility: a right-click on the horizontal header opens a menu with one checkable
 /// action per column, in column order, titled with the header text (checked = visible). The

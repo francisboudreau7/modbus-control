@@ -19,6 +19,7 @@ add_library(mbui STATIC
   DocsLinks.h DocsLinks.cpp
   EncodingMonitor.h EncodingMonitor.cpp
   RichText.h RichText.cpp
+  WriteLogPanel.h WriteLogPanel.cpp
 )
 target_include_directories(mbui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qwt::Qwt

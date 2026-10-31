@@ -170,6 +170,8 @@ private slots:
     void yAxesRejected();
     void yAxesUnknownKeysRejected();
     void yAxesMessageNamesSide();
+    void lockedRoundTrip();
+    void lockedRejectsNonBoolean();
 };
 
 void TstProjectIO::roundTrip()
@@ -1760,6 +1762,29 @@ void TstProjectIO::yAxesMessageNamesSide()
                  json(R"({"format":"modbus-control-project","version":1,"yAxes":{"right":[1,1]}})"), &error)
                  .has_value());
     QVERIFY2(error.startsWith(QStringLiteral("yAxes.right:")), qPrintable(error));
+}
+
+void TstProjectIO::lockedRoundTrip()
+{
+    Project project;
+    QVERIFY(!projectToJson(project).contains("\"locked\""));  // written only when true
+    project.locked = true;
+    const QByteArray bytes = projectToJson(project);
+    QVERIFY(bytes.contains("\"locked\": true"));
+    const auto loaded = projectFromJson(bytes);
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->locked);
+    const auto minimal = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"));
+    QVERIFY(minimal.has_value());
+    QVERIFY(!minimal->locked);
+}
+
+void TstProjectIO::lockedRejectsNonBoolean()
+{
+    QString error;
+    QVERIFY(!projectFromJson(json(R"({"format":"modbus-control-project","version":1,"locked":1})"), &error)
+                 .has_value());
+    QCOMPARE(error, QStringLiteral("\"locked\" must be a boolean"));
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

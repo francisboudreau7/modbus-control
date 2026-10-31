@@ -2,6 +2,7 @@
 
 #include "ModbusConnection.h"
 #include "Tag.h"
+#include "WriteLog.h"
 
 #include <QHash>
 #include <QList>
@@ -35,6 +36,10 @@ class TagTableModel;
 /// 3. 32-bit tags (2 registers) need TagTableModel::goodValue(): without a Good reading ->
 ///    warning "No valid reading of 'X' yet." with Check: the connection, the register number, the
 ///    type and byte order;
+/// 3a. (v1.3.3) TagTableModel::writeNeedsRead(id) (the tag was made writable and has had no Good
+///    reading since; any width) -> warning headline "No valid reading of 'X' since it was made
+///    writable.", the line "Nothing was written." and Check: the register number (registerText),
+///    the area, the type. requestWriteSelection applies it to every tag (listed together);
 /// 3b. 32-bit tag whose encoding is not confirmed (Tag::encodingVerified false) -> prompt with the
 ///    headline "The encoding of 'X' is not confirmed.", the rows "Reads: 52.3 °C" and "As: float32
 ///    CDAB (HR 110-111)" and the line "If this value is wrong for the device, the encoding is
@@ -81,6 +86,17 @@ class TagTableModel;
 /// the replaceable warning seam, headline "The device rejected the write of 'X'.") explaining that
 /// the device does not accept FC16 (which 32-bit values and multi-register writes need) and that
 /// nothing was written. There is no fallback to single-register writes.
+///
+/// Write log (v1.3.3): when writeRegisters is emitted, one WriteLogEntry per tag of the request is
+/// prepared (time now, tag id/name, the tag's address/count and register text "HR 5009-5010" with
+/// the address base, functionCode 6 for one register in the request else 16, oldValue = the
+/// current value as shown in the confirmation (or "unknown"), newValue with the unit, raw = the
+/// tag's registers sent ("0x%04X" each, space-separated), source "table" / "selection" / "quick",
+/// server = setServer()). onWriteFinished completes them (ok, result "OK" or the error text of the
+/// ModbusResult, e.g. "Exception 2: Illegal data address") and emits writeLogged for each, in tag
+/// order. Requests still pending when setConnected(false) is called are logged with ok false and
+/// result "No reply (disconnected)"; a late reply for them is ignored. Refused writes (checks
+/// 1-5, cancelled prompts) are not logged.
 class WriteController : public QObject
 {
     Q_OBJECT
@@ -95,6 +111,9 @@ public slots:
     void requestQuickWrite(mb::TagId id, double scaledValue);
     /// Default true (each application start).
     void setQuickConfirm(bool on);
+    /// v1.3.3: the server text of log entries, e.g. "192.168.1.20:502 unit 1" (AppController sets
+    /// it on connect).
+    void setServer(const QString &text);
 
 public:
     bool quickConfirm() const;
@@ -107,6 +126,8 @@ signals:
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
     /// Status bar text.
     void message(const QString &text);
+    /// v1.3.3: a write was answered (or abandoned at disconnect); see "Write log" above.
+    void writeLogged(const mb::WriteLogEntry &entry);
 
 private:
     friend class ::TstQuickWrite;
@@ -144,6 +165,9 @@ private:
     /// Registers sent by each pending request (so the reply is judged by what was sent, even if
     /// the tags changed meanwhile).
     QHash<quint64, int> m_pendingRegisters;
+    QString m_server;
+    /// Log entries waiting for the reply of each pending request (T233).
+    QHash<quint64, QList<WriteLogEntry>> m_pendingLog;
 };
 
 } // namespace mb

@@ -85,6 +85,10 @@ inline constexpr int kProjectFormatVersion = 1;
 /// numbers with min < max, anything else rejected ("yAxes.left: must be \"auto\" or [min, max] with
 /// min < max"). Always written.
 ///
+/// Added in v1.3.3 (optional, additive): top-level "locked" (boolean, default false; written only
+/// when true; any other JSON type is rejected with "\"locked\" must be a boolean"): the teacher lock
+/// of the tag configuration (Options > Lock tag configuration).
+///
 /// Added in v1.2.3 (optional, additive): per tag "encodingVerified" (boolean, default true; written
 /// only when false) and "confirmed16Bit" (boolean, default false; written only when true). Any
 /// other JSON type is rejected.
@@ -110,6 +114,8 @@ struct Project {
     /// Trend Y-axis ranges (JSON top-level "yAxes", see the v1.3.1 paragraph above).
     YRange yLeft;
     YRange yRight;
+    /// v1.3.3: the tag configuration is locked (JSON top-level "locked", see above).
+    bool locked = false;
 
     friend bool operator==(const Project &, const Project &) = default;
 };

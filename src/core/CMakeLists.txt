@@ -15,6 +15,7 @@ add_library(mbcore STATIC
   AnalysisCsv.h AnalysisCsv.cpp
   SessionIO.h SessionIO.cpp
   EncodingDetect.h EncodingDetect.cpp
+  WriteLog.h WriteLog.cpp
 )
 target_include_directories(mbcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(mbcore PRIVATE MBCORE_VERSION="${PROJECT_VERSION}")

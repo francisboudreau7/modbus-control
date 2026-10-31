@@ -675,4 +675,9 @@ void WriteController::setQuickConfirm(bool on)
 
 bool WriteController::quickConfirm() const { return m_quickConfirm; }
 
+void WriteController::setServer(const QString &text)
+{
+    m_server = text;
+}
+
 } // namespace mb
