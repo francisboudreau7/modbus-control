@@ -268,7 +268,8 @@ for the panel.
 1. Start the simulator with `bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop`, run
    from the installation folder (see [Starting it](#starting-it))
    (or start it from the Start menu: the default speed ×1 is right). The level is steady at 50 %.
-2. Start Modbus Control and open [examples/loop101.mbproj](../examples/loop101.mbproj). The project
+2. Start Modbus Control. It starts with an empty project, so choose **File > Open example...** and open
+   [examples/loop101.mbproj](../examples/loop101.mbproj). The project
    connects to `127.0.0.1:1601`, unit 1, with three tags: **LT-101 PV** (input register 1), **LIC-101 SP**
    (holding register 1) and **LIC-101 OUT** (holding register 3). Click **Connect**.
 3. Wait 10 s. **LT-101 PV** is about 50 % and flat. The Trend shows PV and OUT.

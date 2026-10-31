@@ -153,6 +153,38 @@ The setting is saved in the project file (`addressBase`) and restored when the p
 Toggling it marks the project as modified. File > New returns to 0-based numbering. Status
 messages about failed reads still show protocol (zero-based) addresses.
 
+### Off-by-one check on connect
+
+A number copied from a manual can point one register off: the device refuses the register that was
+typed, and the next one answers. After you connect, the application checks for this. For each tag
+that the device refuses with "illegal data address", it reads the same area and count one register
+away, in the direction of the usual mistake: address − 1 when the numbering is 0-based, address + 1
+when it is 1-based. The probe only reads. It runs once per tag for each connection. For a 16-bit tag,
+it runs only after the check for a 32-bit pair (see
+[A 16-bit tag on half of a 32-bit value](#a-16-bit-tag-on-half-of-a-32-bit-value)) found that
+neither register pair answers. A probe that would leave the 0..65535 address range, or overlap
+another tag, is skipped.
+
+When one or more probes answer, one message asks about all these tags together:
+
+- Headline: "Some registers may be numbered from 1." (0-based numbering) or "Some registers may be
+  numbered from 0." (1-based numbering).
+- One line per tag, for example `'Setpoint': HR 5009-5010 is refused, but HR 5008-5009 answers.`
+- "Device manuals often count registers from 1 (or from 0): a number copied from the manual then
+  points one register off."
+
+The buttons:
+
+| Button | What it does |
+|---|---|
+| **Use 1-based numbers** (or **Use 0-based numbers**) | Moves every tag by one register, so the numbers shown are still the ones you typed, and switches the numbering (see [1-based register numbers](#1-based-register-numbers)). Offered only when no tag has read Good on this connection. It is not offered when a tag would leave the address range. Writable tags lose Writable, as for any register change (see [Writable turned off when a register changes](#writable-turned-off-when-a-register-changes)). |
+| **Move these tags** | Moves only the listed tags by one register. The numbering stays as it is. |
+| **Keep** | The default (also Esc). Nothing changes, and the check is asked again on the next connection. |
+
+While the tag configuration is locked (see [Teacher lock](#teacher-lock)), the message is replaced by
+"<n> tags may be numbered one register off; the tag configuration is locked (Options > Lock tag
+configuration)." Nothing moves.
+
 ### Editing the table
 
 - Edit a cell by double-clicking it or pressing F2.
@@ -165,6 +197,10 @@ messages about failed reads still show protocol (zero-based) addresses.
   writable holding registers. See Writing values.
 
 Tag edits mark the project as modified. Live values do not.
+
+Numbers can be typed with a point or a decimal comma: `72.3` and `72,3` are both accepted, in the
+table, in the dialogs and in every number box. Numbers are always shown with a point. A thousands
+separator is not accepted: a single point or comma is the decimal mark, so `1,234.5` is refused.
 
 ### Add tag dialog
 
@@ -772,25 +808,38 @@ open it.
 
 ## Cursors
 
-Two vertical cursors, **C1** (red) and **C2** (blue), mark times on the trend. The
-[Analysis](#analysis-step-response) panel uses the same two cursors.
+Up to six vertical cursors, **C1** (red) to **C6**, mark times on the trend. **C1** and **C2** keep
+their roles: the [Analysis](#analysis-step-response) panel uses them, and the Cursors panel compares
+C1 with C2 by default. **C3** to **C6** are extra cursors for reading more times. Their colours are
+green (C3), purple (C4), orange (C5) and brown (C6).
 
-- **Place cursors** (toggle): click once to put C1 at that time, click again to put C2. Placing
-  stops after C2. Press Esc to stop placing without placing C2.
+- **Place cursors** (toggle on the Trend): each click puts the next free cursor at that time. With no
+  cursor placed, or with only C1 or C2, the clicks place C1 and then C2, and placing stops. With C1
+  and C2 both placed, one click adds the next free cursor (C3, then C4, up to C6) and placing stops.
+  Press Esc, or click **Place cursors** again, to stop placing. When all six are placed, placing does
+  nothing.
 - **Move a cursor**: press the left button within 5 pixels of a cursor line and drag. This works
-  while zoomed or paused.
-- **Clear cursors**: removes both cursors.
+  while zoomed or paused. When two lines are within 5 pixels, the higher-numbered one moves.
+- **Remove a cursor**: use the remove button of that cursor in the [Cursors panel](#cursors-panel).
+- **Clear cursors**: removes all the cursors.
 
 Placing or moving a cursor pauses the trend, so the cursor stays where you put it.
 
 ### Cursors panel
 
-- Header: `t1` and `t2` in seconds (3 decimals), `Δt = t2 - t1`, and `1/Δt` in Hz. Δt is negative
-  when C2 is before C1, and 1/Δt is shown as a positive frequency. A dash (—) means a cursor is
-  missing, or Δt is 0 for 1/Δt.
-- Table: one row per plotted tag, with `Y@C1`, `Y@C2` and `ΔY = Y@C2 - Y@C1`. Each Y value is the
-  last recorded sample at or before the cursor time. A dash means there is no such sample, or the
-  sample was missing.
+- One line for each cursor, for example `C1  12.300 s`, with the name in the cursor's colour. Each
+  line has a remove button (tooltip "Remove C1", and so on) that removes that cursor.
+- The compared pair: two drop-down lists, the first and the second cursor, with C1 and C2 by
+  default. If a cursor you chose is removed, the pair falls back to the two lowest existing cursors.
+  Below them, `Δt = 3.500 s` is the time of the second cursor minus the time of the first, and
+  `1/Δt = 0.2857 Hz`. Δt is negative when the second cursor is earlier, and 1/Δt is shown as a
+  positive frequency. A dash (—) means the pair is incomplete, or Δt is 0 for 1/Δt.
+- With no cursor, the panel says "No cursors. Use Place cursors on the Trend to place them."
+- Table: one row per plotted tag, with one `Y@Cn` column for each cursor (in the cursor's colour),
+  then `ΔY C1→C2` for the compared pair (the column is left out when the pair is incomplete). Each Y
+  value is the last recorded sample at or before the cursor time. A dash means there is no such
+  sample, or the sample was missing.
+- The text readout (used by the graph image) lists the same values.
 
 ## Export
 
@@ -803,10 +852,21 @@ Export > Graph image... (Ctrl+E).
 - **Width** and **Height**: 16..20000 px. The default is the current size of the plot.
 - **Resolution**: 36..1200 dpi, default 96. It sets the PNG metadata and the SVG resolution, and
   the PDF page size is the pixel size divided by the resolution.
-- **Include cursors**: available when a cursor is set. Unticked hides the cursor lines.
-- **Include cursor readout**: available when a cursor is set. Draws the Cursors panel text in a
-  box at the top left of the image. When the Analysis panel has a valid result, the box also holds
-  the analysis summary (K, L, T and the fit error; see [Analysis](#analysis-step-response)).
+- **Title**: text drawn in bold above the plot. Empty (the default) means no title.
+- **Include legend**: ticked by default. Unticked leaves the legend out of the image.
+- **Include cursors**: available when a cursor is set. Unticked hides the cursor lines. The image
+  draws all the cursors that are placed (up to C6).
+- **Include cursor readout**: available when a cursor is set. Draws the Cursors panel text in a box.
+  It is ticked by default.
+- **Include Analysis results**: available when the Analysis panel has a valid result. Draws the
+  analysis summary (K, L, T and the fit error; see [Analysis](#analysis-step-response)) in the same
+  box, after the cursor text, separated by an empty line. It is ticked by default.
+- **Readout position**: where the box goes. **Below the graph** is the default: the image grows by
+  the height of the box, so nothing covers the curves. The other choices are **Top left**, **Top
+  right**, **Bottom left** and **Bottom right**, which draw the box inside the plot, in that corner.
+  The box is disabled when neither readout is included.
+
+The choices (except the file name and the size) are remembered for the next export.
 
 The image shows the plot as it is on screen, including the current zoom and pan.
 
@@ -875,8 +935,9 @@ gains in percent of the ranges, **K (%/%)** and **Kp (%/%)**:
 
 ### 2. Cursors
 
-C1 and C2 are the two cursors of the Trend (see [Cursors](#cursors)). The **C1 = …, C2 = …** line in
-this group shows their times. A dash (—) means that cursor is not placed.
+C1 and C2 are the first two cursors of the Trend (see [Cursors](#cursors)). The **C1 = …, C2 = …** line in
+this group shows their times. A dash (—) means that cursor is not placed. Cursors C3 to C6 do not
+take part in the analysis.
 
 - **C1** goes just before the step, while the PV still has its starting value.
 - **C2** goes after the PV has settled.
@@ -946,10 +1007,11 @@ first-order model with dead time describes the response well.
 
 A value that cannot be computed shows "—".
 
-**Show model curve** (on by default) draws the fitted model over the response: a dashed line in the
-PV's colour, from C1 to C2. It stays at the 0 % level until the step time plus L, and then rises
-towards 100 % with the time constant T. Compare it with the measured curve. If they lie on top of each
-other, the model describes the process well. The option is saved in the project.
+**Show model curve** (off by default) draws the fitted model over the response: a dashed line, from
+C1 to C2. It stays at the 0 % level until the step time plus L, and then rises towards 100 % with the
+time constant T. Compare it with the measured curve. If they lie on top of each other, the model
+describes the process well. Its colour is black by default. Click the colour button next to the
+option to choose another colour. The option and the colour are saved in the project.
 
 **Checks.** Below the results the panel lists the checks that apply, each with a warning icon. The
 list is hidden when there are no checks. Each message and what to do:
@@ -1061,10 +1123,10 @@ For each setpoint, the recorded samples between the cursors are searched as foll
 
 Missing samples are skipped. When the level is never reached, the time shows "—".
 
-The search never leaves the cursors: it starts at C1 with the 0 % level and ends at C2 with the 100 %
-level. So 0 % is never before C1. If the signal does not come back to the starting level after C1
-(noise, or C1 placed on a part that is already rising), 0 % is C1 itself. In the same way, 100 % is
-never after C2.
+The search never leaves the cursors: it ends at C2 with the 100 % level, and 100 % is never after C2.
+The 0 % setpoint is always at C1: its time is C1, its level is y0, and t − C1 is 0. This holds even
+when the signal crosses y0 later, for example a periodic signal or **Mean before cursor**. The other
+setpoints are found as described above.
 
 The model points are searched in the same way, even when they are not in the Setpoints list.
 
@@ -1103,8 +1165,9 @@ Documents.
   valid. For an invalid result, `note` holds the error text.
 
 **Export > Graph image...** exports the Trend with the setpoint markers and the model curve. With
-**Include cursor readout** ticked, the box at the top left of the image holds the analysis summary: the
-times of C1 and C2, the K, L, T and fit error of the PV, and the setpoint times of the other tags.
+**Include Analysis results** ticked, the box (see [Graph image](#graph-image)) holds the analysis summary,
+after the cursor readout: the times of C1 and C2, the K, L, T and fit error of the PV, and the setpoint
+times of the other tags.
 
 ### Saving
 
@@ -1115,7 +1178,7 @@ lines. The cursors are not saved in a project. A session keeps them (see [Sessio
 ### Try it with the test server
 
 1. Start the test server in a console: `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
-2. Start the application with `examples\demo.mbproj` (or open it with File > Open), then click **Connect**.
+2. Start the application, choose **File > Open example...** and open `demo.mbproj` from the examples folder, then click **Connect**.
 3. Double-click the **Value** cell of **Setpoint** (HR 100), type 0 and confirm. Or click **A: 0** in
    the Quick write dock. Wait a few seconds.
 4. Open the **Analysis** dock (View > Analysis). In **1. Signals**, choose **Lag** as the PV and
@@ -1143,13 +1206,14 @@ only when the limit is set). The Analysis settings are in an `analysis` object: 
 `setpointTags` (the PV and the tags whose setpoints are shown), `deltaCoTag` and `deltaCo`, `method`
 (`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
 (`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
-`guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
+`modelColor` (`"#RRGGBB"`, default `"#202020"`), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
 and `timeUnit` (`"s"` or `"min"`). A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|
 | File > New | Ctrl+N | Empty tag list. The connection fields are reset to the last connected settings. |
 | File > Open... | Ctrl+O | Open a `.mbproj` file. |
+| File > Open example... | | Open one of the example projects (`demo.mbproj`, `cm50.mbproj`, `loop101.mbproj`) from the examples folder. |
 | File > Save | Ctrl+S | Save to the current file. Asks for a name when the project has none. |
 | File > Save As... | Ctrl+Shift+S | Save under a new name. `.mbproj` is added when missing. |
 | File > Quit | Ctrl+Q | Close the application. |
@@ -1157,18 +1221,23 @@ and `timeUnit` (`"s"` or `"min"`). A top-level `yAxes` object holds the fixed Y-
 The window title shows `*` when there are unsaved changes. New, Open and Quit ask whether to save
 (Save, Discard or Cancel).
 
-Start-up: the application always starts with the built-in demo tags (Sine, Triangle, Counter,
-Square, Noise, Sawtooth, Lag, Setpoint, Float sine, Float sine (CDAB) and Int32 saw), and not with a file. It does not reopen the last project.
+Start-up: the application starts with an empty, unsaved project (Untitled, with no tags). The
+connection fields are the ones you last connected with. It does not reopen the last project.
+Add your own tags, or choose **File > Open example...** to open one of the example projects. The
+example projects are in the `examples` folder of the installation. Opening an example asks first
+about unsaved changes, like Open.
 To start with a project, give its path on the command line:
 
 ```bat
 build\msvc-debug\bin\modbus_control.exe examples\demo.mbproj
 ```
 
-[`examples/demo.mbproj`](../examples/demo.mbproj) matches the demo tags and connects to the test
-server on 127.0.0.1:1502, unit 1, with a 200 ms period.
+[`examples/demo.mbproj`](../examples/demo.mbproj) has the demo tags (Sine, Triangle, Counter,
+Square, Noise, Sawtooth, Lag, Setpoint, Float sine, Float sine (CDAB) and Int32 saw) and connects to
+the test server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 [`examples/cm50.mbproj`](../examples/cm50.mbproj) is a starting point for an ABB CM50 (see the next
 section).
+[`examples/loop101.mbproj`](../examples/loop101.mbproj) is for the [Loop simulator](LOOP_SIMULATOR.md).
 
 ## Sessions
 
@@ -1177,7 +1246,7 @@ connection. It holds:
 
 - the project: connection settings, tags and Analysis settings,
 - the recording: the trend history with its start time,
-- the cursors (C1 and C2) of the Trend.
+- the cursors (C1 to C6) of the Trend.
 
 | Menu item | Action |
 |---|---|

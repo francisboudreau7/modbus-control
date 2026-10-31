@@ -153,6 +153,38 @@ Ce réglage est enregistré dans le fichier du projet (`addressBase`) et rétabl
 Le basculer marque le projet comme modifié. File > New revient à la numérotation à partir de 0. Les messages
 d'état sur les lectures échouées affichent toujours les adresses de protocole (à partir de zéro).
 
+### Vérification de décalage d'un registre à la connexion
+
+Un numéro recopié d'un manuel peut désigner un registre de trop ou de trop peu : l'appareil refuse le registre
+saisi, et le suivant répond. Après la connexion, l'application vérifie ce cas. Pour chaque étiquette que
+l'appareil refuse avec « illegal data address », elle lit la même zone et le même nombre de registres,
+décalés d'un registre dans le sens de l'erreur habituelle : adresse − 1 lorsque la numérotation part de 0,
+et adresse + 1 lorsqu'elle part de 1. La sonde ne fait que lire. Elle est faite une fois par étiquette et par
+connexion. Pour une étiquette 16 bits, elle n'est faite qu'après que la vérification d'une paire de registres
+32 bits (voir [Une étiquette 16 bits sur la moitié d'une valeur 32 bits](#une-étiquette-16-bits-sur-la-moitié-dune-valeur-32-bits))
+a constaté qu'aucune paire ne répond. Une sonde qui sortirait de la plage d'adresses 0..65535, ou qui chevaucherait
+une autre étiquette, est ignorée.
+
+Lorsqu'une ou plusieurs sondes répondent, un seul message pose la question pour toutes ces étiquettes :
+
+- Titre : « Some registers may be numbered from 1. » (numérotation à partir de 0) ou « Some registers may be
+  numbered from 0. » (numérotation à partir de 1).
+- Une ligne par étiquette, par exemple `'Setpoint': HR 5009-5010 is refused, but HR 5008-5009 answers.`
+- « Device manuals often count registers from 1 (or from 0): a number copied from the manual then points one
+  register off. »
+
+Les boutons :
+
+| Bouton | Ce qu'il fait |
+|---|---|
+| **Use 1-based numbers** (ou **Use 0-based numbers**) | Décale chaque étiquette d'un registre, de sorte que les numéros affichés restent ceux que vous avez saisis, et change la numérotation (voir [Numéros de registre à partir de 1](#numéros-de-registre-à-partir-de-1)). Offert seulement si aucune étiquette n'a lu Good sur cette connexion. Il n'est pas offert si une étiquette sortirait de la plage d'adresses. Les étiquettes Writable perdent Writable, comme pour tout changement de registre (voir [Writable désactivé lorsqu'un registre change](#writable-désactivé-lorsquun-registre-change)). |
+| **Move these tags** | Ne décale que les étiquettes listées, d'un registre. La numérotation ne change pas. |
+| **Keep** | Par défaut (aussi Échap). Rien ne change, et la question est reposée à la connexion suivante. |
+
+Lorsque la configuration des étiquettes est verrouillée (voir [Verrou de l'enseignant](#verrou-de-lenseignant)),
+le message est remplacé par « <n> tags may be numbered one register off; the tag configuration is locked
+(Options > Lock tag configuration). ». Rien ne bouge.
+
 ### Modifier le tableau
 
 - Modifiez une cellule en double-cliquant dessus ou en appuyant sur F2.
@@ -165,6 +197,11 @@ d'état sur les lectures échouées affichent toujours les adresses de protocole
   registres de maintien accessibles en écriture. Voir Écrire des valeurs.
 
 Les modifications des étiquettes marquent le projet comme modifié. Les valeurs en direct ne le font pas.
+
+Les nombres peuvent être saisis avec un point ou une virgule décimale : `72.3` et `72,3` sont tous deux
+acceptés, dans le tableau, dans les boîtes de dialogue et dans chaque champ numérique. Les nombres sont
+toujours affichés avec un point. Un séparateur de milliers n'est pas accepté : une seule virgule ou un seul
+point est le séparateur décimal, de sorte que `1,234.5` est refusé.
 
 ### Boîte de dialogue Add tag
 
@@ -813,27 +850,40 @@ ouverture.
 
 ## Curseurs
 
-Deux curseurs verticaux, **C1** (rouge) et **C2** (bleu), marquent des instants sur la tendance. Le
-panneau [Analysis](#analyse-réponse-à-léchelon) utilise les deux mêmes curseurs.
+Jusqu'à six curseurs verticaux, **C1** (rouge) à **C6**, marquent des instants sur la tendance. **C1** et
+**C2** gardent leur rôle : le panneau [Analysis](#analyse-réponse-à-léchelon) les utilise, et le panneau
+Cursors compare C1 à C2 par défaut. **C3** à **C6** sont des curseurs supplémentaires pour lire d'autres
+instants. Leurs couleurs sont le vert (C3), le violet (C4), l'orange (C5) et le brun (C6).
 
-- **Place cursors** (bascule) : cliquez une fois pour placer C1 à cet instant, cliquez de nouveau
-  pour placer C2. Le placement s'arrête après C2. Appuyez sur Échap pour arrêter le placement sans
-  placer C2.
+- **Place cursors** (bascule sur la tendance) : chaque clic place le prochain curseur libre à cet instant.
+  Sans curseur, ou avec seulement C1 ou C2, les clics placent C1 puis C2, et le placement s'arrête.
+  Avec C1 et C2 placés, un clic ajoute le prochain curseur libre (C3, puis C4, jusqu'à C6) et le
+  placement s'arrête. Appuyez sur Échap, ou cliquez de nouveau sur **Place cursors**, pour arrêter le
+  placement. Quand les six sont placés, le placement ne fait rien.
 - **Déplacer un curseur** : appuyez sur le bouton gauche à moins de 5 pixels de la ligne d'un curseur
-  et faites glisser. Cela fonctionne pendant un zoom ou une pause.
-- **Clear cursors** : supprime les deux curseurs.
+  et faites glisser. Cela fonctionne pendant un zoom ou une pause. Quand deux lignes sont à moins de
+  5 pixels, c'est celle au numéro le plus élevé qui bouge.
+- **Retirer un curseur** : utilisez le bouton de retrait de ce curseur dans le [panneau Cursors](#panneau-cursors).
+- **Clear cursors** : supprime tous les curseurs.
 
 Placer ou déplacer un curseur met la tendance en pause, de sorte que le curseur reste là où vous
 l'avez mis.
 
 ### Panneau Cursors
 
-- En-tête : `t1` et `t2` en secondes (3 décimales), `Δt = t2 - t1`, et `1/Δt` en Hz. Δt est négatif
-  quand C2 précède C1, et 1/Δt est affiché comme une fréquence positive. Un tiret (—) signifie
-  qu'un curseur est absent, ou que Δt vaut 0 pour 1/Δt.
-- Tableau : une ligne par étiquette tracée, avec `Y@C1`, `Y@C2` et `ΔY = Y@C2 - Y@C1`. Chaque valeur
-  Y est le dernier échantillon enregistré à l'instant du curseur ou avant. Un tiret signifie qu'il
-  n'y a pas d'échantillon de ce genre, ou que l'échantillon était manquant.
+- Une ligne par curseur, par exemple `C1  12.300 s`, avec le nom dans la couleur du curseur. Chaque
+  ligne a un bouton de retrait (info-bulle « Remove C1 », etc.) qui supprime ce curseur.
+- La paire comparée : deux listes déroulantes, le premier et le deuxième curseur, avec C1 et C2 par
+  défaut. Si un curseur choisi est retiré, la paire revient aux deux plus petits curseurs existants.
+  Sous elles, `Δt = 3.500 s` est l'instant du deuxième curseur moins celui du premier, et
+  `1/Δt = 0.2857 Hz`. Δt est négatif quand le deuxième curseur est plus tôt, et 1/Δt est affiché comme
+  une fréquence positive. Un tiret (—) signifie que la paire est incomplète, ou que Δt vaut 0 pour 1/Δt.
+- Sans curseur, le panneau affiche « No cursors. Use Place cursors on the Trend to place them. »
+- Tableau : une ligne par étiquette tracée, avec une colonne `Y@Cn` pour chaque curseur (dans la couleur
+  du curseur), puis `ΔY C1→C2` pour la paire comparée (la colonne est omise quand la paire est
+  incomplète). Chaque valeur Y est le dernier échantillon enregistré à l'instant du curseur ou avant. Un
+  tiret signifie qu'il n'y a pas d'échantillon de ce genre, ou que l'échantillon était manquant.
+- Le texte de lecture (utilisé par l'image du graphique) donne les mêmes valeurs.
 
 ## Exportation
 
@@ -846,12 +896,21 @@ Export > Graph image... (Ctrl+E).
 - **Width** et **Height** : 16..20000 px. La valeur par défaut est la taille actuelle du graphique.
 - **Resolution** : 36..1200 dpi, 96 par défaut. Elle détermine les métadonnées du PNG et la
   résolution du SVG, et la taille de page du PDF est la taille en pixels divisée par la résolution.
+- **Title** : texte en gras, dessiné au-dessus du graphique. Vide (par défaut) signifie pas de titre.
+- **Include legend** : cochée par défaut. Décochée, la légende est omise de l'image.
 - **Include cursors** : offerte lorsqu'un curseur est placé. Décochée, elle masque les lignes des
-  curseurs.
+  curseurs. L'image dessine tous les curseurs placés (jusqu'à C6).
 - **Include cursor readout** : offerte lorsqu'un curseur est placé. Dessine le texte du panneau
-  Cursors dans un encadré en haut à gauche de l'image. Lorsque le panneau Analysis a un résultat
-  valide, l'encadré contient aussi le résumé de l'analyse (K, L, T et l'erreur d'ajustement ; voir
-  [Analysis](#analyse-réponse-à-léchelon)).
+  Cursors dans un encadré. Cochée par défaut.
+- **Include Analysis results** : offerte lorsque le panneau Analysis a un résultat valide. Dessine le
+  résumé de l'analyse (K, L, T et l'erreur d'ajustement ; voir [Analysis](#analyse-réponse-à-léchelon))
+  dans le même encadré, après le texte des curseurs, séparé par une ligne vide. Cochée par défaut.
+- **Readout position** : l'emplacement de l'encadré. **Below the graph** est la valeur par défaut : l'image
+  grandit de la hauteur de l'encadré, de sorte que rien ne couvre les courbes. Les autres choix sont
+  **Top left**, **Top right**, **Bottom left** et **Bottom right**, qui dessinent l'encadré à l'intérieur du
+  graphique, dans ce coin. L'encadré est désactivé quand aucun des deux textes n'est inclus.
+
+Les choix (sauf le nom du fichier et la taille) sont mémorisés pour l'exportation suivante.
 
 L'image montre le graphique tel qu'il est à l'écran, y compris le zoom et le déplacement de la vue
 actuels.
@@ -929,8 +988,9 @@ défaut). Le panneau affiche alors aussi les gains en pourcentage des plages, **
 
 ### 2. Curseurs
 
-C1 et C2 sont les deux curseurs de Trend (voir [Curseurs](#curseurs)). La ligne **C1 = …, C2 = …** de
-ce groupe indique leurs temps. Un tiret (—) signifie que ce curseur n'est pas placé.
+C1 et C2 sont les deux premiers curseurs de Trend (voir [Curseurs](#curseurs)). La ligne **C1 = …, C2 = …** de
+ce groupe indique leurs temps. Un tiret (—) signifie que ce curseur n'est pas placé. Les curseurs C3 à C6
+ne participent pas à l'analyse.
 
 - **C1** se place juste avant l'échelon, pendant que la PV a encore sa valeur de départ.
 - **C2** se place après la stabilisation de la PV.
@@ -1004,10 +1064,11 @@ d'ajustement signifie que le modèle du premier ordre avec temps mort décrit bi
 
 Une valeur qui ne peut pas être calculée affiche « — ».
 
-**Show model curve** (cochée par défaut) dessine le modèle ajusté par-dessus la réponse : une ligne en
-tirets, de la couleur de la PV, de C1 à C2. Elle reste au niveau 0 % jusqu'au temps de l'échelon plus
-L, puis monte vers 100 % avec la constante de temps T. Comparez-la avec la courbe mesurée. Si les deux
-se superposent, le modèle décrit bien le procédé. L'option est enregistrée dans le projet.
+**Show model curve** (décochée par défaut) dessine le modèle ajusté par-dessus la réponse : une ligne en
+tirets, de C1 à C2. Elle reste au niveau 0 % jusqu'au temps de l'échelon plus L, puis monte vers 100 %
+avec la constante de temps T. Comparez-la avec la courbe mesurée. Si les deux se superposent, le modèle
+décrit bien le procédé. Sa couleur est le noir par défaut. Cliquez sur le bouton de couleur à côté de
+l'option pour choisir une autre couleur. L'option et la couleur sont enregistrées dans le projet.
 
 **Checks.** Sous les résultats, le panneau énumère les vérifications qui s'appliquent, chacune avec
 une icône d'avertissement. La liste est masquée quand il n'y a aucune vérification. Voici chaque
@@ -1128,10 +1189,10 @@ Pour chaque repère, les échantillons enregistrés entre les curseurs sont parc
 
 Les échantillons manquants sont ignorés. Quand le niveau n'est jamais atteint, le temps affiche « — ».
 
-La recherche ne sort jamais des curseurs : elle commence à C1 avec le niveau 0 % et se termine à C2
-avec le niveau 100 %. Ainsi, 0 % n'est jamais avant C1. Si le signal ne revient pas au niveau de
-départ après C1 (bruit, ou C1 placé sur une partie qui monte déjà), 0 % est C1 lui-même. De la même
-façon, 100 % n'est jamais après C2.
+La recherche ne sort jamais des curseurs : elle se termine à C2 avec le niveau 100 %, et 100 % n'est jamais
+après C2. Le repère à 0 % est toujours à C1 : son temps est C1, son niveau est y0, et t − C1 vaut 0. Cela
+vaut même lorsque le signal recoupe y0 plus tard, par exemple pour un signal périodique ou pour **Mean
+before cursor**. Les autres repères sont recherchés comme décrit ci-dessus.
 
 Les points du modèle sont recherchés de la même façon, même s'ils ne figurent pas dans la liste
 Setpoints.
@@ -1174,9 +1235,9 @@ d'exportation ou dans Documents.
   aucun modèle n'est valide. Pour un résultat invalide, `note` contient le texte de l'erreur.
 
 **Export > Graph image...** exporte Trend avec les marqueurs de repères et la courbe du modèle. Avec
-**Include cursor readout** coché, la boîte en haut à gauche de l'image contient le résumé de
-l'analyse : les temps de C1 et de C2, les K, L, T et l'erreur d'ajustement de la PV, et les temps de
-repère des autres étiquettes.
+**Include Analysis results** coché, la boîte (voir [Image du graphique](#image-du-graphique)) contient le
+résumé de l'analyse, après le texte des curseurs : les temps de C1 et de C2, les K, L, T et l'erreur
+d'ajustement de la PV, et les temps de repère des autres étiquettes.
 
 ### Sauvegarde
 
@@ -1188,8 +1249,8 @@ session les conserve (voir [Sessions](#sessions)).
 ### Essai avec le serveur de test
 
 1. Démarrez le serveur de test dans une console : `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
-2. Démarrez l'application avec `examples\demo.mbproj` (ou ouvrez-le avec File > Open), puis cliquez
-   sur **Connect**.
+2. Démarrez l'application, choisissez **File > Open example...** et ouvrez `demo.mbproj` dans le dossier
+   des exemples, puis cliquez sur **Connect**.
 3. Double-cliquez sur la cellule **Value** de **Setpoint** (HR 100), saisissez 0 et confirmez. Ou
    cliquez sur **A: 0** dans le panneau Quick write. Attendez quelques secondes.
 4. Ouvrez le panneau **Analysis** (View > Analysis). Dans **1. Signals**, choisissez **Lag** comme PV
@@ -1221,7 +1282,7 @@ d'écriture ; une clé n'est écrite que lorsque la limite est définie). Les pa
 dans un objet `analysis` : `pvTag` et `setpointTags` (la PV et les étiquettes dont les repères sont
 affichés), `deltaCoTag` et `deltaCo`, `method` (`"0-63.2"`, `"smith"`, `"sundaresan"` ou `"custom"`),
 `modelPercents`, `percents`, `reference` (`"cursor"` ou `"mean"`), `referenceWindowS`, `smoothingS`,
-`pvRange`, `coRange`, `showModel`, `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`,
+`pvRange`, `coRange`, `showModel`, `modelColor` (`"#RRGGBB"`, `"#202020"` par défaut), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`,
 `"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un objet
 `yAxes` de premier niveau contient les plages fixées des axes Y de la tendance : `left` et `right` valent chacun `"auto"` ou une paire `[min, max]` avec min inférieur à max (par exemple `"left": [0, 100]`). Une clé absente vaut `"auto"`. Un tableau
 `hiddenColumns` de premier niveau énumère les colonnes du tableau des étiquettes masquées dans ce
@@ -1232,6 +1293,7 @@ qui en est dépourvu se charge avec les valeurs par défaut (la vue compacte pou
 |---|---|---|
 | File > New | Ctrl+N | Liste d'étiquettes vide. Les champs de connexion reprennent les derniers paramètres de connexion. |
 | File > Open... | Ctrl+O | Ouvre un fichier `.mbproj`. |
+| File > Open example... | | Ouvre un des projets d'exemple (`demo.mbproj`, `cm50.mbproj`, `loop101.mbproj`) du dossier des exemples. |
 | File > Save | Ctrl+S | Enregistre dans le fichier courant. Demande un nom quand le projet n'en a pas. |
 | File > Save As... | Ctrl+Shift+S | Enregistre sous un nouveau nom. `.mbproj` est ajouté s'il manque. |
 | File > Quit | Ctrl+Q | Ferme l'application. |
@@ -1239,19 +1301,23 @@ qui en est dépourvu se charge avec les valeurs par défaut (la vue compacte pou
 Le titre de la fenêtre affiche `*` quand il y a des modifications non enregistrées. New, Open et Quit
 demandent s'il faut enregistrer (Save, Discard ou Cancel).
 
-Démarrage : l'application démarre toujours avec les étiquettes de démonstration intégrées (Sine,
-Triangle, Counter, Square, Noise, Sawtooth, Lag, Setpoint, Float sine, Float sine (CDAB) et
-Int32 saw), et non avec un fichier. Elle ne rouvre pas le dernier projet. Pour démarrer avec un
-projet, donnez son chemin sur la ligne de commande :
+Démarrage : l'application démarre avec un projet vide, non enregistré (Untitled, sans étiquette). Les
+champs de connexion sont ceux de votre dernière connexion. Elle ne rouvre pas le dernier projet.
+Ajoutez vos propres étiquettes, ou choisissez **File > Open example...** pour ouvrir un des projets
+d'exemple. Les projets d'exemple se trouvent dans le dossier `examples` de l'installation. L'ouverture
+d'un exemple demande d'abord ce qu'il faut faire des modifications non enregistrées, comme Open.
+Pour démarrer avec un projet, donnez son chemin sur la ligne de commande :
 
 ```bat
 build\msvc-debug\bin\modbus_control.exe examples\demo.mbproj
 ```
 
-[`examples/demo.mbproj`](../../examples/demo.mbproj) correspond aux étiquettes de démonstration et se
-connecte au serveur de test à 127.0.0.1:1502, unité 1, avec une période de 200 ms.
+[`examples/demo.mbproj`](../../examples/demo.mbproj) contient les étiquettes de démonstration (Sine,
+Triangle, Counter, Square, Noise, Sawtooth, Lag, Setpoint, Float sine, Float sine (CDAB) et Int32 saw)
+et se connecte au serveur de test à 127.0.0.1:1502, unité 1, avec une période de 200 ms.
 [`examples/cm50.mbproj`](../../examples/cm50.mbproj) est un point de départ pour un ABB CM50 (voir la
 section suivante).
+[`examples/loop101.mbproj`](../../examples/loop101.mbproj) sert au [simulateur de boucle](SIMULATEUR_DE_BOUCLE.md).
 
 ## Sessions
 
@@ -1260,7 +1326,7 @@ consulter plus tard, sans connexion. Il contient :
 
 - le projet : les paramètres de connexion, les étiquettes et les paramètres d'Analysis,
 - l'enregistrement : l'historique de la tendance avec son heure de départ,
-- les curseurs (C1 et C2) de Trend.
+- les curseurs (C1 à C6) de Trend.
 
 | Élément de menu | Action |
 |---|---|
