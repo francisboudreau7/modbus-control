@@ -1,6 +1,7 @@
 ﻿#include "WriteController.h"
 
 #include "EncodingDetect.h"
+#include "NumberText.h"
 #include "RichText.h"
 #include "TagCodec.h"
 #include "TagTableModel.h"
@@ -8,12 +9,12 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QDoubleValidator>
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QValidator>
 
 #include <QDateTime>
 
@@ -143,7 +144,25 @@ bool implausibleFloat(double x)
     return a > 1e9 || (a > 0.0 && a < 1e-6);
 }
 
-/// One line edit per tag; values are parsed with the C locale.
+/// Accepts what mb::parseNumber accepts ("72,3" and "72.3"); while typing, keeps partial
+/// numbers ("-", "1e", "7,") as Intermediate and refuses characters that cannot be part of one.
+class NumberValidator : public QValidator
+{
+public:
+    using QValidator::QValidator;
+    State validate(QString &input, int &) const override
+    {
+        if (parseNumber(input))
+            return Acceptable;
+        for (const QChar c : std::as_const(input)) {
+            if (!(c.isDigit() || QStringLiteral("+-.,eE ").contains(c)))
+                return Invalid;
+        }
+        return Intermediate;
+    }
+};
+
+/// One line edit per tag; values are parsed with mb::parseNumber (comma or point).
 class ValuesDialog : public QDialog
 {
 public:
@@ -152,13 +171,11 @@ public:
     {
         setWindowTitle(QObject::tr("Write registers"));
         auto *form = new QFormLayout(this);
-        auto *validator = new QDoubleValidator(this);
-        validator->setLocale(QLocale::c());
-        validator->setNotation(QDoubleValidator::StandardNotation);
+        auto *validator = new NumberValidator(this);
         for (qsizetype i = 0; i < tags.size(); ++i) {
             // Shortest round-trip form, so an untouched field writes back exactly the same value.
             const double v = i < current.size() ? current.at(i) : 0.0;
-            auto *edit = new QLineEdit(QString::number(v, 'g', QLocale::FloatingPointShortest), this);
+            auto *edit = new QLineEdit(QLocale::c().toString(v, 'g', QLocale::FloatingPointShortest), this);
             edit->setValidator(validator);
             const QString unit = tags.at(i).unit.isEmpty() ? QString()
                                                            : QStringLiteral(" [%1]").arg(tags.at(i).unit);
@@ -176,7 +193,7 @@ public:
         QList<double> out;
         for (const QLineEdit *edit : m_edits) {
             bool ok = false;
-            const double v = QLocale::c().toDouble(edit->text().trimmed(), &ok);
+            const double v = parseNumber(edit->text(), &ok);
             if (!ok)
                 return std::nullopt;
             out.append(v);

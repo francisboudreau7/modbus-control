@@ -14,6 +14,7 @@
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
@@ -100,27 +101,16 @@ public:
     }
 };
 
-/// Value cells: the default editor, loaded once. Live updates send dataChanged for the Value
-/// column and the view would otherwise reset an open editor at every poll.
-class ValueDelegate : public QStyledItemDelegate
-{
-public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    void setEditorData(QWidget *editor, const QModelIndex &index) const override
-    {
-        if (editor->property("mcLoaded").toBool())
-            return;
-        editor->setProperty("mcLoaded", true);
-        QStyledItemDelegate::setEditorData(editor, index);
-    }
-};
-
-/// Quick A/B cells: a text editor, so an empty entry can clear the value (a spin box cannot
-/// show "no value"). The model parses the text and refuses anything that is not a number.
+/// Number cells (Gain, Offset, Value, Min, Max, Quick A/B): a text editor, so an empty entry can
+/// clear a limit or preset (a spin box cannot show "no value") and "72,3" works as well as
+/// "72.3" whatever the system locale. The model parses the text with mb::parseNumber and
+/// refuses anything that is not a number. The text always shows a '.' decimal mark.
+/// `significant` 0 shows the shortest faithful text.
 class QuickDelegate : public QStyledItemDelegate
 {
 public:
-    using QStyledItemDelegate::QStyledItemDelegate;
+    explicit QuickDelegate(QObject *parent = nullptr, int significant = 0)
+        : QStyledItemDelegate(parent), m_significant(significant) {}
     QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
     {
         auto *e = new QLineEdit(parent);
@@ -133,7 +123,17 @@ public:
         if (editor->property("mcLoaded").toBool())
             return; // loaded once: never reset what the user is typing
         editor->setProperty("mcLoaded", true);
-        static_cast<QLineEdit *>(editor)->setText(index.data(Qt::EditRole).toString());
+        const QVariant v = index.data(Qt::EditRole);
+        QString text;
+        if (v.metaType().id() == QMetaType::Double) {
+            const double d = v.toDouble();
+            text = m_significant > 0
+                       ? numberText(d, m_significant)
+                       : QLocale::c().toString(d, 'g', QLocale::FloatingPointShortest);
+        } else {
+            text = v.toString();
+        }
+        static_cast<QLineEdit *>(editor)->setText(text);
     }
     void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
     {
@@ -143,6 +143,9 @@ public:
     {
         editor->setGeometry(option.rect);
     }
+
+private:
+    int m_significant = 0;
 };
 
 /// Colour cells open a QColorDialog on double-click or when editing is triggered.
@@ -256,7 +259,11 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
         new ComboDelegate({toString(YAxis::Left), toString(YAxis::Right)}, this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
-    m_view->setItemDelegateForColumn(TagTableModel::Value, new ValueDelegate(this));
+    // Loaded once: live updates send dataChanged for the Value column and the view would
+    // otherwise reset an open editor at every poll.
+    m_view->setItemDelegateForColumn(TagTableModel::Value, new QuickDelegate(this, 7));
+    m_view->setItemDelegateForColumn(TagTableModel::Gain, new QuickDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::Offset, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::WriteMin, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::WriteMax, new QuickDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::QuickA, new QuickDelegate(this));

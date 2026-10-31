@@ -1,6 +1,7 @@
 #include "TagTableModel.h"
 
 #include "EncodingDetect.h"
+#include "NumberText.h"
 
 #include <QApplication>
 #include <QBrush>
@@ -34,7 +35,7 @@ bool parseDouble(const QVariant &v, double &out)
 {
     bool ok = false;
     if (v.metaType().id() == QMetaType::QString)
-        out = v.toString().trimmed().toDouble(&ok);
+        out = mb::parseNumber(v.toString(), &ok); // "72,3" and "72.3"
     else
         out = v.toDouble(&ok);
     return ok && std::isfinite(out);

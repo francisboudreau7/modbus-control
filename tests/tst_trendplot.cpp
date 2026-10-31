@@ -4,9 +4,14 @@
 #include "TrendPlot.h"
 
 #include <QAction>
+#include <QApplication>
+#include <QDialog>
+#include <QDoubleSpinBox>
+#include <QLocale>
 #include <QMenu>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QToolButton>
 #include <QWheelEvent>
 #include <QtTest>
@@ -458,6 +463,48 @@ private slots:
 
 private:
     std::unique_ptr<Recorder> m_rec;
+
+    // v1.3.3: the Y axis range dialog takes "72,3" and "72.3" under a French locale and shows a point.
+    void axisRangeDialogAcceptsCommaAndPoint()
+    {
+        const QLocale previous;
+        QLocale::setDefault(QLocale(QLocale::French, QLocale::Canada));
+        TrendPlot tp;
+        tp.setRecorder(m_rec.get());
+        tp.setTags(threeTags());
+        QAction *set = findAction(tp.axisMenu(QwtAxis::YLeft), QStringLiteral("Set range..."));
+        QVERIFY(set);
+        bool dialogSeen = false;
+        QString minShown;
+        QTimer::singleShot(0, [&] {
+            auto *dlg = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dlg)
+                return;
+            dialogSeen = true;
+            const auto spins = dlg->findChildren<QDoubleSpinBox *>();
+            if (spins.size() != 2) {
+                dlg->reject();
+                return;
+            }
+            minShown = spins.at(0)->text();
+            spins.at(0)->setValue(0.0);
+            spins.at(0)->setFocus();
+            spins.at(0)->selectAll();
+            QTest::keyClicks(spins.at(0), QStringLiteral("-1,5"));
+            spins.at(1)->setFocus();
+            spins.at(1)->selectAll();
+            QTest::keyClicks(spins.at(1), QStringLiteral("12.25"));
+            dlg->accept();
+        });
+        set->trigger();
+        QVERIFY(dialogSeen);
+        QVERIFY(!minShown.contains(','));
+        const auto range = tp.axisRange(QwtAxis::YLeft);
+        QVERIFY(range);
+        QCOMPARE(range->first, -1.5);
+        QCOMPARE(range->second, 12.25);
+        QLocale::setDefault(previous);
+    }
 };
 
 // Regression: opening a session replaces the recorder's contents and then calls resetData();

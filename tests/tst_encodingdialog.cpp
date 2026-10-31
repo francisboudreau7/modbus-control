@@ -1,3 +1,4 @@
+#include "EncodingDetect.h"
 #include "EncodingDialog.h"
 
 #include <QCheckBox>
@@ -6,6 +7,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QLocale>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QtTest>
@@ -564,6 +566,28 @@ private slots:
         QCOMPARE(table(dlg)->rowCount(), dlg.result().groupCount);
         QCOMPARE(table(dlg)->currentRow(), 0);
         QVERIFY(dlg.chosenEncoding().has_value());
+    }
+
+    // v1.3.3: "value shown on the device" takes a comma or a point, and a French locale
+    // changes nothing; text that is not a number is reported.
+    void displayValueAcceptsCommaAndPoint()
+    {
+        const QLocale previous;
+        QLocale::setDefault(QLocale(QLocale::French, QLocale::Canada));
+        auto spy = std::make_shared<Spy>();
+        auto d = make(twoGroups(), spy, {{1, 2}});
+        d->setDisplayValue(QStringLiteral("52,3"));
+        const QString withComma = label(*d, "verdictLabel")->text();
+        d->setDisplayValue(QStringLiteral("52.3"));
+        const QString withPoint = label(*d, "verdictLabel")->text();
+        QCOMPARE(withComma, withPoint);
+        QVERIFY(!withPoint.startsWith(QStringLiteral("Can't read")));
+        QVERIFY(parseDisplayValue(QStringLiteral("52,3")).has_value());
+        QCOMPARE(parseDisplayValue(QStringLiteral("52,3"))->first,
+                 parseDisplayValue(QStringLiteral("52.3"))->first);
+        d->setDisplayValue(QStringLiteral("5x2"));
+        QVERIFY(label(*d, "verdictLabel")->text().startsWith(QStringLiteral("Can't read")));
+        QLocale::setDefault(previous);
     }
 };
 
