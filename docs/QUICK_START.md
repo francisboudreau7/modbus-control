@@ -79,6 +79,11 @@ right-click the row and choose **Detect encoding...**.
 **Before writing to a writable tag**, set its **Min** and **Max** columns to the range the
 controller allows. A write outside them is refused.
 
+**Register settings are locked while connected**: Area, Address, Type, Byte order and Writable are
+greyed out. Disconnect to change them. Your teacher may also lock the tag configuration
+(**Options > Lock tag configuration**), and then tags cannot be added or changed. See
+[Classroom safety](USER_GUIDE.md#classroom-safety).
+
 ## 3. Put cursors on the trend
 
 The trend shows every plotted tag as a curve. Two cursors, **C1** (red) and **C2** (blue), measure
