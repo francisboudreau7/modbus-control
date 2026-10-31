@@ -137,6 +137,33 @@ class TagTableModel;
 ///   'Y'." The split prompt's Change answer makes the same check.
 /// detectNow on a 16-bit tag: when its latest sample is Exception → this flow; otherwise the split
 /// check as described above.
+///
+/// Off-by-one numbering check (v1.3.3, T244; PLAN.md "v1.3.3 classroom corrections" item 1).
+/// Once per tag per connection, for a tag whose sample has Quality::Exception and whose read
+/// alone (readRequested(id, area, address, count), the tag's own count) answers Modbus exception
+/// 2 — for 16-bit tags only after the refused-16-bit flow above found that neither pair reads —
+/// the monitor reads the same area and count one register away in the direction of the usual
+/// mistake: address - 1 when TagTableModel::addressBase() is 0 (numbers typed from a 1-based
+/// manual), address + 1 when it is 1. Skipped when that range leaves 0..65535 or overlaps another
+/// tag of the project. Timeout / ConnectionLost stop the probes as for the split check.
+/// Tags whose probe answers OK are collected; after the on-connect pass (or after a short quiet
+/// period when tags fail later), ONE prompt through the replaceable seam m_offByOnePrompt (dialog
+/// queue, one prompt at a time) lists them: headline "Some registers may be numbered from 1."
+/// (base 0) / "Some registers may be numbered from 0." (base 1), one bullet per tag "'Setpoint':
+/// HR 5009-5010 is refused, but HR 5008-5009 answers.", and the line "Device manuals often count
+/// registers from 1 (or from 0): a number copied from the manual then points one register off."
+/// Answers:
+/// - UseNumbering ("Use 1-based numbers" / "Use 0-based numbers"; offered only when no tag has
+///   read Good in this connection): every tag of the project moves by -1 (base 0 -> 1) or +1
+///   (base 1 -> 0) protocol address (TagTableModel::setLayout with its own type, order and
+///   encodingVerified; the numbers shown stay the ones typed), then emits
+///   addressBaseChangeRequested(new base). A tag that would leave 0..65535 blocks this answer
+///   (button not offered).
+/// - MoveTags ("Move these tags"): only the listed tags move by -1 / +1 (numbering unchanged).
+/// - Keep (default, Esc): nothing changes; asked again on the next connection.
+/// Writable tags lose Writable through the model's register-change rule. While the model
+/// isLocked(), the prompt is replaced by the message "<n> tags may be numbered one register off;
+/// the tag configuration is locked (Options > Lock tag configuration)." and nothing moves.
 class EncodingMonitor : public QObject
 {
     Q_OBJECT
@@ -178,6 +205,9 @@ signals:
     void message(const QString &text);
     /// A one-off read for the split check (connect to PollWorker::readRegisters, queued).
     void readRequested(quint64 requestId, mb::Area area, quint16 address, int count);
+    /// v1.3.3: the off-by-one prompt's UseNumbering answer moved every tag; switch the shown
+    /// numbering to `base` (0 or 1).
+    void addressBaseChangeRequested(int base);
 
 private:
     friend class ::TstEncodingMonitor;
@@ -193,6 +223,10 @@ private:
     /// The split prompt: text, label of the Change button, label of the Keep button.
     std::function<SplitAnswer(const QString &text, const QString &changeLabel,
                               const QString &keepLabel)> m_splitPrompt;
+    /// v1.3.3 off-by-one prompt answers and seam: text, label of the UseNumbering button (empty =
+    /// not offered).
+    enum class OffByOneAnswer { UseNumbering, MoveTags, Keep };
+    std::function<OffByOneAnswer(const QString &text, const QString &useNumberingLabel)> m_offByOnePrompt;
 
     // Implementation-defined; the task may change the private section freely.
     static constexpr int kMaxReadings = 10; ///< recent readings kept per 32-bit tag

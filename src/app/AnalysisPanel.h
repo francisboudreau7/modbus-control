@@ -32,7 +32,8 @@ class Recorder;
 class TrendPlot;
 
 /// Contents of the "Analysis" dock: a step-response analysis of the main Trend plot, laid out as
-/// guided steps for students (see docs/USER_GUIDE.md). Replaces the former Analysis tab: there is
+/// guided steps for students (see docs/USER_GUIDE.md). v1.3.3: every number field is a
+/// NumberSpinBox (accepts 72,3 and 72.3). Replaces the former Analysis tab: there is
 /// no plot of its own; the overlays are drawn on the TrendPlot given to setPlot(), and the cursors
 /// are that plot's C1/C2.
 ///
@@ -65,7 +66,10 @@ class TrendPlot;
 ///     significant digits and units: y0/y100/ΔPV in the PV unit, ΔCO in the CO unit (typed: none),
 ///     K in "<PV unit>/<CO unit>", L and T in s, Fit error "0.12 <unit> (0.6 %) — Good"
 ///     (FitQuality word). "—" for a missing value.
-///   * "showModelCheck" "Show model curve" (AnalysisSettings::showModel, default on).
+///   * "showModelCheck" "Show model curve" (AnalysisSettings::showModel, default off since
+///     v1.3.3), followed by "modelColorButton" (a small button showing the colour swatch, tooltip
+///     "Colour of the model curve"; QColorDialog through a replaceable seam; sets
+///     AnalysisSettings::modelColor, emits settingsChanged()).
 ///   * "checksList" (QListWidget, no selection; hidden when empty): one item per checkStep() entry,
 ///     warning icon + sentence:
 ///     NoDeltaCo "K can't be computed: choose the controller output (CO) or type ΔCO in step 1."
@@ -124,7 +128,12 @@ class TrendPlot;
 /// - For every tag in setpointTagIds that is plotted, every found setpoint: a marker as before
 ///   (white disc, dark ring, dot of the tag colour; label "63.2 %" or the detailed three lines;
 ///   z above the curves), and with guideLines the dashed guide lines (tag colour) to both axes.
-/// - showModel: the PV's model curve, only when the PV is plotted (dashed, tag colour, ~400 points, from t1 to t2, title
+///   v1.3.3: the 0 % setpoint is always placed at C1's time with Y = y0 (its "Time (s)" is t1
+///   and "t − C1 (s)" is 0), even when the PV crosses y0 later (periodic signals, "Mean before
+///   cursor" reference); other percents are unchanged.
+/// - showModel (v1.3.3: off by default): the PV's model curve, only when the PV is plotted (dashed,
+///   colour AnalysisSettings::modelColor (default #202020), width = the PV curve's pen width + 1;
+///   v1.3.3, it was the tag colour), ~400 points, from t1 to t2, title
 ///   "<name> model", not in the legend). Overlays use each tag's Y axis.
 /// - Overlays are plot items, so the image export includes them; they are removed on
 ///   setPlot(nullptr) and when they no longer apply.

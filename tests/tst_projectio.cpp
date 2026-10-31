@@ -171,6 +171,7 @@ private slots:
     void yAxesUnknownKeysRejected();
     void yAxesMessageNamesSide();
     void lockedRoundTrip();
+    void modelColorRoundTripAndRejected();
     void lockedRejectsNonBoolean();
 };
 
@@ -992,7 +993,8 @@ void TstProjectIO::v126DefaultsWhenMissing()
     QCOMPARE(a.coRangeMax, 100.0);
     QCOMPARE(a.pvTagId, TagId(0));
     QVERIFY(a.setpointTagIds.isEmpty());
-    QVERIFY(a.showModel);
+    QVERIFY(!a.showModel); // off by default since v1.3.3
+    QCOMPARE(a.modelColor, QStringLiteral("#202020"));
 
     // "pvRange": null is the explicit form of "no range".
     const auto nullRange = projectFromJson(json(R"({
@@ -1083,7 +1085,7 @@ void TstProjectIO::v126MigratesAnalyzedTags()
     QCOMPARE(a.pvTagId, TagId(2));
     QVERIFY(a.setpointTagIds == (QList<TagId>{2, 4}));
     QVERIFY(a.method == ModelMethod::ZeroTo632);
-    QVERIFY(a.showModel);
+    QVERIFY(!a.showModel);
     QVERIFY(project->tags.at(1).analyzed);
     QVERIFY(!project->tags.at(3).analyzed);
 
@@ -1291,7 +1293,7 @@ void TstProjectIO::v12KeysDefaultWhenMissing()
     QVERIFY(tag.axis == YAxis::Left);
     QVERIFY(!tag.quickA.has_value());
     QVERIFY(!tag.quickB.has_value());
-    QVERIFY(project->analysis.showModel); // default on since v1.2.6
+    QVERIFY(!project->analysis.showModel); // default off since v1.3.3
     QVERIFY(project->analysis.guideLines);
     AnalysisSettings expected; // the analyzed tag becomes the PV (v1.2.6 migration)
     expected.pvTagId = 1;
@@ -1777,6 +1779,19 @@ void TstProjectIO::lockedRoundTrip()
     const auto minimal = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"));
     QVERIFY(minimal.has_value());
     QVERIFY(!minimal->locked);
+}
+
+void TstProjectIO::modelColorRoundTripAndRejected()
+{
+    Project project;
+    project.analysis.modelColor = QStringLiteral("#12AB34");
+    const auto loaded = projectFromJson(projectToJson(project));
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->analysis.modelColor, QStringLiteral("#12AB34"));
+    QString error;
+    QVERIFY(!projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"modelColor":"red"}})"),
+                             &error).has_value());
+    QCOMPARE(error, QStringLiteral("analysis.modelColor: must be a colour \"#RRGGBB\""));
 }
 
 void TstProjectIO::lockedRejectsNonBoolean()

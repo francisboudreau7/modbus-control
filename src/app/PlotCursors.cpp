@@ -80,6 +80,59 @@ void PlotCursors::setMarker(int which, double t)
 void PlotCursors::setC1(double t) { setMarker(1, t); }
 void PlotCursors::setC2(double t) { setMarker(2, t); }
 
+// T240 stubs for C3..C6 (no markers yet): T242 implements the contract.
+bool PlotCursors::hasCursor(int n) const
+{
+    if (n == 1) return m_has1;
+    if (n == 2) return m_has2;
+    return n >= 3 && n <= kMaxCursors && m_extra[size_t(n - 1)].has_value();
+}
+
+std::optional<double> PlotCursors::cursor(int n) const
+{
+    if (!hasCursor(n))
+        return std::nullopt;
+    if (n == 1) return c1();
+    if (n == 2) return c2();
+    return m_extra[size_t(n - 1)];
+}
+
+void PlotCursors::setCursor(int n, double t)
+{
+    if (n == 1 || n == 2) {
+        setMarker(n, t);
+    } else if (n >= 3 && n <= kMaxCursors) {
+        m_extra[size_t(n - 1)] = t;
+        emit cursorsChanged();
+    }
+}
+
+void PlotCursors::removeCursor(int n)
+{
+    if (n >= 3 && n <= kMaxCursors && m_extra[size_t(n - 1)]) {
+        m_extra[size_t(n - 1)].reset();
+        emit cursorsChanged();
+    }
+}
+
+QList<int> PlotCursors::cursorNumbers() const
+{
+    QList<int> out;
+    for (int n = 1; n <= kMaxCursors; ++n) {
+        if (hasCursor(n))
+            out.append(n);
+    }
+    return out;
+}
+
+QColor PlotCursors::colorOf(int n)
+{
+    static const QColor colors[kMaxCursors] = {
+        QColor(0xd6, 0x27, 0x28), QColor(0x1f, 0x77, 0xb4), QColor(0x2c, 0xa0, 0x2c),
+        QColor(0x94, 0x67, 0xbd), QColor(0xff, 0x7f, 0x0e), QColor(0x8c, 0x56, 0x4b)};
+    return n >= 1 && n <= kMaxCursors ? colors[n - 1] : QColor(Qt::black);
+}
+
 bool PlotCursors::isPlacing() const { return m_placing; }
 
 void PlotCursors::setMarkersVisible(bool visible)

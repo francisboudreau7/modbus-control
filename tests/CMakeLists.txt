@@ -58,7 +58,8 @@ mc_add_qtest(tst_requestlog LIBS mbsim)
 foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage
              tst_clipboard tst_quickwrite tst_trendplot
              tst_exportcsvdialog tst_plotcursors tst_encodingdialog tst_encodingmonitor
-             tst_richtext tst_addtagdialog tst_analysispanel tst_writelogpanel)
+             tst_richtext tst_addtagdialog tst_analysispanel tst_writelogpanel
+             tst_numbertext)
   mc_add_qtest(${name} LIBS mbui)
   set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
     "QT_QPA_PLATFORM=set:offscreen"

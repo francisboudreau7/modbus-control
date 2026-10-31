@@ -321,6 +321,7 @@ void Test::fileSaveLoad()
     cur.trendC2 = 2.0;
     cur.analysisC1 = 3.0;
     cur.analysisC2 = 4.0;
+    cur.trendExtra = {{3, 5.5}, {6, 7.25}}; // v1.3.3 extra Trend cursors
 
     QString err;
     QVERIFY2(saveSession(path, proj, rec, cur, &err), qPrintable(err));

@@ -103,6 +103,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.newProject->setShortcut(QKeySequence::New);
     m_actions.openProject = fileMenu->addAction(tr("&Open..."));
     m_actions.openProject->setShortcut(QKeySequence::Open);
+    m_actions.openExample = fileMenu->addAction(tr("Open e&xample..."));
     m_actions.saveProject = fileMenu->addAction(tr("&Save"));
     m_actions.saveProject->setShortcut(QKeySequence::Save);
     m_actions.saveProjectAs = fileMenu->addAction(tr("Save &As..."));

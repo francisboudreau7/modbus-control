@@ -118,6 +118,27 @@ QString extensionFromFilter(const QString &selectedFilter)
 
 } // namespace
 
+// T240 stubs: T245 implements the v1.3.3 options.
+ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const QString &cursorReadout,
+                                     const QString &analysisReadout, QWidget *parent)
+    : ExportImageDialog(plot, cursors,
+                        analysisReadout.isEmpty() ? cursorReadout
+                                                  : cursorReadout + QStringLiteral("\n\n") + analysisReadout,
+                        parent)
+{
+    m_analysisReadout = analysisReadout;
+}
+
+bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QString &path,
+                               const ExportOptions &options, QString *error)
+{
+    QString readout = options.cursorReadout;
+    if (!options.analysisReadout.isEmpty())
+        readout += (readout.isEmpty() ? QString() : QStringLiteral("\n\n")) + options.analysisReadout;
+    return render(plot, cursors, path, options.sizePx, options.dpi, options.includeCursors, readout,
+                  error);
+}
+
 ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const QString &readoutText,
                                      QWidget *parent)
     : QDialog(parent), m_plot(plot), m_cursors(cursors), m_readout(readoutText)

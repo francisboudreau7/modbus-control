@@ -77,13 +77,17 @@ inline constexpr int kProjectFormatVersion = 1;
 /// -> ZeroTo632 when modelPercents is [0, 63.2] (or missing), else Custom; without "pvTag" -> the
 /// id of the first tag with "analyzed": true whose id is not "deltaCoTag" (the first analysed
 /// tag if all are the CO; 0 if none); without "setpointTags" -> the ids of
-/// every tag with "analyzed": true. "showModel" missing -> true (the new default). The per-tag
+/// every tag with "analyzed": true. "showModel" missing -> false (v1.3.3; it was true). The per-tag
 /// "analyzed" is still read (it must be a boolean) but no longer written.
 ///
 /// Added in v1.3.1 (optional, additive): top-level "yAxes": {"left": "auto" | [min, max],
 /// "right": "auto" | [min, max]}; each key optional (missing = "auto"); [min, max] two finite
 /// numbers with min < max, anything else rejected ("yAxes.left: must be \"auto\" or [min, max] with
 /// min < max"). Always written.
+///
+/// Added in v1.3.3 (optional, additive): "analysis.modelColor" ("#RRGGBB" string, case-insensitive
+/// on input, written as given by the UI; default "#202020"; anything else is rejected with
+/// "analysis.modelColor: must be a colour \"#RRGGBB\"").
 ///
 /// Added in v1.3.3 (optional, additive): top-level "locked" (boolean, default false; written only
 /// when true; any other JSON type is rejected with "\"locked\" must be a boolean"): the teacher lock

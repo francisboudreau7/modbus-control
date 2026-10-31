@@ -37,6 +37,20 @@ class WriteController;
 /// - cursorsChanged -> CursorPanel::setCursors.
 /// - File actions: New/Open/Save/Save As with "unsaved changes" prompts; last directory
 ///   and the last connection settings (used for New) are kept in QSettings.
+/// - Start (v1.3.3, T245): an empty Untitled project (no tags, unmodified, default analysis
+///   settings, compact columns) with the last connection settings; the demo tags are no longer
+///   loaded. File > Open example... (after the unsaved-changes prompt) opens m_prompts.openFileName
+///   ("Open example", examplesDir(), "Modbus Control projects (*.mbproj)") and loads the chosen
+///   file like Open (the project path is that file). examplesDir(): the first existing of
+///   <appDir>/../examples (installed) and <appDir>/../../../examples (build tree
+///   build/<preset>/bin); else the last project directory.
+/// - Cursors (v1.3.3, T242): PlotCursors::cursorsChanged -> CursorPanel::setCursors(all cursors)
+///   and the Analysis panel (C1/C2 only, as before); CursorPanel::removeCursorRequested ->
+///   PlotCursors::removeCursor. Sessions save and restore C3..C6 (SessionCursors::trendExtra).
+///   The image export passes CursorPanel::readoutText() and AnalysisPanel::readoutText()
+///   separately (ExportImageDialog's two-readout constructor).
+/// - Numbering (v1.3.3, T244): EncodingMonitor::addressBaseChangeRequested(base) ->
+///   setAddressBase(base) and the project is marked modified.
 /// - v1.2.6 (T195): the Analysis tab is replaced by the Analysis dock (AnalysisPanel): it gets the
 ///   Recorder, the main TrendPlot (setPlot), the tags, the 10 Hz refresh and the data reset; its
 ///   settings are saved/loaded with the project (and mark it modified); "Copy cursors from Trend"

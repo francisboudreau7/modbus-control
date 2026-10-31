@@ -129,6 +129,19 @@ void CursorPanel::setTags(const QList<Tag> &tags)
     refresh();
 }
 
+// T240 stubs: T242 implements the multi-cursor contract.
+void CursorPanel::setCursors(const QMap<int, double> &cursors)
+{
+    m_cursors = cursors;
+    setCursors(cursors.contains(1) ? std::optional<double>(cursors.value(1)) : std::nullopt,
+               cursors.contains(2) ? std::optional<double>(cursors.value(2)) : std::nullopt);
+}
+
+std::pair<int, int> CursorPanel::comparedPair() const
+{
+    return {1, 2};
+}
+
 void CursorPanel::setCursors(std::optional<double> t1, std::optional<double> t2)
 {
     m_t1 = t1;

@@ -16,7 +16,7 @@ set_target_properties(mbloop PROPERTIES AUTOMOC ON)
 add_library(mbloopui STATIC
   LoopWindow.h LoopWindow.cpp
 )
-target_link_libraries(mbloopui PUBLIC mbloop Qt6::Widgets PRIVATE mc_warnings)
+target_link_libraries(mbloopui PUBLIC mbloop Qt6::Widgets PRIVATE mbcore mc_warnings)
 set_target_properties(mbloopui PROPERTIES AUTOMOC ON)
 
 add_executable(modbus_loop_sim WIN32 main.cpp modbus_loop_sim.rc)

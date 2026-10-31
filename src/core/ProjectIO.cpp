@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
 
@@ -547,6 +548,16 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!readBool(obj, QStringLiteral("guideLines"), prefix, out.guideLines, error))
         return false;
 
+    const QJsonValue modelColor = obj.value(QStringLiteral("modelColor"));
+    if (!modelColor.isUndefined()) {
+        static const QRegularExpression rgb(QStringLiteral("^#[0-9A-Fa-f]{6}$"));
+        if (!modelColor.isString() || !rgb.match(modelColor.toString()).hasMatch()) {
+            setError(error, QStringLiteral("analysis.modelColor: must be a colour \"#RRGGBB\""));
+            return false;
+        }
+        out.modelColor = modelColor.toString();
+    }
+
     const QJsonValue tuningRule = obj.value(QStringLiteral("tuningRule"));
     if (!tuningRule.isUndefined()) {
         const QString text = tuningRule.toString();
@@ -764,6 +775,7 @@ QByteArray projectToJson(const Project &project)
         {QStringLiteral("deltaCo"), a.manualDeltaCo},
         {QStringLiteral("detailedLabels"), a.detailedLabels},
         {QStringLiteral("showModel"), a.showModel},
+        {QStringLiteral("modelColor"), a.modelColor},
         {QStringLiteral("guideLines"), a.guideLines},
         {QStringLiteral("pvRange"), pvRange},
         {QStringLiteral("coRange"), QJsonArray{a.coRangeMin, a.coRangeMax}},

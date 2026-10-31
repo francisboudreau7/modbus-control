@@ -144,6 +144,10 @@ QByteArray sessionToJson(const Project &project, const Recorder &recording,
     QJsonObject trend;
     trend.insert(QStringLiteral("c1"), cursorJson(cursors.trendC1));
     trend.insert(QStringLiteral("c2"), cursorJson(cursors.trendC2));
+    for (auto it = cursors.trendExtra.cbegin(); it != cursors.trendExtra.cend(); ++it) {
+        if (it.key() >= 3 && it.key() <= 6)
+            trend.insert(QStringLiteral("c%1").arg(it.key()), it.value());
+    }
     QJsonObject analysis;
     analysis.insert(QStringLiteral("c1"), cursorJson(cursors.analysisC1));
     analysis.insert(QStringLiteral("c2"), cursorJson(cursors.analysisC2));
@@ -252,6 +256,17 @@ bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recordi
     if (!readCursorGroup(root, QStringLiteral("trend"), cur.trendC1, cur.trendC2, err)
         || !readCursorGroup(root, QStringLiteral("analysis"), cur.analysisC1, cur.analysisC2, err))
         return fail(err);
+    {
+        const QJsonObject trend = root.value(QStringLiteral("cursors")).toObject()
+                                      .value(QStringLiteral("trend")).toObject();
+        for (int n = 3; n <= 6; ++n) {
+            std::optional<double> t;
+            if (!readCursor(trend, QStringLiteral("c%1").arg(n), t, err))
+                return fail(err);
+            if (t)
+                cur.trendExtra.insert(n, *t);
+        }
+    }
 
     // Build the recorder in a temporary, then swap everything in.
     constexpr qsizetype kContinueRows = 72000; // 2 h at 100 ms after the loaded rows

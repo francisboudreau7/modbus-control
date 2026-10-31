@@ -35,7 +35,7 @@ class WriteLogPanel;
 ///   after Analysis; View menu toggle. The destructor deletes the Analysis dock first.
 /// - Bottom dock "Write log" (objectName "writeLogDock", v1.3.3): WriteLogPanel, tabified with
 ///   Tags (Tags stays the raised tab); View menu toggle.
-/// - Menus: File (New, Open..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
+/// - Menus: File (New, Open..., Open example..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
 ///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes, separator, Lock tag configuration), Help (Quick Start, User Guide, About).
 /// - Status bar: transient messages on the left, permanent labels on the right: "lockLabel"
 ///   (bold "Tags locked", tooltip "The tag configuration is locked (Options > Lock tag
@@ -48,6 +48,9 @@ public:
     struct Actions {
         QAction *newProject = nullptr;
         QAction *openProject = nullptr;
+        /// v1.3.3 File menu after Open...: "Open e&xample..." (AppController opens the examples
+        /// folder in the file dialog).
+        QAction *openExample = nullptr;
         QAction *saveProject = nullptr;
         QAction *saveProjectAs = nullptr;
         /// "Save &session...": project + recording + cursors (.mbsession).

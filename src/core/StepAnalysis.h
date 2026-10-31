@@ -65,7 +65,10 @@ struct AnalysisSettings {
     /// "63.2 %", "t = 14.360 s", "y = 22.64 degC" (target value and tag unit).
     bool detailedLabels = false;
     /// Draw the fitted model curve of the PV (see fopdtModelValue) on the plot.
-    bool showModel = true;
+    /// v1.3.3: off by default (it was on).
+    bool showModel = false;
+    /// v1.3.3: colour of the model curve, "#RRGGBB" (default "#202020", near black).
+    QString modelColor = QStringLiteral("#202020");
     /// Dashed guide lines from each found setpoint marker down to the time axis and left to
     /// the Y axis.
     bool guideLines = true;

@@ -125,6 +125,7 @@ struct Fx {
             s.pvTagId = kPv;
             s.setpointTagIds = {kPv};
             s.deltaCoTagId = kCo;
+            s.showModel = true; // off by default since v1.3.3
             panel.setSettings(s);
             plot.cursors()->setC1(9.0);
             plot.cursors()->setC2(40.0);
@@ -267,7 +268,7 @@ void TstAnalysisPanel::constructs()
 {
     AnalysisPanel panel;
     QVERIFY(panel.results().isEmpty());
-    QVERIFY(panel.settings().showModel);
+    QVERIFY(!panel.settings().showModel); // off by default since v1.3.3
     QVERIFY(panel.readoutText().isEmpty());
     QVERIFY(!child<QPushButton>(panel, "copyResultsButton")->isEnabled());
     QVERIFY(!child<QPushButton>(panel, "exportButton")->isEnabled());
@@ -1072,6 +1073,7 @@ void TstAnalysisPanel::plotDestroyedFirst()
     s.pvTagId = kPv;
     s.deltaCoTagId = kCo;
     s.setpointTagIds = {kPv};
+    s.showModel = true;
     panel.setSettings(s);
     plot->cursors()->setC1(9.0);
     plot->cursors()->setC2(40.0);

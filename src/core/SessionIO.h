@@ -4,6 +4,7 @@
 #include "Recorder.h"
 
 #include <QByteArray>
+#include <QMap>
 #include <QString>
 
 #include <optional>
@@ -18,6 +19,9 @@ struct SessionCursors {
     std::optional<double> trendC2;
     std::optional<double> analysisC1;
     std::optional<double> analysisC2;
+    /// v1.3.3: Trend cursors C3..C6 (number -> seconds). JSON: optional keys "c3".."c6" in
+    /// "trend" (number or null; written only when set; anything else is rejected like c1/c2).
+    QMap<int, double> trendExtra;
 
     friend bool operator==(const SessionCursors &, const SessionCursors &) = default;
 };
