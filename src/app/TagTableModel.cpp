@@ -764,6 +764,34 @@ bool TagTableModel::setLayout(TagId id, quint16 address, ValueType type, mb::Byt
     return true;
 }
 
+bool TagTableModel::setAddress(TagId id, quint16 address)
+{
+    const int row = rowOf(id);
+    if (m_locked || row < 0)
+        return false;
+    Tag &t = m_tags[row];
+    Tag probe = t;
+    probe.address = address;
+    if (!probe.fitsAddressSpace())
+        return false;
+    if (t.address == address)
+        return true;
+    const QString textBefore = registerText(t);
+    const bool clearWritable = t.writable;
+    if (clearWritable) {
+        t.writable = false;
+        m_writeNeedsRead.remove(id);
+    }
+    t.address = address;
+    m_encodingNotes.remove(id);
+    m_live.remove(id); // read from the old register
+    emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+    if (clearWritable)
+        emit writableCleared(id, textBefore, registerText(t));
+    emit tagsEdited();
+    return true;
+}
+
 bool TagTableModel::setConfirmed16Bit(TagId id, bool confirmed)
 {
     const int row = rowOf(id);

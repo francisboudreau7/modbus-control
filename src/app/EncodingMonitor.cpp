@@ -1421,7 +1421,7 @@ void EncodingMonitor::moveTag(TagId id, int shift)
     Tag moved = before;
     moved.address = address;
     m_snapshot.insert(id, moved);
-    m_model->setLayout(id, address, before.type, before.byteOrder, before.encodingVerified);
+    m_model->setAddress(id, address); // keeps the scaling and presets: only the number was off
     if (const Tag *now = findTag(id))
         m_snapshot.insert(id, *now);
 }

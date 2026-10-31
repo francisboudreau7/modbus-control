@@ -156,8 +156,8 @@ class TagTableModel;
 /// Answers:
 /// - UseNumbering ("Use 1-based numbers" / "Use 0-based numbers"; offered only when no tag has
 ///   read Good in this connection): every tag of the project moves by -1 (base 0 -> 1) or +1
-///   (base 1 -> 0) protocol address (TagTableModel::setLayout with its own type, order and
-///   encodingVerified; the numbers shown stay the ones typed), then emits
+///   (base 1 -> 0) protocol address (TagTableModel::setAddress: type, scaling and presets are
+///   kept; the numbers shown stay the ones typed), then emits
 ///   addressBaseChangeRequested(new base). A tag that would leave 0..65535 blocks this answer
 ///   (button not offered).
 /// - MoveTags ("Move these tags"): only the listed tags move by -1 / +1 (numbering unchanged).

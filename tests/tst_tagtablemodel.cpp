@@ -1768,6 +1768,29 @@ private slots:
         QVERIFY(!m.data(m.index(0, TagTableModel::Unit), Qt::ForegroundRole).isValid());
     }
 
+    void setAddressKeepsScaling()
+    {
+        TagTableModel m;
+        Tag t;
+        t.address = 100;
+        t.gain = 0.1;
+        t.offset = 5.0;
+        t.quickA = 3.0;
+        t.writable = true;
+        m.setTags({t}, 2);
+        const TagId id = m.tagAt(0).id;
+        QSignalSpy cleared(&m, &TagTableModel::writableCleared);
+        QVERIFY(m.setAddress(id, 99));
+        QCOMPARE(m.tagAt(0).address, quint16(99));
+        QCOMPARE(m.tagAt(0).gain, 0.1);
+        QCOMPARE(m.tagAt(0).offset, 5.0);
+        QCOMPARE(m.tagAt(0).quickA, std::optional<double>(3.0));
+        QVERIFY(!m.tagAt(0).writable);
+        QCOMPARE(cleared.count(), 1);
+        m.setLocked(true);
+        QVERIFY(!m.setAddress(id, 98));
+    }
+
     void writeNeedsReadLifecycle()
     {
         TagTableModel m;

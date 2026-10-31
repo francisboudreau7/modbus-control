@@ -185,6 +185,13 @@ public:
     /// False (nothing changes) for an unknown id or when the tag would not fit the address space.
     /// Emits dataChanged for the row and tagsEdited() when anything changed.
     bool setLayout(TagId id, quint16 address, ValueType type, mb::ByteOrder order, bool verified);
+    /// v1.3.3: moves a tag to another protocol address and keeps everything else (type, byte
+    /// order, encodingVerified, gain, offset, quick values, limits, confirmed16Bit): the
+    /// off-by-one numbering fix. Forgets the live value and clears the encoding note. Like
+    /// setLayout it is refused (false) under the teacher lock, for an unknown id or when the tag
+    /// would not fit; allowed while connected; a writable tag loses Writable (writableCleared).
+    /// Emits dataChanged for the row and tagsEdited() when the address changed.
+    bool setAddress(TagId id, quint16 address);
 
     /// 0 (default) or 1. The Address column shows and accepts tag.address + base (edit range
     /// base..65535+base, a 32-bit tag at most 65534+base); its header reads "Address" for 0
