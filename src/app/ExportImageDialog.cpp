@@ -271,7 +271,7 @@ ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const 
     legendCheck->setObjectName(QStringLiteral("legendCheck"));
     legendCheck->setChecked(settings.value(QStringLiteral("exportImage/legend"), true).toBool());
 
-    const bool cursorsAvailable = cursors && (cursors->hasC1() || cursors->hasC2());
+    const bool cursorsAvailable = cursors && !cursors->cursorNumbers().isEmpty();
     auto *cursorsBox = new QCheckBox(tr("Include cursors"), this);
     cursorsBox->setObjectName(QStringLiteral("exportCursors"));
     cursorsBox->setEnabled(cursorsAvailable);

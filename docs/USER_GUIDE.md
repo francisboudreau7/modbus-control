@@ -267,8 +267,8 @@ polled value, so it changes only when the next read returns the new value.
 1. Select two or more rows. Use Ctrl or Shift to select rows.
 2. Click **Write selected...**. The rows must all be writable holding registers with consecutive
    addresses and no duplicates. At most 123 registers can be written at once.
-3. Edit the value for each register. Each field starts with the current value. Use `.` as the
-   decimal separator.
+3. Edit the value for each register. Each field starts with the current value. Both `72.3` and
+   `72,3` are accepted.
 4. Confirm "Write N tags?". A table shows each tag with its current and new value, and a note gives
    the registers (for example "HR 100-103 · FC16"). The whole group is sent in one FC16 request.
    16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.

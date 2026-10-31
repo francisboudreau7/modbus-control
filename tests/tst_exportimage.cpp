@@ -339,6 +339,14 @@ void TstExportImage::dialogOkDisabledUntilPath()
     QVERIFY(cursorsBox);
     QVERIFY(!cursorsBox->isEnabled());
     QVERIFY(!cursorsBox->isChecked());
+    {
+        // Any cursor counts, not only C1/C2.
+        PlotCursors c3(m_plot.get());
+        c3.setCursor(3, 1.0);
+        ExportImageDialog d3(m_plot.get(), &c3, QString(), QString());
+        QVERIFY(d3.findChild<QCheckBox *>(QStringLiteral("exportCursors"))->isEnabled());
+        c3.clear();
+    }
     auto *readoutBox = dialog.findChild<QCheckBox *>(QStringLiteral("cursorReadoutCheck"));
     QVERIFY(readoutBox);
     QVERIFY(readoutBox->isEnabled());

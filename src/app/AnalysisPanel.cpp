@@ -3,6 +3,7 @@
 #include "ClipboardCopy.h"
 #include "PlotCursors.h"
 #include "NumberSpinBox.h"
+#include "NumberText.h"
 #include "Recorder.h"
 #include "RichText.h"
 #include "TrendPlot.h"
@@ -172,17 +173,6 @@ void setupTable(QTableWidget *t)
     t->setEditTriggers(QAbstractItemView::NoEditTriggers);
     t->setSelectionMode(QAbstractItemView::ExtendedSelection);
     installCopyShortcut(t);
-}
-
-std::optional<double> parseNumber(const QString &text)
-{
-    QString s = text.trimmed();
-    s.replace(u',', u'.');
-    if (s.isEmpty())
-        return std::nullopt;
-    bool ok = false;
-    const double v = QLocale::c().toDouble(s, &ok);
-    return (ok && std::isfinite(v)) ? std::optional<double>(v) : std::nullopt;
 }
 
 /// Setpoint marker: a white disc with a dark ring, so it stands out on a curve of any colour,
@@ -390,9 +380,7 @@ void AnalysisPanel::buildUi()
     m_pvMaxEdit->setObjectName(QStringLiteral("pvMaxEdit"));
     m_pvMaxEdit->setPlaceholderText(tr("PV max"));
     for (QLineEdit *e : {m_pvMinEdit, m_pvMaxEdit}) {
-        auto *v = new QDoubleValidator(-1e12, 1e12, 6, e);
-        v->setLocale(QLocale::c());
-        e->setValidator(v);
+        e->setValidator(new NumberValidator(e)); // 72,3 or 72.3
         e->setToolTip(tr("Optional PV range (empty = not set). With both PV and CO ranges the "
                          "gains are also shown in %/%."));
     }

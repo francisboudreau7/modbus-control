@@ -55,6 +55,17 @@ QString NumberSpinBox::textFromValue(double value) const
     return locale().toString(value, 'f', decimals());
 }
 
+QValidator::State NumberValidator::validate(QString &input, int &) const
+{
+    if (parseNumber(input))
+        return Acceptable;
+    for (const QChar c : std::as_const(input)) {
+        if (!(c.isDigit() || QStringLiteral("+-.,eE ").contains(c)))
+            return Invalid;
+    }
+    return Intermediate;
+}
+
 void NumberSpinBox::fixup(QString &input) const
 {
     input.replace(u',', u'.');

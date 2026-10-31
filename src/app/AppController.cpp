@@ -370,18 +370,13 @@ void AppController::wireClassroomSafety()
     updateRegisterLocks();
 
     connect(model, &TagTableModel::writableCleared, this,
-            [this](TagId id, const QString &was, const QString &now) {
-        QString name;
-        for (const Tag &t : m_window->tagModel()->tags()) {
-            if (t.id == id)
-                name = t.name;
-        }
-        const QString text = rich::headline(tr("'%1' is no longer writable.").arg(name))
-            + rich::rows({{tr("Was:"), was}, {tr("Now:"), now}})
-            + rich::paragraph(tr("Tick Writable again to write to the new register."));
-        // Shown after the edit has finished (tags pushed, encoding checks done): a modal box
-        // here would run a nested event loop in the middle of the model change.
-        QTimer::singleShot(0, this, [this, text] { m_prompts.information(tr("Writable turned off"), text); });
+            [this](TagId id, const QString &was, const QString &) {
+        // Shown after the edit has finished (tags pushed, encoding checks done, numbering
+        // switched): a modal box here would run a nested event loop in the middle of the model
+        // change. Tags cleared together (e.g. a numbering fix) share one box.
+        m_writableCleared.append({id, was});
+        if (m_writableCleared.size() == 1)
+            QTimer::singleShot(0, this, &AppController::showWritableCleared);
     });
     model->setConfirmWritable([this](const TagTableModel::WritableAsk &request) {
         return confirmWritable(request);
@@ -391,6 +386,39 @@ void AppController::wireClassroomSafety()
             [this](const WriteLogEntry &entry) { onWriteLogged(entry); });
     if (WriteLogPanel *panel = m_window->writeLogPanel())
         panel->setFolder(m_writeLog.folder());
+}
+
+void AppController::showWritableCleared()
+{
+    const QList<std::pair<TagId, QString>> cleared = std::exchange(m_writableCleared, {});
+    TagTableModel *model = m_window->tagModel();
+    QList<std::pair<QString, QString>> found; // name, register text now
+    QString was;
+    for (const auto &[id, before] : cleared) {
+        const int row = model->rowOf(id);
+        if (row < 0)
+            continue;
+        found.append({model->tagAt(row).name, model->registerText(model->tagAt(row))});
+        was = before;
+    }
+    if (found.isEmpty())
+        return;
+    const QString again = m_state != ConnectionState::Disconnected
+        ? tr("Disconnect, then tick Writable again to write to the new register.")
+        : tr("Tick Writable again to write to the new register.");
+    QString text;
+    if (found.size() == 1) {
+        text = rich::headline(tr("'%1' is no longer writable.").arg(found.first().first))
+            + rich::rows({{tr("Was:"), was}, {tr("Now:"), found.first().second}});
+    } else {
+        QStringList lines;
+        for (const auto &[name, now] : found)
+            lines << tr("'%1' (now %2)").arg(name, now);
+        text = rich::headline(tr("%1 tags are no longer writable: their registers changed.")
+                                  .arg(found.size()))
+            + rich::bullets(lines);
+    }
+    m_prompts.information(tr("Writable turned off"), text + rich::paragraph(again));
 }
 
 bool AppController::confirmWritable(const TagTableModel::WritableAsk &request)
@@ -593,6 +621,7 @@ bool AppController::saveTo(const QString &path)
         return false;
     }
     m_projectPath = path;
+    m_projectIsExample = false;
     m_sessionPath.clear();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);
@@ -602,7 +631,7 @@ bool AppController::saveTo(const QString &path)
 
 bool AppController::save()
 {
-    if (m_projectPath.isEmpty())
+    if (m_projectPath.isEmpty() || m_projectIsExample)
         return saveAs();
     return saveTo(m_projectPath);
 }
@@ -668,8 +697,15 @@ void AppController::openExampleDialog()
         return;
     const QString path = openFileName(QStringLiteral("Open example"), examplesDir(),
                                       QStringLiteral("Modbus Control projects (*.mbproj)"));
-    if (!path.isEmpty())
-        loadFrom(path);
+    if (path.isEmpty())
+        return;
+    // An example is a template: Save asks where to save it (the examples folder may be read-only,
+    // or tracked in the source tree), and the last project folder is kept.
+    const QVariant dir = QSettings().value(QStringLiteral("project/dir"));
+    if (loadFrom(path)) {
+        m_projectIsExample = true;
+        QSettings().setValue(QStringLiteral("project/dir"), dir);
+    }
 }
 
 bool AppController::loadFrom(const QString &path)
@@ -683,6 +719,7 @@ bool AppController::loadFrom(const QString &path)
     }
     applyProject(*project);
     m_projectPath = path;
+    m_projectIsExample = false;
     discardLoadedRecording();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);

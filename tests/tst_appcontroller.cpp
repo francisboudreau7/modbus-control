@@ -313,6 +313,10 @@ class TstAppController : public QObject
                 d.unexpected << QStringLiteral("encoding review: ") + text;
             return false;
         };
+        ctl->m_encoding->m_offByOnePrompt = [this](const QString &text, const QString &) {
+            d.unexpected << QStringLiteral("off-by-one prompt: ") + text;
+            return EncodingMonitor::OffByOneAnswer::Keep;
+        };
         ctl->m_encoding->m_splitPrompt = [this](const QString &text, const QString &change,
                                                 const QString &keep) {
             d.splitTexts << text;
@@ -906,6 +910,34 @@ private slots:
         QVERIFY(model()->rowCount() > 0);
         QVERIFY(win->windowTitle().startsWith(QStringLiteral("cm50")));
         QVERIFY(!modified());
+        // Save never overwrites the example: it asks where to save (cancelled here).
+        d.saveNames << QString();
+        win->actions().saveProject->trigger();
+        QCOMPARE(d.saveCaptions.size(), 1);
+        noUnexpected();
+    }
+
+    void classroomSeveralWritableClearedShareOneBox()
+    {
+        // Two writable tags moved in one go (as the numbering fix does): one box lists both.
+        TagTableModel *m = model();
+        QList<TagId> ids;
+        for (int row = 0; row < m->rowCount(); ++row) {
+            if (m->tagAt(row).isWritable())
+                ids << m->tagAt(row).id;
+        }
+        if (ids.size() < 2) {
+            const int row = m->rowOf(ids.value(0));
+            QVERIFY(row >= 0);
+            Tag extra = m->tagAt(row);
+            extra.address = 400;
+            extra.name = QStringLiteral("Extra");
+            ids << m->tagAt(m->addTag(extra)).id;
+        }
+        for (TagId id : ids.mid(0, 2))
+            QVERIFY(m->setAddress(id, quint16(m->tagAt(m->rowOf(id)).address + 1000)));
+        QTRY_COMPARE(d.informations.size(), 1);
+        QVERIFY(d.informations.first().contains(QStringLiteral("2 tags are no longer writable")));
         noUnexpected();
     }
 

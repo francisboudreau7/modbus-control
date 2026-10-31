@@ -1,6 +1,7 @@
 ﻿#include "WriteController.h"
 
 #include "EncodingDetect.h"
+#include "NumberSpinBox.h"
 #include "NumberText.h"
 #include "RichText.h"
 #include "TagCodec.h"
@@ -146,22 +147,6 @@ bool implausibleFloat(double x)
 
 /// Accepts what mb::parseNumber accepts ("72,3" and "72.3"); while typing, keeps partial
 /// numbers ("-", "1e", "7,") as Intermediate and refuses characters that cannot be part of one.
-class NumberValidator : public QValidator
-{
-public:
-    using QValidator::QValidator;
-    State validate(QString &input, int &) const override
-    {
-        if (parseNumber(input))
-            return Acceptable;
-        for (const QChar c : std::as_const(input)) {
-            if (!(c.isDigit() || QStringLiteral("+-.,eE ").contains(c)))
-                return Invalid;
-        }
-        return Intermediate;
-    }
-};
-
 /// One line edit per tag; values are parsed with mb::parseNumber (comma or point).
 class ValuesDialog : public QDialog
 {

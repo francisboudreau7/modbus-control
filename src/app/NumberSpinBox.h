@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDoubleSpinBox>
+#include <QValidator>
 
 namespace mb {
 
@@ -17,6 +18,17 @@ public:
     double valueFromText(const QString &text) const override;
     QString textFromValue(double value) const override;
     void fixup(QString &input) const override;
+};
+
+/// Validator for number line edits: Acceptable when mb::parseNumber accepts the text (comma or
+/// point), Intermediate while it only holds digits, signs, marks, spaces and exponents, else
+/// Invalid (v1.3.3).
+class NumberValidator : public QValidator
+{
+    Q_OBJECT
+public:
+    using QValidator::QValidator;
+    State validate(QString &input, int &pos) const override;
 };
 
 } // namespace mb

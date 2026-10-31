@@ -471,6 +471,9 @@ void TstAnalysisPanel::percentRowsWithRanges()
     auto *pvMin = child<QLineEdit>(fx.panel, "pvMinEdit");
     auto *pvMax = child<QLineEdit>(fx.panel, "pvMaxEdit");
     QVERIFY(pvMin && pvMax);
+    QTest::keyClicks(pvMin, QStringLiteral("72,3")); // typed: the validator lets the comma in
+    QCOMPARE(pvMin->text(), QStringLiteral("72,3"));
+    pvMin->clear();
     pvMin->setText(QStringLiteral("0"));
     QCOMPARE(rowOf(t, QStringLiteral("K (%/%)")), -1); // only one value
     pvMax->setText(QStringLiteral("200"));

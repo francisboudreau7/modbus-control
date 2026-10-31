@@ -268,8 +268,8 @@ valeur scrutée, de sorte qu'elle ne change que lorsque la prochaine lecture ren
 1. Sélectionnez deux lignes ou plus. Utilisez Ctrl ou Maj pour sélectionner des lignes.
 2. Cliquez sur **Write selected...**. Les lignes doivent toutes être des registres de maintien accessibles en écriture, d'adresses
    consécutives et sans doublons. Au plus 123 registres peuvent être écrits à la fois.
-3. Modifiez la valeur de chaque registre. Chaque champ commence par la valeur actuelle. Utilisez `.` comme
-   séparateur décimal.
+3. Modifiez la valeur de chaque registre. Chaque champ commence par la valeur actuelle. `72.3` et `72,3`
+   sont tous deux acceptés.
 4. Confirmez « Write N tags? ». Un tableau montre chaque étiquette avec sa valeur actuelle et sa nouvelle valeur, et une note donne
    les registres (par exemple « HR 100-103 · FC16 »). Tout le groupe est envoyé dans une seule requête FC16.
    Les étiquettes 16 bits et 32 bits peuvent être mélangées ; la limite de 123 registres compte des registres, pas des étiquettes.

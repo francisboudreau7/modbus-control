@@ -237,6 +237,11 @@ private:
     Recorder m_recorder;
     QTimer *m_refreshTimer = nullptr;
     QString m_projectPath;
+    /// v1.3.3: the project was opened with Open example...: Save acts as Save As.
+    bool m_projectIsExample = false;
+    /// v1.3.3: writableCleared notices waiting for the one deferred box (tag id, register before).
+    QList<std::pair<TagId, QString>> m_writableCleared;
+    void showWritableCleared();
     bool m_modified = false;
     bool m_newData = false;
     ConnectionState m_state = ConnectionState::Disconnected;
