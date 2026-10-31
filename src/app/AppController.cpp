@@ -14,11 +14,13 @@
 #include "PlotCursors.h"
 #include "PollWorker.h"
 #include "QuickWritePanel.h"
+#include "RichText.h"
 #include "SessionIO.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
 #include "WriteController.h"
+#include "WriteLogPanel.h"
 
 #include <qwt_axis_id.h>
 
@@ -159,7 +161,20 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     m_prompts.question = [this](const QString &title, const QString &text,
                                 QMessageBox::StandardButtons buttons,
                                 QMessageBox::StandardButton defaultButton) {
-        return QMessageBox::question(m_window, title, text, buttons, defaultButton);
+        if (m_yesLabel.isEmpty())
+            return QMessageBox::question(m_window, title, text, buttons, defaultButton);
+        QMessageBox box(QMessageBox::Question, title, text, buttons, m_window);
+        box.setTextFormat(Qt::RichText);
+        box.setDefaultButton(defaultButton);
+        if (QAbstractButton *yes = box.button(QMessageBox::Yes))
+            yes->setText(m_yesLabel);
+        box.exec();
+        return box.standardButton(box.clickedButton());
+    };
+    m_prompts.information = [this](const QString &title, const QString &text) {
+        QMessageBox box(QMessageBox::Information, title, text, QMessageBox::Ok, m_window);
+        box.setTextFormat(Qt::RichText);
+        box.exec();
     };
     m_prompts.warning = [this](const QString &title, const QString &text) {
         QMessageBox::warning(m_window, title, text);
@@ -179,6 +194,7 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     wireWrites();
     wireActions();
     wireQuickWrites();
+    wireClassroomSafety();
 
     m_window->setCloseHandler([this] { return maybeSave(); });
 
@@ -203,6 +219,11 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
     updateTitle();
 }
 
+QString AppController::lockedMessage()
+{
+    return tr("The tag configuration is locked (Options > Lock tag configuration)");
+}
+
 AppController::~AppController()
 {
     m_window->setCloseHandler({});
@@ -225,6 +246,7 @@ void AppController::wireConnection()
         if (!prepareConnect())
             return;
         storeLastConnection(s);
+        m_writes->setServer(QStringLiteral("%1:%2 unit %3").arg(s.host).arg(s.port).arg(s.unitId));
         QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
     });
     connect(bar, &ConnectionBar::disconnectRequested, this, [this] {
@@ -235,6 +257,7 @@ void AppController::wireConnection()
     connect(m_worker, &PollWorker::stateChanged, this, [this](ConnectionState state, const QString &detail) {
         const bool wasConnected = m_state == ConnectionState::Connected;
         m_state = state;
+        updateRegisterLocks();
         m_window->connectionBar()->setState(state, detail);
         m_window->setConnectionStatus(state, detail);
         m_writes->setConnected(state == ConnectionState::Connected);
@@ -364,6 +387,7 @@ void AppController::wireActions()
     connect(a.exportImage, &QAction::triggered, this, [this] { exportImage(); });
     connect(a.exportCsv, &QAction::triggered, this, [this] { exportCsv(); });
     connect(a.exportAnalysisCsv, &QAction::triggered, this, [this] { exportAnalysisResults(); });
+    connect(a.lockTags, &QAction::toggled, this, [this](bool on) { onLockActionToggled(on); });
     connect(a.oneBasedAddresses, &QAction::toggled, this, [this](bool on) {
         m_window->tagModel()->setAddressBase(on ? 1 : 0);
         QMetaObject::invokeMethod(m_worker, [w = m_worker, on] { w->setAddressBase(on ? 1 : 0); },
@@ -392,6 +416,108 @@ void AppController::wireQuickWrites()
         const QSignalBlocker blocker(action);
         action->setChecked(on);
     });
+}
+
+void AppController::wireClassroomSafety()
+{
+    TagTableModel *model = m_window->tagModel();
+    updateRegisterLocks();
+
+    connect(model, &TagTableModel::writableCleared, this,
+            [this](TagId id, const QString &was, const QString &now) {
+        QString name;
+        for (const Tag &t : m_window->tagModel()->tags()) {
+            if (t.id == id)
+                name = t.name;
+        }
+        const QString text = rich::headline(tr("'%1' is no longer writable.").arg(name))
+            + rich::rows({{tr("Was:"), was}, {tr("Now:"), now}})
+            + rich::paragraph(tr("Tick Writable again to write to the new register."));
+        m_prompts.information(tr("Writable turned off"), text);
+    });
+    model->setConfirmWritable([this](const TagTableModel::WritableAsk &request) {
+        QString text = rich::headline(tr("Make '%1' writable?").arg(request.tagName))
+            + rich::rows({{tr("Register:"), request.registerText}});
+        if (request.wasInput) {
+            text += rich::paragraph(
+                tr("This tag was an input register (%1). The holding register with the same number "
+                   "can be a different value in the device.").arg(request.inputRegisterText));
+        }
+        text += rich::paragraph(tr("Values typed in its Value cell are then written to the device."));
+        return askYesCancel(tr("Make writable"), text, tr("Make writable"));
+    });
+
+    connect(m_writes, &WriteController::writeLogged, this,
+            [this](const WriteLogEntry &entry) { onWriteLogged(entry); });
+    if (WriteLogPanel *panel = m_window->writeLogPanel())
+        panel->setFolder(m_writeLog.folder());
+}
+
+bool AppController::askYesCancel(const QString &title, const QString &text, const QString &yesLabel)
+{
+    m_yesLabel = yesLabel;
+    const auto answer = ask(title, text, QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    m_yesLabel.clear();
+    return answer == QMessageBox::Yes;
+}
+
+void AppController::updateRegisterLocks()
+{
+    TagTableModel *model = m_window->tagModel();
+    const bool connected = m_state != ConnectionState::Disconnected;
+    model->setConnected(connected);
+    if (QAction *action = m_window->actions().oneBasedAddresses)
+        action->setEnabled(!connected && !model->isLocked());
+}
+
+void AppController::applyLocked(bool locked)
+{
+    m_window->tagModel()->setLocked(locked);
+    if (QAction *action = m_window->actions().lockTags) {
+        const QSignalBlocker blocker(action);
+        action->setChecked(locked);
+    }
+    m_window->setTagsLocked(locked);
+    updateRegisterLocks();
+}
+
+void AppController::onLockActionToggled(bool on)
+{
+    if (on) {
+        applyLocked(true);
+        setModified(true);
+        return;
+    }
+    const bool yes = askYesCancel(
+        tr("Unlock tags"),
+        rich::paragraph(tr("Unlock the tag configuration? Students can then change registers and "
+                           "make tags writable.")),
+        tr("Unlock"));
+    if (!yes) {
+        applyLocked(true); // re-checks the action without another toggled
+        return;
+    }
+    applyLocked(false);
+    setModified(true);
+}
+
+void AppController::onWriteLogged(const WriteLogEntry &entry)
+{
+    WriteLogPanel *panel = m_window->writeLogPanel();
+    if (panel)
+        panel->addEntry(entry);
+    QString error;
+    if (m_writeLog.append(entry, &error)) {
+        if (panel)
+            panel->setFileError(QString());
+        return;
+    }
+    if (!m_writeLogErrorShown) {
+        m_writeLogErrorShown = true;
+        m_window->showStatusMessage(tr("Write log not saved: %1").arg(error));
+    }
+    if (panel)
+        panel->setFileError(error);
 }
 
 void AppController::pushTags()
@@ -466,6 +592,7 @@ Project AppController::currentProject() const
     p.hiddenColumns = m_window->tagTable()->hiddenColumns();
     p.yLeft = m_window->trendPlot()->axisRange(QwtAxis::YLeft);
     p.yRight = m_window->trendPlot()->axisRange(QwtAxis::YRight);
+    p.locked = m_window->tagModel()->isLocked();
     return p;
 }
 
@@ -490,6 +617,7 @@ void AppController::applyProject(const Project &project)
     m_window->tagTable()->setHiddenColumns(project.hiddenColumns);
     m_window->trendPlot()->setAxisRange(QwtAxis::YLeft, project.yLeft);
     m_window->trendPlot()->setAxisRange(QwtAxis::YRight, project.yRight);
+    applyLocked(project.locked);
 }
 
 void AppController::setAddressBase(int base)
@@ -552,6 +680,7 @@ void AppController::newProject()
     m_window->tagTable()->setHiddenColumns(compactHiddenColumns());
     m_window->trendPlot()->setAxisRange(QwtAxis::YLeft, std::nullopt);
     m_window->trendPlot()->setAxisRange(QwtAxis::YRight, std::nullopt);
+    applyLocked(false);
     m_projectPath.clear();
     discardLoadedRecording();
     setModified(false);
@@ -910,6 +1039,10 @@ void AppController::exportAnalysisResults()
 
 void AppController::addTagDialog()
 {
+    if (m_window->tagModel()->isLocked()) {
+        m_window->showStatusMessage(lockedMessage());
+        return;
+    }
     TagTableModel *model = m_window->tagModel();
     AddTagDialog dialog(model->tags(), model->addressBase(), m_encoding->deviceOrder(), m_window);
     dialog.setReadFunction([this](Area area, quint16 address, int count, AddTagDialog::ReadDone done) {

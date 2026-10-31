@@ -17,6 +17,7 @@
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
 #include "WriteController.h"
+#include "WriteLogPanel.h"
 
 #include <qwt_plot.h>
 #include <qwt_plot_curve.h>
@@ -45,6 +46,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTableWidget>
@@ -155,6 +157,7 @@ class TstAppController : public QObject
         QList<QMessageBox::StandardButton> answers; ///< AppController::question
         QStringList questions;
         QStringList warnings;                       ///< AppController::warning
+        QStringList informations;                   ///< AppController::information
         QStringList saveNames;                      ///< saveFileName answers ("" = cancel)
         QStringList openNames;
         QStringList saveCaptions;
@@ -185,6 +188,7 @@ class TstAppController : public QObject
 
     Seams d;
     QTemporaryDir m_tmp;
+    int m_logCounter = 0;
     ServerProcess m_server;
     std::unique_ptr<MainWindow> win;
     std::unique_ptr<AppController> ctl;
@@ -282,6 +286,13 @@ class TstAppController : public QObject
             d.unexpected << QStringLiteral("askValues");
             return std::nullopt;
         };
+
+        p.information = [this](const QString &title, const QString &text) {
+            d.informations << title + QStringLiteral(": ") + text;
+        };
+        // Never write into the real Documents folder.
+        ctl->m_writeLog.setFolder(m_tmp.filePath(QStringLiteral("writelog%1").arg(++m_logCounter)));
+        win->writeLogPanel()->setFolder(ctl->m_writeLog.folder());
 
         ctl->m_encoding->m_runDialog = [this](EncodingDialog &dialog) {
             d.encodingDialogs << dialog.windowTitle();
@@ -1942,6 +1953,195 @@ private slots:
         QVERIFY(win->close());
         noUnexpected();
     }
+    // ---- Classroom safety (v1.3.3) -------------------------------------------------------------
+
+    static QModelIndex cell(TagTableModel *m, int row, TagTableModel::Column c) { return m->index(row, c); }
+
+    void classroomConnectedLocksRegisterSettings()
+    {
+        const QModelIndex addr = cell(model(), 7, TagTableModel::Address); // Setpoint (HR 100)
+        QVERIFY(model()->flags(addr) & Qt::ItemIsEditable);
+        QVERIFY(win->actions().oneBasedAddresses->isEnabled());
+        connectLive();
+        QVERIFY(!(model()->flags(addr) & Qt::ItemIsEditable));
+        QVERIFY(!win->actions().oneBasedAddresses->isEnabled());
+        disconnectLive();
+        QVERIFY(model()->flags(addr) & Qt::ItemIsEditable);
+        QVERIFY(win->actions().oneBasedAddresses->isEnabled());
+        noUnexpected();
+    }
+
+    void classroomLockActionLocksAndUnlocks()
+    {
+        QAction *lock = win->actions().lockTags;
+        const QModelIndex addr = cell(model(), 7, TagTableModel::Address);
+        QVERIFY(!model()->isLocked());
+        lock->trigger();
+        QVERIFY(lock->isChecked());
+        QVERIFY(model()->isLocked());
+        QVERIFY(modified());
+        QVERIFY(!win->actions().oneBasedAddresses->isEnabled());
+        QVERIFY(!(model()->flags(addr) & Qt::ItemIsEditable));
+
+        // Cancel keeps it locked.
+        d.answers << QMessageBox::Cancel;
+        lock->trigger();
+        QVERIFY(lock->isChecked());
+        QVERIFY(model()->isLocked());
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(d.questions.first().startsWith(QStringLiteral("Unlock tags: ")));
+        QVERIFY(d.questions.first().contains(QStringLiteral(
+            "Unlock the tag configuration? Students can then change registers and make tags writable.")));
+
+        d.answers << QMessageBox::Yes;
+        lock->trigger();
+        QVERIFY(!lock->isChecked());
+        QVERIFY(!model()->isLocked());
+        QVERIFY(win->actions().oneBasedAddresses->isEnabled());
+        noUnexpected();
+    }
+
+    void classroomLockSavedLoadedAndNewUnlocked()
+    {
+        win->actions().lockTags->trigger();
+        d.saveNames << P(QStringLiteral("locked"));
+        win->actions().saveProject->trigger();
+        QVERIFY(!modified());
+        QFile f(P(QStringLiteral("locked.mbproj")));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY(f.readAll().contains("\"locked\""));
+        f.close();
+
+        d.answers << QMessageBox::Yes;
+        win->actions().lockTags->trigger(); // unlock
+        QVERIFY(!model()->isLocked());
+        QVERIFY(ctl->loadFrom(P(QStringLiteral("locked.mbproj"))));
+        QVERIFY(model()->isLocked());
+        QVERIFY(win->actions().lockTags->isChecked());
+        QVERIFY(!modified());
+
+        // New project: unlocked.
+        win->actions().newProject->trigger();
+        QVERIFY(!model()->isLocked());
+        QVERIFY(!win->actions().lockTags->isChecked());
+        QVERIFY(!modified());
+        noUnexpected();
+    }
+
+    void classroomAddTagWhileLockedShowsMessage()
+    {
+        win->actions().lockTags->trigger();
+        ctl->addTagDialog();
+        QCOMPARE(d.execCount, 0);
+        QVERIFY(win->statusBar()->currentMessage().contains(
+            QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)")));
+        noUnexpected();
+    }
+
+    void classroomWritableClearedShowsInformation()
+    {
+        QVERIFY(model()->setData(cell(model(), 7, TagTableModel::Address), 120));
+        QCOMPARE(d.informations.size(), 1);
+        const QString t = d.informations.first();
+        QVERIFY(t.startsWith(QStringLiteral("Writable turned off: ")));
+        QVERIFY(t.contains(QStringLiteral("'Setpoint' is no longer writable.")));
+        QVERIFY(t.contains(QStringLiteral("Was:")));
+        QVERIFY(t.contains(QStringLiteral("HR 100")));
+        QVERIFY(t.contains(QStringLiteral("Now:")));
+        QVERIFY(t.contains(QStringLiteral("HR 120")));
+        QVERIFY(t.contains(QStringLiteral("Tick Writable again to write to the new register.")));
+        noUnexpected();
+    }
+
+    void classroomConfirmWritablePrompt()
+    {
+        const QModelIndex w = cell(model(), 7, TagTableModel::Writable);
+        QVERIFY(model()->setData(w, Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(d.questions.isEmpty());
+
+        d.answers << QMessageBox::Cancel;
+        QVERIFY(!model()->setData(w, Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(d.questions.size(), 1);
+        const QString q = d.questions.first();
+        QVERIFY(q.startsWith(QStringLiteral("Make writable: ")));
+        QVERIFY(q.contains(QStringLiteral("Make 'Setpoint' writable?")));
+        QVERIFY(q.contains(QStringLiteral("Register:")));
+        QVERIFY(q.contains(QStringLiteral("HR 100")));
+        QVERIFY(q.contains(QStringLiteral("Values typed in its Value cell are then written to the device.")));
+        QVERIFY(!q.contains(QStringLiteral("was an input register")));
+        QVERIFY(!model()->tags().at(7).isWritable());
+
+        d.answers << QMessageBox::Yes;
+        QVERIFY(model()->setData(w, Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(model()->tags().at(7).isWritable());
+
+        // An input register turned into a holding register: the extra line.
+        d.questions.clear();
+        QVERIFY(model()->setData(cell(model(), 0, TagTableModel::Area), toString(mb::Area::HoldingRegister)));
+        d.answers << QMessageBox::Yes;
+        QVERIFY(model()->setData(cell(model(), 0, TagTableModel::Writable), Qt::Checked,
+                                 Qt::CheckStateRole));
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(d.questions.first().contains(QStringLiteral("This tag was an input register (IR 0")));
+        noUnexpected();
+    }
+
+    void classroomWriteLogReachesPanelAndFile()
+    {
+        WriteLogEntry e;
+        e.time = QDateTime(QDate(2026, 10, 31), QTime(14, 3, 12, 250));
+        e.tagId = 8;
+        e.tagName = QStringLiteral("Setpoint");
+        e.address = 100;
+        e.count = 1;
+        e.registers = QStringLiteral("HR 100");
+        e.functionCode = 6;
+        e.oldValue = QStringLiteral("0");
+        e.newValue = QStringLiteral("500");
+        e.raw = QStringLiteral("0x01F4");
+        e.source = QStringLiteral("table");
+        e.ok = true;
+        e.result = QStringLiteral("OK");
+        e.server = QStringLiteral("127.0.0.1:502 unit 1");
+        emit ctl->m_writes->writeLogged(e);
+        QCOMPARE(win->writeLogPanel()->entries().size(), 1);
+        QCOMPARE(win->writeLogPanel()->entries().first(), e);
+        QCOMPARE(win->writeLogPanel()->folder(), ctl->m_writeLog.folder());
+        QVERIFY(ctl->m_writeLog.folder().startsWith(m_tmp.path()));
+        QFile f(ctl->m_writeLog.pathFor(e.time.date()));
+        QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(f.fileName()));
+        const QString text = QString::fromUtf8(f.readAll());
+        QVERIFY(text.contains(QStringLiteral("Setpoint")));
+        QVERIFY(text.contains(QStringLiteral("0x01F4")));
+        noUnexpected();
+    }
+
+    void classroomWriteLogFileErrorReportedOnce()
+    {
+        // A file where the folder should be: every append fails.
+        const QString blocker = P(QStringLiteral("blocker"));
+        QFile b(blocker);
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        b.close();
+        ctl->m_writeLog.setFolder(blocker);
+        WriteLogEntry e;
+        e.time = QDateTime::currentDateTime();
+        e.tagName = QStringLiteral("X");
+        emit ctl->m_writes->writeLogged(e);
+        QVERIFY(win->statusBar()->currentMessage().startsWith(QStringLiteral("Write log not saved: ")));
+        QCOMPARE(win->writeLogPanel()->entries().size(), 1);
+        win->statusBar()->clearMessage();
+        emit ctl->m_writes->writeLogged(e);
+        QVERIFY(win->statusBar()->currentMessage().isEmpty()); // only the first failure
+        QCOMPARE(win->writeLogPanel()->entries().size(), 2);
+
+        // A success works again.
+        ctl->m_writeLog.setFolder(P(QStringLiteral("good")));
+        emit ctl->m_writes->writeLogged(e);
+        QVERIFY(QFileInfo::exists(ctl->m_writeLog.pathFor(e.time.date())));
+        noUnexpected();
+    }
+
 };
 
 QTEST_MAIN(TstAppController)
