@@ -22,10 +22,14 @@ faire des essais à l'échelon, consultez le [Simulateur de boucle](SIMULATEUR_D
 - **Setpoints** (panneau de droite, onglet placé après Analysis) : les courbes qui affichent des repères, les
   pourcentages des repères, les références, le lissage et le tableau des repères (voir
   [Repères et options](#repères-et-options)).
-- **Menus** : File, Export, View, Options et Help. **Help > Quick Start** et **Help > User Guide**
+- **Write log** (panneau du bas, en onglets avec Tags) : chaque écriture envoyée à l'appareil pendant la session (voir
+  [Write log](#write-log)).
+- **Menus** : File, Export, View, Options et Help. Options contient **Lock tag configuration** (voir
+  [Verrou de l'enseignant](#verrou-de-lenseignant)). **Help > Quick Start** et **Help > User Guide**
   ouvrent ces guides en ligne (en français quand Windows est en français), ou la copie installée
   avec le logiciel quand le navigateur ne peut pas être ouvert.
-- **Barre d'état** : de courts messages (à gauche) et l'état de la connexion (à droite).
+- **Barre d'état** : de courts messages (à gauche), l'étiquette **Tags locked** lorsque la configuration des étiquettes est verrouillée,
+  et l'état de la connexion (à droite).
 
 Les panneaux peuvent être fermés et rouverts à partir du menu View. La taille de la fenêtre et la disposition des panneaux sont mémorisées.
 
@@ -292,6 +296,150 @@ des octets, et que les écritures refusées (hors des limites, sans lecture) ne 
 
 Les limites sont un filet de sécurité, et non un substitut à la vérification des plages propres au régulateur. Réglez-les sur les
 plages que votre régulateur accepte pour ce paramètre (voir la section sur le CM50 ci-dessous).
+
+Les réglages qui évitent qu'une installation partagée soit modifiée par erreur (réglages de registre verrouillés, verrou
+de l'enseignant, avertissements sur les étiquettes accessibles en écriture et journal des écritures) sont décrits dans
+[Sécurité en classe](#sécurité-en-classe).
+
+## Sécurité en classe
+
+Ces réglages préviennent les accidents sur une installation partagée, par exemple un élève qui modifie le registre
+d'une étiquette, ou qui rend accessible en écriture un registre d'entrée, sans le vouloir. Ils n'empêchent pas une
+modification délibérée par quelqu'un qui connaît le logiciel.
+
+### Réglages de registre verrouillés pendant la connexion
+
+Pendant la connexion, les réglages de registre d'une étiquette existante ne peuvent pas être modifiés : **Area**,
+**Address**, **Type**, **Byte order** et **Writable**. Leurs cellules sont grisées, et le survol de l'une d'elles affiche
+« Disconnect to change the register settings ». Déconnectez-vous pour les modifier.
+
+Modifier le registre d'une étiquette pendant qu'elle est lue et écrite change ce qu'affiche la tendance et l'endroit où
+vont les écritures. La modification se fait donc lorsque la connexion est coupée.
+
+Les opérations suivantes restent possibles pendant la connexion :
+
+- **Add** : ajouter une étiquette. La boîte de dialogue Add tag fonctionne comme d'habitude, et la nouvelle étiquette
+  est vérifiée comme les autres.
+- **Detect encoding...** sur une étiquette 32 bits. Appliquer sa réponse peut modifier les réglages de registre. Si
+  l'étiquette était accessible en écriture, **Writable** est alors décoché (voir
+  [Writable désactivé lorsqu'un registre change](#writable-désactivé-lorsquun-registre-change)).
+- **Name**, **Unit**, **Gain**, **Offset**, **Plot**, **Axis**, **Color**, **Min**, **Max**, **Quick A** et **Quick B**.
+
+L'option **Options > Use 1-based register numbers** est désactivée pendant la connexion. Modifiez-la après vous être déconnecté.
+
+### Verrou de l'enseignant
+
+L'enseignant peut verrouiller la configuration des étiquettes, afin que les registres et les réglages d'écriture ne puissent
+pas être modifiés depuis le logiciel.
+
+1. Choisissez **Options > Lock tag configuration**. L'option est cochée, et la barre d'état affiche l'étiquette
+   **Tags locked** tant que le verrou est actif.
+2. Enregistrez le projet (**File > Save**). Le verrou est conservé dans le fichier du projet, sous la forme
+   `"locked": true`, et il est appliqué à l'ouverture du projet. Un verrou non enregistré n'est pas dans le fichier :
+   **enregistrez le projet après l'avoir verrouillé**.
+
+Lorsque la configuration des étiquettes est verrouillée :
+
+- **Area**, **Address**, **Type**, **Byte order**, **Gain**, **Offset**, **Writable**, **Min**, **Max**, **Quick A**
+  et **Quick B** ne peuvent pas être modifiés. Leur info-bulle affiche « The tag configuration is locked
+  (Options > Lock tag configuration) ».
+- **Add**, **Duplicate** et **Remove** sont désactivés, et la boîte de dialogue Add tag ne s'ouvre pas.
+- L'application d'une réponse de **Detect encoding...** est refusée. Vous pouvez tout de même ouvrir la boîte de
+  dialogue pour lire l'encodage.
+- **Options > Use 1-based register numbers** est désactivé.
+
+Restent possibles : les écritures vers les étiquettes accessibles en écriture, dans leurs limites **Min** et **Max**,
+**Name**, **Unit**, **Plot**, **Axis** et **Color**, le masquage des colonnes, les curseurs et l'analyse.
+
+Pour déverrouiller, décochez **Options > Lock tag configuration**. La question « Unlock the tag configuration?
+Students can then change registers and make tags writable. » demande une confirmation. Cliquez sur **Unlock** pour
+déverrouiller, ou sur **Cancel** (le bouton par défaut) pour conserver le verrou.
+
+Le verrou prévient les accidents. Il n'empêche pas une modification délibérée : un fichier de projet `.mbproj` est un
+simple texte JSON, et quiconque peut l'ouvrir dans un éditeur de texte et modifier `"locked"`. Ne considérez pas le verrou
+comme une mesure de sécurité.
+
+### Writable désactivé lorsqu'un registre change
+
+Si l'**Area**, l'**Address**, le **Type** ou le **Byte order** d'une étiquette accessible en écriture change, l'étiquette
+n'est plus accessible en écriture. **Writable** est décoché en même temps, et une boîte de message affiche l'ancien et le
+nouveau registre :
+
+> 'Setpoint' is no longer writable.
+> Was: HR 6639-6640 · float32 ABCD
+> Now: HR 5009-5010 · float32 ABCD
+> Tick Writable again to write to the new register.
+
+Ainsi, une étiquette accessible en écriture ne peut pas écrire silencieusement dans un autre registre après avoir été déplacée.
+L'avertissement apparaît lorsque vous modifiez le tableau et lorsque vous appliquez **Detect encoding...**.
+
+### Rendre une étiquette accessible en écriture
+
+Cocher **Writable** demande d'abord une confirmation. La question est « Make 'Setpoint' writable? » et indique le
+registre, par exemple « HR 5009-5010 (float32 ABCD) ». Cliquez sur **Make writable** pour continuer. **Cancel** est le
+bouton par défaut.
+
+Si l'étiquette était un registre d'entrée plus tôt dans la même session, la question précise aussi : « This tag was an
+input register (IR 5009-5010). The holding register with the same number can be a different value in the device. »
+Vérifiez la valeur affichée sur le régulateur avant d'écrire.
+
+Une étiquette accessible en écriture a aussi besoin d'une lecture valide avant sa première écriture, y compris les étiquettes
+16 bits. Après avoir coché **Writable** sur une étiquette, la première écriture est refusée tant que l'étiquette n'a pas eu
+une lecture Good à son registre actuel : « No valid reading of 'Setpoint' since it was made writable. » Le message indique
+qu'aucune écriture n'a été faite et énumère ce qu'il faut vérifier : le numéro de registre, la zone (Area) et le type. Connectez-vous,
+attendez une lecture Good, puis écrivez. Cette vérification n'est pas enregistrée avec le projet : un projet ouvert depuis le
+disque ne l'a donc pas.
+
+### Write log
+
+**View > Write log** affiche le panneau Write log en bas, en onglets avec Tags. Il liste chaque écriture envoyée à
+l'appareil pendant la session. L'écriture la plus récente est en bas, et le tableau défile jusqu'à elle, sauf si vous
+êtes remonté pour lire des lignes plus anciennes.
+
+| Colonne | Signification |
+|---|---|
+| Time | Moment de l'envoi de la requête (heures, minutes, secondes et millisecondes). |
+| Tag | Le nom de l'étiquette. |
+| Register | Les numéros de registre, selon la numérotation de **Options** (par exemple `HR 5009-5010`). |
+| FC | `FC06` (un registre) ou `FC16`. |
+| Old → New | La valeur avant l'écriture et la valeur écrite, avec l'unité. |
+| Raw | Les registres envoyés, en hexadécimal. |
+| Result | `OK`, ou l'erreur, par exemple « Exception 2: Illegal data address » ou « Timeout ». Les échecs sont affichés en rouge. |
+
+Pointez une ligne pour voir sa date, sa source (modification du tableau, sélection ou écriture rapide) et le serveur.
+
+Seules les écritures réellement envoyées sont journalisées. Une écriture refusée (hors des limites, sans lecture, ou une
+confirmation annulée) n'est pas journalisée. Une écriture restée sans réponse parce que la connexion a été perdue est
+journalisée avec le résultat « No reply (disconnected) ».
+
+Chaque écriture est aussi ajoutée immédiatement à un fichier du jour, dans
+`Documents\Modbus Control\Write logs\writes-YYYY-MM-DD.csv` (par exemple `writes-2026-10-31.csv`). Le fichier est en UTF-8
+avec une marque d'ordre des octets, utilise des virgules et commence par une seule ligne d'en-tête. Il peut être ouvert dans
+Excel. Ses colonnes, dans l'ordre, sont :
+
+`time`, `tag`, `tag_id`, `registers`, `function_code`, `old_value`, `new_value`, `raw`, `source`, `result`, `server`.
+
+- **Open folder** ouvre le dossier `Write logs`.
+- **Clear list** vide le tableau du panneau. Les fichiers ne sont pas touchés, et le panneau n'affiche que les écritures de
+  cette session. Les écritures de chaque jour restent dans les fichiers.
+
+Si un fichier ne peut pas être écrit, la barre d'état affiche une fois « Write log not saved » durant la session, et le
+panneau affiche l'erreur en rouge. Une erreur de journalisation ne bloque pas les écritures.
+
+### Un PV qui affiche -25 %
+
+Sur une entrée 4-20 mA, 4 mA correspond à 0 % et 20 mA à 100 %. Un courant de 0 mA (par exemple un fil brisé, ou un
+transmetteur non alimenté) donne donc exactement -25 % de l'étendue. C'est la cause typique d'une PV qui affiche soudainement
+-25 %, et ce n'est pas une écriture.
+
+Le fait que le régulateur signale le problème dépend de ses réglages. Sur un ABB CM50, vérifiez le niveau **Fault Detect** de
+l'entrée analogique (une tolérance, en % de l'étendue d'ingénierie) et son réglage **Broken Sensor** (**None**, **Automatic**,
+**Upscale** ou **Downscale**). Avec **Broken Sensor** à **None**, ou avec un niveau **Fault Detect** de 25 % ou plus, le
+régulateur peut ne pas signaler de défaut pour 0 mA, et la PV affiche simplement -25 %. Lorsqu'il en signale un, le régulateur
+affiche le diagnostic **PV 1 Failed**.
+
+Pour savoir si l'application a écrit quoi que ce soit, ouvrez le Write log et regardez l'heure de la lecture. Une écriture vers
+le régulateur y figure. S'il n'y a aucune écriture vers cette étiquette, cette application n'a pas écrit la valeur.
 
 ## Détection de l'encodage
 

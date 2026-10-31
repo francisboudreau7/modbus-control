@@ -87,6 +87,11 @@ fausse, faites un clic droit sur la ligne et choisissez **Detect encoding...**.
 **Avant d'écrire dans une étiquette modifiable**, réglez ses colonnes **Min** et **Max** sur la plage
 permise par le régulateur. Une écriture hors de ces limites est refusée.
 
+**Les réglages de registre sont verrouillés pendant la connexion** : Area, Address, Type, Byte order et Writable sont
+grisés. Déconnectez-vous pour les modifier. Votre enseignant peut aussi verrouiller la configuration des étiquettes
+(**Options > Lock tag configuration**) ; les étiquettes ne peuvent alors plus être ajoutées ni modifiées. Voir
+[Sécurité en classe](GUIDE_UTILISATEUR.md#sécurité-en-classe).
+
 ## 3. Placer les curseurs sur la tendance
 
 La tendance affiche chaque étiquette tracée sous forme de courbe. Deux curseurs, **C1** (rouge) et

@@ -22,10 +22,14 @@ tests on, see the [Loop simulator](LOOP_SIMULATOR.md).
 - **Setpoints** (right dock, tabbed after Analysis): which curves show setpoint markers, the
   setpoint percentages, references, smoothing and the setpoint table (see
   [Setpoints and options](#setpoints-and-options)).
-- **Menus**: File, Export, View, Options and Help. **Help > Quick Start** and **Help > User Guide**
+- **Write log** (bottom dock, tabbed with Tags): every write sent to the device in this session (see
+  [Write log](#write-log)).
+- **Menus**: File, Export, View, Options and Help. Options includes **Lock tag configuration** (see
+  [Teacher lock](#teacher-lock)). **Help > Quick Start** and **Help > User Guide**
   open these guides online (in French when Windows is in French), or the copy installed with the
   application when the browser cannot be opened.
-- **Status bar**: short messages (left) and the connection state (right).
+- **Status bar**: short messages (left), the **Tags locked** label when the tag configuration is locked,
+  and the connection state (right).
 
 Docks can be closed and reopened from the View menu. Window size and dock layout are remembered.
 
@@ -292,6 +296,153 @@ order, that refused writes (outside the limits, no reading) produce no line.
 
 Limits are a safety net, not a substitute for checking the controller's own ranges. Set them to the
 ranges your controller accepts for that parameter (see the CM50 section below).
+
+The settings that keep a shared setup from being changed by mistake (locked register settings, the
+teacher lock, the warnings for writable tags and the write log) are described in
+[Classroom safety](#classroom-safety).
+
+## Classroom safety
+
+These settings prevent accidents on a shared setup, for example a student who changes the register
+of a tag, or makes an input register writable, without meaning to. They do not stop a deliberate
+change by someone who knows the application.
+
+### Register settings locked while connected
+
+While connected, the register settings of an existing tag cannot be changed: **Area**, **Address**,
+**Type**, **Byte order** and **Writable**. Their cells are greyed out, and hovering over one says
+"Disconnect to change the register settings". Disconnect to change them.
+
+Changing the register of a tag while it is being read and written changes what the trend shows and
+where writes go, so the change is made while the connection is off.
+
+These still work while connected:
+
+- **Add** a tag. The Add tag dialog works as usual, and the new tag is checked like any other.
+- **Detect encoding...** on a 32-bit tag. Applying its answer may change the register settings. If
+  the tag was writable, **Writable** is then cleared (see [Writable turned off](#writable-turned-off-when-a-register-changes)).
+- **Name**, **Unit**, **Gain**, **Offset**, **Plot**, **Axis**, **Color**, **Min**, **Max**, **Quick A**
+  and **Quick B**.
+
+The **Options > Use 1-based register numbers** option is disabled while connected. Change it after
+you disconnect.
+
+### Teacher lock
+
+The teacher can lock the tag configuration, so that the registers and the writable settings cannot
+be changed from the application.
+
+1. Choose **Options > Lock tag configuration**. The option is ticked, and the status bar shows the
+   **Tags locked** label while the lock is on.
+2. Save the project (**File > Save**). The lock is stored in the project file, as `"locked": true`, and is
+   applied when the project is opened. A lock that is not saved is not in the file: save the project
+   after you lock it.
+
+While the tag configuration is locked:
+
+- **Area**, **Address**, **Type**, **Byte order**, **Gain**, **Offset**, **Writable**, **Min**, **Max**,
+  **Quick A** and **Quick B** cannot be changed. Their tooltip reads "The tag configuration is locked
+  (Options > Lock tag configuration)".
+- **Add**, **Duplicate** and **Remove** are disabled, and the Add tag dialog does not open.
+- Applying an answer from **Detect encoding...** is refused. You can still open the dialog to read
+  the encoding.
+- **Options > Use 1-based register numbers** is disabled.
+
+These still work: writes to writable tags within their **Min** and **Max** limits, **Name**, **Unit**,
+**Plot**, **Axis** and **Color**, hiding columns, the cursors and the analysis.
+
+To unlock, untick **Options > Lock tag configuration**. The question "Unlock the tag configuration?
+Students can then change registers and make tags writable." asks for confirmation. Click **Unlock**
+to unlock, or **Cancel** (the default button) to keep the lock.
+
+The lock prevents accidents. It does not prevent a deliberate change: a `.mbproj` project file is plain
+JSON text, and anyone can open it in a text editor and change `"locked"`. Do not treat the lock as
+security.
+
+### Writable turned off when a register changes
+
+If a writable tag's **Area**, **Address**, **Type** or **Byte order** changes, the tag is no longer
+writable. **Writable** is cleared at the same time, and a message box shows the old and the new
+register:
+
+> 'Setpoint' is no longer writable.
+> Was: HR 6639-6640 · float32 ABCD
+> Now: HR 5009-5010 · float32 ABCD
+> Tick Writable again to write to the new register.
+
+This keeps a writable tag from silently writing to a different register after it has been moved.
+The warning appears when you edit the table and when you apply **Detect encoding...**.
+
+### Making a tag writable
+
+Ticking **Writable** asks first. The question is "Make 'Setpoint' writable?" and it gives the
+register, for example "HR 5009-5010 (float32 ABCD)". Click **Make writable** to continue. **Cancel** is
+the default button.
+
+If the tag was an input register earlier in the same session, the question also says: "This tag was an
+input register (IR 5009-5010). The holding register with the same number can be a different value in
+the device." Check the value on the controller's display before you write.
+
+A writable tag also needs a valid reading before its first write, 16-bit tags included. After you tick
+**Writable** on a tag, the first write is refused until the tag has had a Good reading at its current
+register: "No valid reading of 'Setpoint' since it was made writable." The message says that nothing was
+written and lists what to check: the register number, the area and the type. Connect, wait for a Good
+reading, then write. This check is not saved with the project, so a project opened from disk does not
+have it.
+
+### Write log
+
+**View > Write log** shows the Write log dock at the bottom, tabbed with Tags. It lists every write sent
+to the device in this session. The newest write is at the bottom, and the table scrolls to it unless you
+have scrolled up to read older rows.
+
+| Column | Meaning |
+|---|---|
+| Time | When the request was sent (hours, minutes, seconds and milliseconds). |
+| Tag | The tag's name. |
+| Register | The register numbers, with the numbering of **Options** (for example `HR 5009-5010`). |
+| FC | `FC06` (one register) or `FC16`. |
+| Old → New | The value before the write and the value written, with the unit. |
+| Raw | The registers sent, in hex. |
+| Result | `OK`, or the error, for example "Exception 2: Illegal data address" or "Timeout". Failures are shown in red. |
+
+Point at a row to see its date, its source (table edit, selection, or quick write) and the server.
+
+Only writes that were actually sent are logged. A refused write (outside the limits, no reading, or a
+cancelled confirmation) is not logged. A write that got no reply because the connection was lost is
+logged with the result "No reply (disconnected)".
+
+Each write is also added at once to a file for its day, in
+`Documents\Modbus Control\Write logs\writes-YYYY-MM-DD.csv` (for example `writes-2026-10-31.csv`). The
+file is UTF-8 with a byte order mark, uses commas, and starts with one header line. It can be opened in
+Excel. Its columns, in order, are:
+
+`time`, `tag`, `tag_id`, `registers`, `function_code`, `old_value`, `new_value`, `raw`, `source`,
+`result`, `server`.
+
+- **Open folder** opens the `Write logs` folder.
+- **Clear list** empties the table in the dock. The files are not touched, and the dock shows only this
+  session's writes. Every day's writes stay in the files.
+
+If a file cannot be written, the status bar shows "Write log not saved" once in the session, and the
+dock shows the error in red. Writes are not blocked by a logging error.
+
+### A PV that reads -25 %
+
+On a 4-20 mA input, 4 mA is 0 % and 20 mA is 100 %. A current of 0 mA (for example a broken wire, or a
+transmitter without power) therefore scales to exactly -25 % of the range. This is the typical cause
+of a PV that suddenly reads -25 %, and it is not a write.
+
+Whether the controller reports the problem depends on its settings. On an ABB CM50, look at the
+analog input's **Fault Detect** level (a tolerance, in % of the engineering range) and its **Broken
+Sensor** setting (**None**, **Automatic**, **Upscale** or **Downscale**). With **Broken Sensor** set to
+**None**, or with a **Fault Detect** level of 25 % or more, the controller may not raise a fault for
+0 mA, and the PV just shows -25 %. When it does raise one, the controller shows the diagnostic
+**PV 1 Failed**.
+
+To find out whether the application wrote anything, open the Write log and look at the time of the
+reading. A write to the controller is listed there. If there is no write to that tag, this application
+did not write the value.
 
 ## Encoding detection
 
