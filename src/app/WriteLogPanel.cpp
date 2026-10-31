@@ -1,13 +1,36 @@
 #include "WriteLogPanel.h"
 
+#include <QDesktopServices>
+#include <QEvent>
+#include <QFontMetrics>
+#include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
+#include <QScrollBar>
+#include <QSizePolicy>
 #include <QTableWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace mb {
 
-// T230 stub: T233 implements the contract in WriteLogPanel.h.
+namespace {
+
+const QColor kFailureColor(0xc6, 0x28, 0x28);
+
+QString functionCodeText(int functionCode)
+{
+    return QStringLiteral("FC%1").arg(functionCode, 2, 10, QLatin1Char('0'));
+}
+
+QString rowToolTip(const WriteLogEntry &e)
+{
+    return QObject::tr("%1\nSource: %2\nServer: %3")
+        .arg(e.time.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")), e.source, e.server);
+}
+
+} // namespace
 
 WriteLogPanel::WriteLogPanel(QWidget *parent)
     : QWidget(parent)
@@ -20,16 +43,60 @@ WriteLogPanel::WriteLogPanel(QWidget *parent)
     m_folderLabel->setObjectName(QStringLiteral("folderLabel"));
     m_openFolder->setObjectName(QStringLiteral("openFolderButton"));
     m_clear->setObjectName(QStringLiteral("clearButton"));
+
+    m_table->setColumnCount(7);
+    m_table->setHorizontalHeaderLabels({tr("Time"), tr("Tag"), tr("Register"), tr("FC"),
+                                        tr("Old → New"), tr("Raw"), tr("Result")});
+    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setSortingEnabled(false);
+    m_table->verticalHeader()->setVisible(false);
+    m_table->horizontalHeader()->setStretchLastSection(true);
+
+    // The label may shrink below its text; the text is elided in the middle to fit.
+    m_folderLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_folderLabel->installEventFilter(this);
+
+    m_open = [](const QString &folder) { QDesktopServices::openUrl(QUrl::fromLocalFile(folder)); };
+    connect(m_openFolder, &QPushButton::clicked, this, [this] { m_open(m_folder); });
+    connect(m_clear, &QPushButton::clicked, this, &WriteLogPanel::clear);
+
+    auto *buttons = new QHBoxLayout;
+    buttons->addWidget(m_folderLabel, 1);
+    buttons->addWidget(m_openFolder);
+    buttons->addWidget(m_clear);
     auto *layout = new QVBoxLayout(this);
-    layout->addWidget(m_table);
-    layout->addWidget(m_folderLabel);
-    layout->addWidget(m_openFolder);
-    layout->addWidget(m_clear);
+    layout->addWidget(m_table, 1);
+    layout->addLayout(buttons);
+    updateFolderLabel();
 }
 
 void WriteLogPanel::addEntry(const WriteLogEntry &entry)
 {
+    // Follow the newest row only when the user was already at the bottom (or nothing to scroll).
+    QScrollBar *bar = m_table->verticalScrollBar();
+    const bool atBottom = m_table->rowCount() == 0 || bar->value() >= bar->maximum();
+
     m_entries.append(entry);
+    const int row = m_table->rowCount();
+    m_table->insertRow(row);
+    const QString tip = rowToolTip(entry);
+    const QStringList texts = {entry.time.toString(QStringLiteral("hh:mm:ss.zzz")),
+                               entry.tagName,
+                               entry.registers,
+                               functionCodeText(entry.functionCode),
+                               QStringLiteral("%1 → %2").arg(entry.oldValue, entry.newValue),
+                               entry.raw,
+                               entry.result};
+    for (int col = 0; col < texts.size(); ++col) {
+        auto *item = new QTableWidgetItem(texts.at(col));
+        item->setToolTip(tip);
+        if (col == texts.size() - 1 && !entry.ok)
+            item->setForeground(kFailureColor);
+        m_table->setItem(row, col, item);
+    }
+    if (atBottom)
+        m_table->scrollToBottom();
 }
 
 QList<WriteLogEntry> WriteLogPanel::entries() const
@@ -40,11 +107,13 @@ QList<WriteLogEntry> WriteLogPanel::entries() const
 void WriteLogPanel::clear()
 {
     m_entries.clear();
+    m_table->setRowCount(0);
 }
 
 void WriteLogPanel::setFolder(const QString &folder)
 {
     m_folder = folder;
+    updateFolderLabel();
 }
 
 QString WriteLogPanel::folder() const
@@ -54,12 +123,38 @@ QString WriteLogPanel::folder() const
 
 void WriteLogPanel::setFileError(const QString &text)
 {
-    Q_UNUSED(text);
+    m_fileError = text;
+    updateFolderLabel();
 }
 
 void WriteLogPanel::setOpenFolder(std::function<void(const QString &folder)> open)
 {
-    m_open = std::move(open);
+    if (open)
+        m_open = std::move(open);
+    else
+        m_open = [](const QString &folder) { QDesktopServices::openUrl(QUrl::fromLocalFile(folder)); };
+}
+
+bool WriteLogPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_folderLabel && event->type() == QEvent::Resize)
+        updateFolderLabel();
+    return QWidget::eventFilter(watched, event);
+}
+
+void WriteLogPanel::updateFolderLabel()
+{
+    const bool error = !m_fileError.isEmpty();
+    const QString full = error ? m_fileError : tr("Saved to %1").arg(m_folder);
+    // Before the first layout the width is meaningless: show everything.
+    QString shown = full;
+    if (m_folderLabel->isVisible() && m_folderLabel->width() > 0)
+        shown = QFontMetrics(m_folderLabel->font())
+                    .elidedText(full, Qt::ElideMiddle, m_folderLabel->width());
+    if (m_folderLabel->text() != shown)
+        m_folderLabel->setText(shown);
+    m_folderLabel->setToolTip(full);
+    m_folderLabel->setStyleSheet(error ? QStringLiteral("color: #c62828;") : QString());
 }
 
 } // namespace mb

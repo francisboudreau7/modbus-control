@@ -45,6 +45,8 @@ public:
 
 private:
     friend class ::TstWriteLogPanel;
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void updateFolderLabel();
     // Implementation-defined; T233 may change the private section freely.
     QTableWidget *m_table = nullptr;
     QLabel *m_folderLabel = nullptr;
@@ -52,6 +54,7 @@ private:
     QPushButton *m_clear = nullptr;
     QList<WriteLogEntry> m_entries;
     QString m_folder;
+    QString m_fileError;
     std::function<void(const QString &)> m_open;
 };
 
