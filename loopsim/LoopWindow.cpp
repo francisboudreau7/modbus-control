@@ -1032,7 +1032,8 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
     m_modbusTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_modbusTable->setWordWrap(false);
     m_modbusTable->setStyleSheet(QStringLiteral(
-        "QTableWidget { background: white; gridline-color: #d5dde4; font: 12px 'Segoe UI'; }"
+        "QTableWidget { background: white; color: #1d2227; gridline-color: #d5dde4; font: 12px 'Segoe UI'; }"
+        "QTableWidget::item { color: #1d2227; }"
         "QHeaderView::section { background: #e3eaf0; color: #24425e; padding: 2px 6px; border: none;"
         " border-right: 1px solid #c4d0da; border-bottom: 1px solid #c4d0da; font: bold 11px 'Segoe UI'; }"));
     m_modbusTable->setFixedHeight(m_modbusTable->horizontalHeader()->sizeHint().height() + 3 * 20 + 4);

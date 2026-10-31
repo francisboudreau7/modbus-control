@@ -16,6 +16,9 @@
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTemporaryDir>
+#include <QApplication>
+#include <QPalette>
+#include <QImage>
 #include <QtTest>
 
 #include <modbus.h>
@@ -512,6 +515,36 @@ private slots:
         c.setAuto(false);
         QCOMPARE(t->item(2, 5)->text(), QString("Read / write (0–100); read only in AUTO"));
         QVERIFY(w.findChild<QAction *>("modbusHelpAction"));
+    }
+
+    void modbusTableReadableInDarkTheme()
+    {
+        // Windows dark mode gives white text by default: the panel forces its own text colour.
+        const QPalette old = QApplication::palette();
+        QPalette dark = old;
+        dark.setColor(QPalette::Text, Qt::white);
+        dark.setColor(QPalette::WindowText, Qt::white);
+        dark.setColor(QPalette::Base, QColor(0x20, 0x20, 0x20));
+        dark.setColor(QPalette::Window, QColor(0x20, 0x20, 0x20));
+        QApplication::setPalette(dark);
+        {
+            LoopController c;
+            LoopWindow w(&c);
+            w.resize(1200, 760);
+            w.show();
+            w.findChild<QCheckBox *>("modbusCheck")->setChecked(true);
+            auto *t = w.findChild<QTableWidget *>("modbusTable");
+            QVERIFY(t);
+            const QRect cell = t->visualItemRect(t->item(0, 1));
+            const QImage img = t->viewport()->grab(cell).toImage();
+            int dark = 0;
+            for (int y = 0; y < img.height(); ++y)
+                for (int x = 0; x < img.width(); ++x)
+                    if (qGray(img.pixel(x, y)) < 110)
+                        ++dark;
+            QVERIFY2(dark > 20, "the register text is not drawn in a dark colour");
+        }
+        QApplication::setPalette(old);
     }
 
     void modbusPanelNotRunning()
