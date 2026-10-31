@@ -228,6 +228,12 @@ void EncodingMonitor::evaluatePending(TagId id)
             if (c.encoding == best && !c.values.isEmpty())
                 shown = valueText(c.values.last(), tag);
         }
+        if (m_model->isLocked()) {
+            emit message(QStringLiteral("Detected %1 for '%2' (reads %3), not applied: the tag "
+                                        "configuration is locked.")
+                             .arg(toString(best), tag.name, shown));
+            break;
+        }
         m_model->setEncoding(id, best.type, best.order, false);
         if (const Tag *now = findTag(id))
             m_snapshot.insert(id, *now);
@@ -529,6 +535,15 @@ void EncodingMonitor::applyChoice(const Request &request, const EncodingDialog &
     const std::optional<Encoding> chosen = dialog.chosenEncoding();
     if (!chosen)
         return;
+    if (m_model->isLocked()) {
+        // Confirming the current encoding is still allowed; changing it is not.
+        const Tag *tag = findTag(request.id);
+        if (tag && tag->type == chosen->type && tag->byteOrder == chosen->order)
+            m_model->setEncodingVerified(request.id, true);
+        else
+            emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+        return;
+    }
     m_model->setEncoding(request.id, chosen->type, chosen->order, true);
     if (const Tag *now = findTag(request.id))
         m_snapshot.insert(request.id, *now);
@@ -980,6 +995,10 @@ void EncodingMonitor::runSplitRequest(const Request &request)
         return; // removed or reconfigured meanwhile: the answer no longer applies
     switch (request.noSplit && answer == SplitAnswer::Change ? SplitAnswer::Later : answer) {
     case SplitAnswer::Change: {
+        if (m_model->isLocked()) {
+            emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+            break;
+        }
         if (pairBlocked(*findTag(request.id), split.address))
             break;
         // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new
@@ -1176,6 +1195,10 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
     const std::optional<Encoding> chosen = dialog.chosenEncoding();
     if (!chosen)
         return;
+    if (m_model->isLocked()) {
+        emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+        return;
+    }
     if (pairBlocked(*findTag(request.id), request.start))
         return;
     // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a new 32-bit tag

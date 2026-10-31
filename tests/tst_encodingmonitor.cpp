@@ -327,6 +327,42 @@ private slots:
         QCOMPARE(dialogs.size(), 1);
     }
 
+    // ---- teacher lock (v1.3.3) ---------------------------------------------------------------
+
+    void lockedClearDetectionChangesNothing()
+    {
+        mon->onConnected();
+        const TagId id = add(mkTag(QStringLiteral("Temp"), 110, ValueType::Float32, ByteOrder::ABCD,
+                                   QStringLiteral("°C")));
+        model->setLocked(true);
+        feedThree(id, kF_CDAB);
+        QVERIFY(tagOf(id).byteOrder == ByteOrder::ABCD);
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("Detected float32 CDAB for 'Temp' (reads 52.3 °C), not applied: the "
+                                "tag configuration is locked."));
+    }
+
+    void lockedDialogChangeShowsLockMessage()
+    {
+        const TagId id = add(mkTag(QStringLiteral("Counter"), 110, ValueType::Float32, ByteOrder::CDAB));
+        model->setLocked(true);
+        onDialog = [&](EncodingDialog &dlg) {
+            dlg.setDisplayValue(QStringLiteral("100"));
+            return dlg.chosenEncoding() == std::optional<Encoding>(kI_ABCD);
+        };
+        feedOne(id, kI_ABCD, 100);
+        feedOne(id, kI_ABCD, 100);
+        feedOne(id, kI_ABCD, 100);
+        QCOMPARE(dialogs.size(), 1);
+        QVERIFY(tagOf(id).type == ValueType::Float32);
+        QVERIFY(tagOf(id).byteOrder == ByteOrder::CDAB);
+        QVERIFY(!tagOf(id).encodingVerified);
+        QVERIFY(!messages->isEmpty());
+        QCOMPARE(messages->last().first().toString(),
+                 QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+    }
+
     // A new 32-bit tag is unconfirmed until detection has a result; readings that fit its own
     // encoding confirm it.
     void newTagUnconfirmedUntilReadingsAgree()
