@@ -660,6 +660,20 @@ private slots:
         noUnexpected();
     }
 
+    void encodingMonitorBaseChangeSwitchesNumbering()
+    {
+        QVERIFY(!modified());
+        QCOMPARE(model()->addressBase(), 0);
+        QVERIFY(!win->actions().oneBasedAddresses->isChecked());
+        emit ctl->m_encoding->addressBaseChangeRequested(1);
+        QCOMPARE(model()->addressBase(), 1);
+        QVERIFY(win->actions().oneBasedAddresses->isChecked());
+        QVERIFY(modified());
+        emit ctl->m_encoding->addressBaseChangeRequested(0);
+        QCOMPARE(model()->addressBase(), 0);
+        QVERIFY(!win->actions().oneBasedAddresses->isChecked());
+    }
+
     void trendAxisRangesInProject()
     {
         TrendPlot *trend = win->trendPlot();

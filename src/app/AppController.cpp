@@ -372,6 +372,10 @@ void AppController::wireWrites()
             Qt::QueuedConnection);
     connect(m_worker, &PollWorker::readFinished, m_encoding, &EncodingMonitor::onReadFinished);
     connect(m_worker, &PollWorker::readFinished, this, &AppController::onAddTagReadFinished);
+    connect(m_encoding, &EncodingMonitor::addressBaseChangeRequested, this, [this](int base) {
+        setAddressBase(base);
+        setModified(true);
+    });
     m_window->tagTable()->setAddTagHandler([this] { addTagDialog(); });
 }
 
