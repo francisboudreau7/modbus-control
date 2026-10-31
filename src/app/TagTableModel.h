@@ -6,7 +6,9 @@
 #include <QAbstractTableModel>
 #include <QHash>
 #include <QList>
+#include <QSet>
 
+#include <functional>
 #include <optional>
 
 namespace mb {
@@ -58,6 +60,34 @@ namespace mb {
 /// (setEncodingNote, e.g. "HR 110-111 read as float32 CDAB give 52.3"), or without one "This
 /// register may be half of a 32-bit value. Right-click > Detect encoding... to check it; writes
 /// ask first."
+///
+/// v1.3.3 classroom safety (PLAN.md "v1.3.3 Classroom safety"):
+/// - Register settings = Area, Address, Type, ByteOrder and Writable. While setConnected(true)
+///   their cells are not editable (flags() without ItemIsEditable / ItemIsUserCheckable for
+///   Writable) and setData on them returns false; their ToolTipRole reads "Disconnect to change
+///   the register settings". (The ByteOrder cell of a 16-bit tag keeps its own tooltip.)
+/// - Teacher lock (setLocked(true)): the register settings plus Gain, Offset, WriteMin, WriteMax,
+///   QuickA and QuickB are not editable, setData on them returns false, and their ToolTipRole
+///   reads "The tag configuration is locked (Options > Lock tag configuration)" (this text wins
+///   over the connected one and over the Quick/Min/Max "need a writable" texts). addTag(),
+///   addTag(prototype) and duplicateTag() return -1 and add nothing; removeRows() returns false;
+///   setLayout() and setEncoding() return false (nothing changes). Name, Unit, Plot, Axis, Color
+///   and Value writes are unaffected. setEncodingVerified, setConfirmed16Bit and setEncodingNote
+///   still work (they confirm, they do not change registers). setTags() works in any state.
+/// - Clearing Writable: when a writable tag's Area, Address, Type or ByteOrder actually changes
+///   (setData, setLayout or setEncoding), Writable is set to false in the same edit and
+///   writableCleared(id, was, now) is emitted after dataChanged, with registerText() of the tag
+///   before and after the change. (Holding -> Input clears Writable as before and also emits it.)
+/// - Ticking Writable (setData CheckStateRole Checked on a holding register that is not
+///   writable): first calls the confirmWritable function (see setConfirmWritable) with a
+///   WritableAsk; false -> setData returns false and nothing changes. Accepted -> Writable is set,
+///   writeNeedsRead(id) becomes true, tagsEdited() is emitted. Unticking needs no confirmation and
+///   clears writeNeedsRead.
+/// - writeNeedsRead(id): true from ticking Writable (and for a writable tag added by addTag(
+///   prototype) or duplicateTag) until the first Good sample of that tag in updateSamples(); also
+///   cleared when Writable is cleared. setTags() starts every tag with false. Not saved.
+/// - Was-input tracking: when setData changes a tag's Area from Input to Holding, the tag is
+///   remembered (until setTags or its removal) and WritableAsk::wasInput is true for it.
 class TagTableModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -66,6 +96,20 @@ public:
         Name, Area, Address, Type, ByteOrder, Gain, Offset, Unit, Writable, Plot, Axis,
         Color, Raw, Value, WriteMin, WriteMax, QuickA, QuickB, Quality, ColumnCount
     };
+
+    /// What the confirmWritable function is asked about (v1.3.3).
+    struct WritableAsk {
+        TagId id = 0;
+        QString tagName;
+        /// registerText() of the tag, e.g. "HR 5009-5010 · float32 ABCD".
+        QString registerText;
+        /// The tag was an input register earlier in this session (see the class comment).
+        bool wasInput = false;
+        /// When wasInput: the same registers as input registers, e.g. "IR 5009-5010"; else empty.
+        QString inputRegisterText;
+    };
+    /// Returns true to make the tag writable.
+    using ConfirmWritable = std::function<bool(const WritableAsk &)>;
 
     explicit TagTableModel(QObject *parent = nullptr);
 
@@ -146,12 +190,34 @@ public:
     void setAddressBase(int base);
     int addressBase() const;
 
+    /// v1.3.3: true while a connection is open or being opened (AppController). See the class
+    /// comment. Emits dataChanged for the register-setting columns of every row when it changes.
+    void setConnected(bool connected);
+    bool isConnected() const;
+    /// v1.3.3 teacher lock (Project::locked). Emits dataChanged for every row's config columns
+    /// and lockedChanged() when it changes; not tagsEdited (AppController marks the project
+    /// modified).
+    void setLocked(bool locked);
+    bool isLocked() const;
+    /// Asked before Writable is ticked; unset (default) = accept without asking.
+    void setConfirmWritable(ConfirmWritable confirm);
+    /// See the class comment. False for an unknown id.
+    bool writeNeedsRead(TagId id) const;
+    /// Registers of a tag with the address base, its type and, for 32-bit tags, the byte order:
+    /// "HR 6639-6640 · float32 ABCD", "IR 100 · int16" (middle dot U+00B7).
+    QString registerText(const Tag &tag) const;
+
 signals:
     /// Any configuration change: add, remove, duplicate, setData on a config column.
     /// Not emitted for live values or setTags().
     void tagsEdited();
     /// The user entered a new value for a writable tag.
     void writeRequested(mb::TagId id, double scaledValue);
+    /// v1.3.3: a writable tag's registers changed, so Writable was cleared (see the class comment).
+    /// `was` / `now`: registerText() before / after.
+    void writableCleared(mb::TagId id, const QString &was, const QString &now);
+    /// v1.3.3: setLocked changed the lock state.
+    void lockedChanged(bool locked);
 
 private:
     /// dataChanged for the live columns (Raw..Value, Quality) of rows first..last.
@@ -169,6 +235,11 @@ private:
     QHash<TagId, QString> m_encodingNotes; ///< see setEncodingNote
     TagId m_nextId = 1;
     int m_addressBase = 0;
+    bool m_connected = false;
+    bool m_locked = false;
+    ConfirmWritable m_confirmWritable;
+    QSet<TagId> m_writeNeedsRead;
+    QSet<TagId> m_wasInput;
 };
 
 } // namespace mb

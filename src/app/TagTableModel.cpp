@@ -766,6 +766,53 @@ int TagTableModel::addressBase() const
     return m_addressBase;
 }
 
+// v1.3.3 classroom safety. T230 stubs: T231 implements the rules of the class comment.
+void TagTableModel::setConnected(bool connected)
+{
+    m_connected = connected;
+}
+
+bool TagTableModel::isConnected() const
+{
+    return m_connected;
+}
+
+void TagTableModel::setLocked(bool locked)
+{
+    if (m_locked == locked)
+        return;
+    m_locked = locked;
+    emit lockedChanged(locked);
+}
+
+bool TagTableModel::isLocked() const
+{
+    return m_locked;
+}
+
+void TagTableModel::setConfirmWritable(ConfirmWritable confirm)
+{
+    m_confirmWritable = std::move(confirm);
+}
+
+bool TagTableModel::writeNeedsRead(TagId id) const
+{
+    return m_writeNeedsRead.contains(id);
+}
+
+QString TagTableModel::registerText(const Tag &tag) const
+{
+    const QString prefix = tag.area == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
+    const int first = tag.address + m_addressBase;
+    const bool wide = registerCount(tag.type) == 2;
+    const QString registers = wide ? QStringLiteral("%1 %2-%3").arg(prefix).arg(first).arg(first + 1)
+                                   : QStringLiteral("%1 %2").arg(prefix).arg(first);
+    QString text = registers + QStringLiteral(" · ") + toString(tag.type);
+    if (wide)
+        text += QLatin1Char(' ') + toString(tag.byteOrder);
+    return text;
+}
+
 namespace {
 
 // Stable project-file keys, indexed by TagTableModel::Column. Never rename a key: project files

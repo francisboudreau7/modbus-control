@@ -776,7 +776,7 @@ QByteArray projectToJson(const Project &project)
     for (const QString &key : project.hiddenColumns)
         hiddenColumns.append(key);
 
-    const QJsonObject root{
+    QJsonObject root{
         {QStringLiteral("format"), QStringLiteral("modbus-control-project")},
         {QStringLiteral("version"), static_cast<qint64>(kProjectFormatVersion)},
         {QStringLiteral("connection"), connection},
@@ -790,6 +790,8 @@ QByteArray projectToJson(const Project &project)
              {QStringLiteral("right"), yRangeJson(project.yRight)},
          }},
     };
+    if (project.locked)
+        root.insert(QStringLiteral("locked"), true);
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -880,6 +882,13 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
 
     if (!readYAxes(root, project.yLeft, project.yRight, error))
         return std::nullopt;
+
+    const QJsonValue lockedValue = root.value(QStringLiteral("locked"));
+    if (!lockedValue.isUndefined() && !lockedValue.isBool()) {
+        setError(error, QStringLiteral("\"locked\" must be a boolean"));
+        return std::nullopt;
+    }
+    project.locked = lockedValue.toBool(false);
 
     project.nextTagId = static_cast<TagId>(std::max<qint64>(storedNextId, static_cast<qint64>(maxId) + 1));
     return project;

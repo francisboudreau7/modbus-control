@@ -7,6 +7,7 @@
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
+#include "WriteLogPanel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -32,6 +33,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_cursorPanel(new CursorPanel(this))
     , m_analysisPanel(new AnalysisPanel(this))
     , m_connectionLabel(new QLabel(this))
+    , m_lockLabel(new QLabel(this))
+    , m_writeLogPanel(new WriteLogPanel(this))
 {
     setCentralWidget(m_trendPlot);
     m_analysisPanel->setPlot(m_trendPlot);
@@ -52,6 +55,14 @@ MainWindow::MainWindow(QWidget *parent)
     tagsDock->setFeatures(dockFeatures);
     tagsDock->setWidget(m_tagTable);
     addDockWidget(Qt::BottomDockWidgetArea, tagsDock);
+
+    auto *writeLogDock = new QDockWidget(tr("Write log"), this);
+    writeLogDock->setObjectName(QStringLiteral("writeLogDock"));
+    writeLogDock->setFeatures(dockFeatures);
+    writeLogDock->setWidget(m_writeLogPanel);
+    addDockWidget(Qt::BottomDockWidgetArea, writeLogDock);
+    tabifyDockWidget(tagsDock, writeLogDock);
+    tagsDock->raise();
 
     auto *cursorsDock = new QDockWidget(tr("Cursors"), this);
     cursorsDock->setObjectName(QStringLiteral("cursorsDock"));
@@ -119,6 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
     viewMenu->addAction(quickDock->toggleViewAction());
     viewMenu->addAction(analysisDock->toggleViewAction());
     viewMenu->addAction(setpointsDock->toggleViewAction());
+    viewMenu->addAction(writeLogDock->toggleViewAction());
 
     // Options menu
     auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
@@ -129,6 +141,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.confirmQuickWrites = optionsMenu->addAction(tr("Confirm &quick writes"));
     m_actions.confirmQuickWrites->setCheckable(true);
     m_actions.confirmQuickWrites->setChecked(true);
+    optionsMenu->addSeparator();
+    m_actions.lockTags = optionsMenu->addAction(tr("&Lock tag configuration"));
+    m_actions.lockTags->setCheckable(true);
+    m_actions.lockTags->setToolTip(
+        tr("Prevent changes to tags, registers and write limits (saved in the project)"));
 
     // Help menu
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -146,6 +163,11 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Status bar
+    m_lockLabel->setObjectName(QStringLiteral("lockLabel"));
+    m_lockLabel->setText(QStringLiteral("<b>%1</b>").arg(tr("Tags locked")));
+    m_lockLabel->setToolTip(tr("The tag configuration is locked (Options > Lock tag configuration)"));
+    m_lockLabel->hide();
+    statusBar()->addPermanentWidget(m_lockLabel);
     m_connectionLabel->setObjectName(QStringLiteral("connectionLabel"));
     statusBar()->addPermanentWidget(m_connectionLabel);
     setConnectionStatus(ConnectionState::Disconnected, QString());
@@ -171,6 +193,12 @@ CursorPanel *MainWindow::cursorPanel() const { return m_cursorPanel; }
 const MainWindow::Actions &MainWindow::actions() const { return m_actions; }
 AnalysisPanel *MainWindow::analysisPanel() const { return m_analysisPanel; }
 QuickWritePanel *MainWindow::quickWritePanel() const { return m_quickWritePanel; }
+WriteLogPanel *MainWindow::writeLogPanel() const { return m_writeLogPanel; }
+
+void MainWindow::setTagsLocked(bool locked)
+{
+    m_lockLabel->setVisible(locked);
+}
 
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {

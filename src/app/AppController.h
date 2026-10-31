@@ -73,6 +73,31 @@ class WriteController;
 /// - Tag-table columns: the project's hiddenColumns are applied on load (compact view for a new
 ///   project); changing them from the header menu marks the project modified.
 /// - Export actions open ExportImageDialog / ExportCsvDialog.
+/// - Classroom safety (v1.3.3, PLAN.md "v1.3.3 Classroom safety", T234):
+///   - TagTableModel::setConnected(state != Disconnected) on every connection state change;
+///     the Options action "Use 1-based register numbers" is disabled while connected or locked.
+///   - Teacher lock: Project::locked is applied on load (TagTableModel::setLocked, the lockTags
+///     action's check state, MainWindow::setTagsLocked) and saved; a new project is unlocked.
+///     Checking lockTags locks at once. Unchecking asks (m_prompts.question, title "Unlock tags")
+///     "Unlock the tag configuration? Students can then change registers and make tags
+///     writable." with Yes ("Unlock") / Cancel (default); Cancel re-checks the action. Both mark
+///     the project modified. While locked the tag table's Add opens nothing (status message "The
+///     tag configuration is locked (Options > Lock tag configuration)"), and accepting an
+///     EncodingDialog that would change a tag shows that message instead.
+///   - TagTableModel::writableCleared -> m_prompts.information (title "Writable turned off"),
+///     rich text: headline "'<name>' is no longer writable.", rows "Was:" / "Now:" (the two
+///     register texts) and "Tick Writable again to write to the new register."
+///   - TagTableModel::setConfirmWritable -> m_prompts.question (title "Make writable"), rich text
+///     headline "Make '<name>' writable?", row "Register:" registerText, when wasInput the line
+///     "This tag was an input register (<IR text>). The holding register with the same number
+///     can be a different value in the device.", and "Values typed in its Value cell are then
+///     written to the device."; Yes ("Make writable") / Cancel (default).
+///   - Write log: WriteController::setServer("<host>:<port> unit <id>") on connect;
+///     WriteController::writeLogged -> MainWindow::writeLogPanel()->addEntry and m_writeLog
+///     (WriteLogFile, folder WriteLogFile::defaultFolder(); tests set another one) append. The
+///     first append failure of the session shows a status message "Write log not saved: <error>"
+///     and WriteLogPanel::setFileError(error); later failures only update the panel; a later
+///     success clears the error.
 /// Every dialog goes through private seams (m_prompts, m_continuePrompt) whose defaults show
 /// the real dialogs; tests (TstAppController) replace them. QSettings keys are written under
 /// the application's organization/application names (tests use their own).
