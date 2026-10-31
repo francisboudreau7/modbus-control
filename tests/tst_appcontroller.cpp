@@ -162,6 +162,8 @@ class TstAppController : public QObject
         QStringList openNames;
         QStringList saveCaptions;
         QStringList openCaptions;
+        QStringList openDirs;
+        QStringList openFilters;
         QList<CC> continueChoices;
         std::function<void(QDialog &)> onExec;
         int execCount = 0;
@@ -225,8 +227,10 @@ class TstAppController : public QObject
             }
             return d.saveNames.takeFirst();
         };
-        p.openFileName = [this](const QString &caption, const QString &, const QString &) {
+        p.openFileName = [this](const QString &caption, const QString &dir, const QString &filter) {
             d.openCaptions << caption;
+            d.openDirs << dir;
+            d.openFilters << filter;
             if (d.openNames.isEmpty()) {
                 d.unexpected << QStringLiteral("openFileName: ") + caption;
                 return QString();
@@ -321,12 +325,32 @@ class TstAppController : public QObject
         };
     }
 
-    void startApp()
+    /// Starts the application. The program itself starts blank (v1.3.3); most tests rely on the
+    /// demo project, so by default it is loaded as an unmodified Untitled project with the
+    /// connection settings and project folder the start left behind.
+    void startApp(bool withDemo = true)
     {
         d = Seams{};
         win = std::make_unique<MainWindow>();
         ctl = std::make_unique<AppController>(win.get());
         installSeams();
+        if (withDemo)
+            loadDemoProject();
+    }
+
+    void loadDemoProject()
+    {
+        const ConnectionSettings connection = win->connectionBar()->settings();
+        const QVariant dir = QSettings().value(QStringLiteral("project/dir"));
+        if (!ctl->loadFrom(QStringLiteral(MC_EXAMPLES_DIR "/demo.mbproj")))
+            qFatal("cannot load examples/demo.mbproj");
+        win->connectionBar()->setSettings(connection);
+        ctl->m_projectPath.clear();
+        ctl->setModified(false);
+        if (dir.isValid())
+            QSettings().setValue(QStringLiteral("project/dir"), dir);
+        else
+            QSettings().remove(QStringLiteral("project/dir"));
     }
 
     void stopApp()
@@ -823,6 +847,72 @@ private slots:
         QVERIFY(ctl->openProject(QStringLiteral(MC_EXAMPLES_DIR "/cm50.mbproj")));
         QVERIFY(model()->rowCount() > 0);
         QVERIFY(win->windowTitle().startsWith(QStringLiteral("cm50")));
+        noUnexpected();
+    }
+
+    // v1.3.3: the program starts with an empty, unmodified Untitled project.
+    void blankStart()
+    {
+        {
+            QSettings q;
+            q.setValue(QStringLiteral("connection/lastHost"), QStringLiteral("10.1.2.3"));
+            q.setValue(QStringLiteral("connection/lastPort"), 1700);
+            q.setValue(QStringLiteral("connection/lastUnit"), 5);
+        }
+        stopApp();
+        startApp(false);
+        QCOMPARE(model()->rowCount(), 0);
+        QVERIFY(model()->tags().isEmpty());
+        QVERIFY(!modified());
+        QVERIFY(win->windowTitle().startsWith(QStringLiteral("Untitled")));
+        QVERIFY(ctl->m_projectPath.isEmpty());
+        const ConnectionSettings c = win->connectionBar()->settings();
+        QCOMPARE(c.host, QStringLiteral("10.1.2.3"));
+        QCOMPARE(int(c.port), 1700);
+        QCOMPARE(c.unitId, 5);
+        QStringList got = win->tagTable()->hiddenColumns();
+        QStringList want = compactHiddenColumns();
+        got.sort();
+        want.sort();
+        QCOMPARE(got, want);
+        QCOMPARE(win->analysisPanel()->settings().pvTagId, AnalysisSettings{}.pvTagId);
+        noUnexpected();
+    }
+
+    void openExampleAsksInTheExamplesFolder()
+    {
+        QVERIFY(win->actions().openExample);
+        d.openNames << QStringLiteral(MC_EXAMPLES_DIR "/cm50.mbproj");
+        win->actions().openExample->trigger();
+        QCOMPARE(d.openCaptions, QStringList{QStringLiteral("Open example")});
+        QCOMPARE(d.openFilters, QStringList{QStringLiteral("Modbus Control projects (*.mbproj)")});
+        QCOMPARE(QDir::cleanPath(d.openDirs.value(0)),
+                 QDir::cleanPath(QStringLiteral(MC_EXAMPLES_DIR)));
+        QVERIFY(model()->rowCount() > 0);
+        QVERIFY(win->windowTitle().startsWith(QStringLiteral("cm50")));
+        QVERIFY(!modified());
+        noUnexpected();
+    }
+
+    void openExampleCancelledChangesNothing()
+    {
+        const int rows = model()->rowCount();
+        d.openNames << QString();
+        win->actions().openExample->trigger();
+        QCOMPARE(d.openCaptions.size(), 1);
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(win->windowTitle().startsWith(QStringLiteral("Untitled")));
+        noUnexpected();
+    }
+
+    void openExampleAsksAboutUnsavedChanges()
+    {
+        ctl->setModified(true);
+        d.answers << QMessageBox::Cancel;
+        win->actions().openExample->trigger();
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(d.openCaptions.isEmpty()); // cancelled before the file dialog
+        QVERIFY(modified());
         noUnexpected();
     }
 
@@ -1421,8 +1511,8 @@ private slots:
         const QString png = P(QStringLiteral("trend.png"));
         d.onExec = [&](QDialog &dlg) {
             dlg.findChild<QLineEdit *>(QStringLiteral("exportPath"))->setText(png);
-            dlg.findChild<QSpinBox *>(QStringLiteral("exportWidth"))->setValue(300);
-            dlg.findChild<QSpinBox *>(QStringLiteral("exportHeight"))->setValue(200);
+            dlg.findChild<QDoubleSpinBox *>(QStringLiteral("exportWidth"))->setValue(300);
+            dlg.findChild<QDoubleSpinBox *>(QStringLiteral("exportHeight"))->setValue(200);
             dlg.accept();
         };
         win->actions().exportImage->trigger();
@@ -1465,10 +1555,18 @@ private slots:
         const QString cursorText = win->cursorPanel()->readoutText();
         QVERIFY(!cursorText.isEmpty());
         const QString analysisText = win->analysisPanel()->readoutText();
-        // The cursor readout comes first; the analysis readout follows after a newline when it
-        // is not empty (the stub panel of T195 returns an empty one, the real panel a summary).
-        const QString expected = analysisText.isEmpty() ? cursorText : cursorText + QLatin1Char('\n') + analysisText;
-        QCOMPARE(ctl->imageReadoutText(), expected);
+        // The dialog gets both readouts separately: each check box is enabled when its text is not empty.
+        bool cursorEnabled = false;
+        bool analysisEnabled = false;
+        d.onExec = [&](QDialog &dlg) {
+            cursorEnabled = dlg.findChild<QCheckBox *>(QStringLiteral("cursorReadoutCheck"))->isEnabled();
+            analysisEnabled = dlg.findChild<QCheckBox *>(QStringLiteral("analysisReadoutCheck"))->isEnabled();
+            dlg.reject();
+        };
+        win->actions().exportImage->trigger();
+        QCOMPARE(d.execCount, 1);
+        QVERIFY(cursorEnabled);
+        QCOMPARE(analysisEnabled, !analysisText.isEmpty());
         noUnexpected();
     }
 
