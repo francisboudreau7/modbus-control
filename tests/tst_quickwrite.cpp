@@ -1384,11 +1384,9 @@ private slots:
         proto.type = ValueType::UInt16;
         proto.address = 300;
         const int row = r.model.addTag(proto);
-        if (row < 0)
-            QSKIP("enable when TagTableModel sets writeNeedsRead");
+        QVERIFY(row >= 0);
         const TagId id = r.model.tagAt(row).id;
-        if (!r.model.writeNeedsRead(id))
-            QSKIP("enable when TagTableModel sets writeNeedsRead");
+        QVERIFY(r.model.writeNeedsRead(id)); // a writable tag added from a prototype
         r.wc->requestWrite(id, 5.0);
         QCOMPARE(r.writes->size(), 0);
         QCOMPARE(r.warns.size(), 1);
