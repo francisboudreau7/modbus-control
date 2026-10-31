@@ -33,6 +33,8 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStatusBar>
+#include <QHeaderView>
+#include <QTableWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -803,6 +805,8 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     row->addWidget(m_schematic, 1);
     row->addWidget(m_faceplate);
     col->addLayout(row, 1);
+    buildModbusPanel(central);
+    col->addWidget(m_modbusPanel);
 
     // Control bar.
     auto *bar = new QHBoxLayout;
@@ -863,6 +867,9 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     QMenu *help = menuBar()->addMenu(QStringLiteral("&Help"));
     QAction *about = help->addAction(QStringLiteral("&About"));
     about->setObjectName(QStringLiteral("aboutAction"));
+    QAction *regs = help->addAction(QStringLiteral("&Modbus registers..."));
+    regs->setObjectName(QStringLiteral("modbusHelpAction"));
+    connect(regs, &QAction::triggered, this, [this] { showModbusHelp(); });
 
     connect(open, &QAction::triggered, this, [this] { openScenario(); });
     connect(save, &QAction::triggered, this, [this] { saveScenario(); });
@@ -915,6 +922,143 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
 SchematicView *LoopWindow::schematic() const { return m_schematic; }
 Faceplate *LoopWindow::faceplate() const { return m_faceplate; }
 
+namespace {
+struct RegisterRow {
+    const char *signal;
+    const char *reg;
+    const char *addr;
+    const char *type;
+    const char *fc;
+    const char *access;
+};
+
+// Narrow literals are UTF-8 (/utf-8).
+const RegisterRow kRegisterRows[3] = {
+    {"PV \u2013 LT-101 level, %", "Input register 1-2", "IR 0", "float32 ABCD (high word first)",
+     "FC04", "Read only"},
+    {"SP \u2013 LIC-101 setpoint, %", "Holding register 1-2", "HR 0", "float32 ABCD",
+     "FC03 read, FC16 write", "Read / write (0\u2013100)"},
+    {"OUT \u2013 LIC-101 output, %", "Holding register 3-4", "HR 2", "float32 ABCD",
+     "FC03 read, FC16 write", "Read / write (0\u2013100); read only in AUTO"},
+};
+
+const char *const kModbusNote =
+    "Each value is a 32-bit float on two registers: read or write both registers in one request "
+    "(FC06 and half a float are refused). In Modbus Control tick Options \u203A Use 1-based register "
+    "numbers, or open examples\\loop101.mbproj.";
+} // namespace
+
+void LoopWindow::buildModbusPanel(QWidget *parent)
+{
+    m_modbusPanel = new QWidget(parent);
+    m_modbusPanel->setObjectName(QStringLiteral("modbusPanel"));
+    m_modbusPanel->setAttribute(Qt::WA_StyledBackground, true);
+    m_modbusPanel->setStyleSheet(QStringLiteral(
+        "#modbusPanel { background: #f3f6f9; border: 1px solid #aebbc7; border-radius: 4px; }"
+        "#modbusPanel QLabel { background: transparent; }"));
+    auto *lay = new QVBoxLayout(m_modbusPanel);
+    lay->setContentsMargins(8, 4, 8, 6);
+    lay->setSpacing(3);
+    auto *title = new QLabel(QStringLiteral("Modbus TCP \u2013 connect Modbus Control here"), m_modbusPanel);
+    title->setStyleSheet(QStringLiteral("font: bold 12px 'Segoe UI'; color: #24425e;"));
+    m_modbusConn = new QLabel(m_modbusPanel);
+    m_modbusConn->setObjectName(QStringLiteral("modbusConnLabel"));
+    m_modbusConn->setTextFormat(Qt::RichText);
+    m_modbusConn->setStyleSheet(QStringLiteral("font: 12px 'Segoe UI'; color: #1d2227;"));
+    auto *head = new QHBoxLayout;
+    head->addWidget(title);
+    head->addSpacing(16);
+    head->addWidget(m_modbusConn, 1);
+    lay->addLayout(head);
+
+    m_modbusTable = new QTableWidget(3, 7, m_modbusPanel);
+    m_modbusTable->setObjectName(QStringLiteral("modbusTable"));
+    const QStringList headers{QStringLiteral("Signal"),
+                              QStringLiteral("Register (Modbus Control, 1-based)"),
+                              QStringLiteral("Address (0-based)"), QStringLiteral("Type"),
+                              QStringLiteral("Function codes"), QStringLiteral("Access"),
+                              QStringLiteral("Value")};
+    m_modbusTable->setHorizontalHeaderLabels(headers);
+    const QStringList tips{
+        QStringLiteral("The value and where it comes from."),
+        QStringLiteral("Register number as Modbus Control shows it with Options > Use 1-based register "
+                       "numbers. A float32 takes two registers."),
+        QStringLiteral("Protocol address on the wire (0-based): IR = input register, HR = holding "
+                       "register. Use this if Modbus Control is in 0-based mode."),
+        QStringLiteral("float32 ABCD: IEEE 754, high word first (big-endian words)."),
+        QStringLiteral("FC03 = Read Holding Registers, FC04 = Read Input Registers, FC16 = Write "
+                       "Multiple Registers. FC06 (single register) is refused."),
+        QStringLiteral("What a client may do with the value."),
+        QStringLiteral("Current value in the simulator.")};
+    for (int c = 0; c < 7; ++c) {
+        m_modbusTable->horizontalHeaderItem(c)->setToolTip(tips.at(c));
+    }
+    for (int r = 0; r < 3; ++r) {
+        const RegisterRow &rr = kRegisterRows[r];
+        const char *cells[6] = {rr.signal, rr.reg, rr.addr, rr.type, rr.fc, rr.access};
+        for (int c = 0; c < 6; ++c) {
+            auto *item = new QTableWidgetItem(QString::fromUtf8(cells[c]));
+            item->setFlags(Qt::ItemIsEnabled);
+            item->setToolTip(tips.at(c));
+            m_modbusTable->setItem(r, c, item);
+        }
+        auto *value = new QTableWidgetItem;
+        value->setFlags(Qt::ItemIsEnabled);
+        value->setToolTip(tips.at(6));
+        value->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        QFont f = value->font();
+        f.setBold(true);
+        value->setFont(f);
+        m_modbusTable->setItem(r, 6, value);
+    }
+    m_modbusTable->verticalHeader()->hide();
+    m_modbusTable->verticalHeader()->setDefaultSectionSize(20);
+    m_modbusTable->horizontalHeader()->setStretchLastSection(false);
+    m_modbusTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_modbusTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    m_modbusTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_modbusTable->setSelectionMode(QAbstractItemView::NoSelection);
+    m_modbusTable->setFocusPolicy(Qt::NoFocus);
+    m_modbusTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_modbusTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_modbusTable->setWordWrap(false);
+    m_modbusTable->setStyleSheet(QStringLiteral(
+        "QTableWidget { background: white; gridline-color: #d5dde4; font: 12px 'Segoe UI'; }"
+        "QHeaderView::section { background: #e3eaf0; color: #24425e; padding: 2px 6px; border: none;"
+        " border-right: 1px solid #c4d0da; border-bottom: 1px solid #c4d0da; font: bold 11px 'Segoe UI'; }"));
+    m_modbusTable->setFixedHeight(m_modbusTable->horizontalHeader()->sizeHint().height() + 3 * 20 + 4);
+    lay->addWidget(m_modbusTable);
+
+    m_modbusNote = new QLabel(QString::fromUtf8(kModbusNote), m_modbusPanel);
+    m_modbusNote->setObjectName(QStringLiteral("modbusNote"));
+    m_modbusNote->setWordWrap(true);
+    m_modbusNote->setStyleSheet(QStringLiteral("color: #4a5a68; font: 11px 'Segoe UI';"));
+    lay->addWidget(m_modbusNote);
+}
+
+void LoopWindow::showModbusHelp()
+{
+    QString html = QStringLiteral("<p><b>Modbus TCP</b><br>%1</p>").arg(m_modbusConn->text());
+    html += QStringLiteral("<table cellspacing='0' cellpadding='4' border='1'><tr>");
+    for (int c = 0; c < 6; ++c) {
+        html += QStringLiteral("<th>%1</th>")
+                    .arg(m_modbusTable->horizontalHeaderItem(c)->text().toHtmlEscaped());
+    }
+    html += QStringLiteral("</tr>");
+    for (int r = 0; r < 3; ++r) {
+        html += QStringLiteral("<tr>");
+        for (int c = 0; c < 6; ++c) {
+            html += QStringLiteral("<td>%1</td>").arg(m_modbusTable->item(r, c)->text().toHtmlEscaped());
+        }
+        html += QStringLiteral("</tr>");
+    }
+    html += QStringLiteral("</table><p>%1</p>").arg(QString::fromUtf8(kModbusNote).toHtmlEscaped());
+    QMessageBox box(QMessageBox::Information, QStringLiteral("Modbus registers"), html,
+                    QMessageBox::Ok, this);
+    box.setTextFormat(Qt::RichText);
+    box.exec();
+}
+
 void LoopWindow::setServerStatus(const QString &text)
 {
     m_serverStatus = text;
@@ -959,6 +1103,30 @@ void LoopWindow::refresh()
     syncControls();
     m_timeLabel->setText(
         QStringLiteral("t = %1 s").arg(m_controller->model().state().timeS, 0, 'f', 1));
+    {
+        const LoopServer &srv = m_controller->server();
+        if (srv.port() != 0) {
+            const int n = srv.clientCount();
+            m_modbusConn->setText(
+                QStringLiteral("Server <b>%1 : %2</b> &nbsp;&nbsp; Unit 1 (any unit answered) "
+                               "&nbsp;&nbsp;\u2013&nbsp;&nbsp; %3 %4 connected")
+                    .arg(srv.host().toHtmlEscaped())
+                    .arg(srv.port())
+                    .arg(n)
+                    .arg(n == 1 ? QStringLiteral("client") : QStringLiteral("clients")));
+        } else {
+            m_modbusConn->setText(
+                QStringLiteral("<span style='color:#c0392b;'><b>Server not running: %1</b></span>")
+                    .arg(m_serverStatus.toHtmlEscaped()));
+        }
+        const LoopState &st = m_controller->model().state();
+        m_modbusTable->item(0, 6)->setText(pct1(st.pvPct) + QStringLiteral(" %"));
+        m_modbusTable->item(1, 6)->setText(pct1(st.spPct) + QStringLiteral(" %"));
+        m_modbusTable->item(2, 6)->setText(pct1(st.outPct) + QStringLiteral(" %"));
+        m_modbusTable->item(2, 5)->setText(m_controller->model().isAuto()
+                                               ? QStringLiteral("Read only (AUTO)")
+                                               : QString::fromUtf8(kRegisterRows[2].access));
+    }
     if (!m_serverStatus.isEmpty()) {
         QString msg = m_serverStatus;
         if (m_controller->server().port() != 0) { // running: a client count only means something then
