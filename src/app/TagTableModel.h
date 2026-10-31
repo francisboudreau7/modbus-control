@@ -84,8 +84,11 @@ namespace mb {
 ///   writeNeedsRead(id) becomes true, tagsEdited() is emitted. Unticking needs no confirmation and
 ///   clears writeNeedsRead.
 /// - writeNeedsRead(id): true from ticking Writable (and for a writable tag added by addTag(
-///   prototype) or duplicateTag) until the first Good sample of that tag in updateSamples(); also
-///   cleared when Writable is cleared. setTags() starts every tag with false. Not saved.
+///   prototype) or duplicateTag, and for every writable tag when setConnected(true) starts a
+///   connection, which may reach another device) until the first Good sample of that tag in
+///   updateSamples(); also cleared when Writable is cleared. setTags() starts every tag with
+///   false. Not saved.
+/// - Blocked cells (either lock) have a grey ForegroundRole (#9e9e9e).
 /// - Was-input tracking: when setData changes a tag's Area from Input to Holding, the tag is
 ///   remembered (until setTags or its removal) and WritableAsk::wasInput is true for it.
 class TagTableModel : public QAbstractTableModel

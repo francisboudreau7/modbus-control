@@ -1,6 +1,7 @@
 #include "WriteLogPanel.h"
 
 #include <QDesktopServices>
+#include <QDir>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QHBoxLayout>
@@ -58,7 +59,10 @@ WriteLogPanel::WriteLogPanel(QWidget *parent)
     m_folderLabel->installEventFilter(this);
 
     m_open = [](const QString &folder) { QDesktopServices::openUrl(QUrl::fromLocalFile(folder)); };
-    connect(m_openFolder, &QPushButton::clicked, this, [this] { m_open(m_folder); });
+    connect(m_openFolder, &QPushButton::clicked, this, [this] {
+        QDir().mkpath(m_folder); // before the first write the folder does not exist yet
+        m_open(m_folder);
+    });
     connect(m_clear, &QPushButton::clicked, this, &WriteLogPanel::clear);
 
     auto *buttons = new QHBoxLayout;

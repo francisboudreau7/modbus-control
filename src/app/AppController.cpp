@@ -433,24 +433,31 @@ void AppController::wireClassroomSafety()
         const QString text = rich::headline(tr("'%1' is no longer writable.").arg(name))
             + rich::rows({{tr("Was:"), was}, {tr("Now:"), now}})
             + rich::paragraph(tr("Tick Writable again to write to the new register."));
-        m_prompts.information(tr("Writable turned off"), text);
+        // Shown after the edit has finished (tags pushed, encoding checks done): a modal box
+        // here would run a nested event loop in the middle of the model change.
+        QTimer::singleShot(0, this, [this, text] { m_prompts.information(tr("Writable turned off"), text); });
     });
     model->setConfirmWritable([this](const TagTableModel::WritableAsk &request) {
-        QString text = rich::headline(tr("Make '%1' writable?").arg(request.tagName))
-            + rich::rows({{tr("Register:"), request.registerText}});
-        if (request.wasInput) {
-            text += rich::paragraph(
-                tr("This tag was an input register (%1). The holding register with the same number "
-                   "can be a different value in the device.").arg(request.inputRegisterText));
-        }
-        text += rich::paragraph(tr("Values typed in its Value cell are then written to the device."));
-        return askYesCancel(tr("Make writable"), text, tr("Make writable"));
+        return confirmWritable(request);
     });
 
     connect(m_writes, &WriteController::writeLogged, this,
             [this](const WriteLogEntry &entry) { onWriteLogged(entry); });
     if (WriteLogPanel *panel = m_window->writeLogPanel())
         panel->setFolder(m_writeLog.folder());
+}
+
+bool AppController::confirmWritable(const TagTableModel::WritableAsk &request)
+{
+    QString text = rich::headline(tr("Make '%1' writable?").arg(request.tagName))
+        + rich::rows({{tr("Register:"), request.registerText}});
+    if (request.wasInput) {
+        text += rich::paragraph(
+            tr("This tag was an input register (%1). The holding register with the same number "
+               "can be a different value in the device.").arg(request.inputRegisterText));
+    }
+    text += rich::paragraph(tr("Values typed in its Value cell are then written to the device."));
+    return askYesCancel(tr("Make writable"), text, tr("Make writable"));
 }
 
 bool AppController::askYesCancel(const QString &title, const QString &text, const QString &yesLabel)
@@ -1084,6 +1091,26 @@ void AppController::addTagDialog()
                      .arg(added.name.isEmpty() ? range(added) : added.name, t.name, range(t)));
             return;
         }
+    }
+    if (added.isWritable()) {
+        // The same question as ticking Writable in the table; an input tag at the same number
+        // counts as "was an input register".
+        TagTableModel::WritableAsk ask;
+        ask.tagName = added.name.isEmpty() ? range(added) : added.name;
+        ask.registerText = model->registerText(added);
+        for (const Tag &t : model->tags()) {
+            const int tFirst = t.address;
+            const int tLast = tFirst + registerCount(t.type) - 1;
+            if (t.area == Area::InputRegister && first <= tLast && tFirst <= last) {
+                Tag asInput = added;
+                asInput.area = Area::InputRegister;
+                ask.wasInput = true;
+                ask.inputRegisterText = model->registerText(asInput).section(QStringLiteral(" · "), 0, 0);
+                break;
+            }
+        }
+        if (!confirmWritable(ask))
+            return;
     }
     const int row = model->addTag(added);
     if (dialog.detectionConfirmed() && row >= 0 && row < model->tags().size())

@@ -3,6 +3,7 @@
 #include "PollWorker.h"
 #include "ProjectIO.h"
 #include "Recorder.h"
+#include "TagTableModel.h"
 #include "WriteLog.h"
 
 #include <QHash>
@@ -92,7 +93,10 @@ class WriteController;
 ///     headline "Make '<name>' writable?", row "Register:" registerText, when wasInput the line
 ///     "This tag was an input register (<IR text>). The holding register with the same number
 ///     can be a different value in the device.", and "Values typed in its Value cell are then
-///     written to the device."; Yes ("Make writable") / Cancel (default).
+///     written to the device."; Yes ("Make writable") / Cancel (default). The Add tag dialog asks
+///     the same question before adding a writable tag (wasInput when an input tag overlaps its
+///     registers); Cancel adds nothing. The "Writable turned off" box is shown from a zero-delay
+///     timer, after the model change has finished.
 ///   - Write log: WriteController::setServer("<host>:<port> unit <id>") on connect;
 ///     WriteController::writeLogged -> MainWindow::writeLogPanel()->addEntry and m_writeLog
 ///     (WriteLogFile, folder WriteLogFile::defaultFolder(); tests set another one) append. The
@@ -201,6 +205,8 @@ private:
     static constexpr quint64 kAddTagRequestBase = quint64(1) << 62;
     /// Opens the Add tag dialog (see the class comment).
     void addTagDialog();
+    /// The "Make writable" question (TagTableModel::setConfirmWritable and the Add tag dialog).
+    bool confirmWritable(const TagTableModel::WritableAsk &request);
     void onAddTagReadFinished(quint64 requestId, const ModbusResult &result, const QList<quint16> &values);
     quint64 m_nextAddTagRequest = kAddTagRequestBase;
     QHash<quint64, std::function<void(const ModbusResult &, const QList<quint16> &)>> m_addTagReads;

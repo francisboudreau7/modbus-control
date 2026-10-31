@@ -24,7 +24,8 @@ namespace mb {
 ///   to the bottom (or empty) before, so reading older rows is not disturbed.
 /// - "folderLabel": "Saved to <folder>" (elided in the middle, full path as tooltip), or the last
 ///   file error in red when setFileError() was called with a non-empty text.
-/// - "openFolderButton" "Open folder": calls the open-folder function with folder() (default:
+/// - "openFolderButton" "Open folder": creates folder() when missing, then calls the open-folder
+///   function with it (default:
 ///   QDesktopServices::openUrl(QUrl::fromLocalFile(folder)); tests replace it).
 /// - "clearButton" "Clear list": removes every row (the files are not touched).
 class WriteLogPanel : public QWidget

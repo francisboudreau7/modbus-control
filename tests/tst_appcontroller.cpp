@@ -2041,7 +2041,8 @@ private slots:
     void classroomWritableClearedShowsInformation()
     {
         QVERIFY(model()->setData(cell(model(), 7, TagTableModel::Address), 120));
-        QCOMPARE(d.informations.size(), 1);
+        QVERIFY(d.informations.isEmpty()); // shown after the edit has finished
+        QTRY_COMPARE(d.informations.size(), 1);
         const QString t = d.informations.first();
         QVERIFY(t.startsWith(QStringLiteral("Writable turned off: ")));
         QVERIFY(t.contains(QStringLiteral("'Setpoint' is no longer writable.")));
@@ -2083,6 +2084,41 @@ private slots:
                                  Qt::CheckStateRole));
         QCOMPARE(d.questions.size(), 1);
         QVERIFY(d.questions.first().contains(QStringLiteral("This tag was an input register (IR 0")));
+        noUnexpected();
+    }
+
+    void classroomAddTagWritableAsksFirst()
+    {
+        const int rows = model()->rowCount();
+        const auto addWritableAt = [this](const QString &address) {
+            d.onExec = [address](QDialog &dialog) {
+                auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+                QVERIFY(dlg);
+                chooseTarget(*dlg, 0, address);
+                dlg->findChild<QLineEdit *>(QStringLiteral("nameEdit"))->setText(QStringLiteral("New"));
+                dlg->findChild<QCheckBox *>(QStringLiteral("writableCheck"))->setChecked(true);
+                dlg->accept();
+            };
+            addButton()->click();
+        };
+        d.answers << QMessageBox::Cancel;
+        addWritableAt(QStringLiteral("300"));
+        QCOMPARE(model()->rowCount(), rows); // cancelled: nothing added
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(d.questions.first().contains(QStringLiteral("Make 'New' writable?")));
+        QVERIFY(d.questions.first().contains(QStringLiteral("HR 300")));
+        QVERIFY(!d.questions.first().contains(QStringLiteral("was an input register")));
+
+        // Tag 0 of the demo is an input register at 0: a writable HR 0 gets the extra line.
+        QVERIFY(model()->tagAt(0).area == Area::InputRegister);
+        const QString input = QString::number(model()->tagAt(0).address);
+        d.questions.clear();
+        d.answers << QMessageBox::Yes;
+        addWritableAt(input);
+        QCOMPARE(model()->rowCount(), rows + 1);
+        QVERIFY(model()->tagAt(rows).isWritable());
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(d.questions.first().contains(QStringLiteral("This tag was an input register (IR ")));
         noUnexpected();
     }
 

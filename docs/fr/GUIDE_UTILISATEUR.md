@@ -376,10 +376,12 @@ L'avertissement apparaît lorsque vous modifiez le tableau et lorsque vous appli
 ### Rendre une étiquette accessible en écriture
 
 Cocher **Writable** demande d'abord une confirmation. La question est « Make 'Setpoint' writable? » et indique le
-registre, par exemple « HR 5009-5010 (float32 ABCD) ». Cliquez sur **Make writable** pour continuer. **Cancel** est le
-bouton par défaut.
+registre, par exemple « HR 5009-5010 · float32 ABCD », en rappelant que les valeurs saisies dans sa cellule Value sont
+alors écrites dans l'appareil. Cliquez sur **Make writable** pour continuer. **Cancel** est le bouton par défaut.
+Ajouter une étiquette avec **Writable** coché dans la boîte Add tag pose la même question.
 
-Si l'étiquette était un registre d'entrée plus tôt dans la même session, la question précise aussi : « This tag was an
+Si l'étiquette était un registre d'entrée plus tôt dans la même session (ou, dans la boîte Add tag, si une étiquette
+d'entrée utilise déjà ce numéro), la question précise aussi : « This tag was an
 input register (IR 5009-5010). The holding register with the same number can be a different value in the device. »
 Vérifiez la valeur affichée sur le régulateur avant d'écrire.
 
@@ -387,8 +389,9 @@ Une étiquette accessible en écriture a aussi besoin d'une lecture valide avant
 16 bits. Après avoir coché **Writable** sur une étiquette, la première écriture est refusée tant que l'étiquette n'a pas eu
 une lecture Good à son registre actuel : « No valid reading of 'Setpoint' since it was made writable. » Le message indique
 qu'aucune écriture n'a été faite et énumère ce qu'il faut vérifier : le numéro de registre, la zone (Area) et le type. Connectez-vous,
-attendez une lecture Good, puis écrivez. Cette vérification n'est pas enregistrée avec le projet : un projet ouvert depuis le
-disque ne l'a donc pas.
+attendez une lecture Good, puis écrivez. Il en va de même pour toutes les étiquettes accessibles en écriture après chaque
+nouvelle connexion, puisqu'elle peut joindre un autre appareil : les écritures attendent la première lecture Good
+(habituellement en moins d'une période de lecture).
 
 ### Write log
 

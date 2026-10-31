@@ -130,6 +130,10 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     const bool disp = role == Qt::DisplayRole;
     const bool is32 = registerCount(t.type) == 2;
 
+    // Blocked cells are drawn grey (Quality, the only other coloured column, is never blocked).
+    if (role == Qt::ForegroundRole && isColumnBlocked(index.column()))
+        return QBrush(QColor(0x9e, 0x9e, 0x9e));
+
     if (role == Qt::ToolTipRole) {
         if (m_locked && isTeacherLockedColumn(index.column()))
             return tr("The tag configuration is locked (Options > Lock tag configuration)");
@@ -862,6 +866,13 @@ void TagTableModel::setConnected(bool connected)
     if (m_connected == connected)
         return;
     m_connected = connected;
+    // A new connection may reach another device: every writable tag needs a reading there first.
+    if (connected) {
+        for (const Tag &t : std::as_const(m_tags)) {
+            if (t.isWritable())
+                m_writeNeedsRead.insert(t.id);
+        }
+    }
     if (m_tags.isEmpty())
         return;
     const int last = int(m_tags.size()) - 1;

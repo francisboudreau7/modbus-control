@@ -1746,6 +1746,28 @@ private slots:
         }
     }
 
+    void blockedCellsAreGreyAndConnectNeedsReading()
+    {
+        TagTableModel m;
+        Tag t;
+        t.name = QStringLiteral("Sp");
+        t.writable = true;
+        m.setTags({t}, 2);
+        const TagId id = m.tagAt(0).id;
+        QVERIFY(!m.data(m.index(0, TagTableModel::Address), Qt::ForegroundRole).isValid());
+        QVERIFY(!m.writeNeedsRead(id)); // loaded from disk
+        m.setConnected(true);
+        QCOMPARE(m.data(m.index(0, TagTableModel::Address), Qt::ForegroundRole).value<QBrush>().color(),
+                 QColor(0x9e, 0x9e, 0x9e));
+        QVERIFY(!m.data(m.index(0, TagTableModel::Name), Qt::ForegroundRole).isValid());
+        QVERIFY(!m.data(m.index(0, TagTableModel::Gain), Qt::ForegroundRole).isValid());
+        QVERIFY(m.writeNeedsRead(id)); // a new connection may reach another device
+        m.setConnected(false);
+        m.setLocked(true);
+        QVERIFY(m.data(m.index(0, TagTableModel::Gain), Qt::ForegroundRole).isValid());
+        QVERIFY(!m.data(m.index(0, TagTableModel::Unit), Qt::ForegroundRole).isValid());
+    }
+
     void writeNeedsReadLifecycle()
     {
         TagTableModel m;

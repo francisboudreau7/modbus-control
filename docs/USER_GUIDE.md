@@ -376,10 +376,12 @@ The warning appears when you edit the table and when you apply **Detect encoding
 ### Making a tag writable
 
 Ticking **Writable** asks first. The question is "Make 'Setpoint' writable?" and it gives the
-register, for example "HR 5009-5010 (float32 ABCD)". Click **Make writable** to continue. **Cancel** is
-the default button.
+register, for example "HR 5009-5010 · float32 ABCD", and reminds you that values typed in its Value cell
+are then written to the device. Click **Make writable** to continue. **Cancel** is the default button.
+Adding a tag with **Writable** ticked in the Add tag dialog asks the same question.
 
-If the tag was an input register earlier in the same session, the question also says: "This tag was an
+If the tag was an input register earlier in the same session (or, in the Add tag dialog, an input
+tag already uses that number), the question also says: "This tag was an
 input register (IR 5009-5010). The holding register with the same number can be a different value in
 the device." Check the value on the controller's display before you write.
 
@@ -387,8 +389,8 @@ A writable tag also needs a valid reading before its first write, 16-bit tags in
 **Writable** on a tag, the first write is refused until the tag has had a Good reading at its current
 register: "No valid reading of 'Setpoint' since it was made writable." The message says that nothing was
 written and lists what to check: the register number, the area and the type. Connect, wait for a Good
-reading, then write. This check is not saved with the project, so a project opened from disk does not
-have it.
+reading, then write. The same applies to every writable tag after each new connection, because it may
+reach another device: writes wait for the first Good reading (usually within one poll period).
 
 ### Write log
 
