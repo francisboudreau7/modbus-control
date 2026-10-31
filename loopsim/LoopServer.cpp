@@ -286,6 +286,7 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
         return fail(QStringLiteral("getsockname failed."));
     }
     m_port = ntohs(addr.sin_port);
+    m_host = host;
 
     m_stop = false;
     m_clients = 0;
@@ -313,11 +314,17 @@ void LoopServer::stop()
     }
     m_clients = 0;
     m_port = 0;
+    m_host.clear();
 }
 
 quint16 LoopServer::port() const
 {
     return m_port;
+}
+
+QString LoopServer::host() const
+{
+    return m_host;
 }
 
 int LoopServer::clientCount() const

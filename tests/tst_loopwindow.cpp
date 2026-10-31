@@ -8,11 +8,13 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSlider>
 #include <QStatusBar>
+#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -457,6 +459,72 @@ private slots:
         QCOMPARE(msg, QString("Modbus server on 127.0.0.1:1601, 1 client"));
     }
 
+    void modbusPanelRunning()
+    {
+        LoopController c;
+        QString error;
+        QVERIFY2(c.startServer("127.0.0.1", 0, &error), qPrintable(error));
+        LoopWindow w(&c);
+        w.setServerStatus("Modbus server on 127.0.0.1");
+        w.show();
+        QWidget *panel = w.findChild<QWidget *>("modbusPanel");
+        QVERIFY(panel);
+        QVERIFY(panel->isVisible());
+        QVERIFY(w.rect().contains(panel->mapTo(&w, panel->rect().bottomRight())));
+        auto *conn = w.findChild<QLabel *>("modbusConnLabel");
+        QVERIFY(conn);
+        QVERIFY(conn->text().contains(QString("127.0.0.1 : %1").arg(c.server().port())));
+        QVERIFY(conn->text().contains("Unit 1 (any unit answered)"));
+        QVERIFY(conn->text().contains("0 clients connected"));
+        QCOMPARE(c.server().host(), QString("127.0.0.1"));
+        auto *t = w.findChild<QTableWidget *>("modbusTable");
+        QVERIFY(t);
+        QCOMPARE(t->rowCount(), 3);
+        QVERIFY(!t->verticalHeader()->isVisible());
+        QCOMPARE(t->item(0, 1)->text(), QString("Input register 1-2"));
+        QCOMPARE(t->item(0, 2)->text(), QString("IR 0"));
+        QCOMPARE(t->item(0, 3)->text(), QString("float32 ABCD (high word first)"));
+        QCOMPARE(t->item(0, 4)->text(), QString("FC04"));
+        QCOMPARE(t->item(0, 5)->text(), QString("Read only"));
+        QCOMPARE(t->item(1, 1)->text(), QString("Holding register 1-2"));
+        QCOMPARE(t->item(1, 2)->text(), QString("HR 0"));
+        QCOMPARE(t->item(1, 4)->text(), QString("FC03 read, FC16 write"));
+        QCOMPARE(t->item(2, 1)->text(), QString("Holding register 3-4"));
+        QCOMPARE(t->item(2, 2)->text(), QString("HR 2"));
+        QVERIFY(t->item(0, 0)->text().startsWith("PV"));
+        QVERIFY(t->item(1, 0)->text().startsWith("SP"));
+        QVERIFY(t->item(2, 0)->text().startsWith("OUT"));
+        QVERIFY(!t->item(0, 1)->toolTip().isEmpty());
+        QVERIFY(w.findChild<QLabel *>("modbusNote"));
+        // Live values follow the model.
+        c.setOut(70);
+        c.tickFor(1.0);
+        const LoopState &s = c.model().state();
+        QCOMPARE(t->item(0, 6)->text(), QString("%1 %").arg(s.pvPct, 0, 'f', 1));
+        QCOMPARE(t->item(1, 6)->text(), QString("%1 %").arg(s.spPct, 0, 'f', 1));
+        QCOMPARE(t->item(2, 6)->text(), QString("70.0 %"));
+        // Auto changes the OUT access text.
+        QCOMPARE(t->item(2, 5)->text(), QString("Read / write (0–100); read only in AUTO"));
+        c.setAuto(true);
+        QCOMPARE(t->item(2, 5)->text(), QString("Read only (AUTO)"));
+        c.setAuto(false);
+        QCOMPARE(t->item(2, 5)->text(), QString("Read / write (0–100); read only in AUTO"));
+        QVERIFY(w.findChild<QAction *>("modbusHelpAction"));
+    }
+
+    void modbusPanelNotRunning()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        w.setServerStatus("Port 1601 is already in use.");
+        w.show();
+        auto *conn = w.findChild<QLabel *>("modbusConnLabel");
+        QVERIFY(conn);
+        QVERIFY(conn->text().contains("Server not running: Port 1601 is already in use."));
+        QVERIFY(conn->text().contains("c0392b"));
+        QVERIFY(w.findChild<QWidget *>("modbusPanel")->isVisible());
+    }
+
     void snapshot()
     {
         const QByteArray out = qgetenv("LOOPSIM_SNAPSHOT");
@@ -464,6 +532,7 @@ private slots:
             QSKIP("set LOOPSIM_SNAPSHOT=<dir> to write PNGs");
         }
         LoopController c;
+        QVERIFY(c.startServer("127.0.0.1", 0));
         LoopWindow w(&c);
         w.setServerStatus("Modbus server on 127.0.0.1:1601");
         w.resize(1200, 760);

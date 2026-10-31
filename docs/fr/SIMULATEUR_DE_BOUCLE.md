@@ -188,6 +188,13 @@ de la course).
   SP et appuyez sur Entrée. Les valeurs tapées hors de 0 à 100 sont ramenées dans cette plage. Un client
   qui écrit par Modbus change les mêmes valeurs. Le bouton de mode et les champs de réglage sont décrits
   dans [Le régulateur PID](#le-régulateur-pid).
+- **Modbus panel** (sous le schéma, toujours visible) : l'adresse et le port réellement utilisés du
+  serveur (ou l'erreur de démarrage, en rouge), le nombre de clients connectés, et un tableau des trois
+  registres : PV (registres d'entrée 1-2, en lecture seule), SP (registres de maintien 1-2) et OUT
+  (registres de maintien 3-4), avec le numéro à base 1 affiché par Modbus Control, l'adresse à base 0,
+  le type, les codes de fonction, l'accès et la valeur actuelle. L'accès de OUT devient « Read only
+  (AUTO) » en mode Auto. **Help > Modbus registers...** affiche le même tableau dans une boîte de
+  dialogue.
 - **Glissières** (barre du bas) : ouverture de **HV-102** (0 à 100 %) et vitesse de **P-101 speed**
   (0 à 100 %). Déplacer HV-102 est la perturbation de la boucle.
 - **Speed** : ×1, ×2 ou ×5. ×1 est le temps réel : les temps affichés par Modbus Control sont les temps

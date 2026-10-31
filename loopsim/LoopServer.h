@@ -49,6 +49,8 @@ public:
     void stop();
     /// The port actually listened on; 0 when not started.
     quint16 port() const;
+    /// The host passed to the successful start() (empty when not started).
+    QString host() const;
     /// Number of connected clients.
     int clientCount() const;
 
@@ -80,6 +82,7 @@ private:
     _modbus_mapping_t *m_mapping = nullptr;
     int m_listenSocket = -1;
     quint16 m_port = 0;
+    QString m_host;
 };
 
 } // namespace mbloop

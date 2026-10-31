@@ -17,6 +17,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSlider;
+class QTableWidget;
 class TstLoopWindow;
 
 namespace mbloop {
@@ -126,6 +127,14 @@ private:
 /// "Modbus server on 127.0.0.1:1601, 1 client" (or the start error). File menu: "Open
 /// scenario...", "Save scenario...", "Reset", "Quit"; Help: "About". The window refreshes at the
 /// controller's stateChanged(). File dialogs go through seams (tests).
+/// Modbus panel (T227, "modbusPanel", a light framed group "Modbus TCP - connect Modbus Control
+/// here" across the width under the schematic and faceplate, always visible): "modbusConnLabel"
+/// ("Server 127.0.0.1 : 1601   Unit 1 (any unit answered)  -  N client(s) connected", or
+/// "Server not running: <error>" in red); "modbusTable" (QTableWidget, read-only, 3 rows PV / SP /
+/// OUT, columns Signal, Register (1-based), Address (0-based), Type, Function codes, Access, Value;
+/// the OUT Access cell reads "Read only (AUTO)" in Auto; Value = live PV/SP/OUT, 1 decimal);
+/// "modbusNote" (word-wrapped hint). Help > "Modbus registers..." ("modbusHelpAction") shows the
+/// same table in a message box.
 class LoopWindow : public QMainWindow
 {
     Q_OBJECT
@@ -145,6 +154,8 @@ private:
     void refresh();
     void syncControls();
     void openScenario();
+    void buildModbusPanel(QWidget *parent);
+    void showModbusHelp();
     void saveScenario();
     LoopController *m_controller = nullptr;
     QSlider *m_hvSlider = nullptr;
@@ -156,6 +167,10 @@ private:
     QLabel *m_timeLabel = nullptr;
     QCheckBox *m_processDataCheck = nullptr;
     QString m_serverStatus;
+    QWidget *m_modbusPanel = nullptr;
+    QLabel *m_modbusConn = nullptr;
+    QTableWidget *m_modbusTable = nullptr;
+    QLabel *m_modbusNote = nullptr;
     SchematicView *m_schematic = nullptr;
     Faceplate *m_faceplate = nullptr;
     std::function<QString(const QString &caption)> m_openFileName;
