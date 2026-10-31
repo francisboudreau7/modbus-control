@@ -1199,6 +1199,206 @@ private slots:
         QVERIFY(r.warns.at(2).startsWith(QStringLiteral("<p><b>Out of range values:</b></p><ul><li>Next = 70000")));
     }
 
+    // ---- v1.3.3 write log and "made writable" check ----
+private:
+    static ModbusResult exception2()
+    {
+        return ModbusResult{ModbusError::Exception, 2,
+                            QStringLiteral("Modbus exception 2: Illegal data address")};
+    }
+
+    static WriteLogEntry loggedAt(const QSignalSpy &spy, int i)
+    {
+        return spy.at(i).at(0).value<WriteLogEntry>();
+    }
+
+private slots:
+    void logSingleWrite16Bit()
+    {
+        Rig r;
+        setup(r);
+        r.wc->setServer(QStringLiteral("192.168.1.20:502 unit 1"));
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        feed(r, 1, 40.0);
+        r.wc->requestWrite(1, 75.0);
+        QCOMPARE(r.writes->size(), 1);
+        QCOMPARE(logged.size(), 0); // logged when the reply arrives
+        const quint64 req = r.writes->at(0).at(0).value<quint64>();
+        r.wc->onWriteFinished(req, ModbusResult{});
+        QCOMPARE(logged.size(), 1);
+        const WriteLogEntry e = loggedAt(logged, 0);
+        QVERIFY(e.time.isValid());
+        QVERIFY(qAbs(e.time.secsTo(QDateTime::currentDateTime())) < 10);
+        QCOMPARE(e.tagId, TagId(1));
+        QCOMPARE(e.tagName, QString("Setpoint"));
+        QCOMPARE(e.address, quint16(101));
+        QCOMPARE(e.count, 1);
+        QCOMPARE(e.registers, QString("HR 101"));
+        QCOMPARE(e.functionCode, 6);
+        QCOMPARE(e.oldValue, QString("40 C"));
+        QCOMPARE(e.newValue, QString("75 C"));
+        QCOMPARE(e.raw, QString("0x004B"));
+        QCOMPARE(e.source, QString("table"));
+        QVERIFY(e.ok);
+        QCOMPARE(e.result, QString("OK"));
+        QCOMPARE(e.server, QString("192.168.1.20:502 unit 1"));
+
+        // Unknown old value, quick source
+        r.wc->requestQuickWrite(4, 7.0);
+        r.wc->onWriteFinished(r.writes->at(1).at(0).value<quint64>(), ModbusResult{});
+        const WriteLogEntry q = loggedAt(logged, 1);
+        QCOMPARE(q.source, QString("quick"));
+        QCOMPARE(q.oldValue, QString("unknown"));
+        QCOMPARE(q.newValue, QString("7"));
+        QCOMPARE(q.registers, QString("HR 200"));
+        QCOMPARE(q.raw, QString("0x0007"));
+    }
+
+    void logRegistersTextUsesAddressBase()
+    {
+        Rig r;
+        setup(r);
+        r.model.setAddressBase(1);
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        feed(r, 2, 50.0);
+        r.wc->requestWrite(2, 25.0);
+        QCOMPARE(r.writes->size(), 1);
+        r.wc->onWriteFinished(r.writes->at(0).at(0).value<quint64>(), ModbusResult{});
+        const WriteLogEntry e = loggedAt(logged, 0);
+        QCOMPARE(e.address, quint16(102)); // protocol address stays zero-based
+        QCOMPARE(e.count, 2);
+        QCOMPARE(e.registers, QString("HR 103-104"));
+        QCOMPARE(e.functionCode, 16); // 32-bit: FC16
+        QCOMPARE(e.oldValue, QString("50"));
+        QCOMPARE(e.newValue, QString("25"));
+        QCOMPARE(e.raw, QString("0x41C8 0x0000"));
+    }
+
+    void logSelectionOneEntryPerTag()
+    {
+        Rig r;
+        setup(r);
+        r.wc->setServer(QStringLiteral("srv"));
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        feed(r, 1, 40.0);
+        feed(r, 2, 50.0);
+        // Rows 0..2: Setpoint HR 101, Flow HR 102-103, Next HR 104
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{75.0, 25.0, 7.0});
+        };
+        r.wc->requestWriteSelection({2, 0, 1});
+        QCOMPARE(r.writes->size(), 1);
+        r.wc->onWriteFinished(r.writes->at(0).at(0).value<quint64>(), exception2());
+        QCOMPARE(logged.size(), 3);
+        const QStringList names = {"Setpoint", "Flow", "Next"}; // address order
+        const QStringList raws = {"0x004B", "0x41C8 0x0000", "0x0007"};
+        const QStringList regs = {"HR 101", "HR 102-103", "HR 104"};
+        for (int i = 0; i < 3; ++i) {
+            const WriteLogEntry e = loggedAt(logged, i);
+            QCOMPARE(e.tagName, names.at(i));
+            QCOMPARE(e.raw, raws.at(i));
+            QCOMPARE(e.registers, regs.at(i));
+            QCOMPARE(e.functionCode, 16);
+            QCOMPARE(e.source, QString("selection"));
+            QVERIFY(!e.ok);
+            QCOMPARE(e.result, QString("Modbus exception 2: Illegal data address"));
+            QCOMPARE(e.server, QString("srv"));
+        }
+        QCOMPARE(loggedAt(logged, 0).oldValue, QString("40 C"));
+        QCOMPARE(loggedAt(logged, 0).newValue, QString("75 C"));
+        QCOMPARE(loggedAt(logged, 1).oldValue, QString("50"));
+        QCOMPARE(loggedAt(logged, 2).oldValue, QString("unknown"));
+    }
+
+    void logFailureResultText()
+    {
+        Rig r;
+        setup(r);
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        r.wc->requestWrite(4, 3.0);
+        r.wc->onWriteFinished(r.writes->at(0).at(0).value<quint64>(), exception2());
+        QCOMPARE(logged.size(), 1);
+        QVERIFY(!loggedAt(logged, 0).ok);
+        QCOMPARE(loggedAt(logged, 0).result, QString("Modbus exception 2: Illegal data address"));
+
+        r.wc->requestWrite(4, 4.0);
+        r.wc->onWriteFinished(r.writes->at(1).at(0).value<quint64>(),
+                              ModbusResult{ModbusError::Timeout, 0, QStringLiteral("Timed out")});
+        QCOMPARE(loggedAt(logged, 1).result, QString("Timed out"));
+        QVERIFY(!loggedAt(logged, 1).ok);
+    }
+
+    void logDisconnectedAndLateReplyIgnored()
+    {
+        Rig r;
+        setup(r);
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        r.wc->requestWrite(4, 3.0);
+        r.wc->requestWrite(1, 10.0);
+        QCOMPARE(r.writes->size(), 2);
+        const quint64 first = r.writes->at(0).at(0).value<quint64>();
+        r.wc->setConnected(false);
+        QCOMPARE(logged.size(), 2);
+        for (int i = 0; i < 2; ++i) {
+            QVERIFY(!loggedAt(logged, i).ok);
+            QCOMPARE(loggedAt(logged, i).result, QString("No reply (disconnected)"));
+        }
+        QCOMPARE(loggedAt(logged, 0).tagName, QString("Plain")); // request order
+        QCOMPARE(loggedAt(logged, 1).tagName, QString("Setpoint"));
+        r.wc->onWriteFinished(first, ModbusResult{}); // late reply
+        QCOMPARE(logged.size(), 2);
+        // Disconnecting again logs nothing more
+        r.wc->setConnected(false);
+        QCOMPARE(logged.size(), 2);
+    }
+
+    void refusedWritesAreNotLogged()
+    {
+        Rig r;
+        setup(r);
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        r.wc->requestWrite(1, 150.0); // outside the limits
+        r.wc->requestWrite(2, 20.0);  // 32-bit without a reading
+        r.wc->requestWrite(4, 1.0e9); // out of range
+        r.wc->m_confirm = [](const QString &) { return false; };
+        r.wc->requestWrite(4, 3.0); // cancelled
+        r.wc->setConnected(false);
+        r.wc->requestWrite(4, 3.0); // not connected
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(logged.size(), 0);
+        r.wc->setConnected(true);
+        r.wc->requestWrite(4, 3.0); // still cancelled
+        r.wc->setConnected(false);
+        QCOMPARE(logged.size(), 0);
+    }
+
+    void writeNeedsReadRefused()
+    {
+        Rig r;
+        setup(r);
+        Tag proto = makeTag(9, "Fresh", true, std::nullopt, std::nullopt);
+        proto.type = ValueType::UInt16;
+        proto.address = 300;
+        const int row = r.model.addTag(proto);
+        if (row < 0)
+            QSKIP("enable when TagTableModel sets writeNeedsRead");
+        const TagId id = r.model.tagAt(row).id;
+        if (!r.model.writeNeedsRead(id))
+            QSKIP("enable when TagTableModel sets writeNeedsRead");
+        r.wc->requestWrite(id, 5.0);
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains("No valid reading of 'Fresh' since it was made writable."));
+        QVERIFY(r.warns.at(0).contains("Nothing was written."));
+        QVERIFY(r.warns.at(0).contains("HR 300"));
+        QVERIFY(r.warns.at(0).contains("Check:"));
+        QVERIFY(r.confirms.isEmpty());
+
+        feed(r, id, 1.0); // a Good reading clears it
+        r.wc->requestWrite(id, 5.0);
+        QCOMPARE(r.writes->size(), 1);
+    }
+
     // The default dialogs show rich text (offscreen: a timer closes the modal box).
     void defaultConfirmUsesRichText()
     {

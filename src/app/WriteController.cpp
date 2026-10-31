@@ -15,6 +15,8 @@
 #include <QMessageBox>
 #include <QPushButton>
 
+#include <QDateTime>
+
 #include <algorithm>
 #include <cmath>
 
@@ -88,6 +90,36 @@ QString quotedNames(const QStringList &names)
     for (const QString &name : names)
         quoted << QStringLiteral("'%1'").arg(name);
     return quoted.join(QStringLiteral(", "));
+}
+
+/// Write log texts (T233): oldValue / newValue use the confirmation's format (valueText + " unit",
+/// "unknown" when there is no Good reading); raw is each register as "0x%04X", space-separated.
+QString rawHex(const QList<quint16> &regs)
+{
+    QStringList parts;
+    for (quint16 r : regs)
+        parts << QStringLiteral("0x") + QString::number(r, 16).rightJustified(4, QLatin1Char('0')).toUpper();
+    return parts.join(QLatin1Char(' '));
+}
+
+WriteLogEntry makeLogEntry(const Tag &tag, int base, const std::optional<double> &oldValue,
+                           double newValue, const QList<quint16> &regs, int functionCode,
+                           const QString &source, const QString &server)
+{
+    WriteLogEntry e;
+    e.time = QDateTime::currentDateTime();
+    e.tagId = tag.id;
+    e.tagName = tag.name;
+    e.address = tag.address;
+    e.count = registerCount(tag.type);
+    e.registers = registerRange(tag, base);
+    e.functionCode = functionCode;
+    e.oldValue = oldValue ? valueText(*oldValue) + unitSuffix(tag) : QObject::tr("unknown");
+    e.newValue = valueText(newValue) + unitSuffix(tag);
+    e.raw = rawHex(regs);
+    e.source = source;
+    e.server = server;
+    return e;
 }
 
 /// "Check:" and a bullet list of what to look at.
@@ -277,6 +309,16 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     }
 
+    // 3a. made writable and not read since
+    if (m_model->writeNeedsRead(id)) {
+        m_warn(rich::headline(tr("No valid reading of '%1' since it was made writable.").arg(tag.name))
+               + rich::paragraph(tr("Nothing was written."))
+               + checkList({tr("the register number (%1)").arg(m_model->registerText(tag)),
+                            tr("the area (holding or input register)"),
+                            tr("the type and byte order (%1)").arg(toString(encodingOf(tag)))}));
+        return;
+    }
+
     // 3b. tag whose encoding is not confirmed yet (32-bit), or a 16-bit tag flagged as probably
     // half of a 32-bit value
     if (!tag.encodingVerified) {
@@ -383,6 +425,10 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, {id});
     m_pendingRegisters.insert(reqId, int(raw->size()));
+    m_pendingLog.insert(reqId, {makeLogEntry(tag, base, current, scaledValue, *raw,
+                                             raw->size() == 1 ? 6 : 16,
+                                             quick ? QStringLiteral("quick") : QStringLiteral("table"),
+                                             m_server)});
     emit message(tr("Writing %1 to %2 '%3' ...").arg(valueText(scaledValue), registerRange(tag, base), tag.name));
     emit writeRegisters(reqId, tag.address, *raw);
 }
@@ -457,6 +503,28 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         m_warn(rich::headline(tr("No valid reading of %1 yet.").arg(quotedNames(noReading)))
                + checkList({tr("the connection (the connection bar shows Connected)"),
                             tr("the register numbers of these tags"),
+                            tr("the type and byte order of these tags")}));
+        return;
+    }
+
+    // 3a. made writable and not read since (listed together)
+    QStringList notRead;
+    QStringList notReadRegisters;
+    for (const Tag &tag : tags) {
+        if (!m_model->writeNeedsRead(tag.id))
+            continue;
+        notRead.append(tag.name);
+        notReadRegisters.append(QStringLiteral("'%1' %2").arg(tag.name, m_model->registerText(tag)));
+    }
+    if (!notRead.isEmpty()) {
+        m_warn(rich::headline(notRead.size() == 1
+                                  ? tr("No valid reading of %1 since it was made writable.")
+                                        .arg(quotedNames(notRead))
+                                  : tr("No valid reading of %1 since they were made writable.")
+                                        .arg(quotedNames(notRead)))
+               + rich::paragraph(tr("Nothing was written."))
+               + checkList({tr("the register numbers (%1)").arg(notReadRegisters.join(QStringLiteral("; "))),
+                            tr("the area of these tags"),
                             tr("the type and byte order of these tags")}));
         return;
     }
@@ -600,6 +668,16 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     const quint64 reqId = m_nextRequest++;
     m_pending.insert(reqId, ids);
     m_pendingRegisters.insert(reqId, int(raws.size()));
+    QList<WriteLogEntry> log;
+    qsizetype offset = 0;
+    for (qsizetype i = 0; i < tags.size(); ++i) {
+        const Tag &tag = tags.at(i);
+        const qsizetype n = registerCount(tag.type);
+        log.append(makeLogEntry(tag, base, m_model->goodValue(tag.id), values->at(i),
+                                raws.mid(offset, n), 16, QStringLiteral("selection"), m_server));
+        offset += n;
+    }
+    m_pendingLog.insert(reqId, log);
     emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
     emit writeRegisters(reqId, first, raws);
 }
@@ -611,6 +689,11 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         return;
     const QList<TagId> ids = it.value();
     m_pending.erase(it);
+    QList<WriteLogEntry> log = m_pendingLog.take(requestId);
+    for (WriteLogEntry &e : log) {
+        e.ok = result.ok();
+        e.result = result.ok() ? QStringLiteral("OK") : result.message;
+    }
     const std::optional<int> sent = m_pendingRegisters.contains(requestId)
                                         ? std::optional<int>(m_pendingRegisters.take(requestId))
                                         : std::nullopt;
@@ -621,6 +704,9 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
         if (row >= 0)
             names.append(m_model->tagAt(row).name);
     }
+
+    for (const WriteLogEntry &e : std::as_const(log))
+        emit writeLogged(e);
 
     if (result.ok()) {
         for (TagId id : ids)
@@ -655,9 +741,22 @@ void WriteController::setConnected(bool connected)
     if (!connected)
         ++m_connectionGeneration; // a write prepared before a disconnect must not be sent
     m_connected = connected;
-    if (!connected)
+    if (!connected) {
+        // Requests without a reply are logged now; a late reply is ignored (m_pending is empty).
+        QList<quint64> ids = m_pendingLog.keys();
+        std::sort(ids.begin(), ids.end());
         m_pending.clear();
         m_pendingRegisters.clear();
+        for (quint64 requestId : std::as_const(ids)) {
+            QList<WriteLogEntry> log = m_pendingLog.take(requestId);
+            for (WriteLogEntry &e : log) {
+                e.ok = false;
+                e.result = tr("No reply (disconnected)");
+                emit writeLogged(e);
+            }
+        }
+        m_pendingLog.clear();
+    }
 }
 
 void WriteController::requestQuickWrite(mb::TagId id, double scaledValue)
