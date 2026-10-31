@@ -89,54 +89,6 @@ void storeLastConnection(const ConnectionSettings &s)
     q.remove(QStringLiteral("connection/lastSingleRegisterWrites")); // obsolete FC06-only option
 }
 
-Tag makeTag(TagId id, const QString &name, Area area, quint16 address, ValueType type,
-            const QString &color, bool plotted, bool writable, ByteOrder order = ByteOrder::ABCD)
-{
-    Tag t;
-    t.id = id;
-    t.name = name;
-    t.area = area;
-    t.address = address;
-    t.type = type;
-    t.byteOrder = order;
-    t.color = color;
-    t.plotted = plotted;
-    t.writable = writable;
-    return t;
-}
-
-QList<Tag> demoTags()
-{
-    const Area ir = Area::InputRegister;
-    QList<Tag> tags{
-        makeTag(1, QStringLiteral("Sine"), ir, 0, ValueType::Int16, QStringLiteral("#1f77b4"), true, false),
-        makeTag(2, QStringLiteral("Triangle"), ir, 1, ValueType::Int16, QStringLiteral("#ff7f0e"), true, false),
-        makeTag(3, QStringLiteral("Counter"), ir, 2, ValueType::UInt16, QStringLiteral("#7f7f7f"), false, false),
-        makeTag(4, QStringLiteral("Square"), ir, 3, ValueType::Int16, QStringLiteral("#2ca02c"), true, false),
-        makeTag(5, QStringLiteral("Noise"), ir, 4, ValueType::Int16, QStringLiteral("#d62728"), true, false),
-        makeTag(6, QStringLiteral("Sawtooth"), ir, 5, ValueType::Int16, QStringLiteral("#9467bd"), true, false),
-        makeTag(7, QStringLiteral("Lag"), ir, 10, ValueType::Int16, QStringLiteral("#8c564b"), true, false),
-        makeTag(8, QStringLiteral("Setpoint"), Area::HoldingRegister, 100, ValueType::Int16,
-                QStringLiteral("#e377c2"), true, true),
-        makeTag(9, QStringLiteral("Float sine"), ir, 20, ValueType::Float32, QStringLiteral("#bcbd22"),
-                true, false, ByteOrder::ABCD),
-        makeTag(10, QStringLiteral("Float sine (CDAB)"), ir, 22, ValueType::Float32,
-                QStringLiteral("#17becf"), true, false, ByteOrder::CDAB),
-        makeTag(11, QStringLiteral("Int32 saw"), ir, 24, ValueType::Int32, QStringLiteral("#393b79"),
-                true, false, ByteOrder::ABCD),
-    };
-    for (Tag &t : tags) {
-        if (t.id == 8) { // Setpoint (HR 100): quick-write presets and the right Y axis
-            t.quickA = 0.0;
-            t.quickB = 1000.0;
-            t.writeMin = 0.0;
-            t.writeMax = 2000.0;
-            t.axis = YAxis::Right;
-        }
-    }
-    return tags;
-}
-
 } // namespace
 
 AppController::AppController(MainWindow *window, QObject *parent) : QObject(parent), m_window(window)
@@ -198,23 +150,13 @@ AppController::AppController(MainWindow *window, QObject *parent) : QObject(pare
 
     m_window->setCloseHandler([this] { return maybeSave(); });
 
-    // Every start: last connection settings and the demo tags, as an unmodified Untitled project.
+    // Every start: an empty Untitled project (unmodified) with the last connection settings.
     m_window->connectionBar()->setSettings(lastConnection());
-    m_window->tagModel()->setTags(demoTags(), 12);
+    m_window->tagModel()->setTags({}, 1);
     m_encoding->onTagsReplaced();
     pushTags();
-    // Analysis of the Lag step (id 7): the controller output is the Setpoint (HR 100, id 8).
-    AnalysisSettings analysis;
-    analysis.pvTagId = 7;
-    analysis.deltaCoTagId = 8;
-    analysis.setpointTagIds = {7};
-    analysis.showModel = true;
-    m_window->analysisPanel()->setSettings(analysis);
-    // Compact view, but keep the Quick A/B presets of the demo Setpoint visible.
-    QStringList hidden = compactHiddenColumns();
-    hidden.removeAll(QStringLiteral("quickA"));
-    hidden.removeAll(QStringLiteral("quickB"));
-    m_window->tagTable()->setHiddenColumns(hidden);
+    m_window->analysisPanel()->setSettings(AnalysisSettings{});
+    m_window->tagTable()->setHiddenColumns(compactHiddenColumns());
     m_refreshTimer->start();
     updateTitle();
 }
@@ -383,6 +325,7 @@ void AppController::wireActions()
     const MainWindow::Actions &a = m_window->actions();
     connect(a.newProject, &QAction::triggered, this, [this] { newProject(); });
     connect(a.openProject, &QAction::triggered, this, [this] { openDialog(); });
+    connect(a.openExample, &QAction::triggered, this, [this] { openExampleDialog(); });
     connect(a.saveProject, &QAction::triggered, this, [this] { save(); });
     connect(a.saveProjectAs, &QAction::triggered, this, [this] { saveAs(); });
     connect(a.saveSession, &QAction::triggered, this, [this] { saveSessionDialog(); });
@@ -707,6 +650,28 @@ void AppController::openDialog()
         loadFrom(path);
 }
 
+QString AppController::examplesDir()
+{
+    const QDir app(QCoreApplication::applicationDirPath());
+    const QStringList candidates{app.filePath(QStringLiteral("../examples")),
+                                 app.filePath(QStringLiteral("../../../examples"))};
+    for (const QString &candidate : candidates) {
+        if (QFileInfo(candidate).isDir())
+            return QDir::cleanPath(candidate);
+    }
+    return QSettings().value(QStringLiteral("project/dir")).toString();
+}
+
+void AppController::openExampleDialog()
+{
+    if (!maybeSave())
+        return;
+    const QString path = openFileName(QStringLiteral("Open example"), examplesDir(),
+                                      QStringLiteral("Modbus Control projects (*.mbproj)"));
+    if (!path.isEmpty())
+        loadFrom(path);
+}
+
 bool AppController::loadFrom(const QString &path)
 {
     QString error;
@@ -984,19 +949,11 @@ bool AppController::openProject(const QString &path)
     return loadFrom(path);
 }
 
-QString AppController::imageReadoutText() const
-{
-    QString text = m_window->cursorPanel()->readoutText();
-    const QString analysis = m_window->analysisPanel()->readoutText();
-    if (!analysis.isEmpty())
-        text += u'\n' + analysis;
-    return text;
-}
-
 void AppController::exportImage()
 {
     TrendPlot *trend = m_window->trendPlot();
-    ExportImageDialog dialog(trend->plot(), trend->cursors(), imageReadoutText(), m_window);
+    ExportImageDialog dialog(trend->plot(), trend->cursors(), m_window->cursorPanel()->readoutText(),
+                             m_window->analysisPanel()->readoutText(), m_window);
     runDialog(dialog);
 }
 

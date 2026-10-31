@@ -188,6 +188,10 @@ private:
     bool saveTo(const QString &path);
     void newProject();
     void openDialog();
+    /// File > Open example...: unsaved-changes prompt, then the file dialog in examplesDir().
+    void openExampleDialog();
+    /// Folder of the example projects (see the class comment).
+    static QString examplesDir();
     bool loadFrom(const QString &path);
     void applyProject(const Project &project);
     void setAddressBase(int base); ///< Updates the Options action and the model without marking modified.
@@ -198,8 +202,6 @@ private:
     void exportAnalysisResults();
     /// Help > Quick Start / User Guide (see the class comment). Stub until T202.
     void openDocumentation(bool userGuide);
-    /// Cursor readout, then the Analysis readout (when not empty), for the image export.
-    QString imageReadoutText() const;
 
     enum class ContinueChoice { Continue, StartNew, Cancel };
 

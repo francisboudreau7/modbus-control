@@ -1,5 +1,6 @@
 #include "ExportImageDialog.h"
 
+#include "NumberSpinBox.h"
 #include "PlotCursors.h"
 
 #include <qwt_plot.h>
@@ -24,9 +25,11 @@
 #include <QPdfWriter>
 #include <QPushButton>
 #include <QSettings>
-#include <QSpinBox>
+#include <QComboBox>
+#include <QGuiApplication>
 #include <QStandardPaths>
 #include <QSvgGenerator>
+#include <QtMath>
 
 namespace mb {
 
@@ -65,32 +68,80 @@ private:
     PlotCursors *m_cursors;
 };
 
-/// Draws the readout as a framed text box at the top-left corner of the canvas. The canvas
-/// position comes from the on-screen plot and is scaled to the target size, which
-/// approximates the layout QwtPlotRenderer produces for a different size.
-void paintReadout(QPainter *p, const QwtPlot *plot, const QSizeF &target, const QString &text)
+/// Font of the readout box.
+QFont readoutFont()
 {
-    const QStringList lines = text.split(QLatin1Char('\n'));
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     font.setPointSizeF(9.0);
+    return font;
+}
 
+/// Font of the title line.
+QFont titleFont()
+{
+    QFont font = QGuiApplication::font();
+    font.setPointSizeF(12.0);
+    font.setBold(true);
+    return font;
+}
+
+/// Sizes of the extra parts for one device resolution. Metrics come from a one-pixel image with
+/// the same resolution as the target, so the sizes match what the painter will draw.
+struct ExtraSizes {
+    qreal titleHeight = 0.0; ///< band above the plot; 0 when there is no title
+    qreal boxWidth = 0.0;    ///< framed text box: widest line + paddings
+    qreal boxHeight = 0.0;   ///< framed text box height; 0 when there is no readout
+    qreal margin = 0.0;
+    qreal pad = 0.0;
+    qreal lineHeight = 0.0;
+};
+
+ExtraSizes measureExtras(int dpi, const QString &title, const QStringList &readoutLines)
+{
+    QImage probe(1, 1, QImage::Format_ARGB32);
+    const int dotsPerMeter = qRound(dpi / 0.0254);
+    probe.setDotsPerMeterX(dotsPerMeter);
+    probe.setDotsPerMeterY(dotsPerMeter);
+
+    ExtraSizes e;
+    const qreal scale = dpi / 96.0;
+    e.margin = 10.0 * scale;
+    e.pad = 6.0 * scale;
+    if (!title.isEmpty()) {
+        const QFontMetricsF fm(titleFont(), &probe);
+        e.titleHeight = fm.lineSpacing() + 2 * e.pad;
+    }
+    if (!readoutLines.isEmpty()) {
+        const QFontMetricsF fm(readoutFont(), &probe);
+        qreal textWidth = 0.0;
+        for (const QString &line : readoutLines)
+            textWidth = qMax(textWidth, fm.horizontalAdvance(line));
+        e.lineHeight = fm.lineSpacing();
+        e.boxWidth = textWidth + 2 * e.pad;
+        e.boxHeight = e.lineHeight * readoutLines.size() + 2 * e.pad;
+    }
+    return e;
+}
+
+/// Draws a bold title centred in `band`.
+void paintTitle(QPainter *p, const QRectF &band, const QString &title)
+{
     p->save();
-    p->setFont(font);
-    // Metrics against the painter's device so the box fits at any DPI.
-    const QFontMetricsF fm(font, p->device());
-    qreal textWidth = 0.0;
-    for (const QString &line : lines)
-        textWidth = qMax(textWidth, fm.horizontalAdvance(line));
-    const qreal pad = 6.0;
-    const qreal margin = 10.0;
-    const qreal lineHeight = fm.lineSpacing();
+    p->setFont(titleFont());
+    p->setPen(Qt::black);
+    p->setRenderHint(QPainter::TextAntialiasing, true);
+    p->drawText(band, Qt::AlignCenter, title);
+    p->restore();
+}
 
-    const qreal sx = plot->width() > 0 ? target.width() / plot->width() : 1.0;
-    const qreal sy = plot->height() > 0 ? target.height() / plot->height() : 1.0;
-    const QPoint canvasTopLeft = plot->canvas()->geometry().topLeft();
-
-    const QRectF box(canvasTopLeft.x() * sx + margin, canvasTopLeft.y() * sy + margin,
-                     textWidth + 2 * pad, lineHeight * lines.size() + 2 * pad);
+/// Draws the readout lines as a framed text box with its top-left corner at `topLeft`.
+void paintReadoutBox(QPainter *p, const QPointF &topLeft, const ExtraSizes &e,
+                     const QStringList &lines)
+{
+    p->save();
+    p->setFont(readoutFont());
+    const QFontMetricsF fm(readoutFont(), p->device());
+    const QRectF box(topLeft, QSizeF(e.boxWidth, e.boxHeight));
 
     p->setRenderHint(QPainter::Antialiasing, true);
     p->setRenderHint(QPainter::TextAntialiasing, true);
@@ -99,12 +150,60 @@ void paintReadout(QPainter *p, const QwtPlot *plot, const QSizeF &target, const 
     p->drawRect(box);
 
     p->setPen(Qt::black);
-    qreal baseline = box.top() + pad + fm.ascent();
+    qreal baseline = box.top() + e.pad + fm.ascent();
     for (const QString &line : lines) {
-        p->drawText(QPointF(box.left() + pad, baseline), line);
-        baseline += lineHeight;
+        p->drawText(QPointF(box.left() + e.pad, baseline), line);
+        baseline += e.lineHeight;
     }
     p->restore();
+}
+
+/// Where the parts go inside the total image.
+struct Layout {
+    QSizeF total;
+    QRectF plot;
+    QRectF titleBand;
+    QPointF belowPos; ///< top-left of the readout box for Below
+};
+
+Layout makeLayout(const QSize &plotPx, const ExtraSizes &e, bool below)
+{
+    Layout l;
+    const qreal belowHeight = below && e.boxHeight > 0 ? e.boxHeight + 2 * e.margin : 0.0;
+    l.total = QSizeF(plotPx.width(), plotPx.height() + e.titleHeight + belowHeight);
+    l.titleBand = QRectF(0, 0, plotPx.width(), e.titleHeight);
+    l.plot = QRectF(0, e.titleHeight, plotPx.width(), plotPx.height());
+    l.belowPos = QPointF(e.margin, l.plot.bottom() + e.margin);
+    return l;
+}
+
+/// Everything drawn around and on top of the rendered plot.
+void paintExtras(QPainter *p, const QwtPlot *plot, const Layout &l, const ExtraSizes &e,
+                 const ExportOptions &o, const QStringList &lines)
+{
+    if (e.titleHeight > 0)
+        paintTitle(p, l.titleBand, o.title);
+    if (lines.isEmpty())
+        return;
+    if (o.position == ExportOptions::ReadoutPosition::Below) {
+        ExtraSizes capped = e; // never wider than the image
+        capped.boxWidth = qMin(e.boxWidth, l.plot.width() - 2 * e.margin);
+        paintReadoutBox(p, l.belowPos, capped, lines);
+        return;
+    }
+    // Inside the canvas area: its position comes from the on-screen plot, scaled to the target.
+    const qreal sx = plot->width() > 0 ? l.plot.width() / plot->width() : 1.0;
+    const qreal sy = plot->height() > 0 ? l.plot.height() / plot->height() : 1.0;
+    const QRect c = plot->canvas()->geometry();
+    const QRectF canvas(l.plot.left() + c.left() * sx, l.plot.top() + c.top() * sy, c.width() * sx,
+                        c.height() * sy);
+    const bool right = o.position == ExportOptions::ReadoutPosition::TopRight
+        || o.position == ExportOptions::ReadoutPosition::BottomRight;
+    const bool bottom = o.position == ExportOptions::ReadoutPosition::BottomLeft
+        || o.position == ExportOptions::ReadoutPosition::BottomRight;
+    const qreal x = right ? canvas.right() - e.margin - e.boxWidth : canvas.left() + e.margin;
+    const qreal y = bottom ? canvas.bottom() - e.margin - e.boxHeight : canvas.top() + e.margin;
+    paintReadoutBox(p, QPointF(x, y), e, lines);
 }
 
 QString extensionFromFilter(const QString &selectedFilter)
@@ -118,32 +217,19 @@ QString extensionFromFilter(const QString &selectedFilter)
 
 } // namespace
 
-// T240 stubs: T245 implements the v1.3.3 options.
-ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const QString &cursorReadout,
-                                     const QString &analysisReadout, QWidget *parent)
-    : ExportImageDialog(plot, cursors,
-                        analysisReadout.isEmpty() ? cursorReadout
-                                                  : cursorReadout + QStringLiteral("\n\n") + analysisReadout,
-                        parent)
-{
-    m_analysisReadout = analysisReadout;
-}
-
-bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QString &path,
-                               const ExportOptions &options, QString *error)
-{
-    QString readout = options.cursorReadout;
-    if (!options.analysisReadout.isEmpty())
-        readout += (readout.isEmpty() ? QString() : QStringLiteral("\n\n")) + options.analysisReadout;
-    return render(plot, cursors, path, options.sizePx, options.dpi, options.includeCursors, readout,
-                  error);
-}
-
 ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const QString &readoutText,
                                      QWidget *parent)
-    : QDialog(parent), m_plot(plot), m_cursors(cursors), m_readout(readoutText)
+    : ExportImageDialog(plot, cursors, readoutText, QString(), parent)
+{
+}
+
+ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const QString &cursorReadout,
+                                     const QString &analysisReadout, QWidget *parent)
+    : QDialog(parent), m_plot(plot), m_cursors(cursors), m_readout(cursorReadout),
+      m_analysisReadout(analysisReadout)
 {
     setWindowTitle(tr("Export graph"));
+    const QSettings settings;
 
     auto *pathEdit = new QLineEdit(this);
     pathEdit->setObjectName(QStringLiteral("exportPath"));
@@ -154,35 +240,78 @@ ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const 
 
     const QSize defaultSize = plot ? plot->size() : QSize(800, 400);
 
-    auto *widthSpin = new QSpinBox(this);
+    auto *widthSpin = new NumberSpinBox(this);
     widthSpin->setObjectName(QStringLiteral("exportWidth"));
+    widthSpin->setDecimals(0);
     widthSpin->setRange(kMinPx, kMaxPx);
     widthSpin->setSuffix(tr(" px"));
     widthSpin->setValue(qBound(kMinPx, defaultSize.width(), kMaxPx));
 
-    auto *heightSpin = new QSpinBox(this);
+    auto *heightSpin = new NumberSpinBox(this);
     heightSpin->setObjectName(QStringLiteral("exportHeight"));
+    heightSpin->setDecimals(0);
     heightSpin->setRange(kMinPx, kMaxPx);
     heightSpin->setSuffix(tr(" px"));
     heightSpin->setValue(qBound(kMinPx, defaultSize.height(), kMaxPx));
 
-    auto *dpiSpin = new QSpinBox(this);
+    auto *dpiSpin = new NumberSpinBox(this);
     dpiSpin->setObjectName(QStringLiteral("exportDpi"));
+    dpiSpin->setDecimals(0);
     dpiSpin->setRange(kMinDpi, kMaxDpi);
     dpiSpin->setSuffix(tr(" dpi"));
-    dpiSpin->setValue(96);
+    dpiSpin->setValue(qBound(kMinDpi, settings.value(QStringLiteral("exportImage/dpi"), 96).toInt(),
+                             kMaxDpi));
+
+    auto *titleEdit = new QLineEdit(this);
+    titleEdit->setObjectName(QStringLiteral("titleEdit"));
+    titleEdit->setPlaceholderText(tr("(none)"));
+    titleEdit->setText(settings.value(QStringLiteral("exportImage/title")).toString());
+
+    auto *legendCheck = new QCheckBox(tr("Include legend"), this);
+    legendCheck->setObjectName(QStringLiteral("legendCheck"));
+    legendCheck->setChecked(settings.value(QStringLiteral("exportImage/legend"), true).toBool());
 
     const bool cursorsAvailable = cursors && (cursors->hasC1() || cursors->hasC2());
     auto *cursorsBox = new QCheckBox(tr("Include cursors"), this);
     cursorsBox->setObjectName(QStringLiteral("exportCursors"));
     cursorsBox->setEnabled(cursorsAvailable);
-    cursorsBox->setChecked(cursorsAvailable);
+    cursorsBox->setChecked(cursorsAvailable
+                           && settings.value(QStringLiteral("exportImage/cursors"), true).toBool());
 
-    const bool readoutAvailable = !readoutText.isEmpty();
-    auto *readoutBox = new QCheckBox(tr("Include cursor readout"), this);
-    readoutBox->setObjectName(QStringLiteral("exportReadout"));
-    readoutBox->setEnabled(readoutAvailable);
-    readoutBox->setChecked(readoutAvailable);
+    auto *cursorReadoutCheck = new QCheckBox(tr("Include cursor readout"), this);
+    cursorReadoutCheck->setObjectName(QStringLiteral("cursorReadoutCheck"));
+    cursorReadoutCheck->setEnabled(!cursorReadout.isEmpty());
+    cursorReadoutCheck->setChecked(
+        !cursorReadout.isEmpty()
+        && settings.value(QStringLiteral("exportImage/cursorReadout"), true).toBool());
+
+    auto *analysisReadoutCheck = new QCheckBox(tr("Include Analysis results"), this);
+    analysisReadoutCheck->setObjectName(QStringLiteral("analysisReadoutCheck"));
+    analysisReadoutCheck->setEnabled(!analysisReadout.isEmpty());
+    analysisReadoutCheck->setChecked(
+        !analysisReadout.isEmpty()
+        && settings.value(QStringLiteral("exportImage/analysisReadout"), true).toBool());
+
+    auto *positionCombo = new QComboBox(this);
+    positionCombo->setObjectName(QStringLiteral("positionCombo"));
+    positionCombo->addItem(tr("Below the graph"), int(ExportOptions::ReadoutPosition::Below));
+    positionCombo->addItem(tr("Top left"), int(ExportOptions::ReadoutPosition::TopLeft));
+    positionCombo->addItem(tr("Top right"), int(ExportOptions::ReadoutPosition::TopRight));
+    positionCombo->addItem(tr("Bottom left"), int(ExportOptions::ReadoutPosition::BottomLeft));
+    positionCombo->addItem(tr("Bottom right"), int(ExportOptions::ReadoutPosition::BottomRight));
+    {
+        const int stored = settings.value(QStringLiteral("exportImage/position"),
+                                          int(ExportOptions::ReadoutPosition::Below)).toInt();
+        const int index = positionCombo->findData(stored);
+        positionCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    const auto updatePosition = [cursorReadoutCheck, analysisReadoutCheck, positionCombo] {
+        positionCombo->setEnabled(cursorReadoutCheck->isChecked()
+                                  || analysisReadoutCheck->isChecked());
+    };
+    connect(cursorReadoutCheck, &QCheckBox::toggled, this, updatePosition);
+    connect(analysisReadoutCheck, &QCheckBox::toggled, this, updatePosition);
+    updatePosition();
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->setObjectName(QStringLiteral("exportButtons"));
@@ -194,8 +323,12 @@ ExportImageDialog::ExportImageDialog(QwtPlot *plot, PlotCursors *cursors, const 
     form->addRow(tr("Width:"), widthSpin);
     form->addRow(tr("Height:"), heightSpin);
     form->addRow(tr("Resolution:"), dpiSpin);
+    form->addRow(tr("Title:"), titleEdit);
+    form->addRow(legendCheck);
     form->addRow(cursorsBox);
-    form->addRow(readoutBox);
+    form->addRow(cursorReadoutCheck);
+    form->addRow(analysisReadoutCheck);
+    form->addRow(tr("Readout position:"), positionCombo);
     form->addRow(buttons);
 
     connect(pathEdit, &QLineEdit::textChanged, this,
@@ -231,6 +364,20 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
                                const QSize &sizePx, int dpi, bool includeCursors,
                                const QString &readout, QString *error)
 {
+    ExportOptions options;
+    options.sizePx = sizePx;
+    options.dpi = dpi;
+    options.includeCursors = includeCursors;
+    options.cursorReadout = readout;
+    options.position = ExportOptions::ReadoutPosition::TopLeft; // the old behaviour
+    return render(plot, cursors, path, options, error);
+}
+
+bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QString &path,
+                               const ExportOptions &options, QString *error)
+{
+    const QSize sizePx = options.sizePx;
+    const int dpi = options.dpi;
     if (!plot) {
         setError(error, QStringLiteral("Cannot export '%1': no plot").arg(path));
         return false;
@@ -274,17 +421,33 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
     }
 
     // Restored on every exit path, including the failures below.
-    MarkerHideGuard markerGuard(includeCursors ? nullptr : cursors);
+    MarkerHideGuard markerGuard(options.includeCursors ? nullptr : cursors);
 
     QwtPlotRenderer renderer;
     renderer.setDiscardFlag(QwtPlotRenderer::DiscardBackground, false);
     renderer.setDiscardFlag(QwtPlotRenderer::DiscardCanvasFrame, true);
+    renderer.setDiscardFlag(QwtPlotRenderer::DiscardLegend, !options.includeLegend);
     renderer.setLayoutFlag(QwtPlotRenderer::FrameWithScales);
 
-    const QRectF target(0, 0, sizePx.width(), sizePx.height());
+    // The readouts form one box: cursor readout, an empty line, the Analysis readout.
+    QString readout = options.cursorReadout;
+    if (!options.analysisReadout.isEmpty())
+        readout += (readout.isEmpty() ? QString() : QStringLiteral("\n\n")) + options.analysisReadout;
+    const QStringList lines =
+        readout.isEmpty() ? QStringList() : readout.split(QLatin1Char('\n'));
+    const QString title = options.title.trimmed();
+
+    const bool below = options.position == ExportOptions::ReadoutPosition::Below;
+    const ExtraSizes extras = measureExtras(dpi, title, lines);
+    const Layout layout = makeLayout(sizePx, extras, below);
+    const QSize totalPx(qCeil(layout.total.width()), qCeil(layout.total.height()));
+    const QRectF target(0, 0, totalPx.width(), totalPx.height());
+
+    ExportOptions drawn = options;
+    drawn.title = title;
 
     if (suffix == QLatin1String("png")) {
-        QImage image(sizePx, QImage::Format_ARGB32);
+        QImage image(totalPx, QImage::Format_ARGB32);
         const int dotsPerMeter = qRound(dpi / 0.0254);
         image.setDotsPerMeterX(dotsPerMeter);
         image.setDotsPerMeterY(dotsPerMeter);
@@ -295,9 +458,8 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
                 setError(error, QStringLiteral("Cannot paint image for '%1'").arg(path));
                 return false;
             }
-            renderer.render(plot, &painter, target);
-            if (!readout.isEmpty())
-                paintReadout(&painter, plot, target.size(), readout);
+            renderer.render(plot, &painter, layout.plot);
+            paintExtras(&painter, plot, layout, extras, drawn, lines);
         }
         if (!image.save(path, "PNG")) {
             setError(error, QStringLiteral("Cannot write PNG file '%1'").arg(path));
@@ -309,8 +471,8 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
     if (suffix == QLatin1String("svg")) {
         QSvgGenerator generator;
         generator.setFileName(path);
-        generator.setSize(sizePx);
-        generator.setViewBox(QRect(QPoint(0, 0), sizePx));
+        generator.setSize(totalPx);
+        generator.setViewBox(QRect(QPoint(0, 0), totalPx));
         generator.setResolution(dpi);
         generator.setTitle(QStringLiteral("Modbus Control graph"));
         QPainter painter;
@@ -319,17 +481,16 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
             return false;
         }
         painter.fillRect(target, Qt::white);
-        renderer.render(plot, &painter, target);
-        if (!readout.isEmpty())
-            paintReadout(&painter, plot, target.size(), readout);
+        renderer.render(plot, &painter, layout.plot);
+        paintExtras(&painter, plot, layout, extras, drawn, lines);
         painter.end();
         return true;
     }
 
-    // PDF: one page of sizePx at dpi. QPdfWriter is used directly because
-    // QwtPlotRenderer::renderDocument() cannot draw the readout.
-    const qreal widthMm = sizePx.width() * 25.4 / dpi;
-    const qreal heightMm = sizePx.height() * 25.4 / dpi;
+    // PDF: one page of totalPx at dpi. QPdfWriter is used directly because
+    // QwtPlotRenderer::renderDocument() cannot draw the title and the readout.
+    const qreal widthMm = totalPx.width() * 25.4 / dpi;
+    const qreal heightMm = totalPx.height() * 25.4 / dpi;
     QPdfWriter writer(path);
     writer.setResolution(dpi);
     writer.setPageLayout(QPageLayout(QPageSize(QSizeF(widthMm, heightMm), QPageSize::Millimeter,
@@ -341,11 +502,12 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
         setError(error, QStringLiteral("Cannot write PDF file '%1'").arg(path));
         return false;
     }
+    // Device units of the page can differ slightly from the rounded pixel size: scale the layout.
     const QRectF page(0, 0, writer.width(), writer.height());
     painter.fillRect(page, Qt::white);
-    renderer.render(plot, &painter, page);
-    if (!readout.isEmpty())
-        paintReadout(&painter, plot, page.size(), readout);
+    painter.scale(page.width() / target.width(), page.height() / target.height());
+    renderer.render(plot, &painter, layout.plot);
+    paintExtras(&painter, plot, layout, extras, drawn, lines);
     painter.end();
     return true;
 }
@@ -353,24 +515,56 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
 void ExportImageDialog::accept()
 {
     auto *pathEdit = findChild<QLineEdit *>(QStringLiteral("exportPath"));
-    auto *widthSpin = findChild<QSpinBox *>(QStringLiteral("exportWidth"));
-    auto *heightSpin = findChild<QSpinBox *>(QStringLiteral("exportHeight"));
-    auto *dpiSpin = findChild<QSpinBox *>(QStringLiteral("exportDpi"));
+    auto *widthSpin = findChild<NumberSpinBox *>(QStringLiteral("exportWidth"));
+    auto *heightSpin = findChild<NumberSpinBox *>(QStringLiteral("exportHeight"));
+    auto *dpiSpin = findChild<NumberSpinBox *>(QStringLiteral("exportDpi"));
     auto *cursorsBox = findChild<QCheckBox *>(QStringLiteral("exportCursors"));
-    auto *readoutBox = findChild<QCheckBox *>(QStringLiteral("exportReadout"));
+    auto *titleEdit = findChild<QLineEdit *>(QStringLiteral("titleEdit"));
+    auto *legendCheck = findChild<QCheckBox *>(QStringLiteral("legendCheck"));
+    auto *cursorReadoutCheck = findChild<QCheckBox *>(QStringLiteral("cursorReadoutCheck"));
+    auto *analysisReadoutCheck = findChild<QCheckBox *>(QStringLiteral("analysisReadoutCheck"));
+    auto *positionCombo = findChild<QComboBox *>(QStringLiteral("positionCombo"));
+
+    // Typed text that was not committed yet.
+    widthSpin->interpretText();
+    heightSpin->interpretText();
+    dpiSpin->interpretText();
 
     const QString path = pathEdit->text().trimmed();
-    const QString readout = readoutBox->isChecked() ? m_readout : QString();
+
+    ExportOptions options;
+    options.sizePx = QSize(qRound(widthSpin->value()), qRound(heightSpin->value()));
+    options.dpi = qRound(dpiSpin->value());
+    options.includeCursors = cursorsBox->isChecked();
+    options.includeLegend = legendCheck->isChecked();
+    options.title = titleEdit->text();
+    if (cursorReadoutCheck->isChecked())
+        options.cursorReadout = m_readout;
+    if (analysisReadoutCheck->isChecked())
+        options.analysisReadout = m_analysisReadout;
+    options.position = static_cast<ExportOptions::ReadoutPosition>(positionCombo->currentData().toInt());
 
     QString err;
-    if (!render(m_plot, m_cursors, path, QSize(widthSpin->value(), heightSpin->value()),
-                dpiSpin->value(), cursorsBox->isChecked(), readout, &err)) {
+    if (!render(m_plot, m_cursors, path, options, &err)) {
         QMessageBox::warning(this, tr("Export graph"),
                              err.isEmpty() ? tr("The graph could not be exported.") : err);
         return;
     }
 
-    QSettings().setValue(QString::fromLatin1(kDirSetting), QFileInfo(path).absolutePath());
+    QSettings settings;
+    settings.setValue(QString::fromLatin1(kDirSetting), QFileInfo(path).absolutePath());
+    settings.setValue(QStringLiteral("exportImage/dpi"), options.dpi);
+    settings.setValue(QStringLiteral("exportImage/title"), titleEdit->text());
+    settings.setValue(QStringLiteral("exportImage/legend"), legendCheck->isChecked());
+    settings.setValue(QStringLiteral("exportImage/position"), positionCombo->currentData().toInt());
+    // A disabled check box keeps the stored choice for the next time it is available.
+    if (cursorsBox->isEnabled())
+        settings.setValue(QStringLiteral("exportImage/cursors"), cursorsBox->isChecked());
+    if (cursorReadoutCheck->isEnabled())
+        settings.setValue(QStringLiteral("exportImage/cursorReadout"), cursorReadoutCheck->isChecked());
+    if (analysisReadoutCheck->isEnabled())
+        settings.setValue(QStringLiteral("exportImage/analysisReadout"),
+                          analysisReadoutCheck->isChecked());
     QDialog::accept();
 }
 
