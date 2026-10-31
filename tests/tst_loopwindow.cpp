@@ -537,12 +537,12 @@ private slots:
             QVERIFY(t);
             const QRect cell = t->visualItemRect(t->item(0, 1));
             const QImage img = t->viewport()->grab(cell).toImage();
-            int dark = 0;
+            int darkPixels = 0;
             for (int y = 0; y < img.height(); ++y)
                 for (int x = 0; x < img.width(); ++x)
                     if (qGray(img.pixel(x, y)) < 110)
-                        ++dark;
-            QVERIFY2(dark > 20, "the register text is not drawn in a dark colour");
+                        ++darkPixels;
+            QVERIFY2(darkPixels > 20, "the register text is not drawn in a dark colour");
         }
         QApplication::setPalette(old);
     }
