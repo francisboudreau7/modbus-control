@@ -330,7 +330,12 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
         SetpointResult sp;
         sp.percent = percent;
         sp.target = r.y0 + percent / 100.0 * r.deltaPv;
-        if (const auto tc = findCrossingTime(search.t, search.v, r.y0, r.y100, percent)) {
+        if (percent == 0.0) {
+            // 0 % is always C1 itself (y0), even if a periodic PV crosses y0 again later.
+            sp.found = true;
+            sp.time = t1;
+            sp.measured = interpolateAt(rawAtCursors, t1);
+        } else if (const auto tc = findCrossingTime(search.t, search.v, r.y0, r.y100, percent)) {
             sp.found = true;
             sp.time = *tc;
             sp.measured = interpolateAt(rawAtCursors, *tc);

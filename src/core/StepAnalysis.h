@@ -94,6 +94,8 @@ inline constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 struct SetpointResult {
     double percent = 0.0;
     double target = kNaN;   ///< y0 + percent/100 * (y100 - y0)
+    /// v1.3.3: percent == 0 is always found, at time = t1 (C1) with target = y0, even if the PV
+    /// crosses y0 again later (periodic signals, WindowMean reference).
     bool found = false;
     double time = kNaN;     ///< seconds in the Recorder's time base (NaN if !found)
     /// Recorded (unsmoothed) value at `time`, linearly interpolated between the two
