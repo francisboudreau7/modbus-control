@@ -1,5 +1,7 @@
 #include "TrendPlot.h"
 
+#include "NumberSpinBox.h"
+
 #include "PlotCursors.h"
 #include "Recorder.h"
 
@@ -197,7 +199,7 @@ std::optional<std::pair<double, double>> askRangeDialog(QWidget *parent, QwtAxis
     dlg.setWindowTitle(axis == QwtAxis::YRight ? QObject::tr("Right Y axis range")
                                                : QObject::tr("Left Y axis range"));
     auto makeSpin = [&dlg](double v) {
-        auto *spin = new QDoubleSpinBox(&dlg);
+        auto *spin = new NumberSpinBox(&dlg); // "72,3" and "72.3"
         spin->setRange(-1e12, 1e12);
         spin->setDecimals(4);
         spin->setValue(v);

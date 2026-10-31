@@ -591,6 +591,39 @@ private slots:
         }
         QVERIFY(w.grab().save(QString::fromLocal8Bit(out) + "/loop_overflow.png"));
     }
+
+    // v1.3.3: faceplate fields take "72,3" and "72.3"; "1,234.5" is refused.
+    void faceplateAcceptsCommaAndPoint()
+    {
+        LoopController c;
+        LoopWindow w(&c);
+        auto *outEdit = w.faceplate()->findChild<QLineEdit *>("outEdit");
+        auto *spEdit = w.faceplate()->findChild<QLineEdit *>("spEdit");
+        auto *kp = w.faceplate()->findChild<QLineEdit *>("kpEdit");
+        QVERIFY(outEdit && spEdit && kp);
+        for (const char *text : {"62,5", "62.5"}) {
+            outEdit->setText(QString::fromLatin1(text));
+            emit outEdit->returnPressed();
+            QCOMPARE(c.model().state().outPct, 62.5);
+            QCOMPARE(outEdit->text(), QString("62.5"));
+            c.setOut(10.0);
+        }
+        spEdit->setText(QStringLiteral("35,5"));
+        emit spEdit->returnPressed();
+        QCOMPARE(c.model().state().spPct, 35.5);
+        QCOMPARE(spEdit->text(), QString("35.5"));
+        kp->setText(QStringLiteral("2,5"));
+        emit kp->returnPressed();
+        QCOMPARE(c.model().pid().kp, 2.5);
+        QCOMPARE(kp->text(), QString("2.5"));
+        // Thousands separators are not numbers: nothing changes.
+        spEdit->setText(QStringLiteral("1,234.5"));
+        emit spEdit->returnPressed();
+        QCOMPARE(c.model().state().spPct, 35.5);
+        kp->setText(QStringLiteral("1,234.5"));
+        emit kp->returnPressed();
+        QCOMPARE(c.model().pid().kp, 2.5);
+    }
 };
 
 QTEST_MAIN(TstLoopWindow)

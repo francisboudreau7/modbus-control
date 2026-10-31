@@ -2503,6 +2503,98 @@ private slots:
         QVERIFY(action->isEnabled());
         delete menu;
     }
+
+    // v1.3.3: every number cell accepts "72,3" and "72.3"; thousands separators are refused.
+    void numbersAcceptCommaAndPoint()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 10, true)}, 2);
+        QSignalSpy wr(&m, &TagTableModel::writeRequested);
+        for (const char *text : {"2,5", "2.5", " 2,5 "}) {
+            QVERIFY(m.setData(m.index(0, C::Gain), QString::fromLatin1(text)));
+            QCOMPARE(m.tagAt(0).gain, 2.5);
+            QVERIFY(m.setData(m.index(0, C::Offset), QString::fromLatin1(text)));
+            QCOMPARE(m.tagAt(0).offset, 2.5);
+        }
+        QVERIFY(m.setData(m.index(0, C::WriteMin), QStringLiteral("-1,5")));
+        QCOMPARE(m.tagAt(0).writeMin, std::optional<double>(-1.5));
+        QVERIFY(m.setData(m.index(0, C::WriteMax), QStringLiteral("99.5")));
+        QCOMPARE(m.tagAt(0).writeMax, std::optional<double>(99.5));
+        QVERIFY(m.setData(m.index(0, C::QuickA), QStringLiteral("7,25")));
+        QCOMPARE(m.tagAt(0).quickA, std::optional<double>(7.25));
+        QVERIFY(m.setData(m.index(0, C::QuickB), QStringLiteral("7.25")));
+        QCOMPARE(m.tagAt(0).quickB, std::optional<double>(7.25));
+        QVERIFY(m.setData(m.index(0, C::Value), QStringLiteral("72,3")));
+        QCOMPARE(wr.count(), 1);
+        QCOMPARE(wr.at(0).at(1).toDouble(), 72.3);
+        QVERIFY(m.setData(m.index(0, C::Value), QStringLiteral("72.3")));
+        QCOMPARE(wr.at(1).at(1).toDouble(), 72.3);
+
+        for (int col : {int(C::Gain), int(C::Offset), int(C::WriteMin), int(C::WriteMax),
+                        int(C::QuickA), int(C::QuickB), int(C::Value)}) {
+            const int before = int(wr.count());
+            QVERIFY2(!m.setData(m.index(0, col), QStringLiteral("1,234.5")), qPrintable(QString::number(col)));
+            QVERIFY(!m.setData(m.index(0, col), QStringLiteral("1.234,5")));
+            QVERIFY(!m.setData(m.index(0, col), QStringLiteral("1 234")));
+            QCOMPARE(int(wr.count()), before);
+        }
+        QCOMPARE(m.tagAt(0).gain, 2.5);
+    }
+
+    // v1.3.3: with a French locale the number editors still show and take a '.' or ','.
+    void numberEditorsUsePointUnderFrenchLocale()
+    {
+        const QLocale previous;
+        QLocale::setDefault(QLocale(QLocale::French, QLocale::Canada));
+        {
+            TagTableModel m;
+            Tag t = makeTag(1, "a", Area::HoldingRegister, 10, true);
+            t.gain = 0.1;
+            t.quickA = 7.25;
+            m.setTags({t}, 2);
+            mb::SampleBatch batch;
+            mb::TagSample sample;
+            sample.tagId = 1;
+            sample.value = 12.5;
+            sample.quality = mb::Quality::Good;
+            batch.samples = {sample};
+            m.updateSamples(batch);
+            TagTableWidget w(&m);
+            w.resize(1400, 200);
+            w.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&w));
+
+            auto *edit = openEditor<QLineEdit>(w, m.index(0, C::Gain));
+            QVERIFY(edit);
+            QCOMPARE(edit->text(), QStringLiteral("0.1"));
+            edit->setText(QStringLiteral("0,25"));
+            commitWithEnter(w, edit);
+            QCOMPARE(m.tagAt(0).gain, 0.25);
+
+            edit = openEditor<QLineEdit>(w, m.index(0, C::QuickA));
+            QVERIFY(edit);
+            QCOMPARE(edit->text(), QStringLiteral("7.25"));
+            edit->setText(QStringLiteral("8,5"));
+            commitWithEnter(w, edit);
+            QCOMPARE(m.tagAt(0).quickA, std::optional<double>(8.5));
+
+            edit = openEditor<QLineEdit>(w, m.index(0, C::Offset));
+            QVERIFY(edit);
+            edit->setText(QStringLiteral("-3,5"));
+            commitWithEnter(w, edit);
+            QCOMPARE(m.tagAt(0).offset, -3.5);
+
+            QSignalSpy wr(&m, &TagTableModel::writeRequested);
+            edit = openEditor<QLineEdit>(w, m.index(0, C::Value));
+            QVERIFY(edit);
+            QCOMPARE(edit->text(), QStringLiteral("12.5"));
+            edit->setText(QStringLiteral("13,5"));
+            commitWithEnter(w, edit);
+            QCOMPARE(wr.count(), 1);
+            QCOMPARE(wr.at(0).at(1).toDouble(), 13.5);
+        }
+        QLocale::setDefault(previous);
+    }
 };
 
 QTEST_MAIN(TstTagTableModel)

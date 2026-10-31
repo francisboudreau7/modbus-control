@@ -2,6 +2,8 @@
 
 #include "LoopController.h"
 
+#include "NumberText.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -631,19 +633,13 @@ namespace {
 /// Number typed in a faceplate field (comma or point decimal); false when not a finite number.
 double parseFieldNumber(const QString &text, bool *ok)
 {
-    QString str = text.trimmed();
-    str.replace(QLatin1Char(','), QLatin1Char('.'));
-    const double v = QLocale::c().toDouble(str, ok);
-    if (!std::isfinite(v)) {
-        *ok = false;
-    }
-    return v;
+    return mb::parseNumber(text, ok);
 }
 
 /// Shortest faithful text of a tuning value (no rounding of what was typed).
 QString tuningText(double v)
 {
-    return QString::number(v, 'g', 6);
+    return mb::numberText(v, 6);
 }
 } // namespace
 
@@ -720,11 +716,9 @@ void Faceplate::applyEdit(bool isOut)
         return;
     }
     QLineEdit *edit = isOut ? m_outEdit : m_spEdit;
-    QString str = edit->text().trimmed();
-    str.replace(QLatin1Char(','), QLatin1Char('.'));
     bool ok = false;
-    const double v = QLocale::c().toDouble(str, &ok);
-    if (ok && std::isfinite(v)) {
+    const double v = mb::parseNumber(edit->text(), &ok);
+    if (ok) {
         const double c = std::clamp(v, 0.0, 100.0);
         if (isOut) {
             m_controller->setOut(c);

@@ -4,10 +4,14 @@
 #include "WriteController.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QLabel>
+#include <QLocale>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QtTest>
 
 #include <limits>
@@ -1421,6 +1425,45 @@ private slots:
         QVERIFY(!answer);
         QCOMPARE(format, Qt::RichText);
         QVERIFY(shown.contains(QStringLiteral("<b>Write to 'X'?</b>")));
+    }
+
+    // v1.3.3: the multi-tag values dialog shows a point and accepts a comma or a point.
+    void valuesDialogAcceptsCommaAndPoint()
+    {
+        const QLocale previous;
+        QLocale::setDefault(QLocale(QLocale::French, QLocale::Canada));
+        Rig r;
+        setup(r);
+        struct Seen { bool dialog = false; QString initial; bool comma = false; bool point = false;
+                      bool thousands = true; } seen;
+        QTimer::singleShot(0, [&] {
+            auto *dlg = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dlg)
+                return;
+            seen.dialog = true;
+            const auto edits = dlg->findChildren<QLineEdit *>();
+            if (!edits.isEmpty()) {
+                QLineEdit *e = edits.first();
+                seen.initial = e->text();
+                e->clear();
+                QTest::keyClicks(e, QStringLiteral("72,3"));
+                seen.comma = e->hasAcceptableInput() && e->text() == QStringLiteral("72,3");
+                e->clear();
+                QTest::keyClicks(e, QStringLiteral("72.3"));
+                seen.point = e->hasAcceptableInput();
+                e->clear();
+                QTest::keyClicks(e, QStringLiteral("1,234.5"));
+                seen.thousands = e->hasAcceptableInput();
+            }
+            dlg->reject();
+        });
+        r.wc->requestWriteSelection({3});
+        QVERIFY(seen.dialog);
+        QVERIFY(!seen.initial.contains(','));
+        QVERIFY(seen.comma);
+        QVERIFY(seen.point);
+        QVERIFY(!seen.thousands);
+        QLocale::setDefault(previous);
     }
 };
 
