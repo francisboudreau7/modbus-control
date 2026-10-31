@@ -280,6 +280,8 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     layout->addWidget(m_view);
 
     auto removeSelected = [this] {
+        if (m_model->isLocked())
+            return;
         const QList<int> rows = selectedRows();
         if (rows.isEmpty())
             return;
@@ -292,13 +294,19 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     view->removeHandler = removeSelected;
 
     connect(addBtn, &QPushButton::clicked, this, [this] {
+        if (m_model->isLocked())
+            return;
         if (m_addTagHandler) {
             m_addTagHandler();
             return;
         }
-        showRow(m_model->addTag());
+        const int row = m_model->addTag();
+        if (row >= 0)
+            showRow(row);
     });
     connect(dupBtn, &QPushButton::clicked, this, [this] {
+        if (m_model->isLocked())
+            return;
         const QList<int> rows = selectedRows();
         int last = -1;
         for (int r : rows)
@@ -310,10 +318,18 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     connect(writeBtn, &QPushButton::clicked, this,
             [this] { emit writeSelectionRequested(selectedRows()); });
 
-    auto updateButtons = [this, dupBtn, remBtn, writeBtn] {
+    auto updateButtons = [this, addBtn, dupBtn, remBtn, writeBtn] {
         const QList<int> rows = selectedRows();
-        dupBtn->setEnabled(!rows.isEmpty());
-        remBtn->setEnabled(!rows.isEmpty());
+        const bool locked = m_model->isLocked();
+        const QString lockedTip =
+            locked ? tr("The tag configuration is locked (Options > Lock tag configuration)")
+                   : QString();
+        addBtn->setEnabled(!locked);
+        dupBtn->setEnabled(!locked && !rows.isEmpty());
+        remBtn->setEnabled(!locked && !rows.isEmpty());
+        addBtn->setToolTip(lockedTip);
+        dupBtn->setToolTip(lockedTip);
+        remBtn->setToolTip(lockedTip);
         bool ok = rows.size() >= 2;
         for (int r : rows)
             ok = ok && m_model->tagAt(r).isWritable();
@@ -323,6 +339,7 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     connect(m_model, &QAbstractItemModel::dataChanged, this, updateButtons);
     connect(m_model, &QAbstractItemModel::rowsRemoved, this, updateButtons);
     connect(m_model, &QAbstractItemModel::modelReset, this, updateButtons);
+    connect(m_model, &TagTableModel::lockedChanged, this, updateButtons);
     updateButtons();
 }
 

@@ -81,6 +81,44 @@ void commitWithEnter(TagTableWidget &w, T *editor)
     QTRY_VERIFY(w.view()->findChild<T *>() == nullptr);
 }
 
+Tag wideWritable(TagId id, quint16 addr = 5009)
+{
+    Tag t = makeTag(id, "w", Area::HoldingRegister, addr, true);
+    t.type = ValueType::Float32;
+    t.byteOrder = mb::ByteOrder::ABCD;
+    return t;
+}
+
+SampleBatch goodSample(TagId id, bool good = true)
+{
+    SampleBatch b;
+    TagSample s;
+    s.tagId = id;
+    s.value = 1.0;
+    s.quality = good ? Quality::Good : Quality::Timeout;
+    b.samples << s;
+    return b;
+}
+
+// Records the order of dataChanged and writableCleared.
+struct ClearProbe
+{
+    QStringList order;
+    QList<TagId> ids;
+    QStringList was, now;
+};
+void probe(TagTableModel &m, ClearProbe &p)
+{
+    QObject::connect(&m, &QAbstractItemModel::dataChanged, &m, [&p] { p.order << "data"; });
+    QObject::connect(&m, &TagTableModel::writableCleared, &m,
+                     [&p](TagId id, const QString &was, const QString &now) {
+                         p.order << "cleared";
+                         p.ids << id;
+                         p.was << was;
+                         p.now << now;
+                     });
+}
+
 } // namespace
 
 class TstTagTableModel : public QObject
@@ -560,16 +598,19 @@ private slots:
         QCOMPARE(m.data(ix(m, 1, C::ByteOrder), Qt::ToolTipRole).toString(), QString());
     }
 
-    void typeChangeTo32BitKeepsWritable()
+    // v1.3.3: a writable tag whose type changes loses Writable (it may be ticked again).
+    void typeChangeTo32BitClearsWritable()
     {
         TagTableModel m;
         QAbstractItemModelTester tester(&m);
         m.setTags({makeTag(1, "w", Area::HoldingRegister, 10, true)}, 2);
         QSignalSpy edited(&m, &TagTableModel::tagsEdited);
         QVERIFY(m.setData(ix(m, 0, C::Type), "float32"));
-        QVERIFY(m.tagAt(0).isWritable());
-        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Checked));
+        QVERIFY(!m.tagAt(0).isWritable());
+        QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
         QCOMPARE(edited.size(), 1);
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tagAt(0).isWritable());
     }
 
     void address65535Rules()
@@ -1186,6 +1227,10 @@ private slots:
         QTRY_VERIFY(w.view()->findChild<QSpinBox *>() == nullptr);
         QCOMPARE(m.tagAt(0).address, quint16(1234));
 
+        // v1.3.3: the register edits above cleared Writable; the limit cells need it back.
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(m.setData(m.index(0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+
         // Min / Max / Quick A / Quick B: order matters, a Quick value must lie within the limits.
         const QModelIndex wmin = m.index(0, C::WriteMin);
         auto *edit = openEditor<QLineEdit>(w, wmin);
@@ -1317,6 +1362,495 @@ private slots:
         w.view()->clearSelection();
         QVERIFY(!rem->isEnabled());
         QVERIFY(!dup->isEnabled());
+    }
+
+    // ---- v1.3.3 classroom safety ----
+
+    void connectedLocksRegisterSettings()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({wideWritable(1), makeTag(2, "p", Area::HoldingRegister, 20)}, 3);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QVERIFY(!m.isConnected());
+        m.setConnected(true);
+        QVERIFY(m.isConnected());
+        // dataChanged covers Area..ByteOrder and Writable of every row.
+        bool area = false, writable = false;
+        for (const QList<QVariant> &a : changed) {
+            const QModelIndex tl = a.at(0).toModelIndex();
+            const QModelIndex br = a.at(1).toModelIndex();
+            area = area || (tl.column() <= C::Area && br.column() >= C::ByteOrder && br.row() == 1);
+            writable = writable || (tl.column() <= C::Writable && br.column() >= C::Writable && br.row() == 1);
+        }
+        QVERIFY(area && writable);
+        changed.clear();
+        m.setConnected(true); // unchanged
+        QCOMPARE(changed.size(), 0);
+
+        const QString tip = QStringLiteral("Disconnect to change the register settings");
+        for (int row = 0; row < 2; ++row) {
+            for (int col : {int(C::Area), int(C::Address), int(C::Type)}) {
+                QVERIFY(!(m.flags(ix(m, row, col)) & Qt::ItemIsEditable));
+                QCOMPARE(m.data(ix(m, row, col), Qt::ToolTipRole).toString(), tip);
+            }
+            QVERIFY(!(m.flags(ix(m, row, C::Writable)) & Qt::ItemIsUserCheckable));
+            QCOMPARE(m.data(ix(m, row, C::Writable), Qt::ToolTipRole).toString(), tip);
+        }
+        QVERIFY(!(m.flags(ix(m, 0, C::ByteOrder)) & Qt::ItemIsEditable));
+        QCOMPARE(m.data(ix(m, 0, C::ByteOrder), Qt::ToolTipRole).toString(), tip);
+        // The ByteOrder cell of a 16-bit tag keeps its own tooltip.
+        QCOMPARE(m.data(ix(m, 1, C::ByteOrder), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Only used by 32-bit types"));
+
+        const QList<Tag> before = m.tags();
+        QVERIFY(!m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 100));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "int16"));
+        QVERIFY(!m.setData(ix(m, 0, C::ByteOrder), "CDAB"));
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tags() == before);
+
+        // Everything else stays editable.
+        QVERIFY(m.flags(ix(m, 0, C::Name)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::Gain)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::Offset)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::QuickA)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::WriteMin)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::Plot)) & Qt::ItemIsUserCheckable);
+        QVERIFY(m.setData(ix(m, 0, C::Name), "renamed"));
+        QVERIFY(m.setData(ix(m, 0, C::Gain), 2.0));
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), 5.0));
+        QVERIFY(m.setData(ix(m, 0, C::WriteMin), 1.0));
+        QVERIFY(m.setData(ix(m, 0, C::Plot), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.setData(ix(m, 0, C::Axis), "Right"));
+        QVERIFY(m.tagAt(0).writable);
+        QSignalSpy wr(&m, &TagTableModel::writeRequested);
+        QVERIFY(m.setData(ix(m, 0, C::Value), 3.5));
+        QCOMPARE(wr.size(), 1);
+        // Adding, duplicating and removing are not register-setting edits.
+        QVERIFY(m.addTag() >= 0);
+        QVERIFY(m.duplicateTag(0) >= 0);
+        QVERIFY(m.removeRows(m.rowCount() - 1, 1));
+
+        m.setConnected(false);
+        QVERIFY(m.flags(ix(m, 0, C::Address)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsUserCheckable);
+        QVERIFY(m.data(ix(m, 0, C::Address), Qt::ToolTipRole).toString().isEmpty());
+        QVERIFY(m.setData(ix(m, 0, C::Address), 100));
+    }
+
+    void connectedAllowsLayoutAndEncoding()
+    {
+        TagTableModel m;
+        m.setTags({wideWritable(1)}, 2);
+        m.setConnected(true);
+        QVERIFY(m.setEncoding(1, ValueType::Float32, mb::ByteOrder::CDAB, true));
+        QVERIFY(m.tagAt(0).byteOrder == mb::ByteOrder::CDAB);
+        QVERIFY(m.setLayout(1, 100, ValueType::Float32, mb::ByteOrder::ABCD, true));
+        QCOMPARE(m.tagAt(0).address, quint16(100));
+    }
+
+    void teacherLockColumnsAndStructure()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag w = wideWritable(1);
+        w.quickA = 3.0;
+        m.setTags({w, makeTag(2, "p", Area::HoldingRegister, 20)}, 3);
+        QSignalSpy lockedSpy(&m, &TagTableModel::lockedChanged);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QVERIFY(!m.isLocked());
+        m.setLocked(true);
+        QVERIFY(m.isLocked());
+        QCOMPARE(lockedSpy.size(), 1);
+        QCOMPARE(lockedSpy.at(0).at(0).toBool(), true);
+        QVERIFY(changed.size() >= 1);
+        QCOMPARE(edited.size(), 0);
+        m.setLocked(true);
+        QCOMPARE(lockedSpy.size(), 1);
+
+        const QString tip = QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)");
+        const QList<int> lockedCols{C::Area, C::Address, C::Type, C::ByteOrder, C::Gain, C::Offset,
+                                    C::WriteMin, C::WriteMax, C::QuickA, C::QuickB};
+        const QList<Tag> before = m.tags();
+        for (int row = 0; row < 2; ++row) {
+            for (int col : lockedCols) {
+                QVERIFY2(!(m.flags(ix(m, row, col)) & Qt::ItemIsEditable), qPrintable(QString::number(col)));
+                QCOMPARE(m.data(ix(m, row, col), Qt::ToolTipRole).toString(), tip);
+            }
+            QVERIFY(!(m.flags(ix(m, row, C::Writable)) & Qt::ItemIsUserCheckable));
+            QCOMPARE(m.data(ix(m, row, C::Writable), Qt::ToolTipRole).toString(), tip);
+        }
+        QVERIFY(!m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 7));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "int16"));
+        QVERIFY(!m.setData(ix(m, 0, C::ByteOrder), "CDAB"));
+        QVERIFY(!m.setData(ix(m, 0, C::Gain), 3.0));
+        QVERIFY(!m.setData(ix(m, 0, C::Offset), 3.0));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMin), 1.0));
+        QVERIFY(!m.setData(ix(m, 0, C::WriteMax), 1.0));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), 1.0));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickB), 1.0));
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tags() == before);
+
+        // The lock text wins over the connected one.
+        m.setConnected(true);
+        QCOMPARE(m.data(ix(m, 0, C::Address), Qt::ToolTipRole).toString(), tip);
+        m.setConnected(false);
+
+        // Still editable.
+        QVERIFY(m.setData(ix(m, 0, C::Name), "renamed"));
+        QVERIFY(m.setData(ix(m, 0, C::Unit), "bar"));
+        QVERIFY(m.setData(ix(m, 0, C::Plot), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.setData(ix(m, 0, C::Axis), "Right"));
+        QVERIFY(m.setData(ix(m, 0, C::Color), "#112233"));
+        QVERIFY(m.flags(ix(m, 0, C::Name)) & Qt::ItemIsEditable);
+        QVERIFY(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable);
+        QSignalSpy wr(&m, &TagTableModel::writeRequested);
+        QVERIFY(m.setData(ix(m, 0, C::Value), 2.5));
+        QCOMPARE(wr.size(), 1);
+
+        // Structure.
+        QCOMPARE(m.addTag(), -1);
+        QCOMPARE(m.addTag(makeTag(0, "x", Area::HoldingRegister, 99)), -1);
+        QCOMPARE(m.duplicateTag(0), -1);
+        QVERIFY(!m.removeRows(0, 1));
+        QVERIFY(!m.setLayout(1, 100, ValueType::Float32, mb::ByteOrder::ABCD, true));
+        QVERIFY(!m.setEncoding(1, ValueType::Float32, mb::ByteOrder::CDAB, true));
+        QCOMPARE(m.rowCount(), 2);
+        QVERIFY(m.tagAt(0).byteOrder == mb::ByteOrder::ABCD);
+        QCOMPARE(m.tagAt(0).address, quint16(5009));
+        // Confirming does not change registers.
+        QVERIFY(m.setEncodingVerified(1, false));
+        QVERIFY(m.setEncodingVerified(1, true));
+        QVERIFY(m.setConfirmed16Bit(2, true));
+        QVERIFY(m.setEncodingNote(2, "note"));
+        // setTags works in any state.
+        m.setTags({makeTag(9, "n")}, 10);
+        QCOMPARE(m.rowCount(), 1);
+
+        m.setLocked(false);
+        QCOMPARE(lockedSpy.size(), 2);
+        QCOMPARE(lockedSpy.at(1).at(0).toBool(), false);
+        QVERIFY(m.flags(ix(m, 0, C::Gain)) & Qt::ItemIsEditable);
+        QVERIFY(m.data(ix(m, 0, C::Gain), Qt::ToolTipRole).toString().isEmpty());
+        QVERIFY(m.addTag() >= 0);
+        QVERIFY(m.duplicateTag(0) >= 0);
+        QVERIFY(m.removeRows(0, 1));
+    }
+
+    void lockTooltipBeatsQuickAndLimitTexts()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "p", Area::HoldingRegister, 1)}, 2);
+        const QString need = QStringLiteral("Quick writes need a writable holding register");
+        QCOMPARE(m.data(ix(m, 0, C::QuickA), Qt::ToolTipRole).toString(), need);
+        m.setLocked(true);
+        for (int col : {int(C::QuickA), int(C::QuickB), int(C::WriteMin), int(C::WriteMax)})
+            QCOMPARE(m.data(ix(m, 0, col), Qt::ToolTipRole).toString(),
+                     QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+    }
+
+    void writableClearedFromSetData()
+    {
+        const QString dot = QStringLiteral(" · ");
+        for (int base : {0, 1}) {
+            const int d = base; // displayed = protocol + base
+            TagTableModel m;
+            m.setAddressBase(base);
+            m.setTags({wideWritable(1), makeTag(2, "n", Area::HoldingRegister, 10, true)}, 3);
+            ClearProbe p;
+            probe(m, p);
+
+            // Address of the 32-bit tag.
+            QVERIFY(m.setData(ix(m, 0, C::Address), 5020 + d));
+            QVERIFY(!m.tagAt(0).writable);
+            QCOMPARE(m.data(ix(m, 0, C::Writable), Qt::CheckStateRole).toInt(), int(Qt::Unchecked));
+            QCOMPARE(p.ids, QList<TagId>{1});
+            QCOMPARE(p.was.last(), QStringLiteral("HR %1-%2%3float32 ABCD").arg(5009 + d).arg(5010 + d).arg(dot));
+            QCOMPARE(p.now.last(), QStringLiteral("HR %1-%2%3float32 ABCD").arg(5020 + d).arg(5021 + d).arg(dot));
+            QCOMPARE(p.order.last(), QStringLiteral("cleared"));
+            QVERIFY(p.order.contains("data"));
+
+            // Type of the 16-bit tag.
+            QVERIFY(m.setData(ix(m, 1, C::Type), "uint16"));
+            QVERIFY(!m.tagAt(1).writable);
+            QCOMPARE(p.was.last(), QStringLiteral("HR %1%2int16").arg(10 + d).arg(dot));
+            QCOMPARE(p.now.last(), QStringLiteral("HR %1%2uint16").arg(10 + d).arg(dot));
+
+            // Type 16 -> 32 bit.
+            QVERIFY(m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+            QVERIFY(m.setData(ix(m, 1, C::Type), "float32"));
+            QCOMPARE(p.was.last(), QStringLiteral("HR %1%2uint16").arg(10 + d).arg(dot));
+            QVERIFY(p.now.last().startsWith(QStringLiteral("HR %1-%2").arg(10 + d).arg(11 + d)));
+            QVERIFY(p.now.last().contains("float32"));
+
+            // Area Holding -> Input.
+            QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+            QVERIFY(m.setData(ix(m, 0, C::Area), "Input"));
+            QVERIFY(!m.tagAt(0).writable);
+            QVERIFY(p.was.last().startsWith("HR "));
+            QVERIFY(p.now.last().startsWith("IR "));
+            QCOMPARE(p.order.last(), QStringLiteral("cleared"));
+
+            // ByteOrder.
+            TagTableModel m2;
+            m2.setAddressBase(base);
+            m2.setTags({wideWritable(1)}, 2);
+            ClearProbe p2;
+            probe(m2, p2);
+            QVERIFY(m2.setData(ix(m2, 0, C::ByteOrder), "CDAB"));
+            QVERIFY(!m2.tagAt(0).writable);
+            QCOMPARE(p2.was, QStringList{QStringLiteral("HR %1-%2%3float32 ABCD").arg(5009 + d).arg(5010 + d).arg(dot)});
+            QCOMPARE(p2.now, QStringList{QStringLiteral("HR %1-%2%3float32 CDAB").arg(5009 + d).arg(5010 + d).arg(dot)});
+        }
+    }
+
+    void writableKeptWhenNothingChanges()
+    {
+        TagTableModel m;
+        m.setTags({wideWritable(1), makeTag(2, "n", Area::HoldingRegister, 10, false)}, 3);
+        ClearProbe p;
+        probe(m, p);
+        // Same values: setData accepts, nothing is cleared.
+        QVERIFY(m.setData(ix(m, 0, C::Address), 5009));
+        QVERIFY(m.setData(ix(m, 0, C::Type), "float32"));
+        QVERIFY(m.setData(ix(m, 0, C::ByteOrder), "ABCD"));
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Holding"));
+        // Other columns do not matter.
+        QVERIFY(m.setData(ix(m, 0, C::Gain), 2.0));
+        QVERIFY(m.setData(ix(m, 0, C::Name), "x"));
+        // Confirming the encoding or the same layout keeps Writable.
+        QVERIFY(m.setEncoding(1, ValueType::Float32, mb::ByteOrder::ABCD, false));
+        QVERIFY(m.setEncoding(1, ValueType::Float32, mb::ByteOrder::ABCD, true));
+        QVERIFY(m.setLayout(1, 5009, ValueType::Float32, mb::ByteOrder::ABCD, true));
+        QVERIFY(m.tagAt(0).writable);
+        // A tag that is not writable has nothing to clear.
+        QVERIFY(m.setData(ix(m, 1, C::Address), 11));
+        QVERIFY(m.setData(ix(m, 1, C::Type), "float32"));
+        QVERIFY(p.ids.isEmpty());
+    }
+
+    void writableClearedFromSetEncodingAndSetLayout()
+    {
+        const QString dot = QStringLiteral(" · ");
+        for (int base : {0, 1}) {
+            TagTableModel m;
+            m.setAddressBase(base);
+            m.setTags({wideWritable(1), makeTag(2, "n", Area::HoldingRegister, 110, true)}, 3);
+            ClearProbe p;
+            probe(m, p);
+
+            QVERIFY(m.setEncoding(1, ValueType::UInt32, mb::ByteOrder::CDAB, true));
+            QVERIFY(!m.tagAt(0).writable);
+            QCOMPARE(p.ids, QList<TagId>{1});
+            QCOMPARE(p.was.last(), QStringLiteral("HR %1-%2%3float32 ABCD").arg(5009 + base).arg(5010 + base).arg(dot));
+            QCOMPARE(p.now.last(), QStringLiteral("HR %1-%2%3uint32 CDAB").arg(5009 + base).arg(5010 + base).arg(dot));
+            QCOMPARE(p.order.last(), QStringLiteral("cleared"));
+            QVERIFY(p.order.contains("data"));
+
+            // setLayout moves a 16-bit register into a 32-bit value.
+            QVERIFY(m.setLayout(2, 110, ValueType::Float32, mb::ByteOrder::CDAB, true));
+            QVERIFY(!m.tagAt(1).writable);
+            QCOMPARE(p.ids, (QList<TagId>{1, 2}));
+            QCOMPARE(p.was.last(), QStringLiteral("HR %1%2int16").arg(110 + base).arg(dot));
+            QCOMPARE(p.now.last(), QStringLiteral("HR %1-%2%3float32 CDAB").arg(110 + base).arg(111 + base).arg(dot));
+            QCOMPARE(p.order.last(), QStringLiteral("cleared"));
+        }
+    }
+
+    void confirmWritableAcceptRefuse()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "pump", Area::HoldingRegister, 5009), makeTag(2, "b", Area::HoldingRegister, 1)}, 3);
+        // Unset: accepted without asking.
+        QVERIFY(m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tagAt(1).writable);
+        QVERIFY(m.setData(ix(m, 1, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+
+        QList<TagTableModel::WritableAsk> asks;
+        bool answer = false;
+        m.setConfirmWritable([&](const TagTableModel::WritableAsk &a) {
+            asks << a;
+            return answer;
+        });
+        QSignalSpy edited(&m, &TagTableModel::tagsEdited);
+        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 1);
+        QCOMPARE(asks.at(0).id, TagId(1));
+        QCOMPARE(asks.at(0).tagName, QString("pump"));
+        QCOMPARE(asks.at(0).registerText, QStringLiteral("HR 5009 · int16"));
+        QVERIFY(!asks.at(0).wasInput);
+        QVERIFY(asks.at(0).inputRegisterText.isEmpty());
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(!m.writeNeedsRead(1));
+        QCOMPARE(edited.size(), 0);
+        QCOMPARE(changed.size(), 0);
+
+        answer = true;
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 2);
+        QVERIFY(m.tagAt(0).writable);
+        QVERIFY(m.writeNeedsRead(1));
+        QCOMPARE(edited.size(), 1);
+
+        // Ticking an already writable tag, and unticking, do not ask.
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 2);
+        answer = false;
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 2);
+        QVERIFY(!m.tagAt(0).writable);
+        // An input register cannot be ticked, and the question is not asked.
+        m.setTags({makeTag(5, "i", Area::InputRegister, 3)}, 6);
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 2);
+    }
+
+    void confirmWritableWasInput()
+    {
+        for (int base : {0, 1}) {
+            TagTableModel m;
+            m.setAddressBase(base);
+            Tag t = makeTag(1, "flow", Area::InputRegister, 5009);
+            t.type = ValueType::Float32;
+            t.byteOrder = mb::ByteOrder::ABCD;
+            m.setTags({t, makeTag(2, "other", Area::HoldingRegister, 1)}, 3);
+            QList<TagTableModel::WritableAsk> asks;
+            m.setConfirmWritable([&](const TagTableModel::WritableAsk &a) {
+                asks << a;
+                return true;
+            });
+            QVERIFY(m.setData(ix(m, 0, C::Area), "Holding"));
+            QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+            QCOMPARE(asks.size(), 1);
+            QVERIFY(asks.at(0).wasInput);
+            QCOMPARE(asks.at(0).inputRegisterText, QStringLiteral("IR %1-%2").arg(5009 + base).arg(5010 + base));
+            QCOMPARE(asks.at(0).registerText,
+                     QStringLiteral("HR %1-%2 · float32 ABCD").arg(5009 + base).arg(5010 + base));
+            // A tag that was always holding is not marked.
+            QVERIFY(m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+            QVERIFY(!asks.at(1).wasInput);
+            QVERIFY(asks.at(1).inputRegisterText.isEmpty());
+            // setTags forgets it.
+            m.setTags({m.tagAt(0)}, 3);
+            QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+            QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+            QVERIFY(!asks.last().wasInput);
+        }
+    }
+
+    void writeNeedsReadLifecycle()
+    {
+        TagTableModel m;
+        QVERIFY(!m.writeNeedsRead(99));
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 1), makeTag(2, "b", Area::HoldingRegister, 2, true)}, 3);
+        QVERIFY(!m.writeNeedsRead(1));
+        QVERIFY(!m.writeNeedsRead(2)); // setTags starts everything with false
+
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.writeNeedsRead(1));
+        m.updateSamples(goodSample(1, false));
+        QVERIFY(m.writeNeedsRead(1)); // a bad sample does not count
+        m.updateSamples(goodSample(1));
+        QVERIFY(!m.writeNeedsRead(1));
+
+        // Untick clears, tick sets again.
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.writeNeedsRead(1));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.writeNeedsRead(1));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.writeNeedsRead(1));
+        // Clearing Writable by a register change clears it too.
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.setData(ix(m, 0, C::Address), 7));
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(!m.writeNeedsRead(1));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.setLayout(1, 8, ValueType::Float32, mb::ByteOrder::ABCD, true));
+        QVERIFY(!m.writeNeedsRead(1));
+
+        // addTag(prototype) and duplicateTag of writable tags need a read; others do not.
+        Tag proto = makeTag(0, "n", Area::HoldingRegister, 50, true);
+        const int r = m.addTag(proto);
+        const TagId nid = m.tagAt(r).id;
+        QVERIFY(m.writeNeedsRead(nid));
+        proto.writable = false;
+        const int r2 = m.addTag(proto);
+        QVERIFY(!m.writeNeedsRead(m.tagAt(r2).id));
+        const int r3 = m.addTag();
+        QVERIFY(!m.writeNeedsRead(m.tagAt(r3).id));
+        const int d = m.duplicateTag(r);
+        const TagId did = m.tagAt(d).id;
+        QVERIFY(m.writeNeedsRead(did));
+        const int d2 = m.duplicateTag(r2);
+        QVERIFY(!m.writeNeedsRead(m.tagAt(d2).id));
+        m.updateSamples(goodSample(did));
+        QVERIFY(!m.writeNeedsRead(did));
+        QVERIFY(m.writeNeedsRead(nid));
+
+        // Removal clears it; setTags clears all.
+        QVERIFY(m.removeRows(r, 1));
+        QVERIFY(!m.writeNeedsRead(nid));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.writeNeedsRead(1));
+        m.setTags(m.tags(), m.nextTagId());
+        QVERIFY(!m.writeNeedsRead(1));
+    }
+
+    void lockedWidgetButtonsAndDeleteKey()
+    {
+        TagTableModel m;
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 0), makeTag(2, "b", Area::HoldingRegister, 1)}, 3);
+        TagTableWidget w(&m);
+        w.resize(1400, 300);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        QPushButton *add = buttonNamed(&w, QStringLiteral("Add"));
+        QPushButton *dup = buttonNamed(&w, QStringLiteral("Duplicate"));
+        QPushButton *rem = buttonNamed(&w, QStringLiteral("Remove"));
+        QVERIFY(add && dup && rem);
+        int handlerCalls = 0;
+        w.setAddTagHandler([&] { ++handlerCalls; });
+        w.view()->selectRow(0);
+        QVERIFY(add->isEnabled() && dup->isEnabled() && rem->isEnabled());
+
+        m.setLocked(true);
+        const QString tip = QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)");
+        QVERIFY(!add->isEnabled());
+        QVERIFY(!dup->isEnabled());
+        QVERIFY(!rem->isEnabled());
+        QCOMPARE(add->toolTip(), tip);
+        QCOMPARE(dup->toolTip(), tip);
+        QCOMPARE(rem->toolTip(), tip);
+        add->click();
+        dup->click();
+        rem->click();
+        QCOMPARE(handlerCalls, 0);
+        QCOMPARE(m.rowCount(), 2);
+
+        // Delete key removes nothing; selecting rows keeps the buttons disabled.
+        w.view()->setFocus();
+        w.view()->selectRow(1);
+        QVERIFY(!dup->isEnabled() && !rem->isEnabled());
+        QTest::keyClick(w.view(), Qt::Key_Delete);
+        QCOMPARE(m.rowCount(), 2);
+
+        m.setLocked(false);
+        QVERIFY(add->isEnabled() && dup->isEnabled() && rem->isEnabled());
+        QVERIFY(add->toolTip().isEmpty());
+        add->click();
+        QCOMPARE(handlerCalls, 1);
+        QTest::keyClick(w.view(), Qt::Key_Delete);
+        QCOMPARE(m.rowCount(), 1);
+        QCOMPARE(m.tagAt(0).name, QString("a"));
     }
 
     void columnKeys()
