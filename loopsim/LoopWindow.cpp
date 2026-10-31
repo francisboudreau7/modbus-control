@@ -807,6 +807,7 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     col->addLayout(row, 1);
     buildModbusPanel(central);
     col->addWidget(m_modbusPanel);
+    m_modbusPanel->setVisible(false); // shown with "Show Modbus registers"
 
     // Control bar.
     auto *bar = new QHBoxLayout;
@@ -848,6 +849,10 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     m_processDataCheck = new QCheckBox(QStringLiteral("Show process data"), central);
     m_processDataCheck->setObjectName(QStringLiteral("processDataCheck"));
     bar->addWidget(m_processDataCheck);
+    m_modbusCheck = new QCheckBox(QStringLiteral("Show Modbus registers"), central);
+    m_modbusCheck->setObjectName(QStringLiteral("modbusCheck"));
+    m_modbusCheck->setToolTip(QStringLiteral("Show which registers Modbus Control reads and writes"));
+    bar->addWidget(m_modbusCheck);
     col->addLayout(bar);
     setCentralWidget(central);
 
@@ -908,6 +913,10 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     });
     connect(m_processDataCheck, &QCheckBox::toggled, this,
             [this](bool on) { m_schematic->setProcessDataVisible(on); refresh(); });
+    connect(m_modbusCheck, &QCheckBox::toggled, this, [this](bool on) {
+        m_modbusPanel->setVisible(on);
+        refresh();
+    });
     // Controller -> window.
     connect(controller, &LoopController::stateChanged, this, [this] { refresh(); });
     connect(controller, &LoopController::pausedChanged, this, [this] { syncControls(); });

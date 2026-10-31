@@ -176,7 +176,7 @@ In Manual, a written OUT takes effect at once on FCV-101 (the stem then moves at
   1 % (5 % with Shift held). Type a value in the OUT or SP box and press Enter. Typed values outside 0 to
   100 are clamped. A client that writes by Modbus changes the same values. The mode button and the
   tuning fields are described in [The PID controller](#the-pid-controller).
-- **Modbus panel** (under the schematic, always visible): the server address and port actually in use
+- **Modbus panel** (under the schematic; tick **Show Modbus registers** in the bottom bar to show it, hidden by default): the server address and port actually in use
   (or the start error in red), the number of connected clients, and a table of the three registers: PV
   (input registers 1-2, read only), SP (holding registers 1-2) and OUT (holding registers 3-4), with the
   1-based number shown by Modbus Control, the 0-based address, the type, the function codes, the access

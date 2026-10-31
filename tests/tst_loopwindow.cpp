@@ -469,6 +469,8 @@ private slots:
         w.show();
         QWidget *panel = w.findChild<QWidget *>("modbusPanel");
         QVERIFY(panel);
+        QVERIFY(!panel->isVisible()); // hidden by default
+        w.findChild<QCheckBox *>("modbusCheck")->setChecked(true);
         QVERIFY(panel->isVisible());
         QVERIFY(w.rect().contains(panel->mapTo(&w, panel->rect().bottomRight())));
         auto *conn = w.findChild<QLabel *>("modbusConnLabel");
@@ -522,7 +524,10 @@ private slots:
         QVERIFY(conn);
         QVERIFY(conn->text().contains("Server not running: Port 1601 is already in use."));
         QVERIFY(conn->text().contains("c0392b"));
+        w.findChild<QCheckBox *>("modbusCheck")->setChecked(true);
         QVERIFY(w.findChild<QWidget *>("modbusPanel")->isVisible());
+        w.findChild<QCheckBox *>("modbusCheck")->setChecked(false);
+        QVERIFY(!w.findChild<QWidget *>("modbusPanel")->isVisible());
     }
 
     void snapshot()

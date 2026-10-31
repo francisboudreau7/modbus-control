@@ -128,7 +128,8 @@ private:
 /// scenario...", "Save scenario...", "Reset", "Quit"; Help: "About". The window refreshes at the
 /// controller's stateChanged(). File dialogs go through seams (tests).
 /// Modbus panel (T227, "modbusPanel", a light framed group "Modbus TCP - connect Modbus Control
-/// here" across the width under the schematic and faceplate, always visible): "modbusConnLabel"
+/// here" across the width under the schematic and faceplate; hidden by default, shown with the
+/// "Show Modbus registers" check box "modbusCheck" in the bottom bar): "modbusConnLabel"
 /// ("Server 127.0.0.1 : 1601   Unit 1 (any unit answered)  -  N client(s) connected", or
 /// "Server not running: <error>" in red); "modbusTable" (QTableWidget, read-only, 3 rows PV / SP /
 /// OUT, columns Signal, Register (1-based), Address (0-based), Type, Function codes, Access, Value;
@@ -166,6 +167,7 @@ private:
     QPushButton *m_pauseButton = nullptr;
     QLabel *m_timeLabel = nullptr;
     QCheckBox *m_processDataCheck = nullptr;
+    QCheckBox *m_modbusCheck = nullptr;
     QString m_serverStatus;
     QWidget *m_modbusPanel = nullptr;
     QLabel *m_modbusConn = nullptr;

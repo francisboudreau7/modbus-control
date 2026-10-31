@@ -188,7 +188,7 @@ de la course).
   SP et appuyez sur Entrée. Les valeurs tapées hors de 0 à 100 sont ramenées dans cette plage. Un client
   qui écrit par Modbus change les mêmes valeurs. Le bouton de mode et les champs de réglage sont décrits
   dans [Le régulateur PID](#le-régulateur-pid).
-- **Modbus panel** (sous le schéma, toujours visible) : l'adresse et le port réellement utilisés du
+- **Modbus panel** (sous le schéma; cochez **Show Modbus registers** dans la barre du bas pour l’afficher, masqué par défaut) : l'adresse et le port réellement utilisés du
   serveur (ou l'erreur de démarrage, en rouge), le nombre de clients connectés, et un tableau des trois
   registres : PV (registres d'entrée 1-2, en lecture seule), SP (registres de maintien 1-2) et OUT
   (registres de maintien 3-4), avec le numéro à base 1 affiché par Modbus Control, l'adresse à base 0,
