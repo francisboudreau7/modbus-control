@@ -74,6 +74,14 @@ class TstEncodingMonitor : public QObject
     QStringList introTexts;                            ///< intro labels of the dialogs (refused reads)
     QStringList registerTexts;                         ///< their registers labels
 
+    // Off-by-one numbering prompt seam.
+    struct OffPrompt {
+        QString text;
+        QString useLabel;
+    };
+    QList<OffPrompt> offPrompts;
+    EncodingMonitor::OffByOneAnswer offAnswer = EncodingMonitor::OffByOneAnswer::Keep;
+
     void answerRead(const ReadReq &r)
     {
         QList<quint16> values;
@@ -172,6 +180,8 @@ private slots:
         onDialog = nullptr;
         reviews.clear();
         reviewAnswer = false;
+        offAnswer = EncodingMonitor::OffByOneAnswer::Keep;
+        offPrompts.clear();
         unexpected.clear();
         introTexts.clear();
         registerTexts.clear();
@@ -204,6 +214,10 @@ private slots:
         mon->m_reviewPrompt = [this](const QString &text) {
             reviews << text;
             return reviewAnswer;
+        };
+        mon->m_offByOnePrompt = [this](const QString &, const QString &) {
+            unexpected << QStringLiteral("off-by-one prompt");
+            return EncodingMonitor::OffByOneAnswer::Keep;
         };
     }
 
@@ -1845,11 +1859,13 @@ private slots:
         mon->onConnected();
         const TagId id = add(mkTag(QStringLiteral("Gone"), 300, ValueType::Int16));
         feed({exception16(id)});
-        QCOMPARE(reads.size(), 3);
+        QCOMPARE(reads.size(), 4);
         QCOMPARE(reads[0].address, quint16(300));
         QCOMPARE(reads[0].count, 1);
         QCOMPARE(reads[1].address, quint16(300));
         QCOMPARE(reads[2].address, quint16(299));
+        QCOMPARE(reads[3].address, quint16(299)); // the off-by-one probe (fails: no such register)
+        QCOMPARE(reads[3].count, 1);
         QVERIFY(dialogs.isEmpty());
         QVERIFY(tagOf(id).encodingVerified);
         QVERIFY(model->encodingNote(id).isEmpty());
@@ -1857,7 +1873,7 @@ private slots:
         QVERIFY(splits.isEmpty());
         // detectNow says so.
         mon->detectNow(id);
-        QCOMPARE(reads.size(), 6);
+        QCOMPARE(reads.size(), 7); // the numbering probe runs once per connection
         QCOMPARE(messages->size(), 1);
         QCOMPARE(messages->first().first().toString(),
                  QStringLiteral("'Gone' (HR 300) can't be read, alone or as part of a 32-bit value: "
@@ -1980,7 +1996,7 @@ private slots:
         QCOMPARE(reads.size(), 2); // alone, then (0, 2)
         QCOMPARE(reads[1].address, quint16(0));
         feed({exception16(high)});
-        QCOMPARE(reads.size(), 4); // alone, then (65534, 2)
+        QCOMPARE(reads.size(), 5); // alone, then (65534, 2), then the numbering probe (65534, 1)
         QCOMPARE(reads[3].address, quint16(65534));
     }
 
@@ -2387,6 +2403,354 @@ private slots:
         QVERIFY(tagOf(1).byteOrder == ByteOrder::ABCD); // not applied to the new address
         QVERIFY(!tagOf(1).encodingVerified);             // re-addressed: to be confirmed
         QVERIFY(mon->isPending(1));
+    }
+
+    // ---- off-by-one numbering check ---------------------------------------------------------
+
+    void installOffPrompt()
+    {
+        offPrompts.clear();
+        mon->m_offByOnePrompt = [this](const QString &text, const QString &label) {
+            offPrompts.append(OffPrompt{text, label});
+            return offAnswer;
+        };
+    }
+
+    /// Like a CM50: float32 values sit at even addresses; a read of a misaligned pair, or of one
+    /// register alone, is refused.
+    void cm50()
+    {
+        regs.clear();
+        for (int a = 5008; a < 5016; ++a)
+            regs[a] = quint16(0x4200 + a % 7);
+        readFails = [](quint16 address, int count) { return address % 2 == 1 || count == 1; };
+        installOffPrompt();
+    }
+
+    QSignalSpy *baseSpy()
+    {
+        return new QSignalSpy(mon.get(), &EncodingMonitor::addressBaseChangeRequested);
+    }
+
+    void offByOneUseNumberingMovesEveryTag()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::UseNumbering;
+        Tag proto = mkTag(QStringLiteral("Setpoint"), 5009);
+        proto.writable = true;
+        load({proto, mkTag(QStringLiteral("Other"), 20)});
+        const TagId a = 1;
+        const TagId other = 2;
+        mon->onConnected();
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[0].address, quint16(5009)); // the tag alone, its own count
+        QCOMPARE(reads[0].count, 2);
+        QCOMPARE(reads[1].address, quint16(5008)); // one register below
+        QCOMPARE(reads[1].count, 2);
+        QCOMPARE(offPrompts.size(), 1);
+        const QString &text = offPrompts[0].text;
+        QVERIFY(text.contains(QStringLiteral("Some registers may be numbered from 1.")));
+        QVERIFY(text.contains(QStringLiteral("'Setpoint': HR 5009-5010 is refused, but HR 5008-5009 answers.")));
+        QVERIFY(text.contains(QStringLiteral("Device manuals often count registers from 1 (or from 0)")));
+        QCOMPARE(offPrompts[0].useLabel, QStringLiteral("Use 1-based numbers"));
+        QCOMPARE(tagOf(a).address, quint16(5008));
+        QCOMPARE(tagOf(other).address, quint16(19));
+        QVERIFY(!tagOf(a).writable);
+        QVERIFY(tagOf(a).type == ValueType::Float32);
+        QVERIFY(!mon->isPending(a));
+        QCOMPARE(bases->size(), 1);
+        QCOMPARE(bases->first().first().toInt(), 1);
+        QVERIFY(dialogs.isEmpty());
+    }
+
+    void offByOneMoveTagsMovesOnlyTheListedTags()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::MoveTags;
+        load({mkTag(QStringLiteral("Setpoint"), 5009), mkTag(QStringLiteral("Other"), 20)});
+        const TagId a = 1;
+        const TagId other = 2;
+        mon->onConnected();
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(offPrompts.size(), 1);
+        QCOMPARE(tagOf(a).address, quint16(5008));
+        QCOMPARE(tagOf(other).address, quint16(20));
+        QVERIFY(bases->isEmpty());
+        QVERIFY(!mon->isPending(a));
+        QVERIFY(tagOf(a).encodingVerified);
+    }
+
+    void offByOneKeepChangesNothingAndAsksOnTheNextConnection()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::Keep;
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("Setpoint"), 5009));
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(offPrompts.size(), 1);
+        QCOMPARE(tagOf(a).address, quint16(5009));
+        QVERIFY(bases->isEmpty());
+        // Once per tag per connection.
+        feed({good16(a, 0, Quality::Exception)});
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(offPrompts.size(), 1);
+        mon->onDisconnected();
+        mon->onConnected();
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 4);
+        QCOMPARE(offPrompts.size(), 2);
+    }
+
+    void offByOneBaseOneProbesTheNextRegister()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::UseNumbering;
+        model->setAddressBase(1);
+        // Typed as 5010 with 1-based numbers: protocol address 5009.
+        load({mkTag(QStringLiteral("Setpoint"), 5009), mkTag(QStringLiteral("Other"), 20)});
+        const TagId a = 1;
+        const TagId other = 2;
+        mon->onConnected();
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[1].address, quint16(5010));
+        QCOMPARE(reads[1].count, 2);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("Some registers may be numbered from 0.")));
+        QVERIFY(offPrompts[0].text.contains(
+            QStringLiteral("'Setpoint': HR 5010-5011 is refused, but HR 5011-5012 answers.")));
+        QCOMPARE(offPrompts[0].useLabel, QStringLiteral("Use 0-based numbers"));
+        QCOMPARE(tagOf(a).address, quint16(5010));
+        QCOMPARE(tagOf(other).address, quint16(21));
+        QCOMPARE(bases->size(), 1);
+        QCOMPARE(bases->first().first().toInt(), 0);
+    }
+
+    void offByOneUseNumberingNotOfferedAfterAGoodReading()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::UseNumbering;
+        load({mkTag(QStringLiteral("Setpoint"), 5009), mkTag(QStringLiteral("Other"), 20, ValueType::Int16)});
+        const TagId a = 1;
+        const TagId other = 2;
+        mon->onConnected();
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        mon->m_offTimer.setInterval(20);
+        // The Good reading ends the connect pass first: the prompt waits for the quiet period.
+        feed({good16(other, 7), good16(a, 0, Quality::Exception)});
+        QTRY_COMPARE_WITH_TIMEOUT(offPrompts.size(), 1, 2000);
+        QVERIFY(offPrompts[0].useLabel.isEmpty());
+        // The seam answered UseNumbering anyway: nothing moves.
+        QCOMPARE(tagOf(a).address, quint16(5009));
+        QCOMPARE(tagOf(other).address, quint16(20));
+        QVERIFY(bases->isEmpty());
+    }
+
+    void offByOneUseNumberingNotOfferedWhenATagCannotMove()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("Setpoint"), 5009));
+        add(mkTag(QStringLiteral("AtZero"), 0, ValueType::Int16));
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].useLabel.isEmpty());
+    }
+
+    void offByOneNoPromptWhenTheProbeFails()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("Gone"), 6001)); // 6000 does not exist either
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(offPrompts.isEmpty());
+        QCOMPARE(tagOf(a).address, quint16(6001));
+    }
+
+    void offByOneNoProbeWhenTheTagReadsAlone()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("Fine"), 5008)); // aligned: answers
+        feed({good16(a, 0, Quality::Exception)});                  // e.g. it shared a failed block
+        QCOMPARE(reads.size(), 1);
+        QVERIFY(offPrompts.isEmpty());
+    }
+
+    void offByOneSkipsEdgesAndOverlaps()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId zero = add(mkTag(QStringLiteral("Zero"), 0));
+        feed({good16(zero, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 1); // address - 1 would be -1
+        QVERIFY(offPrompts.isEmpty());
+
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        add(mkTag(QStringLiteral("B"), 5007)); // maps 5007-5008: A's probe would overlap it
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[1].address, quint16(5009));
+        QVERIFY(offPrompts.isEmpty());
+
+        // The upper edge with base 1.
+        model->setAddressBase(1);
+        const TagId top = add(mkTag(QStringLiteral("Top"), 65534));
+        feed({good16(top, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 3); // 65535-65536 is outside
+        QVERIFY(offPrompts.isEmpty());
+    }
+
+    void offByOneListsSeveralTagsInOnePrompt()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        const TagId b = add(mkTag(QStringLiteral("B"), 5013));
+        autoAnswer = false; // both tags are queued before the first answer, as with a real device
+        feed({good16(a, 0, Quality::Exception), good16(b, 0, Quality::Exception)});
+        for (qsizetype i = 0; i < reads.size(); ++i)
+            answerRead(reads[i]);
+        QCOMPARE(reads.size(), 4);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'A': HR 5009-5010 is refused, but HR 5008-5009 answers.")));
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'B': HR 5013-5014 is refused, but HR 5012-5013 answers.")));
+    }
+
+    void offByOneLockedModelShowsAMessage()
+    {
+        cm50();
+        offAnswer = EncodingMonitor::OffByOneAnswer::UseNumbering;
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        model->setLocked(true);
+        const std::unique_ptr<QSignalSpy> bases(baseSpy());
+        feed({good16(a, 0, Quality::Exception)});
+        QVERIFY(offPrompts.isEmpty());
+        QCOMPARE(messages->size(), 1);
+        QCOMPARE(messages->first().first().toString(),
+                 QStringLiteral("1 tags may be numbered one register off; the tag configuration is "
+                                "locked (Options > Lock tag configuration)."));
+        QCOMPARE(tagOf(a).address, quint16(5009));
+        QVERIFY(bases->isEmpty());
+    }
+
+    void offByOneSixteenBitAfterThePairFlow()
+    {
+        // Only HR 5008 exists, and only alone: the pairs at 5009 and 5008 are refused.
+        regs.clear();
+        regs[5008] = 7;
+        installOffPrompt();
+        offAnswer = EncodingMonitor::OffByOneAnswer::MoveTags;
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("Level"), 5009, ValueType::Int16));
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 4);
+        QCOMPARE(reads[0].address, quint16(5009)); // alone
+        QCOMPARE(reads[0].count, 1);
+        QCOMPARE(reads[1].count, 2); // the two pairs
+        QCOMPARE(reads[2].count, 2);
+        QCOMPARE(reads[3].address, quint16(5008)); // then the off-by-one probe, one register
+        QCOMPARE(reads[3].count, 1);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'Level': HR 5009 is refused, but HR 5008 answers.")));
+        QCOMPARE(tagOf(a).address, quint16(5008));
+        QVERIFY(tagOf(a).type == ValueType::Int16);
+        QVERIFY(dialogs.isEmpty());
+    }
+
+    void offByOneSixteenBitWithAReadablePairSkipsTheProbe()
+    {
+        cm50();
+        mon->onConnected();
+        // HR 5009 alone is refused, but 5008-5009 is a pair that reads: the pair flow takes it.
+        answerWith(QStringLiteral("1"), false);
+        const TagId a = add(mkTag(QStringLiteral("Level"), 5009, ValueType::Int16));
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 3);
+        QVERIFY(offPrompts.isEmpty());
+    }
+
+    void offByOneTimeoutStopsTheProbes()
+    {
+        cm50();
+        autoAnswer = false;
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 1);
+        ModbusResult refused;
+        refused.error = ModbusError::Exception;
+        refused.exceptionCode = 2;
+        mon->onReadFinished(reads[0].id, refused, {});
+        QCOMPARE(reads.size(), 2);
+        ModbusResult timeout;
+        timeout.error = ModbusError::Timeout;
+        mon->onReadFinished(reads[1].id, timeout, {});
+        QCOMPARE(messages->size(), 1);
+        QVERIFY(messages->first().first().toString().startsWith(QStringLiteral("Stopped checking")));
+        const TagId b = add(mkTag(QStringLiteral("B"), 5011));
+        feed({good16(b, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(offPrompts.isEmpty());
+    }
+
+    void offByOnePromptFromAnEarlierConnectionIsDropped()
+    {
+        cm50();
+        autoAnswer = false;
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        feed({good16(a, 0, Quality::Exception)});
+        ModbusResult refused;
+        refused.error = ModbusError::Exception;
+        refused.exceptionCode = 2;
+        mon->onReadFinished(reads[0].id, refused, {});
+        QCOMPARE(reads.size(), 2);
+        mon->onDisconnected();
+        mon->onConnected();
+        ModbusResult ok;
+        mon->onReadFinished(reads[1].id, ok, {1, 2});
+        QVERIFY(offPrompts.isEmpty());
+        QCOMPARE(tagOf(a).address, quint16(5009));
+    }
+
+    void offByOnePromptAnsweredAfterTheTagMovedIsNotApplied()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        mon->m_offByOnePrompt = [this](const QString &text, const QString &label) {
+            offPrompts.append(OffPrompt{text, label});
+            model->setData(model->index(0, TagTableModel::Address), 5012); // the user edits it
+            return EncodingMonitor::OffByOneAnswer::MoveTags;
+        };
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(offPrompts.size(), 1);
+        QCOMPARE(tagOf(a).address, quint16(5012));
+    }
+
+    void offByOneLaterFailuresWaitForAQuietPeriod()
+    {
+        cm50();
+        mon->onConnected();
+        const TagId good = add(mkTag(QStringLiteral("Good"), 20, ValueType::Int16));
+        const TagId a = add(mkTag(QStringLiteral("A"), 5009));
+        feed({good16(good, 1)}); // the connect pass ends here
+        mon->m_offTimer.setInterval(20);
+        const qsizetype before = reads.size();
+        feed({good16(a, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), before + 2);
+        QVERIFY(offPrompts.isEmpty()); // not at once
+        QTRY_COMPARE_WITH_TIMEOUT(offPrompts.size(), 1, 2000);
+        QVERIFY(offPrompts[0].useLabel.isEmpty()); // a tag has read Good
     }
 };
 

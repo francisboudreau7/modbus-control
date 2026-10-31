@@ -69,6 +69,30 @@ EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QO
         box.exec();
         return box.clickedButton() == review;
     };
+    m_offByOnePrompt = [this](const QString &text, const QString &useNumberingLabel) {
+        QMessageBox box(QMessageBox::Warning, QStringLiteral("Register numbering"), text,
+                        QMessageBox::NoButton, m_dialogParent);
+        box.setTextFormat(Qt::RichText);
+        QPushButton *use = useNumberingLabel.isEmpty()
+                               ? nullptr
+                               : box.addButton(useNumberingLabel, QMessageBox::AcceptRole);
+        QPushButton *move = box.addButton(QStringLiteral("Move these tags"), QMessageBox::ActionRole);
+        QPushButton *keep = box.addButton(QStringLiteral("Keep"), QMessageBox::RejectRole);
+        box.setDefaultButton(keep);
+        box.setEscapeButton(keep);
+        box.exec();
+        if (use && box.clickedButton() == use)
+            return OffByOneAnswer::UseNumbering;
+        if (box.clickedButton() == move)
+            return OffByOneAnswer::MoveTags;
+        return OffByOneAnswer::Keep;
+    };
+    m_offTimer.setSingleShot(true);
+    m_offTimer.setInterval(kOffQuietMs);
+    connect(&m_offTimer, &QTimer::timeout, this, [this] {
+        m_offQuiet = true;
+        pump();
+    });
     for (const Tag &tag : m_model->tags())
         m_snapshot.insert(tag.id, tag);
 }
@@ -140,9 +164,14 @@ void EncodingMonitor::onSamples(const SampleBatch &batch)
                 if (connect)
                     queueRefused(sample.tagId, ProbeMode::Connect);
             }
+        } else if (found && sample.quality == Quality::Exception && m_connected) {
+            // A 32-bit tag refused as a whole: maybe the register numbers are one off.
+            queueOffByOne(*found, false, true);
         }
         if (sample.quality != Quality::Good)
             continue;
+        if (m_connected)
+            m_goodSeen = true;
         if (found && !wide(*found)) {
             // First Good sample of a 16-bit tag: time for its split check.
             if (m_connected && m_splitPending.remove(sample.tagId))
@@ -267,6 +296,11 @@ void EncodingMonitor::onConnected()
     m_probe.reset();
     m_connectFound.clear();
     m_connectWait.clear();
+    m_offChecked.clear();
+    m_offFound.clear();
+    m_goodSeen = false;
+    m_offQuiet = false;
+    m_offTimer.stop();
     for (const Tag &tag : m_model->tags()) {
         if (!wide(tag) && !m_splitPending.contains(tag.id) && !tag.confirmed16Bit
             && !m_sessionChecked.contains(tag.id))
@@ -291,6 +325,11 @@ void EncodingMonitor::onDisconnected()
     m_connectFound.clear();
     m_connectWait.clear();
     m_passActive = false;
+    m_offChecked.clear();
+    m_offFound.clear();
+    m_goodSeen = false;
+    m_offQuiet = false;
+    m_offTimer.stop();
 }
 
 void EncodingMonitor::runConnectCheck()
@@ -378,6 +417,7 @@ void EncodingMonitor::onTagsChanged()
             if (relocated) {
                 m_lastQuality.remove(tag.id);
                 forgetSplit(tag.id);
+                m_offChecked.remove(tag.id);
                 m_sessionChecked.remove(tag.id);
                 m_queue.removeAll(Request{tag.id, {}, 0});
                 m_splitPending.insert(tag.id);
@@ -389,6 +429,7 @@ void EncodingMonitor::onTagsChanged()
         const bool moved = it == m_snapshot.constEnd() || !wide(*it) || it->area != tag.area
                            || it->address != tag.address;
         if (moved) {
+            m_offChecked.remove(tag.id);
             m_sessionChecked.remove(tag.id);
             if (tag.encodingVerified)
                 unverify.append(tag.id);
@@ -406,6 +447,7 @@ void EncodingMonitor::onTagsChanged()
         finishPending(it.key());
         forgetSplit(it.key());
         m_lastQuality.remove(it.key());
+        m_offChecked.remove(it.key());
         m_sessionChecked.remove(it.key());
         m_readings.remove(it.key());
         m_queue.removeAll(Request{it.key(), {}, 0});
@@ -440,6 +482,10 @@ void EncodingMonitor::onTagsReplaced()
     m_deferred32.reset();
     m_deferred16.reset();
     m_splitStopped = false;
+    m_offChecked.clear();
+    m_offFound.clear();
+    m_offQuiet = false;
+    m_offTimer.stop();
 }
 
 void EncodingMonitor::detectNow(TagId id)
@@ -500,6 +546,8 @@ void EncodingMonitor::pump()
                         enqueueSplit(*tag, f.split, f.own, f.epoch);
                 }
             }
+        } else if (offByOneDue()) {
+            runOffByOnePrompt();
         } else {
             break;
         }
@@ -570,7 +618,7 @@ void EncodingMonitor::forgetSplit(TagId id)
 {
     m_splitPending.remove(id);
     m_connectWait.remove(id);
-    m_probes.removeIf([id](const Probe &p) { return p.id == id; });
+    m_probes.removeIf([id](const Probe &p) { return p.id == id && !p.offByOne; });
     m_connectFound.removeIf([id](const SplitFinding &f) { return f.id == id; });
 }
 
@@ -617,7 +665,7 @@ void EncodingMonitor::startNextProbe()
 {
     while (!m_probe && !m_probes.isEmpty()) {
         Probe probe = m_probes.takeFirst();
-        if (splitProbeValid(probe))
+        if (probeValid(probe))
             issueRead(probe);
     }
 }
@@ -653,6 +701,17 @@ bool EncodingMonitor::pairBlocked(const Tag &self, int start)
 
 void EncodingMonitor::issueRead(Probe &probe)
 {
+    if (probe.offByOne) {
+        if (!probe.aloneDone) {
+            probe.requestId = m_nextRequest++;
+            m_probe = probe;
+            emit readRequested(probe.requestId, probe.tag.area, probe.tag.address,
+                               registerCount(probe.tag.type));
+        } else if (!issueOffByOneShifted(probe)) {
+            maybeFinishConnectPass(); // skipped (edge or overlap): nothing to read
+        }
+        return;
+    }
     if (probe.refused) {
         if (!probe.aloneDone) {
             probe.requestId = m_nextRequest++;
@@ -698,6 +757,10 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
         return;
     Probe probe = *m_probe;
     m_probe.reset();
+    if (probe.offByOne) {
+        onOffByOneResult(probe, result, values);
+        return;
+    }
     if (!splitProbeValid(probe)) {
         startNextProbe();
         maybeFinishConnectPass();
@@ -1105,6 +1168,8 @@ void EncodingMonitor::completeRefused(const Probe &probe)
                                         "value: check the register number.")
                              .arg(tag.name, areaPrefix(tag.area)).arg(tag.address + base));
         }
+        // The register is refused alone (checked) and in both pairs: maybe it is numbered one off.
+        queueOffByOne(tag, true, false);
         return;
     }
     // The 32-bit view of the tag at `start`, and how plausible the pair reads in it.
@@ -1213,6 +1278,236 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
     if (const Tag *now = findTag(request.id))
         m_snapshot.insert(request.id, *now);
     applyOrderToOthers(dialog, chosen->order);
+}
+
+// --- Off-by-one numbering check -----------------------------------------------------
+
+bool EncodingMonitor::shiftInRange(const Tag &tag, int shift)
+{
+    const int start = tag.address + shift;
+    return start >= 0 && start + registerCount(tag.type) - 1 <= 65535;
+}
+
+bool EncodingMonitor::shiftUsable(const Tag &tag, int shift) const
+{
+    if (!shiftInRange(tag, shift))
+        return false;
+    const int start = tag.address + shift;
+    for (int reg = start; reg < start + registerCount(tag.type); ++reg) {
+        if (registerUsedByOther(tag, reg))
+            return false;
+    }
+    return true;
+}
+
+void EncodingMonitor::queueOffByOne(const Tag &tag, bool aloneDone, bool start)
+{
+    if (!m_connected || m_splitStopped || m_offChecked.contains(tag.id))
+        return;
+    m_offChecked.insert(tag.id);
+    Probe probe;
+    probe.id = tag.id;
+    probe.tag = tag;
+    probe.epoch = m_epoch;
+    probe.generation = m_generation;
+    probe.mode = m_passActive ? ProbeMode::Connect : ProbeMode::Pending;
+    probe.offByOne = true;
+    probe.aloneDone = aloneDone;
+    probe.base = m_model->addressBase();
+    probe.shift = probe.base == 0 ? -1 : 1;
+    m_probes.append(probe);
+    if (start)
+        startNextProbe();
+}
+
+bool EncodingMonitor::offByOneProbeValid(const Probe &probe) const
+{
+    const Tag *tag = findTag(probe.id);
+    return m_connected && probe.generation == m_generation && probe.epoch == m_epoch && tag
+           && tag->area == probe.tag.area && tag->address == probe.tag.address
+           && tag->type == probe.tag.type;
+}
+
+bool EncodingMonitor::probeValid(const Probe &probe) const
+{
+    return probe.offByOne ? offByOneProbeValid(probe) : splitProbeValid(probe);
+}
+
+bool EncodingMonitor::issueOffByOneShifted(Probe &probe)
+{
+    const Tag *tag = findTag(probe.id);
+    if (!tag || !shiftUsable(*tag, probe.shift))
+        return false;
+    probe.aloneDone = true;
+    probe.requestId = m_nextRequest++;
+    m_probe = probe;
+    // Last: a synchronous answer (tests) runs onReadFinished before this returns.
+    emit readRequested(probe.requestId, tag->area, quint16(tag->address + probe.shift),
+                       registerCount(tag->type));
+    return true;
+}
+
+void EncodingMonitor::finishOffByOneProbe()
+{
+    startNextProbe();
+    maybeFinishConnectPass();
+    pump();
+}
+
+void EncodingMonitor::onOffByOneResult(Probe probe, const ModbusResult &result,
+                                       const QList<quint16> &values)
+{
+    if (!offByOneProbeValid(probe)) {
+        finishOffByOneProbe();
+        return;
+    }
+    if (result.error == ModbusError::Timeout || result.error == ModbusError::ConnectionLost) {
+        m_splitStopped = true;
+        m_probes.clear();
+        emit message(QStringLiteral("Stopped checking register numbers: the device did not answer "
+                                    "a read of '%1'.")
+                         .arg(findTag(probe.id)->name));
+        m_connectWait.clear();
+        maybeFinishConnectPass();
+        pump();
+        return;
+    }
+    if (!probe.aloneDone) {
+        // The tag's own read: only a Modbus exception 2 continues with the shifted read.
+        probe.aloneDone = true;
+        if (result.error == ModbusError::Exception && result.exceptionCode == 2
+            && issueOffByOneShifted(probe))
+            return;
+    } else if (result.ok() && values.size() == registerCount(probe.tag.type)
+               && shiftUsable(*findTag(probe.id), probe.shift)) {
+        m_offFound.append(OffFinding{probe.id, probe.tag, probe.epoch, probe.generation,
+                                     probe.shift, probe.base, probe.mode == ProbeMode::Connect});
+        if (probe.mode != ProbeMode::Connect)
+            m_offTimer.start(); // later failures: wait for a quiet period
+    }
+    finishOffByOneProbe();
+}
+
+bool EncodingMonitor::offByOneDue() const
+{
+    if (m_offFound.isEmpty() || m_passActive)
+        return false;
+    if (m_probe && m_probe->offByOne)
+        return false;
+    if (std::any_of(m_probes.begin(), m_probes.end(), [](const Probe &p) { return p.offByOne; }))
+        return false;
+    return m_offQuiet
+           || std::any_of(m_offFound.begin(), m_offFound.end(),
+                          [](const OffFinding &f) { return f.duringPass; });
+}
+
+bool EncodingMonitor::offFindingValid(const OffFinding &finding) const
+{
+    const Tag *tag = findTag(finding.id);
+    return finding.generation == m_generation && finding.epoch == m_epoch && tag
+           && tag->area == finding.tag.area && tag->address == finding.tag.address
+           && tag->type == finding.tag.type && m_model->addressBase() == finding.base;
+}
+
+void EncodingMonitor::moveTag(TagId id, int shift)
+{
+    const Tag *tag = findTag(id);
+    if (!tag)
+        return;
+    const Tag before = *tag;
+    const quint16 address = quint16(before.address + shift);
+    // The snapshot first: the nested tagsEdited -> onTagsChanged must not see a moved 32-bit tag
+    // to detect.
+    Tag moved = before;
+    moved.address = address;
+    m_snapshot.insert(id, moved);
+    m_model->setLayout(id, address, before.type, before.byteOrder, before.encodingVerified);
+    if (const Tag *now = findTag(id))
+        m_snapshot.insert(id, *now);
+}
+
+void EncodingMonitor::runOffByOnePrompt()
+{
+    const QList<OffFinding> all = std::exchange(m_offFound, {});
+    m_offQuiet = false;
+    m_offTimer.stop();
+    QList<OffFinding> found;
+    for (const OffFinding &f : all) {
+        if (offFindingValid(f))
+            found.append(f);
+    }
+    if (found.isEmpty())
+        return;
+    if (m_model->isLocked()) {
+        emit message(QStringLiteral("%1 tags may be numbered one register off; the tag "
+                                    "configuration is locked (Options > Lock tag configuration).")
+                         .arg(found.size()));
+        return;
+    }
+    const int base = m_model->addressBase();
+    const int shift = found.first().shift;
+    const int newBase = base == 0 ? 1 : 0;
+    const auto rangeText = [base](const Tag &tag, int start) {
+        const int first = start + base;
+        const int count = registerCount(tag.type);
+        return count == 1 ? QStringLiteral("%1 %2").arg(areaPrefix(tag.area)).arg(first)
+                          : QStringLiteral("%1 %2-%3").arg(areaPrefix(tag.area)).arg(first)
+                                .arg(first + count - 1);
+    };
+    QStringList entries;
+    for (const OffFinding &f : std::as_const(found)) {
+        entries << QStringLiteral("'%1': %2 is refused, but %3 answers.")
+                       .arg(f.tag.name, rangeText(f.tag, f.tag.address),
+                            rangeText(f.tag, f.tag.address + f.shift));
+    }
+    const QString text =
+        rich::headline(QStringLiteral("Some registers may be numbered from %1.").arg(newBase))
+        + rich::bullets(entries)
+        + rich::paragraph(QStringLiteral("Device manuals often count registers from 1 (or from "
+                                         "0): a number copied from the manual then points one "
+                                         "register off."));
+    // UseNumbering only before any tag read Good, and when every tag can move.
+    bool canUse = !m_goodSeen;
+    for (const Tag &tag : m_model->tags())
+        canUse = canUse && shiftInRange(tag, shift);
+    const QString useLabel = canUse ? QStringLiteral("Use %1-based numbers").arg(newBase) : QString();
+
+    m_promptOpen = true;
+    const OffByOneAnswer answer =
+        m_offByOnePrompt ? m_offByOnePrompt(text, useLabel) : OffByOneAnswer::Keep;
+    m_promptOpen = false;
+
+    if (answer == OffByOneAnswer::Keep)
+        return;
+    if (m_model->isLocked()) {
+        emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+        return;
+    }
+    if (answer == OffByOneAnswer::UseNumbering) {
+        bool ok = canUse && !m_goodSeen && m_model->addressBase() == base
+                  && std::all_of(found.begin(), found.end(),
+                                 [this](const OffFinding &f) { return offFindingValid(f); });
+        for (const Tag &tag : m_model->tags())
+            ok = ok && shiftInRange(tag, shift);
+        if (!ok) {
+            emit message(QStringLiteral("Not applied: the tags or the connection changed while "
+                                        "the question was open."));
+            return;
+        }
+        QList<TagId> ids;
+        for (const Tag &tag : m_model->tags())
+            ids << tag.id;
+        for (TagId id : std::as_const(ids))
+            moveTag(id, shift);
+        emit addressBaseChangeRequested(newBase);
+        return;
+    }
+    // MoveTags: the tags still as probed, whose new place is still free.
+    for (const OffFinding &f : std::as_const(found)) {
+        const Tag *tag = findTag(f.id);
+        if (offFindingValid(f) && tag && shiftUsable(*tag, f.shift))
+            moveTag(f.id, f.shift);
+    }
 }
 
 } // namespace mb

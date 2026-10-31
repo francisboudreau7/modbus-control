@@ -9,6 +9,7 @@
 #include <QList>
 #include <QObject>
 #include <QSet>
+#include <QTimer>
 
 #include <functional>
 #include <optional>
@@ -285,6 +286,9 @@ private:
         bool aloneDone = false;    ///< refused-read probe: the read of the own register alone is done
         std::optional<RegisterPair> pairOwn;   ///< refused-read probe: registers at address
         std::optional<RegisterPair> pairBelow; ///< refused-read probe: registers at address - 1
+        bool offByOne = false; ///< off-by-one probe: own read alone (unless aloneDone), then the shifted read
+        int shift = 0;         ///< off-by-one probe: -1 (base 0) or +1 (base 1), fixed when queued
+        int base = 0;          ///< off-by-one probe: the model's address base when queued
     };
     /// A suspicious tag found by the on-connect pass.
     struct SplitFinding {
@@ -303,6 +307,43 @@ private:
         QString text;
         QList<SplitFinding> flagged;
     };
+
+    // Off-by-one numbering check (see the class comment). Rules chosen here:
+    // - The probe is a Probe with offByOne set, in the same queue and with the same request ids as
+    //   the split probes; its mode is Connect while the on-connect pass is active (so the pass is
+    //   not complete until it is done) and Pending otherwise.
+    // - A tag is probed once per connection (m_offChecked, cleared on connect/disconnect/replace
+    //   and when the tag moves). A Timeout / ConnectionLost sets m_splitStopped.
+    // - Findings (OK probes) are listed in one prompt. It is due when no off-by-one probe is queued
+    //   or in flight, the connect pass is over and either a finding came from the connect pass
+    //   (duringPass: shown at once) or kOffQuietMs passed without a new finding (m_offQuiet, set by
+    //   m_offTimer, which restarts at every later finding). It is shown by pump() like the other
+    //   prompts. A finding is dropped when its tag changed, or on another connection.
+    // - m_goodSeen: some tag read Good in this connection (then UseNumbering is not offered).
+    static constexpr int kOffQuietMs = 1000;
+    struct OffFinding {
+        TagId id = 0;
+        Tag tag;               ///< the tag when probed
+        quint64 epoch = 0;
+        quint64 generation = 0;
+        int shift = 0;
+        int base = 0;
+        bool duringPass = false;
+    };
+    void queueOffByOne(const Tag &tag, bool aloneDone, bool start);
+    bool issueOffByOneShifted(Probe &probe);
+    bool offByOneProbeValid(const Probe &probe) const;
+    bool probeValid(const Probe &probe) const;
+    void onOffByOneResult(Probe probe, const ModbusResult &result, const QList<quint16> &values);
+    void finishOffByOneProbe();
+    bool offByOneDue() const;
+    void runOffByOnePrompt();
+    bool offFindingValid(const OffFinding &finding) const;
+    /// The tag shifted by `shift` stays inside 0..65535.
+    static bool shiftInRange(const Tag &tag, int shift);
+    /// Inside 0..65535 and not overlapping another tag of the project.
+    bool shiftUsable(const Tag &tag, int shift) const;
+    void moveTag(TagId id, int shift);
 
     bool askReview(const QString &text);
     bool registerUsedByOther(const Tag &self, int reg) const;
@@ -359,6 +400,11 @@ private:
     std::optional<Review32> m_deferred32;
     std::optional<Review16> m_deferred16;
     QHash<TagId, Quality> m_lastQuality; ///< latest sample quality of each 16-bit tag
+    QSet<TagId> m_offChecked;          ///< tags probed (or being probed) in this connection
+    QList<OffFinding> m_offFound;
+    bool m_goodSeen = false;
+    bool m_offQuiet = false;
+    QTimer m_offTimer;
     bool m_splitStopped = false; ///< a probe timed out: no more split probes until onTagsReplaced
 };
 
