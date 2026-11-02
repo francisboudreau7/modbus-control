@@ -79,8 +79,8 @@ AddTagDialog::AddTagDialog(const QList<Tag> &existing, int addressBase,
 
     m_area = new QComboBox(this);
     m_area->setObjectName(QStringLiteral("areaCombo"));
-    m_area->addItem(tr("Holding register"));
-    m_area->addItem(tr("Input register"));
+    for (Area a : {Area::HoldingRegister, Area::InputRegister, Area::Coil, Area::DiscreteInput})
+        m_area->addItem(areaLabel(a), int(a));
     m_area->setCurrentIndex(-1);
 
     m_address = new QLineEdit(this);
@@ -92,7 +92,7 @@ AddTagDialog::AddTagDialog(const QList<Tag> &existing, int addressBase,
     m_type = new QComboBox(this);
     m_type->setObjectName(QStringLiteral("typeCombo"));
     for (ValueType t : {ValueType::Int16, ValueType::UInt16, ValueType::Int32, ValueType::UInt32,
-                        ValueType::Float32})
+                        ValueType::Float32, ValueType::Bool})
         m_type->addItem(toString(t), int(t));
 
     m_order = new QComboBox(this);
@@ -177,6 +177,11 @@ AddTagDialog::AddTagDialog(const QList<Tag> &existing, int addressBase,
 
 AddTagDialog::~AddTagDialog() = default;
 
+Area AddTagDialog::currentArea() const
+{
+    return m_area->currentIndex() >= 0 ? Area(m_area->currentData().toInt()) : Area::HoldingRegister;
+}
+
 void AddTagDialog::setReadFunction(ReadFn read)
 {
     m_read = std::move(read);
@@ -232,7 +237,7 @@ bool AddTagDialog::canProbe() const
 QString AddTagDialog::regLabel(int address) const
 {
     return QStringLiteral("%1 %2")
-        .arg(m_area->currentIndex() == 1 ? QStringLiteral("IR") : QStringLiteral("HR"))
+        .arg(areaPrefix(currentArea()))
         .arg(address + m_addressBase);
 }
 
@@ -253,13 +258,20 @@ void AddTagDialog::refresh()
 {
     const bool haveArea = m_area->currentIndex() >= 0;
     const std::optional<quint16> address = parsedAddress();
+    const Area area = currentArea();
+    // Bit areas hold Bool and nothing else; register areas never do.
+    if (haveArea && (ValueType(m_type->currentData().toInt()) == ValueType::Bool) != isBitArea(area)) {
+        const QSignalBlocker blocker(m_type);
+        m_type->setCurrentIndex(
+            m_type->findData(int(isBitArea(area) ? ValueType::Bool : ValueType::Int16)));
+    }
+    m_type->setEnabled(!isBitArea(area));
     const ValueType type = ValueType(m_type->currentData().toInt());
     const int count = registerCount(type);
-    const Area area = m_area->currentIndex() == 1 ? Area::InputRegister : Area::HoldingRegister;
 
     m_order->setEnabled(count == 2);
 
-    const bool writableOk = m_area->currentIndex() == 0;
+    const bool writableOk = haveArea && isWritableArea(area);
     m_writable->setEnabled(writableOk);
     if (!writableOk)
         m_writable->setChecked(false);
@@ -290,7 +302,7 @@ void AddTagDialog::refresh()
     m_buttons->button(QDialogButtonBox::Ok)->setEnabled(haveArea && address && overlap.isEmpty());
     const bool probeOk = canProbe() && !m_probing;
     m_readButton->setEnabled(probeOk);
-    m_detectButton->setEnabled(probeOk);
+    m_detectButton->setEnabled(probeOk && !isBitArea(area));
 
     if (!m_connected || !m_read) {
         m_preview->setText(disconnectedHint());
@@ -328,11 +340,11 @@ void AddTagDialog::onEncodingChanged()
 void AddTagDialog::startProbe(bool forDetect)
 {
     const std::optional<quint16> address = parsedAddress();
-    if (!canProbe() || m_probing || !address)
+    if (!canProbe() || m_probing || !address || (forDetect && isBitArea(currentArea())))
         return;
     m_autoRead->stop();
     auto state = std::make_shared<ProbeState>();
-    state->area = m_area->currentIndex() == 1 ? Area::InputRegister : Area::HoldingRegister;
+    state->area = currentArea();
     state->address = *address;
     state->generation = m_generation;
     state->forDetect = forDetect;
@@ -373,13 +385,17 @@ void AddTagDialog::probeAnswered(const std::shared_ptr<ProbeState> &state, const
     switch (state->current.kind) {
     case Kind::Own:
         state->ownResult = result;
-        if (ok) {
+        if (ok && isBitArea(state->area)) {
+            r.own = values.at(0); // a bit has no neighbours to check
+        } else if (ok) {
             r.own = values.at(0);
             // A neighbour used by another tag can't be the other half of this value.
             if (address > 0 && !usedByExisting(state->area, address - 1, 1))
                 state->queue.push_back({Kind::Below, address - 1, 1});
             if (address < 65535 && !usedByExisting(state->area, address + 1, 1))
                 state->queue.push_back({Kind::Above, address + 1, 1});
+        } else if (isBitArea(state->area)) {
+            // nothing else to try for a bit
         } else if (result.error == ModbusError::Exception && result.exceptionCode == 2) {
             r.ownRefused = true;
             if (address < 65535 && !usedByExisting(state->area, address, 2))
@@ -422,11 +438,14 @@ QString AddTagDialog::previewText(const ProbeState &state) const
 {
     const ProbeReadings &r = state.readings;
     const int a = state.address;
-    if (!r.own && !r.ownRefused) {
+    if (!r.own && (!r.ownRefused || isBitArea(state.area))) {
         const QString message = state.ownResult.message.isEmpty() ? tr("unknown error")
                                                                   : state.ownResult.message;
         return rich::paragraph(tr("%1 could not be read: %2.").arg(regLabel(a), message));
     }
+
+    if (isBitArea(state.area))
+        return rich::paragraph(tr("%1 is %2.").arg(regLabel(a), bitText(*r.own)));
 
     QString html;
     QMap<int, quint16> known;
@@ -574,13 +593,13 @@ Tag AddTagDialog::tag() const
     Tag t;
     t.id = 0;
     t.name = m_name->text().trimmed();
-    t.area = m_area->currentIndex() == 1 ? Area::InputRegister : Area::HoldingRegister;
+    t.area = currentArea();
     t.address = parsedAddress().value_or(0);
     t.type = ValueType(m_type->currentData().toInt());
     t.byteOrder = registerCount(t.type) == 2 ? ByteOrder(m_order->currentData().toInt())
                                              : ByteOrder::ABCD;
     t.unit = m_unit->text();
-    t.writable = t.area == Area::HoldingRegister && m_writable->isChecked();
+    t.writable = isWritableArea(t.area) && m_writable->isChecked();
     t.encodingVerified = true;
     return t;
 }

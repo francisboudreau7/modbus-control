@@ -44,7 +44,7 @@ bool parseDouble(const QVariant &v, double &out)
 bool parseValueType(const QString &s, mb::ValueType &out)
 {
     for (mb::ValueType v : {mb::ValueType::Int16, mb::ValueType::UInt16, mb::ValueType::Int32,
-                            mb::ValueType::UInt32, mb::ValueType::Float32}) {
+                            mb::ValueType::UInt32, mb::ValueType::Float32, mb::ValueType::Bool}) {
         if (s.compare(toString(v), Qt::CaseInsensitive) == 0) {
             out = v;
             return true;
@@ -65,8 +65,42 @@ bool parseByteOrder(const QString &s, mb::ByteOrder &out)
     return false;
 }
 
-/// Shown in the ByteOrder column of 16-bit tags (em dash).
+/// Shown in the ByteOrder column of 16-bit tags and in the cells bit tags do not use (em dash).
 QString noByteOrderText() { return QString(QChar(0x2014)); }
+
+QString notUsedByBitsText()
+{
+    return TagTableModel::tr("Not used by coils and discrete inputs");
+}
+
+/// "ON"/"OFF", "1"/"0", "true"/"false", a bool or the numbers 1 and 0 -> 1.0 / 0.0.
+bool parseBitValue(const QVariant &v, double &out)
+{
+    if (v.metaType().id() == QMetaType::Bool) {
+        out = v.toBool() ? 1.0 : 0.0;
+        return true;
+    }
+    if (v.metaType().id() == QMetaType::QString) {
+        const QString s = v.toString().trimmed();
+        if (s.compare(QLatin1String("on"), Qt::CaseInsensitive) == 0
+            || s.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0 || s == QLatin1String("1")) {
+            out = 1.0;
+            return true;
+        }
+        if (s.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0
+            || s.compare(QLatin1String("false"), Qt::CaseInsensitive) == 0 || s == QLatin1String("0")) {
+            out = 0.0;
+            return true;
+        }
+        return false;
+    }
+    bool ok = false;
+    const double d = v.toDouble(&ok);
+    if (!ok || (d != 0.0 && d != 1.0))
+        return false;
+    out = d;
+    return true;
+}
 
 // Tableau 10. New tags take the first colour no existing tag uses.
 const char *const kPalette[] = {"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -141,12 +175,16 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (m_connected && isRegisterSettingColumn(index.column())
             && !(index.column() == ByteOrder && !is32))
             return tr("Disconnect to change the register settings");
+        if (t.isBit() && (index.column() == ByteOrder || index.column() == Gain
+                          || index.column() == Offset || index.column() == WriteMin
+                          || index.column() == WriteMax))
+            return notUsedByBitsText();
     }
 
     switch (index.column()) {
     case Name:
         if (disp || edit) return t.name;
-        if (!t.encodingVerified) {
+        if (!t.encodingVerified && !t.isBit()) {
             if (role == Qt::DecorationRole)
                 return QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning);
             if (role == Qt::ToolTipRole && is32)
@@ -166,6 +204,7 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         break;
     case Area:
         if (disp || edit) return toString(t.area);
+        if (role == Qt::ToolTipRole) return areaLabel(t.area);
         break;
     case Address:
         if (disp || edit) return int(t.address) + m_addressBase;
@@ -179,9 +218,11 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (disp) return noByteOrderText();
         break;
     case Gain:
+        if (disp && t.isBit()) return noByteOrderText();
         if (disp || edit) return t.gain;
         break;
     case Offset:
+        if (disp && t.isBit()) return noByteOrderText();
         if (disp || edit) return t.offset;
         break;
     case Unit:
@@ -190,6 +231,8 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case Writable:
         if (role == Qt::CheckStateRole)
             return t.isWritable() ? Qt::Checked : Qt::Unchecked;
+        if (role == Qt::ToolTipRole && t.area == mb::Area::DiscreteInput)
+            return tr("Discrete inputs are read-only");
         break;
     case Plot:
         if (role == Qt::CheckStateRole)
@@ -203,6 +246,7 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         const std::optional<double> &limit = index.column() == WriteMin ? t.writeMin : t.writeMax;
         if (role == Qt::ToolTipRole && !t.isWritable())
             return tr("Write limits need a writable holding register");
+        if (disp && t.isBit()) return noByteOrderText();
         if (disp) return limit ? QString::number(*limit, 'g', 6) : QString();
         if (edit) return limit ? QVariant(*limit) : QVariant();
         break;
@@ -211,7 +255,10 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
     case QuickB: {
         const std::optional<double> &quick = index.column() == QuickA ? t.quickA : t.quickB;
         if (role == Qt::ToolTipRole && !t.isWritable())
-            return tr("Quick writes need a writable holding register");
+            return t.area == mb::Area::DiscreteInput ? tr("Discrete inputs are read-only")
+                   : t.isBit() ? tr("Quick writes need a writable coil")
+                               : tr("Quick writes need a writable holding register");
+        if (disp && t.isBit()) return quick ? QVariant(bitText(*quick)) : QVariant(QString());
         if (disp) return quick ? QString::number(*quick, 'g', 6) : QString();
         if (edit) return quick ? QVariant(*quick) : QVariant();
         break;
@@ -224,6 +271,8 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (disp) {
             if (!live.valid)
                 return QString();
+            if (t.isBit())
+                return live.raw != 0 ? QStringLiteral("1") : QStringLiteral("0");
             if (is32)
                 return QString::asprintf("0x%08X", uint(live.raw));
             const uint raw16 = uint(live.raw & 0xFFFFu);
@@ -234,8 +283,12 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (disp) {
             if (!live.valid)
                 return QString();
+            if (t.isBit())
+                return bitText(live.value);
             return QString::number(live.value, 'g', t.type == ValueType::Float32 ? 7 : 6);
         }
+        if (edit && t.isBit())
+            return live.valid && t.isWritable() ? QVariant(bitText(live.value)) : QVariant();
         if (edit) return live.valid ? QVariant(live.value) : QVariant();
         break;
     case Quality:
@@ -277,7 +330,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
             return false;
         const bool on = value.toInt() == Qt::Checked;
         if (col == Writable) {
-            if (on && t.area == mb::Area::InputRegister)
+            if (on && !isWritableArea(t.area))
                 return false;
             if (on && !t.writable) {
                 if (m_confirmWritable) {
@@ -285,7 +338,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
                     ask.id = t.id;
                     ask.tagName = t.name;
                     ask.registerText = registerText(t);
-                    ask.wasInput = m_wasInput.contains(t.id);
+                    ask.wasInput = t.area == mb::Area::HoldingRegister && m_wasInput.contains(t.id);
                     if (ask.wasInput) {
                         Tag asInput = t;
                         asInput.area = mb::Area::InputRegister;
@@ -295,6 +348,10 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
                         return false;
                 }
                 m_writeNeedsRead.insert(t.id);
+                if (t.area == mb::Area::Coil && !t.quickA && !t.quickB) {
+                    t.quickA = 1.0; // ON / OFF
+                    t.quickB = 0.0;
+                }
             } else if (!on) {
                 m_writeNeedsRead.remove(t.id);
             }
@@ -324,16 +381,39 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         break;
     }
     case Area: {
-        mb::Area a;
-        const QString s = value.toString();
-        if (s.compare(toString(mb::Area::HoldingRegister), Qt::CaseInsensitive) == 0)
-            a = mb::Area::HoldingRegister;
-        else if (s.compare(toString(mb::Area::InputRegister), Qt::CaseInsensitive) == 0)
-            a = mb::Area::InputRegister;
-        else
+        mb::Area a = mb::Area::HoldingRegister;
+        const QString s = value.toString().trimmed();
+        bool found = false;
+        for (mb::Area candidate : {mb::Area::HoldingRegister, mb::Area::InputRegister,
+                                   mb::Area::Coil, mb::Area::DiscreteInput}) {
+            if (s.compare(toString(candidate), Qt::CaseInsensitive) == 0
+                || s.compare(areaLabel(candidate), Qt::CaseInsensitive) == 0) {
+                a = candidate;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
             return false;
-        if (a != t.area && a == mb::Area::HoldingRegister)
+        if (a == mb::Area::HoldingRegister && t.area == mb::Area::InputRegister)
             m_wasInput.insert(t.id);
+        if (isBitArea(a) != t.isBit()) {
+            if (isBitArea(a)) {
+                const Tag defaults;
+                t.type = ValueType::Bool;
+                t.byteOrder = defaults.byteOrder;
+                t.gain = defaults.gain;
+                t.offset = defaults.offset;
+                t.writeMin.reset();
+                t.writeMax.reset();
+                t.quickA.reset();
+                t.quickB.reset();
+                t.encodingVerified = true;
+            } else {
+                t.type = ValueType::Int16;
+            }
+            rowChanged = true; // Type and the cells that depend on it change too
+        }
         t.area = a;
         break;
     }
@@ -350,7 +430,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     }
     case Type: {
         mb::ValueType nt = mb::ValueType::Int16;
-        if (!parseValueType(value.toString(), nt)) return false;
+        if (!parseValueType(value.toString(), nt) || !typeFitsArea(nt, t.area)) return false;
         Tag probe = t;
         probe.type = nt;
         if (!probe.fitsAddressSpace()) return false;
@@ -370,13 +450,13 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     }
     case Gain: {
         double g;
-        if (!parseDouble(value, g) || g == 0.0) return false;
+        if (t.isBit() || !parseDouble(value, g) || g == 0.0) return false;
         t.gain = g;
         break;
     }
     case Offset: {
         double o;
-        if (!parseDouble(value, o)) return false;
+        if (t.isBit() || !parseDouble(value, o)) return false;
         t.offset = o;
         break;
     }
@@ -395,7 +475,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     }
     case WriteMin:
     case WriteMax: {
-        if (!t.isWritable()) return false;
+        if (!t.isWritable() || t.isBit()) return false;
         std::optional<double> limit;
         if (!value.toString().trimmed().isEmpty()) {
             double l = 0.0;
@@ -418,7 +498,9 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         } else {
             double q = 0.0;
             // A preset outside the write limits would be refused when sent; refuse it here.
-            if (!parseDouble(value, q) || !t.withinWriteLimits(q)) return false;
+            if (t.isBit() ? !parseBitValue(value, q)
+                          : (!parseDouble(value, q) || !t.withinWriteLimits(q)))
+                return false;
             quick = q;
         }
         break;
@@ -435,7 +517,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
     case Value: {
         if (!t.isWritable()) return false;
         double v;
-        if (!parseDouble(value, v)) return false;
+        if (t.isBit() ? !parseBitValue(value, v) : !parseDouble(value, v)) return false;
         emit writeRequested(t.id, v);
         return true;
     }
@@ -495,7 +577,7 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     switch (index.column()) {
     case Writable:
         f |= Qt::ItemIsUserCheckable;
-        if (t.area == mb::Area::InputRegister)
+        if (!isWritableArea(t.area))
             f &= ~Qt::ItemFlags(Qt::ItemIsEnabled);
         break;
     case Plot:
@@ -508,9 +590,17 @@ Qt::ItemFlags TagTableModel::flags(const QModelIndex &index) const
     case Raw:
     case Quality:
         break;
-    case Value:
+    case Gain:
+    case Offset:
+        if (!t.isBit())
+            f |= Qt::ItemIsEditable;
+        break;
     case WriteMin:
     case WriteMax:
+        if (t.isWritable() && !t.isBit())
+            f |= Qt::ItemIsEditable;
+        break;
+    case Value:
     case QuickA:
     case QuickB:
         if (t.isWritable())
@@ -576,6 +666,10 @@ void TagTableModel::setTags(const QList<Tag> &tags, TagId nextTagId)
 {
     beginResetModel();
     m_tags = tags;
+    for (Tag &t : m_tags) {
+        if (t.isBit())
+            t.encodingVerified = true; // nothing to guess about a single bit
+    }
     m_live.clear();
     m_encodingNotes.clear();
     m_writeNeedsRead.clear();
@@ -605,6 +699,8 @@ int TagTableModel::addTag()
     if (!m_tags.isEmpty()) {
         const Tag &last = m_tags.last();
         t.area = last.area;
+        if (isBitArea(t.area))
+            t.type = ValueType::Bool;
         t.address = last.address < 65535 ? quint16(last.address + 1) : quint16(65535);
     }
     return addTag(t);
@@ -615,6 +711,8 @@ int TagTableModel::addTag(const Tag &prototype)
     if (m_locked)
         return -1;
     Tag t = prototype;
+    if (t.isBit())
+        t.encodingVerified = true;
     if (t.color.compare(Tag().color, Qt::CaseInsensitive) == 0)
         t.color = nextPaletteColor(m_tags);
     t.id = m_nextId++;
@@ -945,7 +1043,7 @@ bool TagTableModel::writeNeedsRead(TagId id) const
 
 QString TagTableModel::registersOnly(const Tag &tag) const
 {
-    const QString prefix = tag.area == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
+    const QString prefix = areaPrefix(tag.area);
     const int first = tag.address + m_addressBase;
     return registerCount(tag.type) == 2 ? QStringLiteral("%1 %2-%3").arg(prefix).arg(first).arg(first + 1)
                                         : QStringLiteral("%1 %2").arg(prefix).arg(first);
@@ -953,6 +1051,8 @@ QString TagTableModel::registersOnly(const Tag &tag) const
 
 QString TagTableModel::registerText(const Tag &tag) const
 {
+    if (tag.isBit())
+        return registersOnly(tag);
     const bool wide = registerCount(tag.type) == 2;
     QString text = registersOnly(tag) + QStringLiteral(" · ") + toString(tag.type);
     if (wide)

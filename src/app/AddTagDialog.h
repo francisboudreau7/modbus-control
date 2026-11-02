@@ -159,6 +159,7 @@ private:
     bool m_applying = false;  ///< fields are being set by Detect: field signals are ignored
 
     std::optional<quint16> parsedAddress() const;
+    Area currentArea() const; ///< the Area combo's area (holding register when none is chosen)
     bool canProbe() const;
     QString regLabel(int address) const;
     QString rangeLabel(int first, int count) const;

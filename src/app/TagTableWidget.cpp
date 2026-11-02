@@ -72,6 +72,52 @@ private:
     QStringList m_items;
 };
 
+/// Area cells: the four areas listed with their function codes (areaLabel()); the model gets
+/// toString(area).
+class AreaDelegate : public ComboDelegate
+{
+public:
+    explicit AreaDelegate(QObject *parent) : ComboDelegate({}, parent) {}
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override
+    {
+        auto *c = static_cast<QComboBox *>(ComboDelegate::createEditor(parent, option, index));
+        for (Area a : {Area::HoldingRegister, Area::InputRegister, Area::Coil, Area::DiscreteInput})
+            c->addItem(areaLabel(a), toString(a));
+        return c;
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        auto *c = static_cast<QComboBox *>(editor);
+        c->setCurrentIndex(c->findData(index.data(Qt::EditRole).toString()));
+    }
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        model->setData(index, static_cast<QComboBox *>(editor)->currentData(), Qt::EditRole);
+    }
+};
+
+/// Type cells: "bool" for bit tags, the register types for register tags.
+class TypeDelegate : public ComboDelegate
+{
+public:
+    explicit TypeDelegate(QObject *parent) : ComboDelegate({}, parent) {}
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override
+    {
+        auto *c = static_cast<QComboBox *>(ComboDelegate::createEditor(parent, option, index));
+        const auto *tm = qobject_cast<const TagTableModel *>(index.model());
+        if (tm && tm->tagAt(index.row()).isBit()) {
+            c->addItem(toString(ValueType::Bool));
+        } else {
+            for (ValueType t : {ValueType::Int16, ValueType::UInt16, ValueType::Int32,
+                                ValueType::UInt32, ValueType::Float32})
+                c->addItem(toString(t));
+        }
+        return c;
+    }
+};
+
 class AddressDelegate : public QStyledItemDelegate
 {
 public:
@@ -112,8 +158,23 @@ class QuickDelegate : public QStyledItemDelegate
 public:
     explicit QuickDelegate(QObject *parent = nullptr, int significant = 0)
         : QStyledItemDelegate(parent), m_significant(significant) {}
-    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &index) const override
     {
+        if (isBitCell(index)) {
+            // A coil takes ON or OFF; a Quick preset may also be cleared (empty entry).
+            auto *c = new QComboBox(parent);
+            if (index.column() != TagTableModel::Value)
+                c->addItem(QString());
+            c->addItems({bitText(1.0), bitText(0.0)});
+            c->setFrame(false);
+            c->setAutoFillBackground(true);
+            auto *self = const_cast<QuickDelegate *>(this);
+            connect(c, &QComboBox::activated, self, [self, c] {
+                emit self->commitData(c);
+                emit self->closeEditor(c);
+            });
+            return c;
+        }
         auto *e = new QLineEdit(parent);
         e->setFrame(false);
         e->setAutoFillBackground(true);
@@ -124,6 +185,10 @@ public:
         if (editor->property("mcLoaded").toBool())
             return; // loaded once: never reset what the user is typing
         editor->setProperty("mcLoaded", true);
+        if (auto *c = qobject_cast<QComboBox *>(editor)) {
+            c->setCurrentIndex(c->findText(index.data(Qt::DisplayRole).toString()));
+            return;
+        }
         const QVariant v = index.data(Qt::EditRole);
         QString text;
         if (v.metaType().id() == QMetaType::Double) {
@@ -138,6 +203,11 @@ public:
     }
     void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
     {
+        if (auto *c = qobject_cast<QComboBox *>(editor)) {
+            if (c->currentIndex() >= 0)
+                model->setData(index, c->currentText(), Qt::EditRole);
+            return;
+        }
         model->setData(index, static_cast<QLineEdit *>(editor)->text(), Qt::EditRole);
     }
     void updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option, const QModelIndex &) const override
@@ -146,6 +216,14 @@ public:
     }
 
 private:
+    static bool isBitCell(const QModelIndex &index)
+    {
+        const auto *tm = qobject_cast<const TagTableModel *>(index.model());
+        const int c = index.column();
+        return tm && tm->tagAt(index.row()).isBit()
+               && (c == TagTableModel::Value || c == TagTableModel::QuickA
+                   || c == TagTableModel::QuickB);
+    }
     int m_significant = 0;
 };
 
@@ -241,15 +319,8 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
     for (int c = 0; c < TagTableModel::ColumnCount; ++c)
         m_view->setColumnWidth(c, widths[c]);
 
-    m_view->setItemDelegateForColumn(
-        TagTableModel::Area,
-        new ComboDelegate({toString(Area::HoldingRegister), toString(Area::InputRegister)}, this));
-    m_view->setItemDelegateForColumn(
-        TagTableModel::Type,
-        new ComboDelegate({toString(ValueType::Int16), toString(ValueType::UInt16),
-                           toString(ValueType::Int32), toString(ValueType::UInt32),
-                           toString(ValueType::Float32)},
-                          this));
+    m_view->setItemDelegateForColumn(TagTableModel::Area, new AreaDelegate(this));
+    m_view->setItemDelegateForColumn(TagTableModel::Type, new TypeDelegate(this));
     m_view->setItemDelegateForColumn(
         TagTableModel::ByteOrder,
         new ComboDelegate({toString(ByteOrder::ABCD), toString(ByteOrder::CDAB),
@@ -452,6 +523,10 @@ QMenu *TagTableWidget::rowMenu(int row)
     auto *menu = new QMenu(this);
     QAction *detect = menu->addAction(tr("Detect encoding..."));
     detect->setObjectName(QStringLiteral("detectEncodingAction"));
+    if (tag.isBit()) {
+        detect->setEnabled(false); // a single bit has no encoding
+        detect->setToolTip(tr("Not used by coils and discrete inputs"));
+    }
     connect(detect, &QAction::triggered, this, [this, id] { emit detectEncodingRequested(id); });
     return menu;
 }
