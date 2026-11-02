@@ -2,6 +2,7 @@
 
 #include "TagCodec.h"
 
+#include <QCoreApplication>
 #include <QTimer>
 
 #include <algorithm>
@@ -32,7 +33,7 @@ ModbusResult notConnectedResult()
 {
     ModbusResult r;
     r.error = ModbusError::NotConnected;
-    r.message = QStringLiteral("Not connected");
+    r.message = QCoreApplication::translate("mb::PollWorker", "Not connected");
     return r;
 }
 
@@ -145,7 +146,7 @@ int PollWorker::nextBackoffMs()
 void PollWorker::attemptConnect(bool firstAttempt)
 {
     if (firstAttempt)
-        setState(ConnectionState::Connecting, QStringLiteral("Connecting to %1").arg(endpoint()));
+        setState(ConnectionState::Connecting, tr("Connecting to %1").arg(endpoint()));
 
     const ModbusResult r = m_conn->open(m_settings);
     if (r.ok()) {
@@ -153,7 +154,7 @@ void PollWorker::attemptConnect(bool firstAttempt)
         m_perTagBlocks.clear();
         m_reconnectTimer->stop();
         setState(ConnectionState::Connected,
-                 QStringLiteral("Connected to %1 (unit %2)").arg(endpoint()).arg(m_settings.unitId));
+                 tr("Connected to %1 (unit %2)").arg(endpoint()).arg(m_settings.unitId));
         m_timer->start(0); // first cycle immediately
         return;
     }
@@ -163,7 +164,7 @@ void PollWorker::attemptConnect(bool firstAttempt)
     } else {
         // Still reconnecting: keep the state, report the failed attempt, schedule the next.
         const int ms = nextBackoffMs();
-        emit message(QStringLiteral("Reconnect to %1 failed: %2 (retry in %3 s)")
+        emit message(tr("Reconnect to %1 failed: %2 (retry in %3 s)")
                          .arg(endpoint(), r.message)
                          .arg(ms / 1000.0));
         m_reconnectTimer->start(ms);
@@ -174,12 +175,12 @@ void PollWorker::enterReconnecting(const QString &reason)
 {
     closeConnection();
     const int ms = nextBackoffMs();
-    const QString detail = QStringLiteral("%1 (retry in %2 s)").arg(reason).arg(ms / 1000.0);
+    const QString detail = tr("%1 (retry in %2 s)").arg(reason).arg(ms / 1000.0);
     // Fail queued writes before the state change: listeners drop pending requests on it.
     failAllWrites(notConnectedResult());
     failAllReads(notConnectedResult());
     setState(ConnectionState::Reconnecting, detail);
-    emit message(QStringLiteral("Connection to %1 failed: %2").arg(endpoint(), detail));
+    emit message(tr("Connection to %1 failed: %2").arg(endpoint(), detail));
     m_reconnectTimer->start(ms);
     // Gap batches: one all-Disconnected batch per poll period.
     m_timer->start(periodMs());
@@ -244,9 +245,9 @@ void PollWorker::drainWrites()
 ModbusResult PollWorker::withFc16Hint(ModbusResult result)
 {
     if (result.error == ModbusError::Exception && result.exceptionCode == 1) {
-        result.message += QStringLiteral(
-            " The device does not accept FC16 (write multiple registers), which 32-bit values and "
-            "multi-register writes need.");
+        result.message += QLatin1Char(' ')
+            + tr("The device does not accept FC16 (write multiple registers), which 32-bit values "
+                 "and multi-register writes need.");
     }
     return result;
 }
@@ -254,7 +255,7 @@ ModbusResult PollWorker::withFc16Hint(ModbusResult result)
 ModbusResult PollWorker::withFc15Hint(ModbusResult result)
 {
     if (result.error == ModbusError::Exception && result.exceptionCode == 1)
-        result.message += QStringLiteral(" The device does not accept FC15 (write multiple coils).");
+        result.message += QLatin1Char(' ') + tr("The device does not accept FC15 (write multiple coils).");
     return result;
 }
 
@@ -380,7 +381,8 @@ void PollWorker::pollCycle(double t)
     // Reports a failed request (one message per request) and discards stale socket data.
     // Returns true when the connection was lost.
     const auto failed = [&](const ModbusResult &r, Area area, int start, int count) {
-        emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
+        //: %1 = area prefix (HR, IR, CO, DI), %2 and %3 = first and last address, %4 = error text
+        emitBlockMessage(tr("Read %1 %2..%3 failed: %4")
                              .arg(areaPrefix(area))
                              .arg(start + m_addressBase)
                              .arg(start + count - 1 + m_addressBase)
@@ -486,9 +488,10 @@ void PollWorker::readRegisters(quint64 requestId, Area area, quint16 address, in
     if (count < 1 || count > maxCount || static_cast<int>(address) + count > 65536) {
         ModbusResult r;
         r.error = ModbusError::InvalidArgument;
-        r.message = QStringLiteral("Invalid read: %1 %2 from %3 (1..%4 %2, within 0..65535)")
+        //: %1 = requested count, %2 = start address, %3 = maximum count
+        r.message = (bits ? tr("Invalid read: %1 bits from %2 (1..%3 bits, within 0..65535)")
+                          : tr("Invalid read: %1 registers from %2 (1..%3 registers, within 0..65535)"))
                         .arg(count)
-                        .arg(bits ? QStringLiteral("bits") : QStringLiteral("registers"))
                         .arg(address + m_addressBase)
                         .arg(maxCount);
         emit readFinished(requestId, r, {});

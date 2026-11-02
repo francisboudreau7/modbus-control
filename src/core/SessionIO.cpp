@@ -1,5 +1,6 @@
 #include "SessionIO.h"
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -37,13 +38,13 @@ QByteArray encodeDoubles(const double *values, qsizetype count)
 bool decodeDoubles(const QJsonValue &v, qsizetype rows, QList<double> &out, QString &err)
 {
     if (!v.isString()) {
-        err = QStringLiteral("Data is not a string");
+        err = QCoreApplication::translate("mb::SessionIO", "Data is not a string");
         return false;
     }
     const auto b64 = QByteArray::fromBase64Encoding(v.toString().toLatin1(),
                                                      QByteArray::AbortOnBase64DecodingErrors);
     if (!b64) {
-        err = QStringLiteral("Invalid base64 data");
+        err = QCoreApplication::translate("mb::SessionIO", "Invalid base64 data");
         return false;
     }
     out.clear();
@@ -51,11 +52,11 @@ bool decodeDoubles(const QJsonValue &v, qsizetype rows, QList<double> &out, QStr
         return true;
     const QByteArray raw = qUncompress(*b64);
     if (raw.isEmpty()) {
-        err = QStringLiteral("Invalid compressed data");
+        err = QCoreApplication::translate("mb::SessionIO", "Invalid compressed data");
         return false;
     }
     if (raw.size() != rows * qsizetype(sizeof(double))) {
-        err = QStringLiteral("Data size does not match the row count");
+        err = QCoreApplication::translate("mb::SessionIO", "Data size does not match the row count");
         return false;
     }
     out.resize(rows);
@@ -82,7 +83,7 @@ bool readCursor(const QJsonObject &o, const QString &key, std::optional<double> 
         return true;
     }
     if (!v.isDouble() || !std::isfinite(v.toDouble())) {
-        err = QStringLiteral("Cursor \"%1\" is neither a number nor null").arg(key);
+        err = QCoreApplication::translate("mb::SessionIO", "Cursor \"%1\" is neither a number nor null").arg(key);
         return false;
     }
     out = v.toDouble();
@@ -99,7 +100,7 @@ bool readCursorGroup(const QJsonObject &root, const QString &group, std::optiona
         return true;
     }
     if (!g.isObject()) {
-        err = QStringLiteral("Cursor group \"%1\" is not an object").arg(group);
+        err = QCoreApplication::translate("mb::SessionIO", "Cursor group \"%1\" is not an object").arg(group);
         return false;
     }
     const QJsonObject o = g.toObject();
@@ -172,20 +173,20 @@ bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recordi
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(json, &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject())
-        return fail(QStringLiteral("Invalid JSON: %1").arg(pe.errorString()));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Invalid JSON: %1").arg(pe.errorString()));
     const QJsonObject root = doc.object();
 
     if (root.value(QStringLiteral("format")).toString() != formatName())
-        return fail(QStringLiteral("Not a Modbus Control session file"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Not a Modbus Control session file"));
     const QJsonValue ver = root.value(QStringLiteral("version"));
     if (!ver.isDouble())
-        return fail(QStringLiteral("Missing session version"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Missing session version"));
     if (ver.toInt() > kSessionFormatVersion)
-        return fail(QStringLiteral("Unsupported session version %1").arg(ver.toInt()));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Unsupported session version %1").arg(ver.toInt()));
 
     // Project
     if (!root.value(QStringLiteral("project")).isObject())
-        return fail(QStringLiteral("Missing project"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Missing project"));
     const auto proj = projectFromJson(
         QJsonDocument(root.value(QStringLiteral("project")).toObject()).toJson(QJsonDocument::Compact),
         &err);
@@ -194,37 +195,37 @@ bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recordi
 
     // Recording
     if (!root.value(QStringLiteral("recording")).isObject())
-        return fail(QStringLiteral("Missing recording"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Missing recording"));
     const QJsonObject rec = root.value(QStringLiteral("recording")).toObject();
 
     QDateTime start;
     const QJsonValue st = rec.value(QStringLiteral("startTime"));
     if (!st.isUndefined() && !st.isNull()) {
         if (!st.isString())
-            return fail(QStringLiteral("Invalid start time"));
+            return fail(QCoreApplication::translate("mb::SessionIO", "Invalid start time"));
         if (!st.toString().isEmpty()) {
             start = QDateTime::fromString(st.toString(), Qt::ISODateWithMs);
             if (!start.isValid())
-                return fail(QStringLiteral("Invalid start time"));
+                return fail(QCoreApplication::translate("mb::SessionIO", "Invalid start time"));
         }
     }
 
     const QJsonValue rv = rec.value(QStringLiteral("rows"));
     if (!rv.isDouble())
-        return fail(QStringLiteral("Missing row count"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Missing row count"));
     const double rd = rv.toDouble();
     if (!(rd >= 0) || rd > double(kMaxRows) || rd != std::floor(rd))
-        return fail(QStringLiteral("Invalid row count"));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Invalid row count"));
     const qsizetype rows = qsizetype(rd);
 
     QList<double> times;
     if (!decodeDoubles(rec.value(QStringLiteral("times")), rows, times, err))
-        return fail(QStringLiteral("Times: %1").arg(err));
+        return fail(QCoreApplication::translate("mb::SessionIO", "Times: %1").arg(err));
     for (qsizetype i = 0; i < rows; ++i) {
         if (!std::isfinite(times[i]))
-            return fail(QStringLiteral("Non-finite time value"));
+            return fail(QCoreApplication::translate("mb::SessionIO", "Non-finite time value"));
         if (i > 0 && times[i] < times[i - 1])
-            return fail(QStringLiteral("Times are not in increasing order"));
+            return fail(QCoreApplication::translate("mb::SessionIO", "Times are not in increasing order"));
     }
 
     QList<TagId> ids;
@@ -232,20 +233,20 @@ bool sessionFromJson(const QByteArray &json, Project &project, Recorder &recordi
     const QJsonValue cv = rec.value(QStringLiteral("columns"));
     if (!cv.isUndefined() && !cv.isNull()) {
         if (!cv.isArray())
-            return fail(QStringLiteral("Columns is not an array"));
+            return fail(QCoreApplication::translate("mb::SessionIO", "Columns is not an array"));
         for (const QJsonValue &c : cv.toArray()) {
             const QJsonObject co = c.toObject();
             const QJsonValue idv = co.value(QStringLiteral("tagId"));
             if (!c.isObject() || !idv.isDouble() || idv.toDouble() < 0
                 || idv.toDouble() > double(std::numeric_limits<TagId>::max())
                 || idv.toDouble() != std::floor(idv.toDouble()))
-                return fail(QStringLiteral("Invalid column tag id"));
+                return fail(QCoreApplication::translate("mb::SessionIO", "Invalid column tag id"));
             const TagId id = TagId(idv.toDouble());
             if (ids.contains(id))
-                return fail(QStringLiteral("Duplicate column for tag %1").arg(id));
+                return fail(QCoreApplication::translate("mb::SessionIO", "Duplicate column for tag %1").arg(id));
             QList<double> vals;
             if (!decodeDoubles(co.value(QStringLiteral("values")), rows, vals, err))
-                return fail(QStringLiteral("Tag %1: %2").arg(id).arg(err));
+                return fail(QCoreApplication::translate("mb::SessionIO", "Tag %1: %2").arg(id).arg(err));
             ids.append(id);
             cols.append(std::move(vals));
         }

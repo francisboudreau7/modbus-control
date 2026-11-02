@@ -1,5 +1,6 @@
 ﻿#include "ProjectIO.h"
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -36,7 +37,7 @@ bool readInt(const QJsonObject &obj, const QString &key, const QString &prefix,
     const double d = value.toDouble();
     if (!value.isDouble() || std::trunc(d) != d || d < static_cast<double>(min)
         || d > static_cast<double>(max)) {
-        setError(error, QStringLiteral("\"%1%2\" must be an integer from %3 to %4")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be an integer from %3 to %4")
                             .arg(prefix, key)
                             .arg(min)
                             .arg(max));
@@ -53,7 +54,7 @@ bool readDouble(const QJsonObject &obj, const QString &key, const QString &prefi
     if (value.isUndefined())
         return true;
     if (!value.isDouble()) {
-        setError(error, QStringLiteral("\"%1%2\" must be a number").arg(prefix, key));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be a number").arg(prefix, key));
         return false;
     }
     out = value.toDouble();
@@ -67,7 +68,7 @@ bool readString(const QJsonObject &obj, const QString &key, const QString &prefi
     if (value.isUndefined())
         return true;
     if (!value.isString()) {
-        setError(error, QStringLiteral("\"%1%2\" must be a string").arg(prefix, key));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be a string").arg(prefix, key));
         return false;
     }
     out = value.toString();
@@ -81,7 +82,7 @@ bool readBool(const QJsonObject &obj, const QString &key, const QString &prefix,
     if (value.isUndefined())
         return true;
     if (!value.isBool()) {
-        setError(error, QStringLiteral("\"%1%2\" must be true or false").arg(prefix, key));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be true or false").arg(prefix, key));
         return false;
     }
     out = value.toBool();
@@ -98,7 +99,7 @@ bool readOptionalNumber(const QJsonObject &obj, const QString &key, const QStrin
         return true;
     }
     if (!value.isDouble() || !std::isfinite(value.toDouble())) {
-        setError(error, QStringLiteral("\"%1%2\" must be a number").arg(prefix, key));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be a number").arg(prefix, key));
         return false;
     }
     out = value.toDouble();
@@ -110,13 +111,13 @@ bool readOptionalNumber(const QJsonObject &obj, const QString &key, const QStrin
 bool parseSpan(const QJsonValue &value, const QString &name, double &lo, double &hi, QString *error)
 {
     if (!value.isArray()) {
-        setError(error, QStringLiteral("\"%1\" must be an array of 2 numbers [min, max]").arg(name));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1\" must be an array of 2 numbers [min, max]").arg(name));
         return false;
     }
     const QJsonArray pair = value.toArray();
     if (pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()
         || !std::isfinite(pair.at(0).toDouble()) || !std::isfinite(pair.at(1).toDouble())) {
-        setError(error, QStringLiteral("\"%1\" must be [min, max]: two finite numbers").arg(name));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1\" must be [min, max]: two finite numbers").arg(name));
         return false;
     }
     lo = pair.at(0).toDouble();
@@ -182,7 +183,7 @@ bool readAxis(const QJsonObject &obj, const QString &prefix, YAxis &out, QString
     } else if (text == QStringLiteral("right")) {
         out = YAxis::Right;
     } else {
-        setError(error, QStringLiteral("\"%1axis\" has unknown value \"%2\" (expected \"left\" or \"right\")")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1axis\" has unknown value \"%2\" (expected \"left\" or \"right\")")
                             .arg(prefix, text));
         return false;
     }
@@ -214,7 +215,7 @@ bool readByteOrder(const QJsonObject &obj, const QString &prefix, ByteOrder &out
     } else if (text == QStringLiteral("DCBA")) {
         out = ByteOrder::DCBA;
     } else {
-        setError(error, QStringLiteral("\"%1byteOrder\" has unknown value \"%2\" (expected \"ABCD\", \"CDAB\", \"BADC\" or \"DCBA\")")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1byteOrder\" has unknown value \"%2\" (expected \"ABCD\", \"CDAB\", \"BADC\" or \"DCBA\")")
                             .arg(prefix, text));
         return false;
     }
@@ -236,7 +237,7 @@ bool readArea(const QJsonObject &obj, const QString &prefix, Area &out, QString 
     } else if (text == QStringLiteral("discrete")) {
         out = Area::DiscreteInput;
     } else {
-        setError(error, QStringLiteral("\"%1area\" has unknown value \"%2\" (expected \"holding\", \"input\", \"coil\" or \"discrete\")")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1area\" has unknown value \"%2\" (expected \"holding\", \"input\", \"coil\" or \"discrete\")")
                             .arg(prefix, text));
         return false;
     }
@@ -262,7 +263,7 @@ bool readValueType(const QJsonObject &obj, const QString &prefix, ValueType &out
     } else if (text == QStringLiteral("bool")) {
         out = ValueType::Bool;
     } else {
-        setError(error, QStringLiteral("\"%1type\" has unknown value \"%2\" (expected \"int16\", \"uint16\", \"int32\", \"uint32\", \"float32\" or \"bool\")")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1type\" has unknown value \"%2\" (expected \"int16\", \"uint16\", \"int32\", \"uint32\", \"float32\" or \"bool\")")
                             .arg(prefix, text));
         return false;
     }
@@ -276,7 +277,7 @@ bool readConnection(const QJsonObject &root, ConnectionSettings &conn, QString *
     if (value.isUndefined())
         return true;
     if (!value.isObject()) {
-        setError(error, QStringLiteral("\"connection\" must be an object"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"connection\" must be an object"));
         return false;
     }
     const QJsonObject obj = value.toObject();
@@ -309,7 +310,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
 {
     const QString name = QStringLiteral("tags[%1]").arg(index);
     if (!value.isObject()) {
-        setError(error, QStringLiteral("\"%1\" must be an object").arg(name));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1\" must be an object").arg(name));
         return false;
     }
     const QJsonObject obj = value.toObject();
@@ -318,7 +319,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
     // The id is required: a missing id would fall back to 0, which is never valid.
     const QString idKey = QStringLiteral("id");
     if (!obj.contains(idKey)) {
-        setError(error, QStringLiteral("\"%1\" is missing \"id\"").arg(name));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1\" is missing \"id\"").arg(name));
         return false;
     }
     qint64 id = 0;
@@ -349,7 +350,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         return false;
     }
     if (tag.writeMin && tag.writeMax && *tag.writeMin > *tag.writeMax) {
-        setError(error, QStringLiteral("\"%1writeMin\" (%2) is above \"%1writeMax\" (%3)")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1writeMin\" (%2) is above \"%1writeMax\" (%3)")
                             .arg(prefix)
                             .arg(*tag.writeMin)
                             .arg(*tag.writeMax));
@@ -361,8 +362,9 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         tag.type = ValueType::Bool;
     if (!typeFitsArea(tag.type, tag.area)) {
         setError(error, tag.type == ValueType::Bool
-                            ? QStringLiteral("Tag %1: type bool needs area coil or discrete").arg(tag.id)
-                            : QStringLiteral("Tag %1: area %2 needs type bool")
+                            ? QCoreApplication::translate("mb::ProjectIO", "Tag %1: type bool needs area coil or discrete")
+                                  .arg(tag.id)
+                            : QCoreApplication::translate("mb::ProjectIO", "Tag %1: area %2 needs type bool")
                                   .arg(tag.id)
                                   .arg(areaKey(tag.area)));
         return false;
@@ -376,7 +378,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
             tag.writable = false;
     }
     if (!tag.fitsAddressSpace()) {
-        setError(error, QStringLiteral("\"%1address\" is %2, too high for a \"%3\" tag: it uses %4 registers, "
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1address\" is %2, too high for a \"%3\" tag: it uses %4 registers, "
                                        "so the last one would be past 65535")
                             .arg(prefix)
                             .arg(address)
@@ -397,7 +399,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     QJsonObject obj;
     if (!value.isUndefined()) {
         if (!value.isObject()) {
-            setError(error, QStringLiteral("\"analysis\" must be an object"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis\" must be an object"));
             return false;
         }
         obj = value.toObject();
@@ -427,18 +429,18 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     const QJsonValue percents = obj.value(QStringLiteral("percents"));
     if (!percents.isUndefined()) {
         if (!percents.isArray()) {
-            setError(error, QStringLiteral("\"analysis.percents\" must be an array of numbers"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.percents\" must be an array of numbers"));
             return false;
         }
         const QJsonArray array = percents.toArray();
         if (array.size() > 20) {
-            setError(error, QStringLiteral("\"analysis.percents\" must have at most 20 entries"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.percents\" must have at most 20 entries"));
             return false;
         }
         QList<double> list;
         for (const QJsonValue &entry : array) {
             if (!entry.isDouble() || entry.toDouble() < 0.0 || entry.toDouble() > 100.0) {
-                setError(error, QStringLiteral("\"analysis.percents\" entries must be numbers from 0 to 100"));
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.percents\" entries must be numbers from 0 to 100"));
                 return false;
             }
             list.append(entry.toDouble());
@@ -449,7 +451,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     const QJsonValue reference = obj.value(QStringLiteral("reference"));
     if (!reference.isUndefined()) {
         if (!reference.isString()) {
-            setError(error, QStringLiteral("\"analysis.reference\" must be a string"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.reference\" must be a string"));
             return false;
         }
         const QString text = reference.toString();
@@ -458,7 +460,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         } else if (text == QStringLiteral("mean")) {
             out.reference = ReferenceMode::WindowMean;
         } else {
-            setError(error, QStringLiteral("\"analysis.reference\" has unknown value \"%1\" (expected \"cursor\" or \"mean\")")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.reference\" has unknown value \"%1\" (expected \"cursor\" or \"mean\")")
                                 .arg(text));
             return false;
         }
@@ -467,14 +469,14 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!readDouble(obj, QStringLiteral("referenceWindowS"), prefix, out.referenceWindowS, error))
         return false;
     if (!(out.referenceWindowS > 0.0 && out.referenceWindowS <= 3600.0)) {
-        setError(error, QStringLiteral("\"analysis.referenceWindowS\" must be greater than 0 and at most 3600"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.referenceWindowS\" must be greater than 0 and at most 3600"));
         return false;
     }
 
     if (!readDouble(obj, QStringLiteral("smoothingS"), prefix, out.smoothingS, error))
         return false;
     if (!(out.smoothingS >= 0.0 && out.smoothingS <= 3600.0)) {
-        setError(error, QStringLiteral("\"analysis.smoothingS\" must be from 0 to 3600"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.smoothingS\" must be from 0 to 3600"));
         return false;
     }
 
@@ -482,13 +484,13 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!model.isUndefined()) {
         const QJsonArray pair = model.toArray();
         if (!model.isArray() || pair.size() != 2 || !pair.at(0).isDouble() || !pair.at(1).isDouble()) {
-            setError(error, QStringLiteral("\"analysis.modelPercents\" must be an array of exactly 2 numbers"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.modelPercents\" must be an array of exactly 2 numbers"));
             return false;
         }
         const double a = pair.at(0).toDouble();
         const double b = pair.at(1).toDouble();
         if (!(a >= 0.0 && a < b && b < 100.0)) {
-            setError(error, QStringLiteral("\"analysis.modelPercents\" must be two numbers a < b, both from 0 up to but not including 100"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.modelPercents\" must be two numbers a < b, both from 0 up to but not including 100"));
             return false;
         }
         out.modelPercentA = a;
@@ -503,7 +505,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!method.isUndefined()) {
         const QString text = method.toString();
         if (!method.isString()) {
-            setError(error, QStringLiteral("\"analysis.method\" must be a string"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.method\" must be a string"));
             return false;
         }
         if (text == QStringLiteral("0-63.2")) {
@@ -515,7 +517,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         } else if (text == QStringLiteral("custom")) {
             out.method = ModelMethod::Custom;
         } else {
-            setError(error, QStringLiteral("\"analysis.method\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"custom\")")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.method\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"custom\")")
                                 .arg(text));
             return false;
         }
@@ -529,14 +531,14 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     const QJsonValue setpointTags = obj.value(QStringLiteral("setpointTags"));
     if (!setpointTags.isUndefined()) {
         if (!setpointTags.isArray()) {
-            setError(error, QStringLiteral("\"analysis.setpointTags\" must be an array of tag ids"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.setpointTags\" must be an array of tag ids"));
             return false;
         }
         QList<TagId> ids;
         for (const QJsonValue &entry : setpointTags.toArray()) {
             const double d = entry.toDouble();
             if (!entry.isDouble() || std::trunc(d) != d || d < 1.0 || d > static_cast<double>(kMaxTagId)) {
-                setError(error, QStringLiteral("\"analysis.setpointTags\" entries must be integers from 1 to %1")
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.setpointTags\" entries must be integers from 1 to %1")
                                     .arg(kMaxTagId));
                 return false;
             }
@@ -583,7 +585,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!modelColor.isUndefined()) {
         static const QRegularExpression rgb(QStringLiteral("^#[0-9A-Fa-f]{6}$"));
         if (!modelColor.isString() || !rgb.match(modelColor.toString()).hasMatch()) {
-            setError(error, QStringLiteral("analysis.modelColor: must be a colour \"#RRGGBB\""));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "analysis.modelColor: must be a colour \"#RRGGBB\""));
             return false;
         }
         out.modelColor = modelColor.toString();
@@ -593,7 +595,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!tuningRule.isUndefined()) {
         const QString text = tuningRule.toString();
         if (!tuningRule.isString()) {
-            setError(error, QStringLiteral("\"analysis.tuningRule\" must be a string"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.tuningRule\" must be a string"));
             return false;
         }
         if (text == QStringLiteral("zn")) {
@@ -605,7 +607,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         } else if (text == QStringLiteral("simc")) {
             out.tuningRule = TuningRule::Simc;
         } else {
-            setError(error, QStringLiteral("\"analysis.tuningRule\" has unknown value \"%1\" (expected \"zn\", \"cohen-coon\", \"imc\" or \"simc\")")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.tuningRule\" has unknown value \"%1\" (expected \"zn\", \"cohen-coon\", \"imc\" or \"simc\")")
                                 .arg(text));
             return false;
         }
@@ -614,7 +616,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!readDouble(obj, QStringLiteral("lambdaS"), prefix, out.lambdaS, error))
         return false;
     if (!(std::isfinite(out.lambdaS) && out.lambdaS >= 0.0)) {
-        setError(error, QStringLiteral("\"analysis.lambdaS\" must be a finite number, 0 or more"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.lambdaS\" must be a finite number, 0 or more"));
         return false;
     }
 
@@ -622,7 +624,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     if (!timeUnit.isUndefined()) {
         const QString text = timeUnit.toString();
         if (!timeUnit.isString()) {
-            setError(error, QStringLiteral("\"analysis.timeUnit\" must be a string"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.timeUnit\" must be a string"));
             return false;
         }
         if (text == QStringLiteral("s")) {
@@ -630,7 +632,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
         } else if (text == QStringLiteral("min")) {
             out.timeInMinutes = true;
         } else {
-            setError(error, QStringLiteral("\"analysis.timeUnit\" has unknown value \"%1\" (expected \"s\" or \"min\")")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.timeUnit\" has unknown value \"%1\" (expected \"s\" or \"min\")")
                                 .arg(text));
             return false;
         }
@@ -649,14 +651,14 @@ bool readHiddenColumns(const QJsonObject &root, QStringList &out, QString *error
         return true;
     }
     if (!value.isArray()) {
-        setError(error, QStringLiteral("\"hiddenColumns\" must be an array of strings"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"hiddenColumns\" must be an array of strings"));
         return false;
     }
     QStringList list;
     QSet<QString> seen;
     for (const QJsonValue &entry : value.toArray()) {
         if (!entry.isString()) {
-            setError(error, QStringLiteral("\"hiddenColumns\" entries must be strings"));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"hiddenColumns\" entries must be strings"));
             return false;
         }
         const QString name = entry.toString();
@@ -678,7 +680,7 @@ bool readYRange(const QJsonObject &yAxes, const QString &side, YRange &out, QStr
         out.reset();
         return true;
     }
-    const QString message = QStringLiteral("yAxes.%1: must be \"auto\" or [min, max] with min < max").arg(side);
+    const QString message = QCoreApplication::translate("mb::ProjectIO", "yAxes.%1: must be \"auto\" or [min, max] with min < max").arg(side);
     if (!value.isArray()) {
         setError(error, message);
         return false;
@@ -710,7 +712,7 @@ bool readYAxes(const QJsonObject &root, YRange &left, YRange &right, QString *er
         return true;
     }
     if (!value.isObject()) {
-        setError(error, QStringLiteral("\"yAxes\" must be an object with \"left\" and \"right\""));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"yAxes\" must be an object with \"left\" and \"right\""));
         return false;
     }
     const QJsonObject obj = value.toObject();
@@ -718,7 +720,7 @@ bool readYAxes(const QJsonObject &root, YRange &left, YRange &right, QString *er
     const QString rightKey = QStringLiteral("right");
     for (const QString &name : obj.keys()) {
         if (name != leftKey && name != rightKey) {
-            setError(error, QStringLiteral("yAxes: unknown key \"%1\" (expected \"left\" or \"right\")").arg(name));
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "yAxes: unknown key \"%1\" (expected \"left\" or \"right\")").arg(name));
             return false;
         }
     }
@@ -846,38 +848,38 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
-        setError(error, QStringLiteral("Invalid JSON: %1").arg(parseError.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Invalid JSON: %1").arg(parseError.errorString()));
         return std::nullopt;
     }
     if (!doc.isObject()) {
-        setError(error, QStringLiteral("Invalid project: top-level value must be a JSON object"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Invalid project: top-level value must be a JSON object"));
         return std::nullopt;
     }
     const QJsonObject root = doc.object();
 
     if (root.value(QStringLiteral("format")).toString() != QStringLiteral("modbus-control-project")) {
-        setError(error, QStringLiteral("Not a Modbus Control project: \"format\" must be \"modbus-control-project\""));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Not a Modbus Control project: \"format\" must be \"modbus-control-project\""));
         return std::nullopt;
     }
 
     const QJsonValue versionValue = root.value(QStringLiteral("version"));
     if (versionValue.isUndefined()) {
-        setError(error, QStringLiteral("Invalid project: \"version\" is missing"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Invalid project: \"version\" is missing"));
         return std::nullopt;
     }
     const double version = versionValue.toDouble();
     if (!versionValue.isDouble() || std::trunc(version) != version) {
-        setError(error, QStringLiteral("Invalid project: \"version\" must be an integer"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Invalid project: \"version\" must be an integer"));
         return std::nullopt;
     }
     if (version > kProjectFormatVersion) {
-        setError(error, QStringLiteral("Project version %1 is newer than supported version %2")
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Project version %1 is newer than supported version %2")
                             .arg(static_cast<qint64>(version))
                             .arg(kProjectFormatVersion));
         return std::nullopt;
     }
     if (version < 1) {
-        setError(error, QStringLiteral("Invalid project: \"version\" must be 1 or greater"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Invalid project: \"version\" must be 1 or greater"));
         return std::nullopt;
     }
 
@@ -888,7 +890,7 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
     qint64 base = 0;
     if (!readInt(root, QStringLiteral("addressBase"), QString(), 0, 1, base, error)) {
         if (error)
-            *error = QStringLiteral("\"addressBase\" must be 0 or 1");
+            *error = QCoreApplication::translate("mb::ProjectIO", "\"addressBase\" must be 0 or 1");
         return std::nullopt;
     }
     project.addressBase = static_cast<int>(base);
@@ -899,7 +901,7 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
 
     const QJsonValue tagsValue = root.value(QStringLiteral("tags"));
     if (!tagsValue.isUndefined() && !tagsValue.isArray()) {
-        setError(error, QStringLiteral("\"tags\" must be an array"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"tags\" must be an array"));
         return std::nullopt;
     }
     const QJsonArray tagArray = tagsValue.toArray();
@@ -910,7 +912,7 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
         if (!readTag(tagArray.at(i), static_cast<int>(i), tag, error))
             return std::nullopt;
         if (seenIds.contains(tag.id)) {
-            setError(error, QStringLiteral("Duplicate tag id %1 (tags[%2])")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "Duplicate tag id %1 (tags[%2])")
                                 .arg(tag.id)
                                 .arg(static_cast<qint64>(i)));
             return std::nullopt;
@@ -931,7 +933,7 @@ std::optional<Project> projectFromJson(const QByteArray &json, QString *error)
 
     const QJsonValue lockedValue = root.value(QStringLiteral("locked"));
     if (!lockedValue.isUndefined() && !lockedValue.isBool()) {
-        setError(error, QStringLiteral("\"locked\" must be a boolean"));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"locked\" must be a boolean"));
         return std::nullopt;
     }
     project.locked = lockedValue.toBool(false);
@@ -944,16 +946,16 @@ bool saveProject(const QString &path, const Project &project, QString *error)
 {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
-        setError(error, QStringLiteral("Cannot write \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Cannot write \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     const QByteArray json = projectToJson(project);
     if (file.write(json) != json.size()) {
-        setError(error, QStringLiteral("Cannot write \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Cannot write \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     if (!file.commit()) {
-        setError(error, QStringLiteral("Cannot save \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Cannot save \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     return true;
@@ -963,18 +965,18 @@ std::optional<Project> loadProject(const QString &path, QString *error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        setError(error, QStringLiteral("Cannot open \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Cannot open \"%1\": %2").arg(path, file.errorString()));
         return std::nullopt;
     }
     const QByteArray json = file.readAll();
     if (file.error() != QFile::NoError) {
-        setError(error, QStringLiteral("Cannot read \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "Cannot read \"%1\": %2").arg(path, file.errorString()));
         return std::nullopt;
     }
     QString parseError;
     std::optional<Project> project = projectFromJson(json, &parseError);
     if (!project)
-        setError(error, QStringLiteral("%1: %2").arg(path, parseError));
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "%1: %2").arg(path, parseError));
     return project;
 }
 

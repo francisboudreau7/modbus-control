@@ -1,5 +1,7 @@
 #include "StepAnalysis.h"
 
+#include <QCoreApplication>
+
 #include <algorithm>
 #include <cmath>
 
@@ -285,7 +287,7 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     StepResult r;
     r.tagId = pvTag;
     if (std::isnan(t1) || std::isnan(t2)) {
-        r.error = QStringLiteral("Place both cursors");
+        r.error = QCoreApplication::translate("mb::StepAnalysis", "Place both cursors");
         return r;
     }
     if (t1 > t2) {
@@ -297,17 +299,17 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     const auto y0 = referenceLevel(recorder, pvTag, t1, settings.reference,
                                    settings.referenceWindowS);
     if (!y0) {
-        r.error = QStringLiteral("No data at C1");
+        r.error = QCoreApplication::translate("mb::StepAnalysis", "No data at C1");
         return r;
     }
     const auto y100 = referenceLevel(recorder, pvTag, t2, settings.reference,
                                      settings.referenceWindowS);
     if (!y100) {
-        r.error = QStringLiteral("No data at C2");
+        r.error = QCoreApplication::translate("mb::StepAnalysis", "No data at C2");
         return r;
     }
     if (*y0 == *y100) {
-        r.error = QStringLiteral("No change between C1 and C2");
+        r.error = QCoreApplication::translate("mb::StepAnalysis", "No change between C1 and C2");
         return r;
     }
     r.valid = true;
@@ -401,13 +403,13 @@ QString toString(ModelMethod method)
 {
     switch (method) {
     case ModelMethod::ZeroTo632:
-        return QStringLiteral("0 % / 63.2 % (two points)");
+        return QCoreApplication::translate("mb::StepAnalysis", "0 % / 63.2 % (two points)");
     case ModelMethod::Smith:
         return QStringLiteral("Smith (28.3 % / 63.2 %)");
     case ModelMethod::Sundaresan:
         return QStringLiteral("Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
     case ModelMethod::Custom:
-        return QStringLiteral("Custom");
+        return QCoreApplication::translate("mb::StepAnalysis", "Custom");
     }
     return {};
 }

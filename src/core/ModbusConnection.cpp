@@ -1,5 +1,6 @@
 #include "ModbusConnection.h"
 
+#include <QCoreApplication>
 #include <QStringList>
 
 #include <modbus.h>
@@ -17,6 +18,30 @@ namespace mb {
 
 namespace {
 
+/// modbus_strerror() text; the libmodbus-specific codes are translated, the rest (C runtime
+/// strerror) is shown as the system gives it.
+QString libmodbusText(int err)
+{
+    switch (err) {
+    case EMBXILFUN: return QCoreApplication::translate("mb::ModbusConnection", "Illegal function");
+    case EMBXILADD: return QCoreApplication::translate("mb::ModbusConnection", "Illegal data address");
+    case EMBXILVAL: return QCoreApplication::translate("mb::ModbusConnection", "Illegal data value");
+    case EMBXSFAIL: return QCoreApplication::translate("mb::ModbusConnection", "Slave device or server failure");
+    case EMBXACK: return QCoreApplication::translate("mb::ModbusConnection", "Acknowledge");
+    case EMBXSBUSY: return QCoreApplication::translate("mb::ModbusConnection", "Slave device or server is busy");
+    case EMBXNACK: return QCoreApplication::translate("mb::ModbusConnection", "Negative acknowledge");
+    case EMBXMEMPAR: return QCoreApplication::translate("mb::ModbusConnection", "Memory parity error");
+    case EMBXGPATH: return QCoreApplication::translate("mb::ModbusConnection", "Gateway path unavailable");
+    case EMBXGTAR: return QCoreApplication::translate("mb::ModbusConnection", "Target device failed to respond");
+    case EMBBADCRC: return QCoreApplication::translate("mb::ModbusConnection", "Invalid CRC");
+    case EMBBADDATA: return QCoreApplication::translate("mb::ModbusConnection", "Invalid data");
+    case EMBBADEXC: return QCoreApplication::translate("mb::ModbusConnection", "Invalid exception code");
+    case EMBMDATA: return QCoreApplication::translate("mb::ModbusConnection", "Too many data");
+    case EMBBADSLAVE: return QCoreApplication::translate("mb::ModbusConnection", "Response not from requested slave");
+    default: return QString::fromLocal8Bit(modbus_strerror(err));
+    }
+}
+
 ModbusResult makeResult(ModbusError error, const QString &message, int exceptionCode = 0)
 {
     ModbusResult r;
@@ -28,7 +53,7 @@ ModbusResult makeResult(ModbusError error, const QString &message, int exception
 
 ModbusResult notConnected()
 {
-    return makeResult(ModbusError::NotConnected, QStringLiteral("Not connected"));
+    return makeResult(ModbusError::NotConnected, QCoreApplication::translate("mb::ModbusConnection", "Not connected"));
 }
 
 ModbusResult invalidArgument(const QString &what)
@@ -86,11 +111,13 @@ ModbusResult mapError(LastError last)
 #else
     Q_UNUSED(wsa)
 #endif
-    const QString text = QString::fromLocal8Bit(modbus_strerror(err));
+    const QString text = libmodbusText(err);
     if (err >= EMBXILFUN && err <= EMBXGTAR) {
         const int code = err - MODBUS_ENOBASE;
         return makeResult(ModbusError::Exception,
-                          QStringLiteral("Modbus exception %1: %2").arg(code).arg(text), code);
+                          
+                          //: %1 = Modbus exception code number, %2 = its description
+                          QCoreApplication::translate("mb::ModbusConnection", "Modbus exception %1: %2").arg(code).arg(text), code);
     }
 
     if (err == ETIMEDOUT)
@@ -163,13 +190,13 @@ ModbusResult ModbusConnection::open(const ConnectionSettings &settings)
 
     const QString host = settings.host.trimmed();
     if (host.isEmpty())
-        return invalidArgument(QStringLiteral("Host must not be empty"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Host must not be empty"));
     if (settings.port < 1) // quint16: 0 is the only invalid value
-        return invalidArgument(QStringLiteral("Port must be 1..65535"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Port must be 1..65535"));
     if (!((settings.unitId >= 0 && settings.unitId <= 247) || settings.unitId == 255))
-        return invalidArgument(QStringLiteral("Unit id must be 0..247 or 255"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Unit id must be 0..247 or 255"));
     if (settings.timeoutMs < 1)
-        return invalidArgument(QStringLiteral("Timeout must be at least 1 ms"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Timeout must be at least 1 ms"));
 
     // libmodbus only accepts IPv4 literals (inet_pton); name resolution would need QtNetwork.
     QString ip = host;
@@ -177,14 +204,14 @@ ModbusResult ModbusConnection::open(const ConnectionSettings &settings)
         ip = QStringLiteral("127.0.0.1");
     if (!isIPv4Literal(ip)) {
         return invalidArgument(
-            QStringLiteral("Host must be an IPv4 address (e.g. 192.168.1.10) or 'localhost'"));
+            QCoreApplication::translate("mb::ModbusConnection", "Host must be an IPv4 address (e.g. 192.168.1.10) or 'localhost'"));
     }
 
     const QByteArray ipBytes = ip.toLatin1();
     modbus_t *ctx = modbus_new_tcp(ipBytes.constData(), settings.port);
     if (!ctx) {
         return makeResult(ModbusError::ConnectFailed,
-                          QString::fromLocal8Bit(modbus_strerror(errno)));
+                          libmodbusText(errno));
     }
 
     const uint32_t sec = static_cast<uint32_t>(settings.timeoutMs / 1000);
@@ -197,7 +224,7 @@ ModbusResult ModbusConnection::open(const ConnectionSettings &settings)
         const int err = errno;
         modbus_free(ctx);
         return makeResult(ModbusError::InvalidArgument,
-                          QString::fromLocal8Bit(modbus_strerror(err)));
+                          libmodbusText(err));
     }
 
     clearErrors();
@@ -218,7 +245,7 @@ ModbusResult ModbusConnection::readRegisters(Area area, quint16 address, quint16
     if (!m_ctx)
         return notConnected();
     if (isBitArea(area) || count == 0 || count > MODBUS_MAX_READ_REGISTERS || !rangeOk(address, count))
-        return invalidArgument(QStringLiteral("Invalid register count or address range"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Invalid register count or address range"));
 
     QList<quint16> buf(count);
     clearErrors();
@@ -229,7 +256,7 @@ ModbusResult ModbusConnection::readRegisters(Area area, quint16 address, quint16
         return mapError(captureError());
     if (rc == 0 || rc != count) {
         // Closed socket / short read: treat as lost connection.
-        return makeResult(ModbusError::ConnectionLost, QStringLiteral("Connection closed"));
+        return makeResult(ModbusError::ConnectionLost, QCoreApplication::translate("mb::ModbusConnection", "Connection closed"));
     }
 
     out = std::move(buf);
@@ -241,7 +268,7 @@ ModbusResult ModbusConnection::readBits(Area area, quint16 address, quint16 coun
     if (!m_ctx)
         return notConnected();
     if (!isBitArea(area) || count == 0 || count > MODBUS_MAX_READ_BITS || !rangeOk(address, count))
-        return invalidArgument(QStringLiteral("Invalid bit count or address range"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Invalid bit count or address range"));
 
     std::vector<uint8_t> bits(count);
     clearErrors();
@@ -251,7 +278,7 @@ ModbusResult ModbusConnection::readBits(Area area, quint16 address, quint16 coun
     if (rc == -1)
         return mapError(captureError());
     if (rc == 0 || rc != count)
-        return makeResult(ModbusError::ConnectionLost, QStringLiteral("Connection closed"));
+        return makeResult(ModbusError::ConnectionLost, QCoreApplication::translate("mb::ModbusConnection", "Connection closed"));
 
     QList<quint16> buf;
     buf.reserve(count);
@@ -277,7 +304,7 @@ ModbusResult ModbusConnection::writeCoils(quint16 address, const QList<quint16> 
         return notConnected();
     const int n = static_cast<int>(values.size());
     if (n < 1 || n > MODBUS_MAX_WRITE_BITS || !rangeOk(address, n))
-        return invalidArgument(QStringLiteral("Invalid coil count or address range"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Invalid coil count or address range"));
     std::vector<uint8_t> bits;
     bits.reserve(values.size());
     for (const quint16 v : values)
@@ -304,7 +331,7 @@ ModbusResult ModbusConnection::writeMultiple(quint16 address, const QList<quint1
         return notConnected();
     const int n = static_cast<int>(values.size());
     if (n < 1 || n > MODBUS_MAX_WRITE_REGISTERS || !rangeOk(address, n))
-        return invalidArgument(QStringLiteral("Invalid register count or address range"));
+        return invalidArgument(QCoreApplication::translate("mb::ModbusConnection", "Invalid register count or address range"));
     clearErrors();
     if (modbus_write_registers(m_ctx, address, n, values.constData()) == -1)
         return mapError(captureError());

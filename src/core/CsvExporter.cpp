@@ -1,5 +1,6 @@
 #include "CsvExporter.h"
 
+#include <QCoreApplication>
 #include <QIODevice>
 #include <QLocale>
 #include <QString>
@@ -16,7 +17,7 @@ bool writeText(QIODevice &out, const QString &text, QString *error)
     const qint64 written = out.write(bytes);
     if (written != bytes.size()) {
         if (error)
-            *error = QStringLiteral("Write failed: %1").arg(out.errorString());
+            *error = QCoreApplication::translate("mb::CsvExporter", "Write failed: %1").arg(out.errorString());
         return false;
     }
     return true;
@@ -58,7 +59,7 @@ bool exportCsv(QIODevice &out, const Recorder &recorder, const QList<CsvColumn> 
 {
     if (!out.isOpen() || !out.isWritable()) {
         if (error)
-            *error = QStringLiteral("Device is not open for writing");
+            *error = QCoreApplication::translate("mb::CsvExporter", "Device is not open for writing");
         return false;
     }
 
