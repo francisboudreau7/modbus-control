@@ -70,6 +70,11 @@ QList<ReadBlock> planBlocks(const QList<Tag> &tags, const PlannerOptions &option
     QList<ReadBlock> result;
     planArea(tags, Area::HoldingRegister, maxGap, maxCount, result);
     planArea(tags, Area::InputRegister, maxGap, maxCount, result);
+    // Bit areas: the same rules counted in bits.
+    const int maxBitGap = std::max(0, options.maxBitGap);
+    const int maxBitCount = std::clamp(options.maxBitCount, 1, 65535);
+    planArea(tags, Area::Coil, maxBitGap, maxBitCount, result);
+    planArea(tags, Area::DiscreteInput, maxBitGap, maxBitCount, result);
     return result;
 }
 

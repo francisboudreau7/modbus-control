@@ -102,6 +102,7 @@ private:
         quint64 id = 0;
         quint16 address = 0;
         QList<quint16> values;
+        bool coils = false; ///< coil write (FC05/FC15) instead of holding registers
     };
 
     struct PendingRead {
@@ -121,6 +122,8 @@ private:
     void onReconnectTimer();
     void scheduleNextPoll(double cycleStartMs);
     void serveWrites();
+    static ModbusResult withFc15Hint(ModbusResult result);
+    ModbusResult readArea(Area area, quint16 address, quint16 count, QList<quint16> &out);
     void drainWrites();
     void serveReads();
     void servePending(); ///< queued writes, then queued reads

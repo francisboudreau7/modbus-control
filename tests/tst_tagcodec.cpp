@@ -65,6 +65,10 @@ private slots:
     void decodeValue_data();
     void decodeValue();
 
+    void boolDecode();
+    void boolEncode();
+    void tagHelpers();
+
     void encodeValue_data();
     void encodeValue();
 
@@ -660,6 +664,97 @@ void TstTagCodec::encodeRegisters16BitMatchesEncodeValue()
             }
         }
     }
+}
+
+void TstTagCodec::boolDecode()
+{
+    mb::Tag tag;
+    tag.area = mb::Area::Coil;
+    tag.type = mb::ValueType::Bool;
+    tag.gain = 5.0; // ignored for bits
+    tag.offset = 7.0;
+    QCOMPARE(mb::decodeValue(tag, 0), 0.0);
+    QCOMPARE(mb::decodeValue(tag, 1), 1.0);
+    QCOMPARE(mb::decodeValue(tag, 5), 1.0);
+    QCOMPARE(mb::combineRegisters(tag, 1), quint32(1));
+}
+
+void TstTagCodec::boolEncode()
+{
+    mb::Tag tag;
+    tag.area = mb::Area::Coil;
+    tag.type = mb::ValueType::Bool;
+    tag.gain = 5.0;
+    tag.offset = 7.0;
+    QCOMPARE(mb::encodeValue(tag, 0.0), std::optional<quint16>(0));
+    QCOMPARE(mb::encodeValue(tag, 1.0), std::optional<quint16>(1));
+    for (const double bad : {0.5, 2.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+                             std::numeric_limits<double>::infinity()}) {
+        QVERIFY(!mb::encodeValue(tag, bad).has_value());
+        QVERIFY(!mb::encodeRegisters(tag, bad).has_value());
+    }
+    const auto regs = mb::encodeRegisters(tag, 1.0);
+    QVERIFY(regs.has_value());
+    QCOMPARE(*regs, (QList<quint16>{1}));
+    QCOMPARE(*mb::encodeRegisters(tag, 0.0), (QList<quint16>{0}));
+}
+
+void TstTagCodec::tagHelpers()
+{
+    using mb::Area;
+    QVERIFY(!mb::isBitArea(Area::HoldingRegister));
+    QVERIFY(!mb::isBitArea(Area::InputRegister));
+    QVERIFY(mb::isBitArea(Area::Coil));
+    QVERIFY(mb::isBitArea(Area::DiscreteInput));
+    QVERIFY(mb::isWritableArea(Area::HoldingRegister));
+    QVERIFY(mb::isWritableArea(Area::Coil));
+    QVERIFY(!mb::isWritableArea(Area::InputRegister));
+    QVERIFY(!mb::isWritableArea(Area::DiscreteInput));
+
+    QCOMPARE(mb::readFunctionCode(Area::HoldingRegister), 3);
+    QCOMPARE(mb::readFunctionCode(Area::InputRegister), 4);
+    QCOMPARE(mb::readFunctionCode(Area::Coil), 1);
+    QCOMPARE(mb::readFunctionCode(Area::DiscreteInput), 2);
+    QCOMPARE(mb::writeFunctionCode(Area::HoldingRegister, 1), 6);
+    QCOMPARE(mb::writeFunctionCode(Area::HoldingRegister, 2), 16);
+    QCOMPARE(mb::writeFunctionCode(Area::Coil, 1), 5);
+    QCOMPARE(mb::writeFunctionCode(Area::Coil, 8), 15);
+    QCOMPARE(mb::writeFunctionCode(Area::InputRegister, 1), 0);
+    QCOMPARE(mb::writeFunctionCode(Area::DiscreteInput, 3), 0);
+
+    QVERIFY(mb::typeFitsArea(mb::ValueType::Bool, Area::Coil));
+    QVERIFY(mb::typeFitsArea(mb::ValueType::Bool, Area::DiscreteInput));
+    QVERIFY(!mb::typeFitsArea(mb::ValueType::Bool, Area::HoldingRegister));
+    QVERIFY(!mb::typeFitsArea(mb::ValueType::Bool, Area::InputRegister));
+    QVERIFY(mb::typeFitsArea(mb::ValueType::Float32, Area::InputRegister));
+    QVERIFY(!mb::typeFitsArea(mb::ValueType::Int16, Area::Coil));
+    QCOMPARE(mb::registerCount(mb::ValueType::Bool), 1);
+
+    QCOMPARE(mb::areaPrefix(Area::HoldingRegister), QStringLiteral("HR"));
+    QCOMPARE(mb::areaPrefix(Area::InputRegister), QStringLiteral("IR"));
+    QCOMPARE(mb::areaPrefix(Area::Coil), QStringLiteral("CO"));
+    QCOMPARE(mb::areaPrefix(Area::DiscreteInput), QStringLiteral("DI"));
+    QCOMPARE(mb::areaLabel(Area::HoldingRegister), QStringLiteral("Holding register (FC03/FC06/FC16)"));
+    QCOMPARE(mb::areaLabel(Area::InputRegister), QStringLiteral("Input register (FC04)"));
+    QCOMPARE(mb::areaLabel(Area::Coil), QStringLiteral("Coil (FC01/FC05/FC15)"));
+    QCOMPARE(mb::areaLabel(Area::DiscreteInput), QStringLiteral("Discrete input (FC02)"));
+    QCOMPARE(mb::toString(Area::Coil), QStringLiteral("Coil"));
+    QCOMPARE(mb::toString(Area::DiscreteInput), QStringLiteral("Discrete"));
+    QCOMPARE(mb::toString(mb::ValueType::Bool), QStringLiteral("bool"));
+    QCOMPARE(mb::bitText(0.0), QStringLiteral("OFF"));
+    QCOMPARE(mb::bitText(1.0), QStringLiteral("ON"));
+    QCOMPARE(mb::bitText(3.0), QStringLiteral("ON"));
+
+    mb::Tag t;
+    t.type = mb::ValueType::Bool;
+    t.writable = true;
+    t.area = Area::DiscreteInput;
+    QVERIFY(!t.isWritable());
+    QVERIFY(t.isBit());
+    t.area = Area::Coil;
+    QVERIFY(t.isWritable());
+    t.writable = false;
+    QVERIFY(!t.isWritable());
 }
 
 QTEST_GUILESS_MAIN(TstTagCodec)

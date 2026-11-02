@@ -36,11 +36,6 @@ ModbusResult notConnectedResult()
     return r;
 }
 
-QString areaShort(Area a)
-{
-    return a == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
-}
-
 } // namespace
 
 QString toString(ConnectionState state)
@@ -219,7 +214,7 @@ void PollWorker::writeRegisters(quint64 requestId, quint16 address, const QList<
         emit writeFinished(requestId, notConnectedResult());
         return;
     }
-    m_writes.append({requestId, address, values});
+    m_writes.append({requestId, address, values, false});
     if (!m_writePassQueued) {
         m_writePassQueued = true;
         QTimer::singleShot(0, this, &PollWorker::drainWrites);
@@ -228,13 +223,15 @@ void PollWorker::writeRegisters(quint64 requestId, quint16 address, const QList<
 
 void PollWorker::writeCoils(quint64 requestId, quint16 address, const QList<quint16> &values)
 {
-    // T251 stub: coil writes are not implemented yet.
-    Q_UNUSED(address);
-    Q_UNUSED(values);
-    ModbusResult result;
-    result.error = ModbusError::Other;
-    result.message = QStringLiteral("Coil writes are not implemented yet");
-    emit writeFinished(requestId, result);
+    if (m_state != ConnectionState::Connected || !m_conn->isOpen()) {
+        emit writeFinished(requestId, notConnectedResult());
+        return;
+    }
+    m_writes.append({requestId, address, values, true});
+    if (!m_writePassQueued) {
+        m_writePassQueued = true;
+        QTimer::singleShot(0, this, &PollWorker::drainWrites);
+    }
 }
 
 void PollWorker::drainWrites()
@@ -254,6 +251,13 @@ ModbusResult PollWorker::withFc16Hint(ModbusResult result)
     return result;
 }
 
+ModbusResult PollWorker::withFc15Hint(ModbusResult result)
+{
+    if (result.error == ModbusError::Exception && result.exceptionCode == 1)
+        result.message += QStringLiteral(" The device does not accept FC15 (write multiple coils).");
+    return result;
+}
+
 void PollWorker::serveWrites()
 {
     while (!m_writes.isEmpty()) {
@@ -261,6 +265,10 @@ void PollWorker::serveWrites()
         ModbusResult r;
         if (m_state != ConnectionState::Connected || !m_conn->isOpen())
             r = notConnectedResult();
+        else if (w.coils && w.values.size() == 1)
+            r = m_conn->writeCoil(w.address, w.values.first() != 0);
+        else if (w.coils)
+            r = withFc15Hint(m_conn->writeCoils(w.address, w.values));
         else if (w.values.size() == 1)
             r = m_conn->writeSingle(w.address, w.values.first());
         else
@@ -373,7 +381,7 @@ void PollWorker::pollCycle(double t)
     // Returns true when the connection was lost.
     const auto failed = [&](const ModbusResult &r, Area area, int start, int count) {
         emitBlockMessage(QStringLiteral("Read %1 %2..%3 failed: %4")
-                             .arg(areaShort(area))
+                             .arg(areaPrefix(area))
                              .arg(start + m_addressBase)
                              .arg(start + count - 1 + m_addressBase)
                              .arg(r.message));
@@ -397,8 +405,8 @@ void PollWorker::pollCycle(double t)
             const int regs = registerCount(m_tags.at(idx).type);
             const int start = block.start + block.offsets.at(k);
             QList<quint16> data;
-            const ModbusResult r = m_conn->readRegisters(block.area, static_cast<quint16>(start),
-                                                         static_cast<quint16>(regs), data);
+            const ModbusResult r = readArea(block.area, static_cast<quint16>(start),
+                                            static_cast<quint16>(regs), data);
             if (r.ok()) {
                 decodeInto(idx, data, 0);
                 continue;
@@ -419,7 +427,7 @@ void PollWorker::pollCycle(double t)
         }
 
         QList<quint16> data;
-        const ModbusResult r = m_conn->readRegisters(block.area, block.start, block.count, data);
+        const ModbusResult r = readArea(block.area, block.start, block.count, data);
         if (r.ok()) {
             for (int k = 0; k < block.tagIds.size(); ++k) {
                 const int idx = m_tagIndex.value(block.tagIds.at(k), -1);
@@ -454,6 +462,12 @@ void PollWorker::pollCycle(double t)
         enterReconnecting(lostReason);
 }
 
+ModbusResult PollWorker::readArea(Area area, quint16 address, quint16 count, QList<quint16> &out)
+{
+    return isBitArea(area) ? m_conn->readBits(area, address, count, out)
+                           : m_conn->readRegisters(area, address, count, out);
+}
+
 void PollWorker::failAllReads(const ModbusResult &result)
 {
     const QList<PendingRead> reads = std::exchange(m_reads, {});
@@ -467,12 +481,16 @@ void PollWorker::readRegisters(quint64 requestId, Area area, quint16 address, in
         emit readFinished(requestId, notConnectedResult(), {});
         return;
     }
-    if (count < 1 || count > 125 || static_cast<int>(address) + count > 65536) {
+    const bool bits = isBitArea(area);
+    const int maxCount = bits ? 2000 : 125;
+    if (count < 1 || count > maxCount || static_cast<int>(address) + count > 65536) {
         ModbusResult r;
         r.error = ModbusError::InvalidArgument;
-        r.message = QStringLiteral("Invalid read: %1 registers from %2 (1..125 registers, within 0..65535)")
+        r.message = QStringLiteral("Invalid read: %1 %2 from %3 (1..%4 %2, within 0..65535)")
                         .arg(count)
-                        .arg(address + m_addressBase);
+                        .arg(bits ? QStringLiteral("bits") : QStringLiteral("registers"))
+                        .arg(address + m_addressBase)
+                        .arg(maxCount);
         emit readFinished(requestId, r, {});
         return;
     }
@@ -495,7 +513,7 @@ void PollWorker::serveReads()
         if (m_state != ConnectionState::Connected || !m_conn->isOpen())
             r = notConnectedResult();
         else
-            r = m_conn->readRegisters(rd.area, rd.address, static_cast<quint16>(rd.count), data);
+            r = readArea(rd.area, rd.address, static_cast<quint16>(rd.count), data);
 
         if (!r.ok()) {
             data.clear();
