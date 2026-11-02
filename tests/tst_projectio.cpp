@@ -89,6 +89,11 @@ class TstProjectIO : public QObject
     Q_OBJECT
 private slots:
     void roundTrip();
+    void bitTagsRoundTrip();
+    void bitTagsWriteNoScaling();
+    void bitTagDefaultsAndReset();
+    void bitAreaTypeMismatchRejected_data();
+    void bitAreaTypeMismatchRejected();
     void writesSchemaKeys();
     void minimalJsonUsesDefaults();
     void missingTagFieldsUseDefaults();
@@ -325,7 +330,7 @@ void TstProjectIO::invalidInputRejected_data()
     QTest::newRow("version zero")
         << json(R"({"format":"modbus-control-project","version":0})") << QStringLiteral("version");
     QTest::newRow("unknown area")
-        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"area":"coil"}]})")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"area":"register"}]})")
         << QStringLiteral("area");
     QTest::newRow("unknown type")
         << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":1,"type":"float64"}]})")
@@ -1800,6 +1805,113 @@ void TstProjectIO::lockedRejectsNonBoolean()
     QVERIFY(!projectFromJson(json(R"({"format":"modbus-control-project","version":1,"locked":1})"), &error)
                  .has_value());
     QCOMPARE(error, QStringLiteral("\"locked\" must be a boolean"));
+}
+
+void TstProjectIO::bitTagsRoundTrip()
+{
+    Project p;
+    Tag coil;
+    coil.id = 1;
+    coil.name = QStringLiteral("Pump");
+    coil.area = Area::Coil;
+    coil.type = ValueType::Bool;
+    coil.address = 12;
+    coil.writable = true;
+    Tag di;
+    di.id = 2;
+    di.name = QStringLiteral("Limit");
+    di.area = Area::DiscreteInput;
+    di.type = ValueType::Bool;
+    di.address = 65535;
+    Tag hr;
+    hr.id = 3;
+    hr.name = QStringLiteral("Reg");
+    p.tags = {coil, di, hr};
+    p.nextTagId = 4;
+
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QCOMPARE(*loaded, p);
+    QVERIFY(loaded->tags.at(0).isWritable());
+    QVERIFY(!loaded->tags.at(1).isWritable());
+}
+
+void TstProjectIO::bitTagsWriteNoScaling()
+{
+    Project p;
+    Tag coil;
+    coil.id = 1;
+    coil.area = Area::Coil;
+    coil.type = ValueType::Bool;
+    coil.writable = true;
+    Tag di;
+    di.id = 2;
+    di.area = Area::DiscreteInput;
+    di.type = ValueType::Bool;
+    di.writable = true; // not meaningful: written as false
+    p.tags = {coil, di};
+    p.nextTagId = 3;
+
+    const QJsonArray tags = QJsonDocument::fromJson(projectToJson(p)).object().value(QStringLiteral("tags")).toArray();
+    const QJsonObject c = tags.at(0).toObject();
+    const QJsonObject d = tags.at(1).toObject();
+    QCOMPARE(c.value(QStringLiteral("area")).toString(), QStringLiteral("coil"));
+    QCOMPARE(d.value(QStringLiteral("area")).toString(), QStringLiteral("discrete"));
+    QCOMPARE(c.value(QStringLiteral("type")).toString(), QStringLiteral("bool"));
+    for (const QJsonObject &o : {c, d}) {
+        QVERIFY(!o.contains(QStringLiteral("gain")));
+        QVERIFY(!o.contains(QStringLiteral("offset")));
+        QVERIFY(!o.contains(QStringLiteral("byteOrder")));
+    }
+    QCOMPARE(c.value(QStringLiteral("writable")).toBool(), true);
+    QCOMPARE(d.value(QStringLiteral("writable")).toBool(), false);
+}
+
+void TstProjectIO::bitTagDefaultsAndReset()
+{
+    QString error;
+    // No "type" in a bit area reads as bool; scaling keys are ignored; a discrete input is
+    // never writable.
+    const auto project = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"tags":[
+        {"id":1,"area":"coil","address":4,"gain":3,"offset":2,"byteOrder":"DCBA","writable":true},
+        {"id":2,"area":"discrete","address":5,"type":"bool","writable":true}]})"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    const Tag &a = project->tags.at(0);
+    QVERIFY(a.type == ValueType::Bool);
+    QVERIFY(a.area == Area::Coil);
+    QCOMPARE(a.gain, 1.0);
+    QCOMPARE(a.offset, 0.0);
+    QVERIFY(a.byteOrder == ByteOrder::ABCD);
+    QVERIFY(a.writable);
+    QVERIFY(!project->tags.at(1).writable);
+}
+
+void TstProjectIO::bitAreaTypeMismatchRejected_data()
+{
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<QString>("message");
+    QTest::newRow("bool in holding")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":4,"type":"bool"}]})")
+        << QStringLiteral("Tag 4: type bool needs area coil or discrete");
+    QTest::newRow("bool in input")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":4,"area":"input","type":"bool"}]})")
+        << QStringLiteral("Tag 4: type bool needs area coil or discrete");
+    QTest::newRow("int16 in coil")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":5,"area":"coil","type":"int16"}]})")
+        << QStringLiteral("Tag 5: area coil needs type bool");
+    QTest::newRow("float in discrete")
+        << json(R"({"format":"modbus-control-project","version":1,"tags":[{"id":6,"area":"discrete","type":"float32"}]})")
+        << QStringLiteral("Tag 6: area discrete needs type bool");
+}
+
+void TstProjectIO::bitAreaTypeMismatchRejected()
+{
+    QFETCH(QByteArray, text);
+    QFETCH(QString, message);
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QCOMPARE(error, message);
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

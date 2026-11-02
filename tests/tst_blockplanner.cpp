@@ -38,6 +38,15 @@ ReadBlock blk(Area area, quint16 start, quint16 count, QList<TagId> ids, QList<q
 
 constexpr Area HR = Area::HoldingRegister;
 constexpr Area IR = Area::InputRegister;
+constexpr Area CO = Area::Coil;
+constexpr Area DI = Area::DiscreteInput;
+
+Tag mkBit(TagId id, quint16 addr, Area area = Area::Coil)
+{
+    Tag t = mk(id, addr, area);
+    t.type = ValueType::Bool;
+    return t;
+}
 
 } // namespace
 
@@ -253,6 +262,53 @@ private slots:
     {
         QCOMPARE(planBlocks({mk32(1, 65534, ValueType::UInt32)}),
                  (QList<ReadBlock>{blk(HR, 65534, 2, {1}, {0})}));
+    }
+
+    void bitAreasOrderAndMerge()
+    {
+        const auto r = planBlocks({mkBit(1, 5, DI), mkBit(2, 7, CO), mk(3, 9, IR), mk(4, 1, HR),
+                                   mkBit(5, 5, CO), mkBit(6, 6, DI)});
+        QCOMPARE(r, (QList<ReadBlock>{
+                        blk(HR, 1, 1, {4}, {0}),
+                        blk(IR, 9, 1, {3}, {0}),
+                        blk(CO, 5, 3, {5, 2}, {0, 2}),
+                        blk(DI, 5, 2, {1, 6}, {0, 1}),
+                    }));
+    }
+
+    void bitGapUsesMaxBitGap()
+    {
+        // 64 bits apart merge with the default maxBitGap (64), though maxGap is only 10
+        QCOMPARE(planBlocks({mkBit(1, 0), mkBit(2, 65)}),
+                 (QList<ReadBlock>{blk(CO, 0, 66, {1, 2}, {0, 65})}));
+        QCOMPARE(planBlocks({mkBit(1, 0), mkBit(2, 66)}),
+                 (QList<ReadBlock>{blk(CO, 0, 1, {1}, {0}), blk(CO, 66, 1, {2}, {0})}));
+        // registers keep using maxGap
+        QCOMPARE(planBlocks({mk(1, 0), mk(2, 65)}).size(), 2);
+        PlannerOptions o;
+        o.maxBitGap = 0;
+        QCOMPARE(planBlocks({mkBit(1, 0), mkBit(2, 2)}, o).size(), 2);
+        QCOMPARE(planBlocks({mkBit(1, 0), mkBit(2, 1)}, o).size(), 1);
+    }
+
+    void bitSplitsAtMaxBitCount()
+    {
+        QList<Tag> tags;
+        for (int i = 0; i < 2500; ++i)
+            tags.append(mkBit(static_cast<TagId>(i + 1), static_cast<quint16>(i), DI));
+        const auto r = planBlocks(tags);
+        QCOMPARE(r.size(), 2);
+        QCOMPARE(r.at(0).count, quint16(2000));
+        QCOMPARE(r.at(1).start, quint16(2000));
+        QCOMPARE(r.at(1).count, quint16(500));
+        PlannerOptions o;
+        o.maxBitCount = 8;
+        QCOMPARE(planBlocks(tags.mid(0, 20), o).size(), 3);
+    }
+
+    void bitTagAt65535()
+    {
+        QCOMPARE(planBlocks({mkBit(1, 65535)}), (QList<ReadBlock>{blk(CO, 65535, 1, {1}, {0})}));
     }
 
     void maxCountOneWithFloat()

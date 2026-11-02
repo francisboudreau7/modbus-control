@@ -157,7 +157,13 @@ QString tuningRuleName(TuningRule rule)
 
 QString areaName(Area area)
 {
-    return area == Area::InputRegister ? QStringLiteral("input") : QStringLiteral("holding");
+    switch (area) {
+    case Area::HoldingRegister: return QStringLiteral("holding");
+    case Area::InputRegister: return QStringLiteral("input");
+    case Area::Coil: return QStringLiteral("coil");
+    case Area::DiscreteInput: return QStringLiteral("discrete");
+    }
+    return QStringLiteral("holding");
 }
 
 QString axisName(YAxis axis)
@@ -225,8 +231,12 @@ bool readArea(const QJsonObject &obj, const QString &prefix, Area &out, QString 
         out = Area::HoldingRegister;
     } else if (text == QStringLiteral("input")) {
         out = Area::InputRegister;
+    } else if (text == QStringLiteral("coil")) {
+        out = Area::Coil;
+    } else if (text == QStringLiteral("discrete")) {
+        out = Area::DiscreteInput;
     } else {
-        setError(error, QStringLiteral("\"%1area\" has unknown value \"%2\" (expected \"holding\" or \"input\")")
+        setError(error, QStringLiteral("\"%1area\" has unknown value \"%2\" (expected \"holding\", \"input\", \"coil\" or \"discrete\")")
                             .arg(prefix, text));
         return false;
     }
@@ -249,8 +259,10 @@ bool readValueType(const QJsonObject &obj, const QString &prefix, ValueType &out
         out = ValueType::UInt32;
     } else if (text == QStringLiteral("float32")) {
         out = ValueType::Float32;
+    } else if (text == QStringLiteral("bool")) {
+        out = ValueType::Bool;
     } else {
-        setError(error, QStringLiteral("\"%1type\" has unknown value \"%2\" (expected \"int16\", \"uint16\", \"int32\", \"uint32\" or \"float32\")")
+        setError(error, QStringLiteral("\"%1type\" has unknown value \"%2\" (expected \"int16\", \"uint16\", \"int32\", \"uint32\", \"float32\" or \"bool\")")
                             .arg(prefix, text));
         return false;
     }
@@ -344,6 +356,25 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
         return false;
     }
     tag.address = static_cast<quint16>(address);
+    // A bit-area tag without "type" is a bool; bool and bit areas go together.
+    if (isBitArea(tag.area) && !obj.contains(QStringLiteral("type")))
+        tag.type = ValueType::Bool;
+    if (!typeFitsArea(tag.type, tag.area)) {
+        setError(error, tag.type == ValueType::Bool
+                            ? QStringLiteral("Tag %1: type bool needs area coil or discrete").arg(tag.id)
+                            : QStringLiteral("Tag %1: area %2 needs type bool")
+                                  .arg(tag.id)
+                                  .arg(areaName(tag.area)));
+        return false;
+    }
+    if (tag.isBit()) {
+        // Scaling and byte order do not apply to bits; a discrete input cannot be written.
+        tag.gain = 1.0;
+        tag.offset = 0.0;
+        tag.byteOrder = ByteOrder::ABCD;
+        if (tag.area == Area::DiscreteInput)
+            tag.writable = false;
+    }
     if (!tag.fitsAddressSpace()) {
         setError(error, QStringLiteral("\"%1address\" is %2, too high for a \"%3\" tag: it uses %4 registers, "
                                        "so the last one would be past 65535")
@@ -722,15 +753,18 @@ QByteArray projectToJson(const Project &project)
             {QStringLiteral("area"), areaName(tag.area)},
             {QStringLiteral("address"), static_cast<qint64>(tag.address)},
             {QStringLiteral("type"), valueTypeName(tag.type)},
-            {QStringLiteral("byteOrder"), byteOrderName(tag.byteOrder)},
-            {QStringLiteral("gain"), tag.gain},
-            {QStringLiteral("offset"), tag.offset},
             {QStringLiteral("unit"), tag.unit},
             {QStringLiteral("color"), tag.color},
             {QStringLiteral("plotted"), tag.plotted},
-            {QStringLiteral("writable"), tag.writable},
+            {QStringLiteral("writable"), tag.isBit() ? tag.area == Area::Coil && tag.writable : tag.writable},
             {QStringLiteral("axis"), axisName(tag.axis)},
         };
+        // Scaling and byte order do not apply to bit tags.
+        if (!tag.isBit()) {
+            obj.insert(QStringLiteral("byteOrder"), byteOrderName(tag.byteOrder));
+            obj.insert(QStringLiteral("gain"), tag.gain);
+            obj.insert(QStringLiteral("offset"), tag.offset);
+        }
         // Quick values are written only when set.
         if (tag.quickA)
             obj.insert(QStringLiteral("quickA"), *tag.quickA);

@@ -100,6 +100,7 @@ class Test : public QObject
     Q_OBJECT
 private slots:
     void roundTrip();
+    void coilTagRoundTrip();
     void emptyRecorder();
     void invalidStartTime();
     void columnForUnknownTag();
@@ -135,6 +136,35 @@ void Test::roundTrip()
     QCOMPARE(rec2.startTime().offsetFromUtc(), -4 * 3600);
     QVERIFY(std::isnan(rec2.valueAt(0, 3))); // late tag: earlier rows are NaN
     QCOMPARE(rec2.valueAt(3, 3), 100.0);
+}
+
+void Test::coilTagRoundTrip()
+{
+    Project proj = sampleProject();
+    Tag coil;
+    coil.id = 4;
+    coil.name = QStringLiteral("Auto");
+    coil.area = Area::Coil;
+    coil.type = ValueType::Bool;
+    coil.address = 3;
+    coil.writable = true;
+    proj.tags.append(coil);
+    proj.nextTagId = 5;
+
+    Recorder rec(100);
+    rec.setStartTime(sampleStart());
+    addRow(rec, 0.0, {sample(4, 0.0), sample(1, 10.0)});
+    addRow(rec, 0.1, {sample(4, 1.0), sample(1, 11.0)});
+
+    const QByteArray json = sessionToJson(proj, rec, {});
+    Project proj2;
+    Recorder rec2(10);
+    SessionCursors cur2;
+    QString err;
+    QVERIFY2(sessionFromJson(json, proj2, rec2, cur2, &err), qPrintable(err));
+    QCOMPARE(proj2, proj);
+    compareRecorders(rec, rec2);
+    QCOMPARE(rec2.valueAt(1, 4), 1.0);
 }
 
 void Test::emptyRecorder()
