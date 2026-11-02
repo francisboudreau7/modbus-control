@@ -153,19 +153,32 @@ struct Tag {
     friend bool operator==(const Tag &, const Tag &) = default;
 };
 
-QString toString(Area area); ///< "Holding", "Input", "Coil", "Discrete" (the tag table's Area column)
+// v1.3.4 translations: toString() texts are the canonical English names used in project and
+// session files, CSV files and setData(); they are never translated. Texts shown to the user
+// come from the display functions below (areaName, areaLabel, qualityText, axisText), which go
+// through QCoreApplication::translate (context "mb::Tag").
+
+QString toString(Area area); ///< "Holding", "Input", "Coil", "Discrete" (file format; not translated)
+/// v1.3.4: translated short area name for display (the tag table's Area column): "Holding",
+/// "Input", "Coil", "Discrete" in English.
+QString areaName(Area area);
 QString toString(ValueType type); ///< "int16", "uint16", "int32", "uint32", "float32", "bool"
 
 /// v1.3.4: register-text prefix of an area: "HR", "IR", "CO", "DI" (as in "CO 12").
 QString areaPrefix(Area area);
-/// v1.3.4: area name with its function codes, for combos and tooltips:
+/// v1.3.4: area name with its function codes, for combos and tooltips (translated):
 /// "Holding register (FC03/FC06/FC16)", "Input register (FC04)", "Coil (FC01/FC05/FC15)",
 /// "Discrete input (FC02)".
 QString areaLabel(Area area);
-/// v1.3.4: a Bool value as text: "ON" for 1 (any non-zero), "OFF" for 0.
+/// v1.3.4: a Bool value as text: "ON" for 1 (any non-zero), "OFF" for 0. Not translated (same
+/// in the French interface, as on most HMIs; also written to the write log).
 QString bitText(double value);
 QString toString(ByteOrder order); ///< "ABCD", "CDAB", "BADC", "DCBA"
-QString toString(Quality quality);
-QString toString(YAxis axis); ///< "Left", "Right"
+QString toString(Quality quality); ///< "Unknown", "Good", "Timeout", ... (not translated)
+/// v1.3.4: translated quality for display (the tag table's Quality column).
+QString qualityText(Quality quality);
+QString toString(YAxis axis); ///< "Left", "Right" (file format; not translated)
+/// v1.3.4: translated axis name for display: "Left", "Right" in English.
+QString axisText(YAxis axis);
 
 } // namespace mb

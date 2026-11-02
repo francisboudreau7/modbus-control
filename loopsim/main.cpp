@@ -1,5 +1,6 @@
 // modbus_loop_sim: level loop 101 simulator (window + LIC-101 Modbus TCP server).
 
+#include "Language.h"
 #include "LoopController.h"
 #include "LoopWindow.h"
 #include "Scenario.h"
@@ -8,7 +9,9 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QLocale>
 #include <QMessageBox>
+#include <QSettings>
 #include <QString>
 #include <QTimer>
 
@@ -116,6 +119,12 @@ int main(int argc, char *argv[])
     }
     QCoreApplication::setApplicationName(QStringLiteral("Modbus Loop Simulator"));
     QCoreApplication::setApplicationVersion(QStringLiteral(MBLOOP_VERSION));
+    // v1.3.4: the simulator follows Modbus Control's Options > Language setting.
+    if (!g_headless) {
+        const QSettings clientSettings(QStringLiteral("ModbusControl"), QStringLiteral("Modbus Control"));
+        mb::installTranslators(
+            mb::resolveLanguage(mb::readUiLanguage(clientSettings), QLocale::system().uiLanguages()));
+    }
 
     QCommandLineParser parser;
     parser.setApplicationDescription(

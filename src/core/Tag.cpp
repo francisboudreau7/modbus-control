@@ -1,5 +1,7 @@
 #include "Tag.h"
 
+#include <QCoreApplication>
+
 namespace mb {
 
 QString toString(Area area)
@@ -9,6 +11,17 @@ QString toString(Area area)
     case Area::InputRegister: return QStringLiteral("Input");
     case Area::Coil: return QStringLiteral("Coil");
     case Area::DiscreteInput: return QStringLiteral("Discrete");
+    }
+    return {};
+}
+
+QString areaName(Area area)
+{
+    switch (area) {
+    case Area::HoldingRegister: return QCoreApplication::translate("mb::Tag", "Holding");
+    case Area::InputRegister: return QCoreApplication::translate("mb::Tag", "Input");
+    case Area::Coil: return QCoreApplication::translate("mb::Tag", "Coil");
+    case Area::DiscreteInput: return QCoreApplication::translate("mb::Tag", "Discrete");
     }
     return {};
 }
@@ -27,10 +40,11 @@ QString areaPrefix(Area area)
 QString areaLabel(Area area)
 {
     switch (area) {
-    case Area::HoldingRegister: return QStringLiteral("Holding register (FC03/FC06/FC16)");
-    case Area::InputRegister: return QStringLiteral("Input register (FC04)");
-    case Area::Coil: return QStringLiteral("Coil (FC01/FC05/FC15)");
-    case Area::DiscreteInput: return QStringLiteral("Discrete input (FC02)");
+    case Area::HoldingRegister:
+        return QCoreApplication::translate("mb::Tag", "Holding register (FC03/FC06/FC16)");
+    case Area::InputRegister: return QCoreApplication::translate("mb::Tag", "Input register (FC04)");
+    case Area::Coil: return QCoreApplication::translate("mb::Tag", "Coil (FC01/FC05/FC15)");
+    case Area::DiscreteInput: return QCoreApplication::translate("mb::Tag", "Discrete input (FC02)");
     }
     return {};
 }
@@ -77,9 +91,28 @@ QString toString(Quality quality)
     return {};
 }
 
+QString qualityText(Quality quality)
+{
+    switch (quality) {
+    case Quality::Unknown: return QCoreApplication::translate("mb::Tag", "Unknown");
+    case Quality::Good: return QCoreApplication::translate("mb::Tag", "Good");
+    case Quality::Timeout: return QCoreApplication::translate("mb::Tag", "Timeout");
+    case Quality::Exception: return QCoreApplication::translate("mb::Tag", "Exception");
+    case Quality::Disconnected: return QCoreApplication::translate("mb::Tag", "Disconnected");
+    case Quality::Error: return QCoreApplication::translate("mb::Tag", "Error");
+    }
+    return {};
+}
+
 QString toString(YAxis axis)
 {
     return axis == YAxis::Right ? QStringLiteral("Right") : QStringLiteral("Left");
+}
+
+QString axisText(YAxis axis)
+{
+    return axis == YAxis::Right ? QCoreApplication::translate("mb::Tag", "Right")
+                                : QCoreApplication::translate("mb::Tag", "Left");
 }
 
 } // namespace mb

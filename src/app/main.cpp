@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "Language.h"
 #include "MainWindow.h"
 #include "MetaTypes.h"
 #include "Version.h"
@@ -6,6 +7,8 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QIcon>
+#include <QLocale>
+#include <QSettings>
 
 int main(int argc, char *argv[])
 {
@@ -14,6 +17,9 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("Modbus Control"));
     QApplication::setApplicationVersion(mb::versionString());
     mb::registerMetaTypes();
+    // Options > Language (v1.3.4): read once at start; a change applies at the next start.
+    mb::installTranslators(
+        mb::resolveLanguage(mb::readUiLanguage(QSettings()), QLocale::system().uiLanguages()));
 
     // Small sizes use the text-free variant of the logo (see assets/icon).
     QIcon icon;

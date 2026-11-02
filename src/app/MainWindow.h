@@ -36,7 +36,7 @@ class WriteLogPanel;
 /// - Bottom dock "Write log" (objectName "writeLogDock", v1.3.3): WriteLogPanel, tabified with
 ///   Tags (Tags stays the raised tab); View menu toggle.
 /// - Menus: File (New, Open..., Open example..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
-///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes, separator, Lock tag configuration), Help (Quick Start, User Guide, About).
+///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes, separator, Lock tag configuration, separator, Language submenu), Help (Quick Start, User Guide, About).
 /// - Status bar: transient messages on the left, permanent labels on the right: "lockLabel"
 ///   (bold "Tags locked", tooltip "The tag configuration is locked (Options > Lock tag
 ///   configuration)"; hidden unless setTagsLocked(true)) and the connection label.
@@ -70,6 +70,14 @@ public:
         /// changes to tags, registers and write limits (saved in the project)". AppController
         /// handles it (unlock prompt) and keeps its check state in sync.
         QAction *lockTags = nullptr;
+        /// v1.3.4 Options > "La&nguage" submenu, exclusive and checkable: "&System language",
+        /// "English", "Français" (the last two never translated). Checked from QSettings
+        /// "ui/language" at construction; choosing one saves it (writeUiLanguage) and, when it
+        /// differs from the language in use, tells the user it applies at the next start
+        /// (information box). The window handles them itself.
+        QAction *languageSystem = nullptr;
+        QAction *languageEnglish = nullptr;
+        QAction *languageFrench = nullptr;
         /// Help menu (before About): "&Quick Start" and "&User Guide"; AppController opens the
         /// documentation (see DocsLinks.h).
         QAction *quickStart = nullptr;

@@ -155,7 +155,7 @@ QString tuningRuleName(TuningRule rule)
     return QStringLiteral("simc");
 }
 
-QString areaName(Area area)
+QString areaKey(Area area)
 {
     switch (area) {
     case Area::HoldingRegister: return QStringLiteral("holding");
@@ -364,7 +364,7 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
                             ? QStringLiteral("Tag %1: type bool needs area coil or discrete").arg(tag.id)
                             : QStringLiteral("Tag %1: area %2 needs type bool")
                                   .arg(tag.id)
-                                  .arg(areaName(tag.area)));
+                                  .arg(areaKey(tag.area)));
         return false;
     }
     if (tag.isBit()) {
@@ -750,7 +750,7 @@ QByteArray projectToJson(const Project &project)
         QJsonObject obj{
             {QStringLiteral("id"), static_cast<qint64>(tag.id)},
             {QStringLiteral("name"), tag.name},
-            {QStringLiteral("area"), areaName(tag.area)},
+            {QStringLiteral("area"), areaKey(tag.area)},
             {QStringLiteral("address"), static_cast<qint64>(tag.address)},
             {QStringLiteral("type"), valueTypeName(tag.type)},
             {QStringLiteral("unit"), tag.unit},

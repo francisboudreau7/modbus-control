@@ -23,7 +23,7 @@ if(QT_ROOT)
   list(PREPEND CMAKE_PREFIX_PATH "${QT_ROOT}")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Svg Concurrent Network Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Svg Concurrent Network Test LinguistTools)
 qt_standard_project_setup()
 
 find_package(libmodbus CONFIG REQUIRED)
@@ -45,6 +45,18 @@ add_subdirectory(src/app)
 add_subdirectory(server)
 add_subdirectory(loopsim)
 add_subdirectory(tests)
+
+# Translations (v1.3.4): `cmake --build --preset <preset> --target update_translations` refreshes
+# the .ts files from every UI source (the test server stays English). The French catalog is
+# translated in Qt Linguist; the English one only holds plural forms (lupdate -pluralonly).
+# src/core compiles them (lrelease) into mbcore's ":/i18n" resource.
+qt_add_lupdate(
+  SOURCE_TARGETS mbcore mbui modbus_control mbloop mbloopui modbus_loop_sim
+  TS_FILES "${PROJECT_SOURCE_DIR}/translations/modbus_control_fr.ts"
+  PLURALS_TS_FILE "${PROJECT_SOURCE_DIR}/translations/modbus_control_en.ts"
+  LUPDATE_TARGET update_translations
+  NO_GLOBAL_TARGET
+  OPTIONS -locations none -no-obsolete)
 
 # Icon renderer for tools/make_icons.ps1; not built by default.
 add_executable(render_icon EXCLUDE_FROM_ALL tools/render_icon.cpp)

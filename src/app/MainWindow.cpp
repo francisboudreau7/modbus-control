@@ -3,6 +3,7 @@
 #include "AnalysisPanel.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
+#include "Language.h"
 #include "QuickWritePanel.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
@@ -10,11 +11,13 @@
 #include "WriteLogPanel.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDockWidget>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -147,6 +150,29 @@ MainWindow::MainWindow(QWidget *parent)
     m_actions.lockTags->setCheckable(true);
     m_actions.lockTags->setToolTip(
         tr("Prevent changes to tags, registers and write limits (saved in the project)"));
+    optionsMenu->addSeparator();
+    auto *languageMenu = optionsMenu->addMenu(tr("La&nguage"));
+    auto *languageGroup = new QActionGroup(this);
+    m_actions.languageSystem = languageMenu->addAction(tr("&System language"));
+    // Language names are written in their own language, never translated.
+    m_actions.languageEnglish = languageMenu->addAction(QStringLiteral("English"));
+    m_actions.languageFrench = languageMenu->addAction(QStringLiteral("Français"));
+    const std::pair<QAction *, UiLanguage> languages[] = {{m_actions.languageSystem, UiLanguage::System},
+                                                          {m_actions.languageEnglish, UiLanguage::English},
+                                                          {m_actions.languageFrench, UiLanguage::French}};
+    const UiLanguage savedLanguage = readUiLanguage(QSettings());
+    for (const auto &[action, language] : languages) {
+        action->setCheckable(true);
+        action->setChecked(language == savedLanguage);
+        languageGroup->addAction(action);
+        connect(action, &QAction::triggered, this, [this, language] {
+            QSettings settings;
+            writeUiLanguage(settings, language);
+            if (resolveLanguage(language, QLocale::system().uiLanguages()) != currentLanguage())
+                QMessageBox::information(this, tr("Language"),
+                                         tr("The new language applies the next time Modbus Control starts."));
+        });
+    }
 
     // Help menu
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
