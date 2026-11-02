@@ -87,6 +87,7 @@ private:
     Writes m_writes;
     std::atomic<bool> m_stop{false};
     bool m_outWritable = true; ///< guarded by m_mutex
+    bool m_manual = false;     ///< coil 0 (true = Manual), guarded by m_mutex
     std::atomic<int> m_clients{0};
     std::thread m_thread;
     _modbus *m_ctx = nullptr;

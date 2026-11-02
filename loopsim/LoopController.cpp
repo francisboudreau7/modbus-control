@@ -178,12 +178,18 @@ void LoopController::applyClientWrites()
     if (w.spWritten) {
         m_model.setSp(w.sp);
     }
+    // Coil 0 = Manual: the same switch as the faceplate's A/M button (bumpless, OUT writable flag
+    // and publishing included).
+    if (w.modeWritten && w.manual == m_model.isAuto()) {
+        setAuto(!w.manual);
+    }
 }
 
 void LoopController::publish()
 {
     const LoopState &st = m_model.state();
     m_server.publish(static_cast<float>(st.pvPct), static_cast<float>(st.spPct), static_cast<float>(st.outPct));
+    m_server.publishManual(!m_model.isAuto());
 }
 
 void LoopController::setAuto(bool on)

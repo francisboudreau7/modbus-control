@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <random>
 #include <thread>
@@ -151,7 +152,8 @@ bool ServerLoop::start(QString *error)
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
     }
 
-    m_mapping = modbus_mapping_new_start_address(0, 0, 0, 0, 0, m_config.holdingCount, 0, m_config.inputCount);
+    m_mapping = modbus_mapping_new_start_address(0, m_config.coilCount, 0, m_config.discreteCount, 0,
+                                                 m_config.holdingCount, 0, m_config.inputCount);
     if (!m_mapping) {
         return fail(QStringLiteral("cannot allocate register mapping: %1")
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
@@ -168,6 +170,9 @@ bool ServerLoop::start(QString *error)
             m_mapping->tab_registers[entry.address + 1] = regs[1];
             m_holdingPairs.insert(entry.address);
         }
+    }
+    for (const quint16 coil : std::as_const(m_config.coilsOn)) {
+        m_mapping->tab_bits[coil] = 1;
     }
     for (const SignalBinding &binding : std::as_const(m_config.signalBindings)) {
         if (registerCount(binding.format) == 2) {
@@ -255,6 +260,16 @@ void ServerLoop::tick(double t, double dt)
         if (registerCount(binding.format) == 2) {
             m_mapping->tab_input_registers[binding.inputAddress + 1] = regs[1];
         }
+    }
+
+    for (const BitBinding &binding : std::as_const(m_config.bitBindings)) {
+        bool on = false;
+        if (binding.kind == BitBinding::Kind::Echo) {
+            on = m_mapping->tab_bits[binding.coil] != 0;
+        } else {
+            on = std::fmod(t, binding.periodS) < binding.periodS / 2.0;
+        }
+        m_mapping->tab_input_bits[binding.discreteAddress] = on ? 1 : 0;
     }
 }
 

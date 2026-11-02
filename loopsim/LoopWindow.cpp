@@ -936,19 +936,22 @@ struct RegisterRow {
 };
 
 // Narrow literals are UTF-8 (/utf-8).
-const RegisterRow kRegisterRows[3] = {
+const RegisterRow kRegisterRows[4] = {
     {"PV \u2013 LT-101 level, %", "Input register 1-2", "IR 0", "float32 ABCD (high word first)",
      "FC04", "Read only"},
     {"SP \u2013 LIC-101 setpoint, %", "Holding register 1-2", "HR 0", "float32 ABCD",
      "FC03 read, FC16 write", "Read / write (0\u2013100)"},
     {"OUT \u2013 LIC-101 output, %", "Holding register 3-4", "HR 2", "float32 ABCD",
      "FC03 read, FC16 write", "Read / write (0\u2013100); read only in AUTO"},
+    {"LIC-101 A/M", "Coil 1", "CO 0", "bool (0 = Auto, 1 = Manual)", "FC01 read, FC05 write",
+     "Read / write (also in AUTO)"},
 };
 
 const char *const kModbusNote =
     "Each value is a 32-bit float on two registers: read or write both registers in one request "
     "(FC06 and half a float are refused). In Modbus Control tick Options \u203A Use 1-based register "
-    "numbers, or open examples\\loop101.mbproj.";
+    "numbers, or open examples\\loop101.mbproj. The A/M coil is one bit: FC05 (or FC15 with one coil) "
+    "switches the controller like the A/M button.";
 } // namespace
 
 void LoopWindow::buildModbusPanel(QWidget *parent)
@@ -974,7 +977,7 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
     head->addWidget(m_modbusConn, 1);
     lay->addLayout(head);
 
-    m_modbusTable = new QTableWidget(3, 7, m_modbusPanel);
+    m_modbusTable = new QTableWidget(4, 7, m_modbusPanel);
     m_modbusTable->setObjectName(QStringLiteral("modbusTable"));
     const QStringList headers{QStringLiteral("Signal"),
                               QStringLiteral("Register (Modbus Control, 1-based)"),
@@ -990,13 +993,14 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
                        "register. Use this if Modbus Control is in 0-based mode."),
         QStringLiteral("float32 ABCD: IEEE 754, high word first (big-endian words)."),
         QStringLiteral("FC03 = Read Holding Registers, FC04 = Read Input Registers, FC16 = Write "
-                       "Multiple Registers. FC06 (single register) is refused."),
+                       "Multiple Registers. FC06 (single register) is refused. FC01 = Read Coils, "
+                       "FC05 = Write Single Coil."),
         QStringLiteral("What a client may do with the value."),
         QStringLiteral("Current value in the simulator.")};
     for (int c = 0; c < 7; ++c) {
         m_modbusTable->horizontalHeaderItem(c)->setToolTip(tips.at(c));
     }
-    for (int r = 0; r < 3; ++r) {
+    for (int r = 0; r < 4; ++r) {
         const RegisterRow &rr = kRegisterRows[r];
         const char *cells[6] = {rr.signal, rr.reg, rr.addr, rr.type, rr.fc, rr.access};
         for (int c = 0; c < 6; ++c) {
@@ -1030,7 +1034,7 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
         "QTableWidget::item { color: #1d2227; }"
         "QHeaderView::section { background: #e3eaf0; color: #24425e; padding: 2px 6px; border: none;"
         " border-right: 1px solid #c4d0da; border-bottom: 1px solid #c4d0da; font: bold 11px 'Segoe UI'; }"));
-    m_modbusTable->setFixedHeight(m_modbusTable->horizontalHeader()->sizeHint().height() + 3 * 20 + 4);
+    m_modbusTable->setFixedHeight(m_modbusTable->horizontalHeader()->sizeHint().height() + 4 * 20 + 4);
     lay->addWidget(m_modbusTable);
 
     m_modbusNote = new QLabel(QString::fromUtf8(kModbusNote), m_modbusPanel);
@@ -1049,7 +1053,7 @@ void LoopWindow::showModbusHelp()
                     .arg(m_modbusTable->horizontalHeaderItem(c)->text().toHtmlEscaped());
     }
     html += QStringLiteral("</tr>");
-    for (int r = 0; r < 3; ++r) {
+    for (int r = 0; r < 4; ++r) {
         html += QStringLiteral("<tr>");
         for (int c = 0; c < 6; ++c) {
             html += QStringLiteral("<td>%1</td>").arg(m_modbusTable->item(r, c)->text().toHtmlEscaped());
@@ -1127,6 +1131,8 @@ void LoopWindow::refresh()
         m_modbusTable->item(0, 6)->setText(pct1(st.pvPct) + QStringLiteral(" %"));
         m_modbusTable->item(1, 6)->setText(pct1(st.spPct) + QStringLiteral(" %"));
         m_modbusTable->item(2, 6)->setText(pct1(st.outPct) + QStringLiteral(" %"));
+        m_modbusTable->item(3, 6)->setText(m_controller->model().isAuto() ? QStringLiteral("0 = Auto")
+                                                                           : QStringLiteral("1 = Manual"));
         m_modbusTable->item(2, 5)->setText(m_controller->model().isAuto()
                                                ? QStringLiteral("Read only (AUTO)")
                                                : QString::fromUtf8(kRegisterRows[2].access));

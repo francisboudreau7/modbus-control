@@ -4,6 +4,8 @@
   "unitId": 1,
   "holdingCount": 200,
   "inputCount": 64,
+  "coilCount": 16,
+  "discreteCount": 16,
   "tickMs": 50,
   "delayMs": 0,
   "dropPercent": 0,
@@ -23,5 +25,13 @@
   "holding": [
     { "address": 110, "value": 52.3, "format": "float32", "byteOrder": "CDAB" },
     { "address": 120, "value": 100,  "format": "int32",   "byteOrder": "ABCD" }
+  ],
+  "coils": [
+    { "address": 3, "value": true }
+  ],
+  "bitSignals": [
+    { "discrete": 0, "kind": "square", "periodS": 4 },
+    { "discrete": 1, "kind": "echo", "coil": 0 },
+    { "discrete": 2, "kind": "echo", "coil": 1 }
   ]
 }

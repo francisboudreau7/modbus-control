@@ -66,8 +66,26 @@ std::string describeRequest(int fd, unsigned unit, unsigned fc, const unsigned c
         break;
     case 0x05:
         if (pduLen >= 4) {
-            std::snprintf(buf, sizeof(buf), " write coil addr=%u value=%s", be16(pdu), hex16(be16(pdu + 2)).c_str());
+            // 0xFF00 is ON, 0x0000 OFF; anything else is invalid and answered with an exception.
+            const unsigned v = be16(pdu + 2);
+            std::snprintf(buf, sizeof(buf), " write coil addr=%u value=%s", be16(pdu),
+                          v == 0xFF00u ? "ON" : v == 0u ? "OFF" : hex16(v).c_str());
             text += buf;
+        }
+        break;
+    case 0x0F:
+        if (pduLen >= 5) {
+            const unsigned count = be16(pdu + 2);
+            std::snprintf(buf, sizeof(buf), " write coils addr=%u count=%u values=", be16(pdu), count);
+            text += buf;
+            unsigned shown = 0;
+            for (; shown < count && shown < 16 && pduLen >= int(5 + shown / 8 + 1); ++shown) {
+                if (shown)
+                    text += ',';
+                text += ((pdu[5 + shown / 8] >> (shown % 8)) & 1u) ? "ON" : "OFF";
+            }
+            if (shown < count)
+                text += ",...";
         }
         break;
     case 0x06:

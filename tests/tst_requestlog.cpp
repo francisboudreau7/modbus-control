@@ -25,6 +25,46 @@ private slots:
                  QStringLiteral("[4] unit=1 fc=0x03 read addr=10 count=12"));
     }
 
+    void bitReads()
+    {
+        const unsigned char pdu[] = {0x00, 0x02, 0x00, 0x05};
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x01, pdu, 4)),
+                 QStringLiteral("[4] unit=1 fc=0x01 read addr=2 count=5"));
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x02, pdu, 4)),
+                 QStringLiteral("[4] unit=1 fc=0x02 read addr=2 count=5"));
+    }
+
+    void coilWrites()
+    {
+        const unsigned char on[] = {0x00, 0x03, 0xFF, 0x00};
+        const unsigned char off[] = {0x00, 0x03, 0x00, 0x00};
+        const unsigned char bad[] = {0x00, 0x03, 0x12, 0x34};
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x05, on, 4)),
+                 QStringLiteral("[4] unit=1 fc=0x05 write coil addr=3 value=ON"));
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x05, off, 4)),
+                 QStringLiteral("[4] unit=1 fc=0x05 write coil addr=3 value=OFF"));
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x05, bad, 4)),
+                 QStringLiteral("[4] unit=1 fc=0x05 write coil addr=3 value=0x1234"));
+
+        // 3 coils from address 10: ON, OFF, ON (bit 0 first).
+        const unsigned char multi[] = {0x00, 0x0A, 0x00, 0x03, 0x01, 0x05};
+        QCOMPARE(QString::fromStdString(describeRequest(4, 1, 0x0F, multi, 6)),
+                 QStringLiteral("[4] unit=1 fc=0x0F write coils addr=10 count=3 values=ON,OFF,ON"));
+    }
+
+    void coilWriteListIsCapped()
+    {
+        // 20 coils, all ON: only 16 are listed.
+        const unsigned char many[] = {0x00, 0x00, 0x00, 0x14, 0x03, 0xFF, 0xFF, 0x0F};
+        const QString line = QString::fromStdString(describeRequest(4, 1, 0x0F, many, 8));
+        QVERIFY2(line.endsWith(QStringLiteral("count=20 values=ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,ON,...")),
+                 qPrintable(line));
+        // A truncated request prints what is there and does not read past the buffer.
+        const unsigned char cut[] = {0x00, 0x00, 0x00, 0x14, 0x03};
+        const QString cutLine = QString::fromStdString(describeRequest(4, 1, 0x0F, cut, 5));
+        QVERIFY2(cutLine.contains(QStringLiteral("count=20")), qPrintable(cutLine));
+    }
+
     void singleWrite()
     {
         const unsigned char pdu[] = {0x00, 0x64, 0x03, 0xE8};

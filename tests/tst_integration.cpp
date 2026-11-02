@@ -20,6 +20,11 @@
 #include <cmath>
 #include <memory>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <modbus.h>
+
 using namespace mb;
 
 namespace {
@@ -1363,6 +1368,113 @@ private slots:
         QList<quint16> v;
         QVERIFY(!c.readRegisters(Area::InputRegister, 0, 1, v).ok());
         QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("fault injection: dropped")), 3000);
+    }
+
+    void server_coilsReadAndWrite()
+    {
+        QVERIFY(m_server->start());
+        modbus_t *ctx = modbus_new_tcp("127.0.0.1", m_server->port());
+        QVERIFY(ctx);
+        modbus_set_slave(ctx, 1);
+        modbus_set_response_timeout(ctx, 2, 0);
+        QVERIFY(modbus_connect(ctx) == 0);
+
+        uint8_t bits[16] = {};
+        QCOMPARE(modbus_read_bits(ctx, 0, 16, bits), 16);
+        for (const uint8_t b : bits)
+            QCOMPARE(int(b), 0);
+
+        QCOMPARE(modbus_write_bit(ctx, 0, 1), 1);
+        const uint8_t three[3] = {1, 0, 1};
+        QCOMPARE(modbus_write_bits(ctx, 4, 3, three), 3);
+        QCOMPARE(modbus_read_bits(ctx, 0, 8, bits), 8);
+        const int expected[8] = {1, 0, 0, 0, 1, 0, 1, 0};
+        for (int i = 0; i < 8; ++i)
+            QCOMPARE(int(bits[i]), expected[i]);
+
+        // The 16th coil is the last one; address 16 is outside the map.
+        QCOMPARE(modbus_write_bit(ctx, 15, 1), 1);
+        QCOMPARE(modbus_write_bit(ctx, 16, 1), -1);
+        QCOMPARE(modbus_read_bits(ctx, 12, 8, bits), -1);
+        QCOMPARE(modbus_read_input_bits(ctx, 12, 8, bits), -1);
+
+        modbus_close(ctx);
+        modbus_free(ctx);
+    }
+
+    void server_discreteInputsEchoAndToggle()
+    {
+        QVERIFY(m_server->start());
+        modbus_t *ctx = modbus_new_tcp("127.0.0.1", m_server->port());
+        QVERIFY(ctx);
+        modbus_set_slave(ctx, 1);
+        modbus_set_response_timeout(ctx, 2, 0);
+        QVERIFY(modbus_connect(ctx) == 0);
+
+        // DI1 follows coil 0 (within a tick), DI2 follows coil 1.
+        uint8_t di[16] = {};
+        QCOMPARE(modbus_write_bit(ctx, 0, 1), 1);
+        QTRY_VERIFY_WITH_TIMEOUT((modbus_read_input_bits(ctx, 1, 1, di) == 1 && di[0] == 1), 2000);
+        QCOMPARE(modbus_write_bit(ctx, 0, 0), 1);
+        QTRY_VERIFY_WITH_TIMEOUT((modbus_read_input_bits(ctx, 1, 1, di) == 1 && di[0] == 0), 2000);
+        QCOMPARE(modbus_write_bit(ctx, 1, 1), 1);
+        QTRY_VERIFY_WITH_TIMEOUT((modbus_read_input_bits(ctx, 2, 1, di) == 1 && di[0] == 1), 2000);
+
+        // DI0 is a 4 s square wave: both levels show up within a few seconds.
+        bool sawOn = false;
+        bool sawOff = false;
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 6000 && !(sawOn && sawOff)) {
+            QCOMPARE(modbus_read_input_bits(ctx, 0, 1, di), 1);
+            (di[0] ? sawOn : sawOff) = true;
+            QTest::qWait(100);
+        }
+        QVERIFY2(sawOn && sawOff, "DI0 did not toggle");
+
+        // Discrete inputs are read-only: writing them is not possible, and a read past the end fails.
+        QCOMPARE(modbus_read_input_bits(ctx, 16, 1, di), -1);
+
+        modbus_close(ctx);
+        modbus_free(ctx);
+    }
+
+    void server_coilsFromConfigAndRequestLog()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("server.json"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"coilCount": 4, "discreteCount": 2,
+                    "coils": [ {"address": 2, "value": true} ],
+                    "bitSignals": [ {"discrete": 1, "kind": "echo", "coil": 3} ]})");
+        f.close();
+        QVERIFY(m_server->start({QStringLiteral("--config"), path, QStringLiteral("--log-writes")}));
+        modbus_t *ctx = modbus_new_tcp("127.0.0.1", m_server->port());
+        QVERIFY(ctx);
+        modbus_set_slave(ctx, 1);
+        modbus_set_response_timeout(ctx, 2, 0);
+        QVERIFY(modbus_connect(ctx) == 0);
+
+        uint8_t bits[8] = {};
+        QCOMPARE(modbus_read_bits(ctx, 0, 4, bits), 4);
+        QCOMPARE(int(bits[0]) + int(bits[1]) + int(bits[3]), 0);
+        QCOMPARE(int(bits[2]), 1);
+        QCOMPARE(modbus_read_bits(ctx, 0, 5, bits), -1); // coilCount is 4
+        QCOMPARE(modbus_read_input_bits(ctx, 0, 3, bits), -1); // discreteCount is 2
+        QCOMPARE(modbus_read_input_bits(ctx, 0, 2, bits), 2);
+        QCOMPARE(int(bits[0]), 0); // not driven
+
+        QCOMPARE(modbus_write_bit(ctx, 3, 1), 1);
+        const uint8_t pair[2] = {1, 0};
+        QCOMPARE(modbus_write_bits(ctx, 0, 2, pair), 2);
+        QTRY_VERIFY_WITH_TIMEOUT((modbus_read_input_bits(ctx, 1, 1, bits) == 1 && bits[0] == 1), 2000);
+        modbus_close(ctx);
+        modbus_free(ctx);
+
+        QTRY_VERIFY_WITH_TIMEOUT(m_server->log().contains(QStringLiteral("write coils addr=0 count=2 values=ON,OFF")), 2000);
+        QVERIFY(m_server->log().contains(QStringLiteral("write coil addr=3 value=ON")));
     }
 
 private:
