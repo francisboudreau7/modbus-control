@@ -2,6 +2,7 @@
 #include "AnalysisPanel.h"
 #include "AppController.h"
 #include "DocsLinks.h"
+#include "Language.h"
 #include "ConnectionBar.h"
 #include "CursorPanel.h"
 #include "EncodingDialog.h"
@@ -456,6 +457,7 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("tst_appcontroller"));
         clearSettings();
         registerMetaTypes();
+        mb::installTranslators(QStringLiteral("en"));
         QVERIFY(m_tmp.isValid());
     }
 

@@ -8,6 +8,7 @@
 #include "TagTableModel.h"
 
 #include <QCheckBox>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -72,18 +73,18 @@ QString unitSuffix(const Tag &tag)
 QString limitsText(const Tag &tag)
 {
     if (tag.writeMin && tag.writeMax)
-        return QObject::tr("%1 to %2").arg(valueText(*tag.writeMin), valueText(*tag.writeMax));
+        return QCoreApplication::translate("mb::WriteController", "%1 to %2").arg(valueText(*tag.writeMin), valueText(*tag.writeMax));
     if (tag.writeMin)
-        return QObject::tr("at least %1").arg(valueText(*tag.writeMin));
+        return QCoreApplication::translate("mb::WriteController", "at least %1").arg(valueText(*tag.writeMin));
     if (tag.writeMax)
-        return QObject::tr("at most %1").arg(valueText(*tag.writeMax));
+        return QCoreApplication::translate("mb::WriteController", "at most %1").arg(valueText(*tag.writeMax));
     return QString();
 }
 
 /// "'Setpoint' accepts 0 to 100 °C; 150 was not written." (plain text, one bullet of the list)
 QString limitViolationText(const Tag &tag, double value)
 {
-    return QObject::tr("'%1' accepts %2%3; %4 was not written.")
+    return QCoreApplication::translate("mb::WriteController", "'%1' accepts %2%3; %4 was not written.")
         .arg(tag.name, limitsText(tag), unitSuffix(tag), valueText(value));
 }
 
@@ -97,7 +98,7 @@ QString quotedNames(const QStringList &names)
 }
 
 /// Write log texts (T233): oldValue / newValue use the confirmation's format (valueText + " unit",
-/// "unknown" when there is no Good reading); raw is each register as "0x%04X", space-separated.
+/// "unknown" when there is no Good reading; kept in English, WriteLogPanel translates it for display); raw is each register as "0x%04X", space-separated.
 QString rawHex(const QList<quint16> &regs)
 {
     QStringList parts;
@@ -119,14 +120,14 @@ WriteLogEntry makeLogEntry(const Tag &tag, int base, const std::optional<double>
     e.registers = registerRange(tag, base);
     e.functionCode = functionCode;
     if (tag.isBit()) {
-        e.oldValue = oldValue ? bitText(*oldValue) : QObject::tr("unknown");
+        e.oldValue = oldValue ? bitText(*oldValue) : QStringLiteral("unknown");
         e.newValue = bitText(newValue);
         QStringList bits;
         for (quint16 r : regs)
             bits << QString::number(r != 0 ? 1 : 0);
         e.raw = bits.join(QLatin1Char(' '));
     } else {
-        e.oldValue = oldValue ? valueText(*oldValue) + unitSuffix(tag) : QObject::tr("unknown");
+        e.oldValue = oldValue ? valueText(*oldValue) + unitSuffix(tag) : QStringLiteral("unknown");
         e.newValue = valueText(newValue) + unitSuffix(tag);
         e.raw = rawHex(regs);
     }
@@ -138,7 +139,7 @@ WriteLogEntry makeLogEntry(const Tag &tag, int base, const std::optional<double>
 /// "Check:" and a bullet list of what to look at.
 QString checkList(const QStringList &items)
 {
-    return rich::paragraph(QObject::tr("Check:")) + rich::bullets(items);
+    return rich::paragraph(QCoreApplication::translate("mb::WriteController", "Check:")) + rich::bullets(items);
 }
 
 /// A message box showing rich text (see mb::rich).
@@ -166,7 +167,7 @@ public:
         : QDialog(parent)
     {
         const bool coils = !tags.isEmpty() && tags.first().isBit();
-        setWindowTitle(coils ? QObject::tr("Write coils") : QObject::tr("Write registers"));
+        setWindowTitle(coils ? QCoreApplication::translate("mb::WriteController", "Write coils") : QCoreApplication::translate("mb::WriteController", "Write registers"));
         auto *form = new QFormLayout(this);
         auto *validator = new NumberValidator(this);
         for (qsizetype i = 0; i < tags.size(); ++i) {
@@ -595,9 +596,9 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         }
     }
     if (!coils && totalRegisters > 123) {
-        m_warn(rich::headline(tr("Too many registers: the selection spans %1 registers (maximum "
-                                 "123).")
-                                  .arg(totalRegisters)));
+        m_warn(rich::headline(tr("Too many registers: the selection spans %n register(s) (maximum "
+                                 "123).",
+                                 nullptr, totalRegisters)));
         return;
     }
 
@@ -763,7 +764,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     const QString range = shownFirst == shownLast ? QStringLiteral("%1 %2").arg(prefix).arg(shownFirst)
                                                   : QStringLiteral("%1 %2-%3").arg(prefix).arg(shownFirst).arg(shownLast);
     const QString question =
-        rich::headline(tags.size() == 1 ? tr("Write 1 tag?") : tr("Write %1 tags?").arg(tags.size()))
+        rich::headline(tr("Write %n tag(s)?", nullptr, static_cast<int>(tags.size())))
         + rich::grid({tr("Tag"), tr("Current"), tr("New")}, table, 2)
         + rich::note(tr("%1 · FC%2").arg(range).arg(writeFunctionCode(tags.first().area, 2)));
     if (!m_confirm(question))
@@ -800,11 +801,11 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     }
     m_pendingLog.insert(reqId, log);
     if (coils) {
-        emit message(tr("Writing %1 coils CO %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
+        emit message(tr("Writing %n coil(s) CO %1..%2 ...", nullptr, totalRegisters).arg(shownFirst).arg(shownLast));
         emit writeCoils(reqId, first, raws);
         return;
     }
-    emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
+    emit message(tr("Writing %n register(s) HR %1..%2 ...", nullptr, totalRegisters).arg(shownFirst).arg(shownLast));
     emit writeRegisters(reqId, first, raws);
 }
 
@@ -888,7 +889,7 @@ void WriteController::setConnected(bool connected)
             QList<WriteLogEntry> log = m_pendingLog.take(requestId);
             for (WriteLogEntry &e : log) {
                 e.ok = false;
-                e.result = tr("No reply (disconnected)");
+                e.result = QStringLiteral("No reply (disconnected)");
                 emit writeLogged(e);
             }
         }

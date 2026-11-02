@@ -1,5 +1,6 @@
 #include "WriteLogPanel.h"
 
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QEvent>
@@ -25,10 +26,27 @@ QString functionCodeText(int functionCode)
     return QStringLiteral("FC%1").arg(functionCode, 2, 10, QLatin1Char('0'));
 }
 
+/// The log entries (and the CSV file) keep English tokens; the panel translates them for display.
+QString displayText(const QString &text)
+{
+    if (text == QLatin1String("unknown"))
+        return QCoreApplication::translate("mb::WriteLogPanel", "unknown");
+    if (text == QLatin1String("quick"))
+        return QCoreApplication::translate("mb::WriteLogPanel", "quick", "write source");
+    if (text == QLatin1String("table"))
+        return QCoreApplication::translate("mb::WriteLogPanel", "table", "write source");
+    if (text == QLatin1String("selection"))
+        return QCoreApplication::translate("mb::WriteLogPanel", "selection", "write source");
+    if (text == QLatin1String("No reply (disconnected)"))
+        return QCoreApplication::translate("mb::WriteLogPanel", "No reply (disconnected)");
+    return text;
+}
+
 QString rowToolTip(const WriteLogEntry &e)
 {
-    return QObject::tr("%1\nSource: %2\nServer: %3")
-        .arg(e.time.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")), e.source, e.server);
+    //: %1 = date and time, %2 = where the write came from (table, quick, selection), %3 = server address
+    return QCoreApplication::translate("mb::WriteLogPanel", "%1\nSource: %2\nServer: %3")
+        .arg(e.time.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")), displayText(e.source), e.server);
 }
 
 } // namespace
@@ -89,9 +107,9 @@ void WriteLogPanel::addEntry(const WriteLogEntry &entry)
                                entry.tagName,
                                entry.registers,
                                functionCodeText(entry.functionCode),
-                               QStringLiteral("%1 → %2").arg(entry.oldValue, entry.newValue),
+                               QStringLiteral("%1 → %2").arg(displayText(entry.oldValue), displayText(entry.newValue)),
                                entry.raw,
-                               entry.result};
+                               displayText(entry.result)};
     for (int col = 0; col < texts.size(); ++col) {
         auto *item = new QTableWidgetItem(texts.at(col));
         item->setToolTip(tip);

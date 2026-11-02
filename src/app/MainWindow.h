@@ -115,6 +115,7 @@ protected:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    static QString stateText(ConnectionState state);
     ConnectionBar *m_connectionBar = nullptr;
     TagTableModel *m_tagModel = nullptr;
     TagTableWidget *m_tagTable = nullptr;

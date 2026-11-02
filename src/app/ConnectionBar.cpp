@@ -33,6 +33,17 @@ QString stateColor(ConnectionState state)
 
 } // namespace
 
+QString ConnectionBar::stateText(ConnectionState state)
+{
+    switch (state) {
+    case ConnectionState::Disconnected: return tr("Disconnected");
+    case ConnectionState::Connecting: return tr("Connecting");
+    case ConnectionState::Connected: return tr("Connected");
+    case ConnectionState::Reconnecting: return tr("Reconnecting");
+    }
+    return {};
+}
+
 ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
 {
     auto *layout = new QHBoxLayout(this);
@@ -43,10 +54,10 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
     m_led->setFixedSize(12, 12);
     layout->addWidget(m_led);
 
-    layout->addWidget(new QLabel(QStringLiteral("Host"), this));
+    layout->addWidget(new QLabel(tr("Host"), this));
     m_host = new QLineEdit(this);
     m_host->setPlaceholderText(QStringLiteral("127.0.0.1"));
-    m_host->setToolTip(QStringLiteral("IPv4 address or localhost"));
+    m_host->setToolTip(tr("IPv4 address or localhost"));
     m_host->setValidator(new QRegularExpressionValidator(QRegularExpression(kHostPattern), m_host));
     m_host->setFixedWidth(120);
     layout->addWidget(m_host);
@@ -64,10 +75,10 @@ ConnectionBar::ConnectionBar(QWidget *parent) : QWidget(parent)
         return spin;
     };
 
-    m_port = makeSpin(QStringLiteral("Port"), 1, 65535, QString(), 70);
-    m_unit = makeSpin(QStringLiteral("Unit"), 0, 247, QString(), 60);
-    m_timeout = makeSpin(QStringLiteral("Timeout"), 100, 60000, QStringLiteral(" ms"), 90);
-    m_period = makeSpin(QStringLiteral("Period"), 100, 60000, QStringLiteral(" ms"), 90);
+    m_port = makeSpin(tr("Port"), 1, 65535, QString(), 70);
+    m_unit = makeSpin(tr("Unit"), 0, 247, QString(), 60);
+    m_timeout = makeSpin(tr("Timeout"), 100, 60000, QStringLiteral(" ms"), 90);
+    m_period = makeSpin(tr("Period"), 100, 60000, QStringLiteral(" ms"), 90);
 
     m_button = new QPushButton(this);
     m_button->setFixedWidth(100);
@@ -144,7 +155,7 @@ void ConnectionBar::setState(ConnectionState state, const QString &detail)
     m_period->setEnabled(editable);
 
     m_led->setStyleSheet(QStringLiteral("border-radius:6px; background:%1;").arg(stateColor(state)));
-    m_led->setToolTip(detail.isEmpty() ? toString(state) : detail);
+    m_led->setToolTip(detail.isEmpty() ? stateText(state) : detail);
 
     updateButton();
 }
@@ -152,10 +163,10 @@ void ConnectionBar::setState(ConnectionState state, const QString &detail)
 void ConnectionBar::updateButton()
 {
     if (m_state == ConnectionState::Disconnected) {
-        m_button->setText(QStringLiteral("Connect"));
+        m_button->setText(tr("Connect"));
         m_button->setEnabled(hasValidInput());
     } else {
-        m_button->setText(QStringLiteral("Disconnect"));
+        m_button->setText(tr("Disconnect"));
         m_button->setEnabled(true);
     }
 }
