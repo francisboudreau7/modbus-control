@@ -716,9 +716,15 @@ void TstProjectIO::exampleProjectsLoad()
     QCOMPARE(loop->addressBase, 1);
     QCOMPARE(loop->connection.host, QStringLiteral("127.0.0.1"));
     QCOMPARE(loop->connection.port, quint16(1601));
-    QCOMPARE(loop->tags.size(), 3);
+    QCOMPARE(loop->tags.size(), 4);
     QCOMPARE(loop->tags.at(2).name, QStringLiteral("LIC-101 OUT"));
     QCOMPARE(int(loop->tags.at(2).address), 2);
+    // v1.3.4: the Auto/Manual coil (coil 1 in the 1-based numbering).
+    QCOMPARE(loop->tags.at(3).name, QStringLiteral("LIC-101 A/M"));
+    QVERIFY(loop->tags.at(3).area == Area::Coil);
+    QVERIFY(loop->tags.at(3).type == ValueType::Bool);
+    QCOMPARE(int(loop->tags.at(3).address), 0);
+    QVERIFY(loop->tags.at(3).isWritable());
     QCOMPARE(loop->analysis.pvTagId, loop->tags.at(0).id);
     QCOMPARE(loop->analysis.deltaCoTagId, loop->tags.at(2).id);
     QCOMPARE(loop->analysis.setpointTagIds, QList<TagId>{loop->tags.at(0).id});
