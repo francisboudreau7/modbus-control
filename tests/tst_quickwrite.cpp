@@ -1,3 +1,4 @@
+#include "Language.h"
 #include "QuickWritePanel.h"
 #include "RichText.h"
 #include "TagTableModel.h"
@@ -52,6 +53,8 @@ private:
     }
 
 private slots:
+    void initTestCase() { mb::installTranslators(QStringLiteral("en")); }
+
     void rowsAndTexts()
     {
         TagTableModel model;

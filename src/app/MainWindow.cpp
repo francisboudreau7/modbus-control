@@ -227,11 +227,22 @@ void MainWindow::setTagsLocked(bool locked)
     m_lockLabel->setVisible(locked);
 }
 
+QString MainWindow::stateText(ConnectionState state)
+{
+    switch (state) {
+    case ConnectionState::Disconnected: return tr("Disconnected");
+    case ConnectionState::Connecting: return tr("Connecting");
+    case ConnectionState::Connected: return tr("Connected");
+    case ConnectionState::Reconnecting: return tr("Reconnecting");
+    }
+    return {};
+}
+
 void MainWindow::setConnectionStatus(ConnectionState state, const QString &detail)
 {
     // The worker's details already read as a sentence ("Connected to ..."), so they replace
     // the bare state name instead of being appended to it.
-    m_connectionLabel->setText(detail.isEmpty() ? toString(state) : detail);
+    m_connectionLabel->setText(detail.isEmpty() ? stateText(state) : detail);
 }
 
 void MainWindow::showStatusMessage(const QString &text, int timeoutMs)

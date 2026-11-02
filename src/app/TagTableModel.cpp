@@ -18,17 +18,17 @@ namespace mb {
 namespace {
 
 const char *const kHeaders[TagTableModel::ColumnCount] = {
-    QT_TRANSLATE_NOOP("TagTableModel", "Name"),    QT_TRANSLATE_NOOP("TagTableModel", "Area"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Address"), QT_TRANSLATE_NOOP("TagTableModel", "Type"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Byte order"), QT_TRANSLATE_NOOP("TagTableModel", "Gain"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Offset"),  QT_TRANSLATE_NOOP("TagTableModel", "Unit"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Writable"), QT_TRANSLATE_NOOP("TagTableModel", "Plot"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Axis"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Color"),   QT_TRANSLATE_NOOP("TagTableModel", "Raw"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Value"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Min"), QT_TRANSLATE_NOOP("TagTableModel", "Max"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Quick A"), QT_TRANSLATE_NOOP("TagTableModel", "Quick B"),
-    QT_TRANSLATE_NOOP("TagTableModel", "Quality"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Name"),    QT_TRANSLATE_NOOP("mb::TagTableModel", "Area"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Address"), QT_TRANSLATE_NOOP("mb::TagTableModel", "Type"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Byte order"), QT_TRANSLATE_NOOP("mb::TagTableModel", "Gain"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Offset"),  QT_TRANSLATE_NOOP("mb::TagTableModel", "Unit"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Writable"), QT_TRANSLATE_NOOP("mb::TagTableModel", "Plot"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Axis"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Color"),   QT_TRANSLATE_NOOP("mb::TagTableModel", "Raw"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Value"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Min"), QT_TRANSLATE_NOOP("mb::TagTableModel", "Max"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Quick A"), QT_TRANSLATE_NOOP("mb::TagTableModel", "Quick B"),
+    QT_TRANSLATE_NOOP("mb::TagTableModel", "Quality"),
 };
 
 bool parseDouble(const QVariant &v, double &out)
@@ -203,7 +203,8 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         }
         break;
     case Area:
-        if (disp || edit) return toString(t.area);
+        if (edit) return toString(t.area);
+        if (disp) return areaName(t.area);
         if (role == Qt::ToolTipRole) return areaLabel(t.area);
         break;
     case Address:
@@ -239,7 +240,8 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
             return t.plotted ? Qt::Checked : Qt::Unchecked;
         break;
     case Axis:
-        if (disp || edit) return toString(t.axis);
+        if (edit) return toString(t.axis);
+        if (disp) return axisText(t.axis);
         break;
     case WriteMin:
     case WriteMax: {
@@ -292,7 +294,7 @@ QVariant TagTableModel::data(const QModelIndex &index, int role) const
         if (edit) return live.valid ? QVariant(live.value) : QVariant();
         break;
     case Quality:
-        if (disp) return toString(live.quality);
+        if (disp) return qualityText(live.quality);
         if (role == Qt::ForegroundRole) {
             switch (live.quality) {
             case mb::Quality::Good: return QBrush(QColor(0x2e, 0x7d, 0x32));
@@ -387,6 +389,7 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         for (mb::Area candidate : {mb::Area::HoldingRegister, mb::Area::InputRegister,
                                    mb::Area::Coil, mb::Area::DiscreteInput}) {
             if (s.compare(toString(candidate), Qt::CaseInsensitive) == 0
+                || s.compare(areaName(candidate), Qt::CaseInsensitive) == 0
                 || s.compare(areaLabel(candidate), Qt::CaseInsensitive) == 0) {
                 a = candidate;
                 found = true;
@@ -465,9 +468,11 @@ bool TagTableModel::setData(const QModelIndex &index, const QVariant &value, int
         break;
     case Axis: {
         const QString s = value.toString().trimmed();
-        if (s.compare(toString(YAxis::Left), Qt::CaseInsensitive) == 0)
+        if (s.compare(toString(YAxis::Left), Qt::CaseInsensitive) == 0
+            || s.compare(axisText(YAxis::Left), Qt::CaseInsensitive) == 0)
             t.axis = YAxis::Left;
-        else if (s.compare(toString(YAxis::Right), Qt::CaseInsensitive) == 0)
+        else if (s.compare(toString(YAxis::Right), Qt::CaseInsensitive) == 0
+                 || s.compare(axisText(YAxis::Right), Qt::CaseInsensitive) == 0)
             t.axis = YAxis::Right;
         else
             return false;
@@ -717,7 +722,7 @@ int TagTableModel::addTag(const Tag &prototype)
         t.color = nextPaletteColor(m_tags);
     t.id = m_nextId++;
     if (t.name.trimmed().isEmpty())
-        t.name = QStringLiteral("Tag %1").arg(t.id);
+        t.name = tr("Tag %1").arg(t.id);
     const int row = int(m_tags.size());
     beginInsertRows(QModelIndex(), row, row);
     m_tags.append(t);
@@ -734,7 +739,7 @@ int TagTableModel::duplicateTag(int row)
         return -1;
     Tag t = m_tags.at(row);
     t.id = m_nextId++;
-    t.name += QStringLiteral(" (copy)");
+    t.name += tr(" (copy)");
     const int newRow = int(m_tags.size());
     beginInsertRows(QModelIndex(), newRow, newRow);
     m_tags.append(t);

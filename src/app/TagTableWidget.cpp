@@ -7,6 +7,7 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QColorDialog>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QCursor>
 #include <QEvent>
@@ -84,6 +85,30 @@ public:
         auto *c = static_cast<QComboBox *>(ComboDelegate::createEditor(parent, option, index));
         for (Area a : {Area::HoldingRegister, Area::InputRegister, Area::Coil, Area::DiscreteInput})
             c->addItem(areaLabel(a), toString(a));
+        return c;
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        auto *c = static_cast<QComboBox *>(editor);
+        c->setCurrentIndex(c->findData(index.data(Qt::EditRole).toString()));
+    }
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        model->setData(index, static_cast<QComboBox *>(editor)->currentData(), Qt::EditRole);
+    }
+};
+
+/// Axis cells: translated names, canonical toString(axis) as item data.
+class AxisDelegate : public ComboDelegate
+{
+public:
+    explicit AxisDelegate(QObject *parent) : ComboDelegate({}, parent) {}
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override
+    {
+        auto *c = static_cast<QComboBox *>(ComboDelegate::createEditor(parent, option, index));
+        for (YAxis a : {YAxis::Left, YAxis::Right})
+            c->addItem(axisText(a), toString(a));
         return c;
     }
     void setEditorData(QWidget *editor, const QModelIndex &index) const override
@@ -247,7 +272,8 @@ public:
         }
         if ((dbl || key) && (index.flags() & Qt::ItemIsEditable)) {
             const QColor initial(index.data(Qt::EditRole).toString());
-            const QColor c = QColorDialog::getColor(initial, nullptr, tr("Tag colour"));
+            const QColor c = QColorDialog::getColor(initial, nullptr,
+                                                QCoreApplication::translate("mb::TagTableWidget", "Tag colour"));
             if (c.isValid())
                 model->setData(index, c.name(), Qt::EditRole);
             return true;
@@ -328,7 +354,7 @@ TagTableWidget::TagTableWidget(TagTableModel *model, QWidget *parent)
                           this));
     m_view->setItemDelegateForColumn(
         TagTableModel::Axis,
-        new ComboDelegate({toString(YAxis::Left), toString(YAxis::Right)}, this));
+        new AxisDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Address, new AddressDelegate(this));
     m_view->setItemDelegateForColumn(TagTableModel::Color, new ColorDelegate(this));
     // Loaded once: live updates send dataChanged for the Value column and the view would

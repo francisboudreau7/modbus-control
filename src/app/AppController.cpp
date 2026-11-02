@@ -252,8 +252,8 @@ void AppController::wireData()
     connect(m_window->trendPlot(), &TrendPlot::axisRangesChanged, this, [this] { setModified(true); });
     connect(m_window->trendPlot(), &TrendPlot::clearDataRequested, this, [this] {
         if (m_recorder.size() > 0) {
-            const auto answer = ask(QStringLiteral("Clear data"),
-                QStringLiteral("Discard all recorded data? This cannot be undone."));
+            const auto answer = ask(tr("Clear data"),
+                tr("Discard all recorded data? This cannot be undone."));
             if (answer != QMessageBox::Yes)
                 return;
         }
@@ -416,8 +416,8 @@ void AppController::showWritableCleared()
         QStringList lines;
         for (const auto &[name, now] : found)
             lines << tr("'%1' (now %2)").arg(name, now);
-        text = rich::headline(tr("%1 tags are no longer writable: their registers changed.")
-                                  .arg(found.size()))
+        text = rich::headline(tr("%n tag(s) are no longer writable: their registers changed.", nullptr,
+                                     static_cast<int>(found.size())))
             + rich::bullets(lines);
     }
     m_prompts.information(tr("Writable turned off"), text + rich::paragraph(again));
@@ -531,7 +531,7 @@ void AppController::setModified(bool modified)
 
 void AppController::updateTitle()
 {
-    QString name = QStringLiteral("Untitled");
+    QString name = tr("Untitled");
     if (!m_projectPath.isEmpty())
         name = QFileInfo(m_projectPath).completeBaseName();
     else if (!m_sessionPath.isEmpty())
@@ -547,8 +547,8 @@ bool AppController::recordingDirty() const
 bool AppController::maybeSave()
 {
     if (recordingDirty()) {
-        const auto answer = ask(QStringLiteral("Unsaved changes"),
-            QStringLiteral("The recording has changed. Save the session?"),
+        const auto answer = ask(tr("Unsaved changes"),
+            tr("The recording has changed. Save the session?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
         if (answer == QMessageBox::Save)
             return saveSessionDialog();
@@ -556,8 +556,8 @@ bool AppController::maybeSave()
     }
     if (!m_modified)
         return true;
-    const auto answer = ask(QStringLiteral("Unsaved changes"),
-        QStringLiteral("The project has unsaved changes. Save them?"),
+    const auto answer = ask(tr("Unsaved changes"),
+        tr("The project has unsaved changes. Save them?"),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (answer == QMessageBox::Save)
         return save();
@@ -585,7 +585,7 @@ void AppController::disconnectForProjectChange()
         return;
     // Same path as the Disconnect button.
     QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);
-    m_window->showStatusMessage(QStringLiteral("Disconnected to load project"));
+    m_window->showStatusMessage(tr("Disconnected to load project"));
 }
 
 void AppController::applyProject(const Project &project)
@@ -618,8 +618,8 @@ bool AppController::saveTo(const QString &path)
 {
     QString error;
     if (!saveProject(path, currentProject(), &error)) {
-        warn(QStringLiteral("Save project"),
-                             QStringLiteral("Could not save \"%1\":\n%2").arg(path, error));
+        warn(tr("Save project"),
+                             tr("Could not save \"%1\":\n%2").arg(path, error));
         return false;
     }
     m_projectPath = path;
@@ -627,7 +627,7 @@ bool AppController::saveTo(const QString &path)
     m_sessionPath.clear();
     QSettings().setValue(QStringLiteral("project/dir"), QFileInfo(path).absolutePath());
     setModified(false);
-    m_window->showStatusMessage(QStringLiteral("Saved %1").arg(QFileInfo(path).fileName()));
+    m_window->showStatusMessage(tr("Saved %1").arg(QFileInfo(path).fileName()));
     return true;
 }
 
@@ -641,8 +641,8 @@ bool AppController::save()
 bool AppController::saveAs()
 {
     const QString dir = QSettings().value(QStringLiteral("project/dir")).toString();
-    QString path = saveFileName(QStringLiteral("Save project as"), dir,
-                                                QStringLiteral("Modbus Control project (*.mbproj)"));
+    QString path = saveFileName(tr("Save project as"), dir,
+                                                tr("Modbus Control project (*.mbproj)"));
     if (path.isEmpty())
         return false;
     if (QFileInfo(path).suffix().compare(QStringLiteral("mbproj"), Qt::CaseInsensitive) != 0)
@@ -675,8 +675,8 @@ void AppController::openDialog()
     if (!maybeSave())
         return;
     const QString dir = QSettings().value(QStringLiteral("project/dir")).toString();
-    const QString path = openFileName(QStringLiteral("Open project"), dir,
-                                                      QStringLiteral("Modbus Control project (*.mbproj)"));
+    const QString path = openFileName(tr("Open project"), dir,
+                                                      tr("Modbus Control project (*.mbproj)"));
     if (!path.isEmpty())
         loadFrom(path);
 }
@@ -697,8 +697,8 @@ void AppController::openExampleDialog()
 {
     if (!maybeSave())
         return;
-    const QString path = openFileName(QStringLiteral("Open example"), examplesDir(),
-                                      QStringLiteral("Modbus Control projects (*.mbproj)"));
+    const QString path = openFileName(tr("Open example"), examplesDir(),
+                                      tr("Modbus Control projects (*.mbproj)"));
     if (path.isEmpty())
         return;
     // An example is a template: Save asks where to save it (the examples folder may be read-only,
@@ -715,8 +715,8 @@ bool AppController::loadFrom(const QString &path)
     QString error;
     const std::optional<Project> project = loadProject(path, &error);
     if (!project) {
-        warn(QStringLiteral("Open project"),
-                             QStringLiteral("Could not open \"%1\":\n%2").arg(path, error));
+        warn(tr("Open project"),
+                             tr("Could not open \"%1\":\n%2").arg(path, error));
         return false;
     }
     applyProject(*project);
@@ -767,8 +767,8 @@ bool AppController::saveSessionDialog()
         name = QFileInfo(m_projectPath).completeBaseName() + QStringLiteral(".mbsession");
     else if (!m_sessionPath.isEmpty())
         name = QFileInfo(m_sessionPath).completeBaseName() + QStringLiteral(".mbsession");
-    QString path = saveFileName(QStringLiteral("Save session"), dir.isEmpty() ? name : QDir(dir).filePath(name),
-        QStringLiteral("Modbus Control sessions (*.mbsession)"));
+    QString path = saveFileName(tr("Save session"), dir.isEmpty() ? name : QDir(dir).filePath(name),
+        tr("Modbus Control sessions (*.mbsession)"));
     if (path.isEmpty())
         return false;
     if (QFileInfo(path).suffix().compare(QStringLiteral("mbsession"), Qt::CaseInsensitive) != 0)
@@ -791,8 +791,8 @@ bool AppController::saveSessionDialog()
 
     QString error;
     if (!saveSession(path, currentProject(), m_recorder, cursors, &error)) {
-        warn(QStringLiteral("Save session"),
-                             QStringLiteral("Could not save \"%1\":\n%2").arg(path, error));
+        warn(tr("Save session"),
+                             tr("Could not save \"%1\":\n%2").arg(path, error));
         return false;
     }
     settings.setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
@@ -800,7 +800,7 @@ bool AppController::saveSessionDialog()
     if (m_sessionLoaded)
         m_sessionDirty = false;
     updateTitle();
-    m_window->showStatusMessage(QStringLiteral("Session saved to %1").arg(QFileInfo(path).fileName()));
+    m_window->showStatusMessage(tr("Session saved to %1").arg(QFileInfo(path).fileName()));
     return true;
 }
 
@@ -809,15 +809,15 @@ void AppController::openSessionDialog()
     if (!maybeSave())
         return;
     if (!m_sessionLoaded && m_recorder.size() > 0) {
-        const auto answer = ask(QStringLiteral("Open session"),
-            QStringLiteral("Opening a session replaces the current recording. Save it as a session first?"),
+        const auto answer = ask(tr("Open session"),
+            tr("Opening a session replaces the current recording. Save it as a session first?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
         if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveSessionDialog()))
             return;
     }
     const QString dir = QSettings().value(QStringLiteral("session/dir")).toString();
-    const QString path = openFileName(QStringLiteral("Open session"), dir,
-        QStringLiteral("Modbus Control sessions (*.mbsession);;All files (*)"));
+    const QString path = openFileName(tr("Open session"), dir,
+        tr("Modbus Control sessions (*.mbsession)") + QStringLiteral(";;") + tr("All files (*)"));
     if (!path.isEmpty())
         loadSessionFile(path);
 }
@@ -829,8 +829,8 @@ bool AppController::loadSessionFile(const QString &path)
     SessionCursors cursors;
     QString error;
     if (!loadSession(path, project, recording, cursors, &error)) {
-        warn(QStringLiteral("Open session"),
-                             QStringLiteral("Could not open \"%1\":\n%2").arg(path, error));
+        warn(tr("Open session"),
+                             tr("Could not open \"%1\":\n%2").arg(path, error));
         return false;
     }
     QSettings().setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
@@ -873,7 +873,7 @@ bool AppController::loadSessionFile(const QString &path)
 
     setModified(false);
     m_window->showStatusMessage(
-        QStringLiteral("Session loaded: %1 rows (offline)").arg(m_recorder.size()));
+        tr("Session loaded: %n row(s) (offline)", nullptr, static_cast<int>(m_recorder.size())));
     return true;
 }
 
@@ -885,11 +885,11 @@ bool AppController::prepareConnect()
     if (m_continuePrompt) {
         choice = m_continuePrompt();
     } else {
-        QMessageBox box(QMessageBox::Question, QStringLiteral("Connect"),
-                        QStringLiteral("A recording from a session is loaded. Continue it or start a new one?"),
+        QMessageBox box(QMessageBox::Question, tr("Connect"),
+                        tr("A recording from a session is loaded. Continue it or start a new one?"),
                         QMessageBox::NoButton, m_window);
-        QPushButton *cont = box.addButton(QStringLiteral("Continue this recording"), QMessageBox::AcceptRole);
-        QPushButton *fresh = box.addButton(QStringLiteral("Start a new recording"), QMessageBox::DestructiveRole);
+        QPushButton *cont = box.addButton(tr("Continue this recording"), QMessageBox::AcceptRole);
+        QPushButton *fresh = box.addButton(tr("Start a new recording"), QMessageBox::DestructiveRole);
         box.addButton(QMessageBox::Cancel);
         box.setDefaultButton(cont);
         box.exec();
@@ -1016,9 +1016,9 @@ void AppController::exportAnalysisResults()
     QString dir = settings.value(QStringLiteral("export/csvDir")).toString();
     if (dir.isEmpty() || !QFileInfo(dir).isDir())
         dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    const QString path = saveFileName(QStringLiteral("Export analysis results"),
+    const QString path = saveFileName(tr("Export analysis results"),
         QDir(dir).filePath(QStringLiteral("analysis.csv")),
-        QStringLiteral("CSV files (*.csv);;All files (*)"));
+        tr("CSV files (*.csv)") + QStringLiteral(";;") + tr("All files (*)"));
     if (path.isEmpty())
         return;
     settings.setValue(QStringLiteral("export/csvDir"), QFileInfo(path).absolutePath());
@@ -1040,13 +1040,13 @@ void AppController::exportAnalysisResults()
         ok = true;
     }
     if (ok) {
-        m_window->showStatusMessage(QStringLiteral("Analysis results exported to %1").arg(path));
+        m_window->showStatusMessage(tr("Analysis results exported to %1").arg(path));
         return;
     }
     if (error.isEmpty())
-        error = QStringLiteral("Unknown error");
-    warn(QStringLiteral("Export analysis results"),
-                         QStringLiteral("Could not write \"%1\":\n%2").arg(path, error));
+        error = tr("Unknown error");
+    warn(tr("Export analysis results"),
+                         tr("Could not write \"%1\":\n%2").arg(path, error));
 }
 
 void AppController::addTagDialog()
@@ -1147,8 +1147,8 @@ void AppController::openDocumentation(bool userGuide)
     const QString local = docs::localPath(QCoreApplication::applicationDirPath(), page, language);
     if (QFileInfo::exists(local) && m_prompts.openUrl(QUrl::fromLocalFile(local)))
         return;
-    warn(QStringLiteral("Open documentation"),
-         QStringLiteral("Could not open %1.").arg(url.toString()));
+    warn(tr("Open documentation"),
+         tr("Could not open %1.").arg(url.toString()));
 }
 
 } // namespace mb
