@@ -2032,7 +2032,7 @@ private slots:
             opened << url;
             return true;
         };
-        const docs::Language lang = docs::languageFor(QLocale::system());
+        const docs::Language lang = docs::Language::English; // tests run with the English catalog
         win->actions().quickStart->trigger();
         win->actions().userGuide->trigger();
         QCOMPARE(opened.size(), 2);
@@ -2044,7 +2044,7 @@ private slots:
 
     void helpDocumentationFallsBackToTheInstalledCopy()
     {
-        const docs::Language lang = docs::languageFor(QLocale::system());
+        const docs::Language lang = docs::Language::English; // tests run with the English catalog
         const QString local = docs::localPath(QCoreApplication::applicationDirPath(),
                                               docs::Page::QuickStart, lang);
         if (QFileInfo::exists(local))
@@ -2073,7 +2073,7 @@ private slots:
 
     void helpDocumentationWarnsWhenNothingOpens()
     {
-        const docs::Language lang = docs::languageFor(QLocale::system());
+        const docs::Language lang = docs::Language::English; // tests run with the English catalog
         const QString local = docs::localPath(QCoreApplication::applicationDirPath(),
                                               docs::Page::UserGuide, lang);
         if (QFileInfo::exists(local))

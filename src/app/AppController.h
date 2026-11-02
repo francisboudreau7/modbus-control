@@ -79,8 +79,8 @@ class WriteController;
 ///   "'<name or HR 110>' would overlap '<other>' (HR 110-111), changed while the dialog was open.")
 ///   and nothing is added. Otherwise TagTableModel::addTag(dialog.tag()), then EncodingMonitor::confirmDetected(id) when
 ///   dialog.detectionConfirmed(), then TagTableWidget::showRow(row).
-/// - Help > Quick Start / User Guide: opens docs::siteUrl(page, docs::languageFor(QLocale::
-///   system())) through m_prompts.openUrl; when that returns false, opens the installed copy
+/// - Help > Quick Start / User Guide: opens docs::siteUrl(page, language of the interface:
+///   French when mb::currentLanguage() is "fr", English otherwise) through m_prompts.openUrl; when that returns false, opens the installed copy
 ///   (QUrl::fromLocalFile(docs::localPath(QCoreApplication::applicationDirPath(), ...))) if the
 ///   file exists; otherwise warns "Open documentation": "Could not open <url>." (T202)
 /// - Trend Y-axis ranges (v1.3.1, T221): Project::yLeft/yRight are applied with

@@ -21,14 +21,11 @@
 #include <QImage>
 #include <QtTest>
 
+#include "Language.h"
+
 #include <modbus.h>
 
 using namespace mbloop;
-
-// Declared in src/core/Language.h (mbcore is linked, but its headers are not on the include path).
-namespace mb {
-bool installTranslators(const QString &code);
-}
 
 class TstLoopWindow : public QObject
 {

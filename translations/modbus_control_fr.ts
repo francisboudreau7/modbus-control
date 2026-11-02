@@ -2,142 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="fr_CA">
 <context>
-    <name>QObject</name>
-    <message>
-        <source>%1 to %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>at least %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>at most %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>&apos;%1&apos; accepts %2%3; %4 was not written.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>unknown</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Check:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Write coils</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Write registers</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Right Y axis range</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Left Y axis range</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Min</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Max</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1
-Source: %2
-Server: %3</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>TagTableModel</name>
-    <message>
-        <source>Name</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Area</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Address</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Byte order</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Gain</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Offset</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Unit</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Writable</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Axis</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Color</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Raw</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Value</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Min</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Max</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Quick A</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Quick B</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Quality</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>mb::AddTagDialog</name>
     <message>
         <source>Add tag</source>
@@ -273,7 +137,50 @@ Server: %3</source>
     </message>
 </context>
 <context>
+    <name>mb::AnalysisCsv</name>
+    <message>
+        <source>Write failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device is not open for writing</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>mb::AnalysisPanel</name>
+    <message>
+        <source>Good</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Acceptable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Poor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 % / 63.2 % (two points)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smith (28.3 % / 63.2 %)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sundaresan-Krishnaswamy (35.3 % / 85.3 %)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ziegler-Nichols (open loop)</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Copy results</source>
         <translation type="unfinished"></translation>
@@ -581,7 +488,23 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 model</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Controller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>fit %1 % (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>at %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not found</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -597,7 +520,15 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 = mean of PV over [%2 - W, %2]</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>value of the PV at cursor %1 (%2 % of the step).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 = mean of PV over [%2 - %3, %2] = %4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -621,6 +552,10 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>CO = typed in step 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>K, process gain</source>
         <translation type="unfinished"></translation>
     </message>
@@ -637,6 +572,10 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>K (%/%) = K %1 CO span / PV span</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>L/T, controllability ratio</source>
         <translation type="unfinished"></translation>
     </message>
@@ -646,6 +585,10 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
     <message>
         <source>how far the model curve is from the recorded PV between the cursors: RMS of (PV - model), and as % of |%1PV|.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>fit % = 100 %1 RMS(PV - model) / |%2PV|</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -681,11 +624,27 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>target = y0 + p (y100 - y0)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>the PV level of this setpoint.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>target = %1 + %2 %3 (%4 - %5) = %6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>the recorded value at the found time, interpolated between the two neighbouring samples.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>measured = PV(t)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>measured = PV(%1) = %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -697,7 +656,15 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>t = time of C1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>time at which the PV reaches y0 + p (y100 - y0) = %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>t = first time the PV crosses the target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -709,7 +676,15 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>t - C1 = time - %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>controller gain for signals expressed in percent of their ranges.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kp (%/%) = Kp %1 PV span / CO span</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -736,6 +711,14 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Clear data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discard all recorded data? This cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Disconnect, then tick Writable again to write to the new register.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -759,9 +742,12 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>&apos;%1&apos; (now %2)</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>%1 tags are no longer writable: their registers changed.</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <source>%n tag(s) are no longer writable: their registers changed.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
         <source>Writable turned off</source>
@@ -804,6 +790,132 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Untitled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsaved changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The recording has changed. Save the session?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The project has unsaved changes. Save them?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnected to load project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save &quot;%1&quot;:
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save project as</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus Control project (*.mbproj)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open example</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus Control projects (*.mbproj)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not open &quot;%1&quot;:
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save session</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus Control sessions (*.mbsession)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Session saved to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open session</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opening a session replaces the current recording. Save it as a session first?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Session loaded: %n row(s) (offline)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A recording from a session is loaded. Continue it or start a new one?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Continue this recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start a new recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export analysis results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CSV files (*.csv)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Analysis results exported to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not write &quot;%1&quot;:
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Tag not added</source>
         <translation type="unfinished"></translation>
     </message>
@@ -811,11 +923,74 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>&apos;%1&apos; would overlap &apos;%2&apos; (%3), changed while the dialog was open.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Open documentation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not open %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
-    <name>mb::ColorDelegate</name>
+    <name>mb::ConnectionBar</name>
     <message>
-        <source>Tag colour</source>
+        <source>Disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reconnecting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Host</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IPv4 address or localhost</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timeout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Period</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::CsvExporter</name>
+    <message>
+        <source>Write failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device is not open for writing</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -889,7 +1064,7 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source> and %1 more</source>
+        <source>%1 and %2 more</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -930,6 +1105,194 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
 </context>
 <context>
+    <name>mb::EncodingMonitor</name>
+    <message>
+        <source>Encoding check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decide later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Register numbering</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move these tags</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected %1 for &apos;%2&apos; (reads %3), not applied: the tag configuration is locked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected %1 for &apos;%2&apos; (reads %3). Confirm it before writing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2 %3-%4): %5 as %6, &lt;b&gt;%7&lt;/b&gt; as %8</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n tag(s) read implausible values with their current encoding:</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Writes to them ask first until you confirm their encoding. Review them now?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The tag configuration is locked (Options &gt; Lock tag configuration)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not applied: %1 %2-%3 is now used by &apos;%4&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped checking 16-bit tags: the device did not answer a read next to &apos;%1&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2 %3) could not be read: %4.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2-%3 read as %4 give %5</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not read the registers around &apos;%1&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2) looks like a 16-bit value: no float32 found around it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect to check &apos;%1&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped checking 16-bit tags: the device did not answer a read next to a 16-bit tag.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2 %3): %4 as %5, &lt;b&gt;%6&lt;/b&gt; as %7 (%2 %8-%9)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n tag(s) are probably half of a float32 value:</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Writes to them ask first. Review them now?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No float32 found around &apos;%1&apos; (%2) right now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>It stays flagged. Choose %1 if it is a 16-bit value.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is probably half of a float32 value.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>As %1 (%2):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>As %1 (%2 %3-%4):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Writing a 16-bit value here would change half of the float.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change also resets its gain and offset to 1 and 0 and clears its quick values.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change to %1 at %2 %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2 %3) can&apos;t be read, alone or as part of a 32-bit value: check the register number.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 can&apos;t be read alone; %1 %3-%4 can be read as a 32-bit value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; (%2 %3, %4) can&apos;t be read alone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device answered &quot;Illegal data address&quot;. %1 %2-%3 can be read as a 32-bit value: choose its encoding, or type the value shown on the device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped checking register numbers: the device did not answer a read of &apos;%1&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n tag(s) may be numbered one register off; the tag configuration is locked (Options &gt; Lock tag configuration).</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos;: %2 is refused, but %3 answers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Some registers may be numbered from %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device manuals often count registers from 1 (or from 0): a number copied from the manual then points one register off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use %1-based numbers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not applied: the tags or the connection changed while the question was open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>mb::ExportCsvDialog</name>
     <message>
         <source>Export data (CSV)</source>
@@ -937,6 +1300,10 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
     <message>
         <source>All recorded data (%1 rows)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Between cursors (%1 … %2 s, %3 rows)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1079,6 +1446,46 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
     <message>
         <source>PNG image (*.png);;SVG image (*.svg);;PDF document (*.pdf)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot export &apos;%1&apos;: no plot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No file name given</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported file type &apos;%1&apos; (use .png, .svg or .pdf)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid image size %1 x %2 px (each side must be %3..%4)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid resolution %1 dpi (must be %2..%3)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write &apos;%1&apos;: folder does not exist or path is a folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot paint image for &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write PNG file &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write SVG file &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write PDF file &apos;%1&apos;</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1248,11 +1655,537 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>The tag configuration is locked (Options &gt; Lock tag configuration)</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reconnecting</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::ModbusConnection</name>
+    <message>
+        <source>Illegal function</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Illegal data address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Illegal data value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave device or server failure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Acknowledge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave device or server is busy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Negative acknowledge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Memory parity error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gateway path unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target device failed to respond</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid CRC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid exception code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Too many data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Response not from requested slave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus exception %1: %2</source>
+        <extracomment>%1 = Modbus exception code number, %2 = its description</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Host must not be empty</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port must be 1..65535</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unit id must be 0..247 or 255</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timeout must be at least 1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Host must be an IPv4 address (e.g. 192.168.1.10) or &apos;localhost&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid register count or address range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connection closed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid bit count or address range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid coil count or address range</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::PollWorker</name>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected to %1 (unit %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reconnect to %1 failed: %2 (retry in %3 s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 (retry in %2 s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connection to %1 failed: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device does not accept FC16 (write multiple registers), which 32-bit values and multi-register writes need.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device does not accept FC15 (write multiple coils).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read %1 %2..%3 failed: %4</source>
+        <extracomment>%1 = area prefix (HR, IR, CO, DI), %2 and %3 = first and last address, %4 = error text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid read: %1 bits from %2 (1..%3 bits, within 0..65535)</source>
+        <extracomment>%1 = requested count, %2 = start address, %3 = maximum count</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid read: %1 registers from %2 (1..%3 registers, within 0..65535)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::ProjectIO</name>
+    <message>
+        <source>&quot;%1%2&quot; must be an integer from %3 to %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1%2&quot; must be a number</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1%2&quot; must be a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1%2&quot; must be true or false</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; must be an array of 2 numbers [min, max]</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; must be [min, max]: two finite numbers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1axis&quot; has unknown value &quot;%2&quot; (expected &quot;left&quot; or &quot;right&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1byteOrder&quot; has unknown value &quot;%2&quot; (expected &quot;ABCD&quot;, &quot;CDAB&quot;, &quot;BADC&quot; or &quot;DCBA&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1area&quot; has unknown value &quot;%2&quot; (expected &quot;holding&quot;, &quot;input&quot;, &quot;coil&quot; or &quot;discrete&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1type&quot; has unknown value &quot;%2&quot; (expected &quot;int16&quot;, &quot;uint16&quot;, &quot;int32&quot;, &quot;uint32&quot;, &quot;float32&quot; or &quot;bool&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;connection&quot; must be an object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; must be an object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; is missing &quot;id&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1writeMin&quot; (%2) is above &quot;%1writeMax&quot; (%3)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tag %1: type bool needs area coil or discrete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tag %1: area %2 needs type bool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1address&quot; is %2, too high for a &quot;%3&quot; tag: it uses %4 registers, so the last one would be past 65535</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis&quot; must be an object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.percents&quot; must be an array of numbers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.percents&quot; must have at most 20 entries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.percents&quot; entries must be numbers from 0 to 100</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.reference&quot; must be a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.reference&quot; has unknown value &quot;%1&quot; (expected &quot;cursor&quot; or &quot;mean&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.referenceWindowS&quot; must be greater than 0 and at most 3600</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.smoothingS&quot; must be from 0 to 3600</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.modelPercents&quot; must be an array of exactly 2 numbers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.modelPercents&quot; must be two numbers a &lt; b, both from 0 up to but not including 100</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.method&quot; must be a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.method&quot; has unknown value &quot;%1&quot; (expected &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot; or &quot;custom&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.setpointTags&quot; must be an array of tag ids</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.setpointTags&quot; entries must be integers from 1 to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>analysis.modelColor: must be a colour &quot;#RRGGBB&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.tuningRule&quot; must be a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.tuningRule&quot; has unknown value &quot;%1&quot; (expected &quot;zn&quot;, &quot;cohen-coon&quot;, &quot;imc&quot; or &quot;simc&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.lambdaS&quot; must be a finite number, 0 or more</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.timeUnit&quot; must be a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;analysis.timeUnit&quot; has unknown value &quot;%1&quot; (expected &quot;s&quot; or &quot;min&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;hiddenColumns&quot; must be an array of strings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;hiddenColumns&quot; entries must be strings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>yAxes.%1: must be &quot;auto&quot; or [min, max] with min &lt; max</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;yAxes&quot; must be an object with &quot;left&quot; and &quot;right&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>yAxes: unknown key &quot;%1&quot; (expected &quot;left&quot; or &quot;right&quot;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid JSON: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid project: top-level value must be a JSON object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not a Modbus Control project: &quot;format&quot; must be &quot;modbus-control-project&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid project: &quot;version&quot; is missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid project: &quot;version&quot; must be an integer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Project version %1 is newer than supported version %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid project: &quot;version&quot; must be 1 or greater</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;addressBase&quot; must be 0 or 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;tags&quot; must be an array</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Duplicate tag id %1 (tags[%2])</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;locked&quot; must be a boolean</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot save &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot read &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>mb::QuickWritePanel</name>
     <message>
         <source>Set Quick A / Quick B on writable tags in the tag table.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::SessionIO</name>
+    <message>
+        <source>Data is not a string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid base64 data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid compressed data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Data size does not match the row count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cursor &quot;%1&quot; is neither a number nor null</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cursor group &quot;%1&quot; is not an object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid JSON: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not a Modbus Control session file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Missing session version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported session version %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Missing project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Missing recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid start time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Missing row count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid row count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Times: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Non-finite time value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Times are not in increasing order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Columns is not an array</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid column tag id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Duplicate column for tag %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tag %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mb::StepAnalysis</name>
+    <message>
+        <source>Place both cursors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data at C1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data at C2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No change between C1 and C2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 % / 63.2 % (two points)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1325,6 +2258,82 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
 </context>
 <context>
     <name>mb::TagTableModel</name>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Area</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Byte order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Offset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Writable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Axis</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Raw</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Max</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick A</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Not used by coils and discrete inputs</source>
         <translation type="unfinished"></translation>
@@ -1401,9 +2410,21 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>Byte order of 32-bit values. A is the most significant byte. ABCD is big endian: register n holds A B and register n+1 holds C D. Only used by 32-bit types.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Tag %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (copy)</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>mb::TagTableWidget</name>
+    <message>
+        <source>Tag colour</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Remove tags</source>
         <translation type="unfinished"></translation>
@@ -1454,6 +2475,22 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
 </context>
 <context>
     <name>mb::TrendPlot</name>
+    <message>
+        <source>Right Y axis range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left Y axis range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Max</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>60 s</source>
         <translation type="unfinished"></translation>
@@ -1524,7 +2561,46 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
 </context>
 <context>
+    <name>mb::Tuning</name>
+    <message>
+        <source>Ziegler-Nichols (open loop)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IMC / lambda</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>mb::WriteController</name>
+    <message>
+        <source>%1 to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>at least %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>at most %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; accepts %2%3; %4 was not written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Write coils</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Write registers</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Confirm write</source>
         <translation type="unfinished"></translation>
@@ -1753,9 +2829,33 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>&apos;%1&apos; (%2) should start at %7 %3 to follow &apos;%4&apos; (%5), but starts at %7 %6.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>Too many registers: the selection spans %1 registers (maximum 123).</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <source>Too many registers: the selection spans %n register(s) (maximum 123).</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Write %n tag(s)?</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Writing %n coil(s) CO %1..%2 ...</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Writing %n register(s) HR %1..%2 ...</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
         <source>No valid reading of %1 yet.</source>
@@ -1834,14 +2934,6 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Write 1 tag?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Write %1 tags?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Tag</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1859,14 +2951,6 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
     <message>
         <source>&apos;%1&apos; changed or lost its reading while the dialog was open.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Writing %1 coils CO %2..%3 ...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Writing %1 registers HR %2..%3 ...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1889,13 +2973,54 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
         <source>It answered &quot;Illegal function&quot;: it does not accept FC16 (write multiple registers), which 32-bit values and multi-register writes need. Nothing was written.</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>mb::WriteLog</name>
     <message>
-        <source>No reply (disconnected)</source>
+        <source>Cannot create folder %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write %1: %2</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>mb::WriteLogPanel</name>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>quick</source>
+        <comment>write source</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>table</source>
+        <comment>write source</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>selection</source>
+        <comment>write source</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No reply (disconnected)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1
+Source: %2
+Server: %3</source>
+        <extracomment>%1 = date and time, %2 = where the write came from (table, quick, selection), %3 = server address</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Open folder</source>
         <translation type="unfinished"></translation>
@@ -1934,6 +3059,488 @@ Smoothing makes the 0 % point early by up to S/2 (and L biased low); when smooth
     </message>
     <message>
         <source>Saved to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::Faceplate</name>
+    <message>
+        <source>MAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch LIC-101 between Manual and Auto (PID)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT +1 % (Shift: +5 %)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT -1 % (Shift: -5 %)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type OUT in % (0..100) and press Enter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type SP in % (0..100) and press Enter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tuning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Proportional gain Kp, 0..100 (Enter applies)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Integral time Ti in s, 0..3600 (0 = no I) (Enter applies)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Derivative time Td in s, 0..600 (0 = no D) (Enter applies)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverse: PV up -&gt; OUT down; Direct: PV up -&gt; OUT up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Direct</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::LoopServer</name>
+    <message>
+        <source>The Modbus server is already running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot create the Modbus server on %1:%2: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot allocate the register mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port %1 is already in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port %1 is already in use or reserved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot listen on %1:%2 (port in use or invalid address?): %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>getsockname failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::LoopWindow</name>
+    <message>
+        <source>Modbus Loop Simulator — Level loop 101</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loop scenario (*.mbloop)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>P-101 speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show process data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Modbus registers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show which registers Modbus Control reads and writes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Open scenario...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Save scenario...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Quit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;About</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Modbus registers...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About Modbus Loop Simulator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Modbus Loop Simulator&lt;/b&gt; %1&lt;br&gt;Level loop 101 with the LIC-101 regulator as a Modbus TCP server, for instrumentation courses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PV – LT-101 level, %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input register 1-2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>float32 ABCD (high word first)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SP – LIC-101 setpoint, %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holding register 1-2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FC03 read, FC16 write</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read / write (0–100)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT – LIC-101 output, %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holding register 3-4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read / write (0–100); read only in AUTO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIC-101 A/M</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Coil 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bool (0 = Auto, 1 = Manual)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FC01 read, FC05 write</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read / write (also in AUTO)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each value is a 32-bit float on two registers: read or write both registers in one request (FC06 and half a float are refused). In Modbus Control tick Options › Use 1-based register numbers, or open examples\loop101.mbproj. The A/M coil is one bit: FC05 (or FC15 with one coil) switches the controller like the A/M button.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus TCP – connect Modbus Control here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Register (Modbus Control, 1-based)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address (0-based)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Function codes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The value and where it comes from.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Register number as Modbus Control shows it with Options &gt; Use 1-based register numbers. A float32 takes two registers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Protocol address on the wire (0-based): IR = input register, HR = holding register. Use this if Modbus Control is in 0-based mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>float32 ABCD: IEEE 754, high word first (big-endian words).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FC03 = Read Holding Registers, FC04 = Read Input Registers, FC16 = Write Multiple Registers. FC06 (single register) is refused. FC01 = Read Coils, FC05 = Write Single Coil.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What a client may do with the value.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current value in the simulator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus registers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Server &lt;b&gt;%1 : %2&lt;/b&gt; &amp;nbsp;&amp;nbsp; Unit 1 (any unit answered) &amp;nbsp;&amp;nbsp;–&amp;nbsp;&amp;nbsp; %n client(s) connected</source>
+        <extracomment>%1 = host address, %2 = port; %n = number of connected clients</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Server not running: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 = Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 = Manual</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read only (AUTO)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%1, %n client(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Open scenario</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save scenario</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::Scenario</name>
+    <message>
+        <source>%1%2: unknown key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: must be an object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: must be a number</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: must be %2..%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: must be 1, 2 or 5</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pid.mode: must be &quot;manual&quot; or &quot;auto&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pid.action: must be &quot;reverse&quot; or &quot;direct&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid JSON: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid scenario: top-level value must be a JSON object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not a loop scenario: &quot;format&quot; must be &quot;modbus-loop-scenario&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid scenario: &quot;version&quot; is missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid scenario: &quot;version&quot; must be an integer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported scenario version %1 (expected %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot save &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot read &quot;%1&quot;: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::SchematicView</name>
+    <message>
+        <source>Base tank</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overflow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT %1 %  %2 mA
+Position %3 %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 % open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level %1 m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Qin %1 L/min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Qhv %1 L/min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overflow %1 L/min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pump %1 bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dead time %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>mbloop::main</name>
+    <message>
+        <source>Modbus Loop Simulator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unexpected argument &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>--port must be 0..65535</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>--speed must be 1, 2 or 5</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modbus server on %1:%2</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

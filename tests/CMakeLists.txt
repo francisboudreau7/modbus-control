@@ -45,7 +45,7 @@ mc_add_qtest(tst_docslinks LIBS mbui)
 mc_add_qtest(tst_loopmodel LIBS mbloop)
 mc_add_qtest(tst_loopserver LIBS mbloop)
 mc_add_qtest(tst_scenario LIBS mbloop)
-mc_add_qtest(tst_loopwindow LIBS mbloopui)
+mc_add_qtest(tst_loopwindow LIBS mbloopui mbcore)
 set_property(TEST tst_loopwindow APPEND PROPERTY ENVIRONMENT_MODIFICATION
   "QT_QPA_PLATFORM=set:offscreen"
   "QT_QPA_FONTDIR=set:$ENV{WINDIR}/Fonts"

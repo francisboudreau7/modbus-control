@@ -5,6 +5,7 @@
 #include "AnalysisPanel.h"
 #include "ConnectionBar.h"
 #include "DocsLinks.h"
+#include "Language.h"
 #include "CursorPanel.h"
 #include "EncodingMonitor.h"
 #include "ExportCsvDialog.h"
@@ -1140,7 +1141,9 @@ void AppController::onAddTagReadFinished(quint64 requestId, const ModbusResult &
 void AppController::openDocumentation(bool userGuide)
 {
     const docs::Page page = userGuide ? docs::Page::UserGuide : docs::Page::QuickStart;
-    const docs::Language language = docs::languageFor(QLocale::system());
+    // v1.3.4: the help follows the interface language (Options > Language).
+    const docs::Language language
+        = currentLanguage() == QLatin1String("fr") ? docs::Language::French : docs::Language::English;
     const QUrl url = docs::siteUrl(page, language);
     if (m_prompts.openUrl(url))
         return;
