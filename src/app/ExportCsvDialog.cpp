@@ -72,7 +72,7 @@ ExportCsvDialog::ExportCsvDialog(const Recorder &recorder, const QList<Tag> &tag
     m_allRadio = new QRadioButton(tr("All recorded data (%1 rows)").arg(m_allRows), this);
     m_rangeRadio = new QRadioButton(this);
     if (m_range) {
-        m_rangeRadio->setText(QStringLiteral("Between cursors (%1 … %2 s, %3 rows)")
+        m_rangeRadio->setText(tr("Between cursors (%1 … %2 s, %3 rows)")
                                   .arg(QString::number(m_range->first, 'f', 3),
                                        QString::number(m_range->second, 'f', 3))
                                   .arg(m_rangeRows));

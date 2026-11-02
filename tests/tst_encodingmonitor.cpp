@@ -1,5 +1,6 @@
 #include "EncodingDialog.h"
 #include "EncodingMonitor.h"
+#include "Language.h"
 #include "MetaTypes.h"
 #include "TagCodec.h"
 #include "TagTableModel.h"
@@ -168,6 +169,7 @@ private slots:
         QCoreApplication::setOrganizationName(QStringLiteral("ModbusControlTests"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_encodingmonitor"));
         registerMetaTypes();
+        mb::installTranslators(QStringLiteral("en"));
     }
 
     void init()
@@ -2636,7 +2638,7 @@ private slots:
         QVERIFY(offPrompts.isEmpty());
         QCOMPARE(messages->size(), 1);
         QCOMPARE(messages->first().first().toString(),
-                 QStringLiteral("1 tags may be numbered one register off; the tag configuration is "
+                 QStringLiteral("1 tag may be numbered one register off; the tag configuration is "
                                 "locked (Options > Lock tag configuration)."));
         QCOMPARE(tagOf(a).address, quint16(5009));
         QVERIFY(bases->isEmpty());

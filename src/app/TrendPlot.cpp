@@ -6,6 +6,7 @@
 #include "Recorder.h"
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QDialog>
@@ -196,8 +197,8 @@ std::optional<std::pair<double, double>> askRangeDialog(QWidget *parent, QwtAxis
                                                         std::pair<double, double> current)
 {
     QDialog dlg(parent);
-    dlg.setWindowTitle(axis == QwtAxis::YRight ? QObject::tr("Right Y axis range")
-                                               : QObject::tr("Left Y axis range"));
+    dlg.setWindowTitle(axis == QwtAxis::YRight ? QCoreApplication::translate("mb::TrendPlot", "Right Y axis range")
+                                               : QCoreApplication::translate("mb::TrendPlot", "Left Y axis range"));
     auto makeSpin = [&dlg](double v) {
         auto *spin = new NumberSpinBox(&dlg); // "72,3" and "72.3"
         spin->setRange(-1e12, 1e12);
@@ -208,8 +209,8 @@ std::optional<std::pair<double, double>> askRangeDialog(QWidget *parent, QwtAxis
     QDoubleSpinBox *minSpin = makeSpin(current.first);
     QDoubleSpinBox *maxSpin = makeSpin(current.second);
     auto *form = new QFormLayout(&dlg);
-    form->addRow(QObject::tr("Min"), minSpin);
-    form->addRow(QObject::tr("Max"), maxSpin);
+    form->addRow(QCoreApplication::translate("mb::TrendPlot", "Min"), minSpin);
+    form->addRow(QCoreApplication::translate("mb::TrendPlot", "Max"), maxSpin);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     form->addRow(buttons);
     auto update = [=] {

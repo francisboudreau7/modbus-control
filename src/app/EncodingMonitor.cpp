@@ -30,11 +30,6 @@ bool narrow(const Tag &tag)
 
 // Prompt texts are rich text built with mb::rich: a bold headline, then the readings laid out for
 // comparison.
-/// "1 tag reads" / "2 tags read" style counts.
-QString tagCount(qsizetype n, const QString &one, const QString &many)
-{
-    return n == 1 ? QStringLiteral("1 tag %1").arg(one) : QStringLiteral("%1 tags %2").arg(n).arg(many);
-}
 
 } // namespace
 
@@ -44,14 +39,14 @@ EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QO
     m_runDialog = [](EncodingDialog &dialog) { return dialog.exec() == QDialog::Accepted; };
     m_splitPrompt = [this](const QString &text, const QString &changeLabel,
                            const QString &keepLabel) {
-        QMessageBox box(QMessageBox::Warning, QStringLiteral("Encoding check"), text,
+        QMessageBox box(QMessageBox::Warning, tr("Encoding check"), text,
                         QMessageBox::NoButton, m_dialogParent);
         box.setTextFormat(Qt::RichText);
         QPushButton *change = changeLabel.isEmpty()
                                   ? nullptr
                                   : box.addButton(changeLabel, QMessageBox::AcceptRole);
         QPushButton *keep = box.addButton(keepLabel, QMessageBox::ActionRole);
-        QPushButton *later = box.addButton(QStringLiteral("Decide later"), QMessageBox::RejectRole);
+        QPushButton *later = box.addButton(tr("Decide later"), QMessageBox::RejectRole);
         box.setDefaultButton(later);
         box.setEscapeButton(later);
         box.exec();
@@ -62,24 +57,24 @@ EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QO
         return SplitAnswer::Later;
     };
     m_reviewPrompt = [this](const QString &text) {
-        QMessageBox box(QMessageBox::Warning, QStringLiteral("Encoding check"), text,
+        QMessageBox box(QMessageBox::Warning, tr("Encoding check"), text,
                         QMessageBox::NoButton, m_dialogParent);
         box.setTextFormat(Qt::RichText);
-        QPushButton *review = box.addButton(QStringLiteral("Review..."), QMessageBox::AcceptRole);
-        QPushButton *close = box.addButton(QStringLiteral("Close"), QMessageBox::RejectRole);
+        QPushButton *review = box.addButton(tr("Review..."), QMessageBox::AcceptRole);
+        QPushButton *close = box.addButton(tr("Close"), QMessageBox::RejectRole);
         box.setDefaultButton(close);
         box.exec();
         return box.clickedButton() == review;
     };
     m_offByOnePrompt = [this](const QString &text, const QString &useNumberingLabel) {
-        QMessageBox box(QMessageBox::Warning, QStringLiteral("Register numbering"), text,
+        QMessageBox box(QMessageBox::Warning, tr("Register numbering"), text,
                         QMessageBox::NoButton, m_dialogParent);
         box.setTextFormat(Qt::RichText);
         QPushButton *use = useNumberingLabel.isEmpty()
                                ? nullptr
                                : box.addButton(useNumberingLabel, QMessageBox::AcceptRole);
-        QPushButton *move = box.addButton(QStringLiteral("Move these tags"), QMessageBox::ActionRole);
-        QPushButton *keep = box.addButton(QStringLiteral("Keep"), QMessageBox::RejectRole);
+        QPushButton *move = box.addButton(tr("Move these tags"), QMessageBox::ActionRole);
+        QPushButton *keep = box.addButton(tr("Keep"), QMessageBox::RejectRole);
         box.setDefaultButton(keep);
         box.setEscapeButton(keep);
         box.exec();
@@ -268,7 +263,7 @@ void EncodingMonitor::evaluatePending(TagId id)
                 shown = valueText(c.values.last(), tag);
         }
         if (m_model->isLocked()) {
-            emit message(QStringLiteral("Detected %1 for '%2' (reads %3), not applied: the tag "
+            emit message(tr("Detected %1 for '%2' (reads %3), not applied: the tag "
                                         "configuration is locked.")
                              .arg(toString(best), tag.name, shown));
             break;
@@ -276,7 +271,7 @@ void EncodingMonitor::evaluatePending(TagId id)
         m_model->setEncoding(id, best.type, best.order, false);
         if (const Tag *now = findTag(id))
             m_snapshot.insert(id, *now);
-        emit message(QStringLiteral("Detected %1 for '%2' (reads %3). Confirm it before writing.")
+        emit message(tr("Detected %1 for '%2' (reads %3). Confirm it before writing.")
                          .arg(toString(best), tag.name, shown));
         break;
     }
@@ -371,7 +366,7 @@ void EncodingMonitor::runConnectCheck()
                 bestValue = valueText(c.values.last(), tag);
         }
         const int first = tag.address + m_model->addressBase();
-        entries << QStringLiteral("'%1' (%2 %3-%4): %5 as %6, <b>%7</b> as %8")
+        entries << tr("'%1' (%2 %3-%4): %5 as %6, <b>%7</b> as %8")
                        .arg(rich::escaped(tag.name), areaPrefix(tag.area)).arg(first).arg(first + 1)
                        .arg(rich::escaped(currentValue), toString(current), rich::escaped(bestValue),
                             toString(*result.best));
@@ -386,13 +381,10 @@ void EncodingMonitor::runConnectCheck()
             m_snapshot.insert(id, *now);
     }
     const QString text =
-        rich::headline(tagCount(ids.size(),
-                                QStringLiteral("reads an implausible value with its current "
-                                               "encoding:"),
-                                QStringLiteral("read implausible values with their current "
-                                               "encoding:")))
+        rich::headline(tr("%n tag(s) read implausible values with their current encoding:",
+                                nullptr, int(ids.size())))
         + rich::bulletsRich(entries)
-        + rich::paragraph(QStringLiteral("Writes to them ask first until you confirm their "
+        + rich::paragraph(tr("Writes to them ask first until you confirm their "
                                          "encoding. Review them now?"));
     // Shown by pump() as soon as no prompt or dialog is open (now, usually).
     m_deferred32 = Review32{text, ids};
@@ -613,7 +605,7 @@ void EncodingMonitor::applyChoice(const Request &request, const EncodingDialog &
         if (tag && tag->type == chosen->type && tag->byteOrder == chosen->order)
             m_model->setEncodingVerified(request.id, true);
         else
-            emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+            emit message(tr("The tag configuration is locked (Options > Lock tag configuration)"));
         return;
     }
     m_model->setEncoding(request.id, chosen->type, chosen->order, true);
@@ -717,7 +709,7 @@ bool EncodingMonitor::pairBlocked(const Tag &self, int start)
     if (!owner)
         return false;
     const int base = m_model->addressBase();
-    emit message(QStringLiteral("Not applied: %1 %2-%3 is now used by '%4'.")
+    emit message(tr("Not applied: %1 %2-%3 is now used by '%4'.")
                      .arg(areaPrefix(self.area)).arg(start + base).arg(start + 1 + base)
                      .arg(owner->name));
     return true;
@@ -796,7 +788,7 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
         m_splitStopped = true;
         m_probes.clear();
         const Tag *now = findTag(probe.id);
-        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+        emit message(tr("Stopped checking 16-bit tags: the device did not answer a "
                                     "read next to '%1'.")
                          .arg(now ? now->name : probe.tag.name));
         m_connectWait.clear(); // nothing more will be probed: let the connect pass finish
@@ -821,7 +813,7 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
             if (const Tag *now = findTag(probe.id)) {
                 m_sessionChecked.insert(now->id);
                 if (probe.mode == ProbeMode::Manual) {
-                    emit message(QStringLiteral("'%1' (%2 %3) could not be read: %4.")
+                    emit message(tr("'%1' (%2 %3) could not be read: %4.")
                                      .arg(now->name, areaPrefix(now->area))
                                      .arg(now->address + m_model->addressBase())
                                      .arg(result.message));
@@ -896,7 +888,7 @@ void EncodingMonitor::onReadFinished(quint64 requestId, const ModbusResult &resu
 QString EncodingMonitor::splitNote(const Tag &tag, const SplitValue &split) const
 {
     const int base = m_model->addressBase();
-    return QStringLiteral("%1 %2-%3 read as %4 give %5")
+    return tr("%1 %2-%3 read as %4 give %5")
         .arg(areaPrefix(tag.area)).arg(split.address + base).arg(split.address + 1 + base)
         .arg(toString(split.encoding), QString::number(split.value, 'g', 7));
 }
@@ -931,7 +923,7 @@ void EncodingMonitor::completeProbe(const Probe &probe)
     const Tag tag = *found;
     if (!probe.own) {
         if (probe.mode == ProbeMode::Manual)
-            emit message(QStringLiteral("Could not read the registers around '%1'.").arg(tag.name));
+            emit message(tr("Could not read the registers around '%1'.").arg(tag.name));
         return;
     }
     m_sessionChecked.insert(tag.id); // checked once: not again on reconnect
@@ -960,7 +952,7 @@ void EncodingMonitor::completeProbe(const Probe &probe)
                 m_queue.append(request);
                 return;
             }
-            emit message(QStringLiteral("'%1' (%2) looks like a 16-bit value: no float32 found "
+            emit message(tr("'%1' (%2) looks like a 16-bit value: no float32 found "
                                         "around it.")
                              .arg(tag.name, where));
         } else if (!tag.encodingVerified && m_model->encodingNote(tag.id).isEmpty()) {
@@ -982,11 +974,11 @@ void EncodingMonitor::completeProbe(const Probe &probe)
 void EncodingMonitor::splitCheckNow(const Tag &tag)
 {
     if (!m_connected) {
-        emit message(QStringLiteral("Connect to check '%1'.").arg(tag.name));
+        emit message(tr("Connect to check '%1'.").arg(tag.name));
         return;
     }
     if (m_splitStopped) {
-        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+        emit message(tr("Stopped checking 16-bit tags: the device did not answer a "
                                     "read next to a 16-bit tag."));
         return;
     }
@@ -1014,7 +1006,7 @@ void EncodingMonitor::maybeFinishConnectPass()
         flagSplit(*tag, f.split);
         const double reading = decodeValue(*tag, combineRegisters(*tag, f.own));
         const int base = m_model->addressBase();
-        entries << QStringLiteral("'%1' (%2 %3): %4 as %5, <b>%6</b> as %7 (%2 %8-%9)")
+        entries << tr("'%1' (%2 %3): %4 as %5, <b>%6</b> as %7 (%2 %8-%9)")
                        .arg(rich::escaped(tag->name), areaPrefix(tag->area)).arg(tag->address + base)
                        .arg(QString::number(reading, 'g', 7), toString(tag->type),
                             QString::number(f.split.value, 'g', 7), toString(f.split.encoding))
@@ -1024,11 +1016,10 @@ void EncodingMonitor::maybeFinishConnectPass()
     if (flagged.isEmpty())
         return;
     const QString text =
-        rich::headline(tagCount(flagged.size(),
-                                QStringLiteral("is probably half of a float32 value:"),
-                                QStringLiteral("are probably half of a float32 value:")))
+        rich::headline(tr("%n tag(s) are probably half of a float32 value:", nullptr,
+                                int(flagged.size())))
         + rich::bulletsRich(entries)
-        + rich::paragraph(QStringLiteral("Writes to them ask first. Review them now?"));
+        + rich::paragraph(tr("Writes to them ask first. Review them now?"));
     // Shown by pump() as soon as no prompt or dialog is open (now, usually).
     m_deferred16 = Review16{text, flagged};
     pump();
@@ -1046,34 +1037,34 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     QString text;
     QString changeLabel;
     if (request.noSplit) {
-        text = rich::headline(QStringLiteral("No float32 found around '%1' (%2) right now.")
+        text = rich::headline(tr("No float32 found around '%1' (%2) right now.")
                                   .arg(tag.name, where))
-               + rich::paragraphRich(QStringLiteral("It stays flagged. Choose %1 if it is a 16-bit "
+               + rich::paragraphRich(tr("It stays flagged. Choose %1 if it is a 16-bit "
                                                     "value.")
-                                         .arg(rich::bold(QStringLiteral("Keep %1")
+                                         .arg(rich::bold(tr("Keep %1")
                                                              .arg(toString(tag.type)))));
     } else {
         const int base = m_model->addressBase();
-        text = rich::headline(QStringLiteral("'%1' is probably half of a float32 value.")
+        text = rich::headline(tr("'%1' is probably half of a float32 value.")
                                   .arg(tag.name))
                + rich::rows(
-                   {{QStringLiteral("As %1 (%2):").arg(toString(tag.type), where),
+                   {{tr("As %1 (%2):").arg(toString(tag.type), where),
                      QString::number(reading, 'g', 7)},
-                    {QStringLiteral("As %1 (%2 %3-%4):")
+                    {tr("As %1 (%2 %3-%4):")
                          .arg(toString(split.encoding), areaPrefix(tag.area))
                          .arg(split.address + base)
                          .arg(split.address + 1 + base),
                      QString::number(split.value, 'g', 7), true}})
                + rich::paragraph(
-                   QStringLiteral("Writing a 16-bit value here would change half of the float."));
+                   tr("Writing a 16-bit value here would change half of the float."));
         if (tag.gain != 1.0 || tag.offset != 0.0 || tag.quickA || tag.quickB)
-            text += rich::note(QStringLiteral("Change also resets its gain and offset to 1 and 0 "
+            text += rich::note(tr("Change also resets its gain and offset to 1 and 0 "
                                               "and clears its quick values."));
-        changeLabel = QStringLiteral("Change to %1 at %2 %3")
+        changeLabel = tr("Change to %1 at %2 %3")
                           .arg(toString(split.encoding), areaPrefix(tag.area))
                           .arg(split.address + m_model->addressBase());
     }
-    const QString keepLabel = QStringLiteral("Keep %1").arg(toString(tag.type));
+    const QString keepLabel = tr("Keep %1").arg(toString(tag.type));
     m_promptOpen = true;
     const SplitAnswer answer =
         m_splitPrompt ? m_splitPrompt(text, changeLabel, keepLabel) : SplitAnswer::Later;
@@ -1083,7 +1074,7 @@ void EncodingMonitor::runSplitRequest(const Request &request)
     switch (request.noSplit && answer == SplitAnswer::Change ? SplitAnswer::Later : answer) {
     case SplitAnswer::Change: {
         if (m_model->isLocked()) {
-            emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+            emit message(tr("The tag configuration is locked (Options > Lock tag configuration)"));
             break;
         }
         if (pairBlocked(*findTag(request.id), split.address))
@@ -1143,11 +1134,11 @@ void EncodingMonitor::queueRefused(TagId id, ProbeMode mode)
 void EncodingMonitor::refusedCheckNow(const Tag &tag)
 {
     if (!m_connected) {
-        emit message(QStringLiteral("Connect to check '%1'.").arg(tag.name));
+        emit message(tr("Connect to check '%1'.").arg(tag.name));
         return;
     }
     if (m_splitStopped) {
-        emit message(QStringLiteral("Stopped checking 16-bit tags: the device did not answer a "
+        emit message(tr("Stopped checking 16-bit tags: the device did not answer a "
                                     "read next to a 16-bit tag."));
         return;
     }
@@ -1188,7 +1179,7 @@ void EncodingMonitor::completeRefused(const Probe &probe)
         pairBelow.reset();
     if (!pairOwn && !pairBelow) {
         if (probe.mode == ProbeMode::Manual) {
-            emit message(QStringLiteral("'%1' (%2 %3) can't be read, alone or as part of a 32-bit "
+            emit message(tr("'%1' (%2 %3) can't be read, alone or as part of a 32-bit "
                                         "value: check the register number.")
                              .arg(tag.name, areaPrefix(tag.area)).arg(tag.address + base));
         }
@@ -1233,7 +1224,7 @@ void EncodingMonitor::completeRefused(const Probe &probe)
     const QString prefix = areaPrefix(tag.area);
     m_model->setEncodingVerified(tag.id, false);
     m_model->setEncodingNote(
-        tag.id, QStringLiteral("%1 %2 can't be read alone; %1 %3-%4 can be read as a 32-bit value")
+        tag.id, tr("%1 %2 can't be read alone; %1 %3-%4 can be read as a 32-bit value")
                     .arg(prefix).arg(tag.address + base).arg(start + base).arg(start + 1 + base));
     if (const Tag *now = findTag(tag.id))
         m_snapshot.insert(tag.id, *now);
@@ -1268,9 +1259,9 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
     EncodingDialog dialog(request.view, {request.pair}, others, deviceOrder(), base,
                           m_dialogParent);
     dialog.setIntro(
-        rich::headline(QStringLiteral("'%1' (%2 %3, %4) can't be read alone.")
+        rich::headline(tr("'%1' (%2 %3, %4) can't be read alone.")
                            .arg(tag.name, prefix).arg(tag.address + base).arg(toString(tag.type)))
-        + rich::paragraph(QStringLiteral("The device answered \"Illegal data address\". %1 %2-%3 "
+        + rich::paragraph(tr("The device answered \"Illegal data address\". %1 %2-%3 "
                                          "can be read as a 32-bit value: choose its encoding, or "
                                          "type the value shown on the device.")
                               .arg(prefix).arg(request.start + base).arg(request.start + 1 + base)));
@@ -1285,7 +1276,7 @@ void EncodingMonitor::runRefusedRequest(const Request &request)
     if (!chosen)
         return;
     if (m_model->isLocked()) {
-        emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+        emit message(tr("The tag configuration is locked (Options > Lock tag configuration)"));
         return;
     }
     if (pairBlocked(*findTag(request.id), request.start))
@@ -1388,7 +1379,7 @@ void EncodingMonitor::onOffByOneResult(Probe probe, const ModbusResult &result,
     if (result.error == ModbusError::Timeout || result.error == ModbusError::ConnectionLost) {
         m_splitStopped = true;
         m_probes.clear();
-        emit message(QStringLiteral("Stopped checking register numbers: the device did not answer "
+        emit message(tr("Stopped checking register numbers: the device did not answer "
                                     "a read of '%1'.")
                          .arg(findTag(probe.id)->name));
         m_connectWait.clear();
@@ -1463,9 +1454,9 @@ void EncodingMonitor::runOffByOnePrompt()
     if (found.isEmpty())
         return;
     if (m_model->isLocked()) {
-        emit message(QStringLiteral("%1 tags may be numbered one register off; the tag "
-                                    "configuration is locked (Options > Lock tag configuration).")
-                         .arg(found.size()));
+        emit message(tr("%n tag(s) may be numbered one register off; the tag "
+                            "configuration is locked (Options > Lock tag configuration).",
+                            nullptr, int(found.size())));
         return;
     }
     const int base = m_model->addressBase();
@@ -1480,21 +1471,21 @@ void EncodingMonitor::runOffByOnePrompt()
     };
     QStringList entries;
     for (const OffFinding &f : std::as_const(found)) {
-        entries << QStringLiteral("'%1': %2 is refused, but %3 answers.")
+        entries << tr("'%1': %2 is refused, but %3 answers.")
                        .arg(f.tag.name, rangeText(f.tag, f.tag.address),
                             rangeText(f.tag, f.tag.address + f.shift));
     }
     const QString text =
-        rich::headline(QStringLiteral("Some registers may be numbered from %1.").arg(newBase))
+        rich::headline(tr("Some registers may be numbered from %1.").arg(newBase))
         + rich::bullets(entries)
-        + rich::paragraph(QStringLiteral("Device manuals often count registers from 1 (or from "
+        + rich::paragraph(tr("Device manuals often count registers from 1 (or from "
                                          "0): a number copied from the manual then points one "
                                          "register off."));
     // UseNumbering only before any tag read Good, and when every tag can move.
     bool canUse = !m_goodSeen;
     for (const Tag &tag : m_model->tags())
         canUse = canUse && shiftInRange(tag, shift);
-    const QString useLabel = canUse ? QStringLiteral("Use %1-based numbers").arg(newBase) : QString();
+    const QString useLabel = canUse ? tr("Use %1-based numbers").arg(newBase) : QString();
 
     m_promptOpen = true;
     const OffByOneAnswer answer =
@@ -1504,7 +1495,7 @@ void EncodingMonitor::runOffByOnePrompt()
     if (answer == OffByOneAnswer::Keep)
         return;
     if (m_model->isLocked()) {
-        emit message(QStringLiteral("The tag configuration is locked (Options > Lock tag configuration)"));
+        emit message(tr("The tag configuration is locked (Options > Lock tag configuration)"));
         return;
     }
     if (answer == OffByOneAnswer::UseNumbering) {
@@ -1514,7 +1505,7 @@ void EncodingMonitor::runOffByOnePrompt()
         for (const Tag &tag : m_model->tags())
             ok = ok && shiftInRange(tag, shift);
         if (!ok) {
-            emit message(QStringLiteral("Not applied: the tags or the connection changed while "
+            emit message(tr("Not applied: the tags or the connection changed while "
                                         "the question was open."));
             return;
         }

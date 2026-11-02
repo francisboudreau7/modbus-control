@@ -379,11 +379,11 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
     const QSize sizePx = options.sizePx;
     const int dpi = options.dpi;
     if (!plot) {
-        setError(error, QStringLiteral("Cannot export '%1': no plot").arg(path));
+        setError(error, tr("Cannot export '%1': no plot").arg(path));
         return false;
     }
     if (path.trimmed().isEmpty()) {
-        setError(error, QStringLiteral("No file name given"));
+        setError(error, tr("No file name given"));
         return false;
     }
 
@@ -392,14 +392,14 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
     if (suffix != QLatin1String("png") && suffix != QLatin1String("svg")
         && suffix != QLatin1String("pdf")) {
         const QString shown =
-            suffix.isEmpty() ? QStringLiteral("(none)") : QLatin1Char('.') + suffix;
-        setError(error, QStringLiteral("Unsupported file type '%1' (use .png, .svg or .pdf)")
+            suffix.isEmpty() ? tr("(none)") : QLatin1Char('.') + suffix;
+        setError(error, tr("Unsupported file type '%1' (use .png, .svg or .pdf)")
                             .arg(shown));
         return false;
     }
     if (sizePx.width() < kMinPx || sizePx.width() > kMaxPx || sizePx.height() < kMinPx
         || sizePx.height() > kMaxPx) {
-        setError(error, QStringLiteral("Invalid image size %1 x %2 px (each side must be %3..%4)")
+        setError(error, tr("Invalid image size %1 x %2 px (each side must be %3..%4)")
                             .arg(sizePx.width())
                             .arg(sizePx.height())
                             .arg(kMinPx)
@@ -407,7 +407,7 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
         return false;
     }
     if (dpi < kMinDpi || dpi > kMaxDpi) {
-        setError(error, QStringLiteral("Invalid resolution %1 dpi (must be %2..%3)")
+        setError(error, tr("Invalid resolution %1 dpi (must be %2..%3)")
                             .arg(dpi)
                             .arg(kMinDpi)
                             .arg(kMaxDpi));
@@ -415,7 +415,7 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
     }
     if (info.isDir() || !info.absoluteDir().exists()) {
         setError(error,
-                 QStringLiteral("Cannot write '%1': folder does not exist or path is a folder")
+                 tr("Cannot write '%1': folder does not exist or path is a folder")
                      .arg(path));
         return false;
     }
@@ -455,14 +455,14 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
         {
             QPainter painter(&image);
             if (!painter.isActive()) {
-                setError(error, QStringLiteral("Cannot paint image for '%1'").arg(path));
+                setError(error, tr("Cannot paint image for '%1'").arg(path));
                 return false;
             }
             renderer.render(plot, &painter, layout.plot);
             paintExtras(&painter, plot, layout, extras, drawn, lines);
         }
         if (!image.save(path, "PNG")) {
-            setError(error, QStringLiteral("Cannot write PNG file '%1'").arg(path));
+            setError(error, tr("Cannot write PNG file '%1'").arg(path));
             return false;
         }
         return true;
@@ -477,7 +477,7 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
         generator.setTitle(QStringLiteral("Modbus Control graph"));
         QPainter painter;
         if (!painter.begin(&generator)) {
-            setError(error, QStringLiteral("Cannot write SVG file '%1'").arg(path));
+            setError(error, tr("Cannot write SVG file '%1'").arg(path));
             return false;
         }
         painter.fillRect(target, Qt::white);
@@ -499,7 +499,7 @@ bool ExportImageDialog::render(QwtPlot *plot, PlotCursors *cursors, const QStrin
                                      QPageLayout::Millimeter));
     QPainter painter;
     if (!painter.begin(&writer)) {
-        setError(error, QStringLiteral("Cannot write PDF file '%1'").arg(path));
+        setError(error, tr("Cannot write PDF file '%1'").arg(path));
         return false;
     }
     // Device units of the page can differ slightly from the rounded pixel size: scale the layout.
