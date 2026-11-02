@@ -8,6 +8,7 @@
 #include "TagTableModel.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -47,8 +48,9 @@ QString rawText(const Tag &tag, const QList<quint16> &regs)
 QString registerRange(const Tag &tag, int base)
 {
     const int n = registerCount(tag.type);
-    return n == 2 ? QStringLiteral("HR %1-%2").arg(tag.address + base).arg(tag.address + 1 + base)
-                  : QStringLiteral("HR %1").arg(tag.address + base);
+    const QString prefix = areaPrefix(tag.area);
+    return n == 2 ? QStringLiteral("%1 %2-%3").arg(prefix).arg(tag.address + base).arg(tag.address + 1 + base)
+                  : QStringLiteral("%1 %2").arg(prefix).arg(tag.address + base);
 }
 
 QString valueText(double v)
@@ -58,7 +60,7 @@ QString valueText(double v)
 
 QString tagLabel(const Tag &tag, int base)
 {
-    return QStringLiteral("%1 (HR %2)").arg(tag.name).arg(tag.address + base);
+    return QStringLiteral("%1 (%2 %3)").arg(tag.name, areaPrefix(tag.area)).arg(tag.address + base);
 }
 
 QString unitSuffix(const Tag &tag)
@@ -116,9 +118,18 @@ WriteLogEntry makeLogEntry(const Tag &tag, int base, const std::optional<double>
     e.count = registerCount(tag.type);
     e.registers = registerRange(tag, base);
     e.functionCode = functionCode;
-    e.oldValue = oldValue ? valueText(*oldValue) + unitSuffix(tag) : QObject::tr("unknown");
-    e.newValue = valueText(newValue) + unitSuffix(tag);
-    e.raw = rawHex(regs);
+    if (tag.isBit()) {
+        e.oldValue = oldValue ? bitText(*oldValue) : QObject::tr("unknown");
+        e.newValue = bitText(newValue);
+        QStringList bits;
+        for (quint16 r : regs)
+            bits << QString::number(r != 0 ? 1 : 0);
+        e.raw = bits.join(QLatin1Char(' '));
+    } else {
+        e.oldValue = oldValue ? valueText(*oldValue) + unitSuffix(tag) : QObject::tr("unknown");
+        e.newValue = valueText(newValue) + unitSuffix(tag);
+        e.raw = rawHex(regs);
+    }
     e.source = source;
     e.server = server;
     return e;
@@ -154,12 +165,26 @@ public:
     ValuesDialog(const QList<Tag> &tags, const QList<double> &current, int base, QWidget *parent)
         : QDialog(parent)
     {
-        setWindowTitle(QObject::tr("Write registers"));
+        const bool coils = !tags.isEmpty() && tags.first().isBit();
+        setWindowTitle(coils ? QObject::tr("Write coils") : QObject::tr("Write registers"));
         auto *form = new QFormLayout(this);
         auto *validator = new NumberValidator(this);
         for (qsizetype i = 0; i < tags.size(); ++i) {
-            // Shortest round-trip form, so an untouched field writes back exactly the same value.
             const double v = i < current.size() ? current.at(i) : 0.0;
+            const QString unit0 = tags.at(i).unit.isEmpty() ? QString()
+                                                            : QStringLiteral(" [%1]").arg(tags.at(i).unit);
+            if (tags.at(i).isBit()) {
+                auto *combo = new QComboBox(this);
+                combo->addItem(bitText(0.0), 0);
+                combo->addItem(bitText(1.0), 1);
+                combo->setCurrentIndex(v != 0.0 ? 1 : 0);
+                form->addRow(tagLabel(tags.at(i), base) + unit0, combo);
+                m_edits.append(nullptr);
+                m_combos.append(combo);
+                continue;
+            }
+            m_combos.append(nullptr);
+            // Shortest round-trip form, so an untouched field writes back exactly the same value.
             auto *edit = new QLineEdit(QLocale::c().toString(v, 'g', QLocale::FloatingPointShortest), this);
             edit->setValidator(validator);
             const QString unit = tags.at(i).unit.isEmpty() ? QString()
@@ -176,7 +201,12 @@ public:
     std::optional<QList<double>> values() const
     {
         QList<double> out;
-        for (const QLineEdit *edit : m_edits) {
+        for (qsizetype i = 0; i < m_edits.size(); ++i) {
+            if (m_combos.at(i)) {
+                out.append(m_combos.at(i)->currentData().toInt());
+                continue;
+            }
+            const QLineEdit *edit = m_edits.at(i);
             bool ok = false;
             const double v = parseNumber(edit->text(), &ok);
             if (!ok)
@@ -187,7 +217,8 @@ public:
     }
 
 private:
-    QList<QLineEdit *> m_edits;
+    QList<QLineEdit *> m_edits;   ///< null for coils
+    QList<QComboBox *> m_combos;  ///< null for registers
 };
 
 } // namespace
@@ -291,6 +322,11 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
         return;
     const quint64 generation = m_connectionGeneration;
 
+    if (tag.isBit()) {
+        writeCoil(tag, scaledValue, quick, generation);
+        return;
+    }
+
     // 2. write limits
     if (std::isfinite(scaledValue) && !tag.withinWriteLimits(scaledValue)) {
         m_warn(rich::headline(tr("%1%2 is outside the limits of '%3'.")
@@ -334,10 +370,7 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
                                         "wrong, and a write would send a wrong value."));
         } else {
             const QString note = m_model->encodingNote(id);
-            const QString regNo = QStringLiteral("%1 %2")
-                                      .arg(tag.area == Area::InputRegister ? QStringLiteral("IR")
-                                                                           : QStringLiteral("HR"))
-                                      .arg(tag.address + base);
+            const QString regNo = QStringLiteral("%1 %2").arg(areaPrefix(tag.area)).arg(tag.address + base);
             QList<rich::Row> facts;
             const std::optional<double> reading = m_model->goodValue(id);
             facts.append({tr("Reads:"),
@@ -435,6 +468,65 @@ void WriteController::writeValue(TagId id, double scaledValue, bool quick)
     emit writeRegisters(reqId, tag.address, *raw);
 }
 
+void WriteController::writeCoil(const Tag &tag, double scaledValue, bool quick, quint64 generation)
+{
+    const int base = m_model->addressBase();
+    if (scaledValue != 0.0 && scaledValue != 1.0) {
+        m_warn(rich::headline(tr("'%1' is a coil: write ON or OFF.").arg(tag.name)));
+        return;
+    }
+    const bool on = scaledValue != 0.0;
+
+    // 3a. made writable and not read since
+    if (m_model->writeNeedsRead(tag.id)) {
+        m_warn(rich::headline(tr("No valid reading of '%1' since it was made writable.").arg(tag.name))
+               + rich::paragraph(tr("Nothing was written."))
+               + checkList({tr("the coil number (%1)").arg(registerRange(tag, base)),
+                            tr("the area (coil)")}));
+        return;
+    }
+
+    const std::optional<double> current = m_model->goodValue(tag.id);
+    const QString question =
+        rich::headline(tr("Switch '%1' %2?").arg(tag.name, bitText(scaledValue)))
+        + rich::rows({{tr("Current state:"), current ? bitText(*current) : tr("unknown")},
+                      {tr("New state:"), bitText(scaledValue), true}})
+        + rich::note(tr("%1 · FC05").arg(registerRange(tag, base)));
+    if (quick) {
+        if (m_quickConfirm) {
+            const QuickAnswer answer = m_quickConfirmPrompt(question);
+            if (!answer.confirmed)
+                return;
+            if (answer.dontAskAgain)
+                setQuickConfirm(false);
+        }
+    } else if (!m_confirm(question)) {
+        return;
+    }
+
+    // The dialogs run an event loop: the connection or the tag may have changed.
+    if (!m_connected || generation != m_connectionGeneration) {
+        emit message(tr("Not connected — cannot write."));
+        return;
+    }
+    if (!stillSame(tag)) {
+        m_warn(rich::headline(tr("'%1' changed or lost its reading while the confirmation was open.")
+                                  .arg(tag.name))
+               + rich::paragraph(tr("Nothing was written.")));
+        return;
+    }
+    const QList<quint16> bits{quint16(on ? 1 : 0)};
+    const quint64 reqId = m_nextRequest++;
+    m_pending.insert(reqId, {tag.id});
+    m_pendingRegisters.insert(reqId, 1);
+    m_pendingLog.insert(reqId, {makeLogEntry(tag, base, current, scaledValue, bits,
+                                             writeFunctionCode(Area::Coil, 1),
+                                             quick ? QStringLiteral("quick") : QStringLiteral("table"),
+                                             m_server)});
+    emit message(tr("Writing %1 to %2 '%3' ...").arg(bitText(scaledValue), registerRange(tag, base), tag.name));
+    emit writeCoils(reqId, tag.address, bits);
+}
+
 void WriteController::requestWriteSelection(const QList<int> &rows)
 {
     if (!m_connected) {
@@ -452,15 +544,26 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         if (tags.contains(tag))
             continue;
         if (!tag.isWritable()) {
-            m_warn(rich::headline(tr("'%1' is not a writable holding register.").arg(tag.name)));
+            m_warn(rich::headline(tag.area == Area::DiscreteInput
+                                      ? tr("'%1' is not writable.").arg(tag.name)
+                                      : tr("'%1' is not a writable holding register.").arg(tag.name)));
             return;
         }
         tags.append(tag);
     }
-    if (tags.size() < 2 || tags.size() > 123) {
-        m_warn(rich::headline(tr("Select between 2 and 123 writable holding registers "
-                                 "(selected: %1).")
-                                  .arg(tags.size())));
+    const bool coils = std::any_of(tags.cbegin(), tags.cend(), [](const Tag &t) { return t.isBit(); });
+    if (coils && !std::all_of(tags.cbegin(), tags.cend(), [](const Tag &t) { return t.isBit(); })) {
+        m_warn(rich::headline(tr("Select either registers or coils, not both.")));
+        return;
+    }
+    const int maxCount = coils ? 1968 : 123;
+    if (tags.size() < 2 || tags.size() > maxCount) {
+        m_warn(rich::headline(coils ? tr("Select between 2 and %1 writable coils (selected: %2).")
+                                          .arg(maxCount)
+                                          .arg(tags.size())
+                                    : tr("Select between 2 and 123 writable holding registers "
+                                         "(selected: %1).")
+                                          .arg(tags.size())));
         return;
     }
     std::sort(tags.begin(), tags.end(), [](const Tag &a, const Tag &b) { return a.address < b.address; });
@@ -479,17 +582,19 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
             return;
         }
         if (next.address != expected) {
-            m_warn(rich::headline(tr("The selected registers are not consecutive."))
-                   + rich::paragraph(tr("'%1' (%2) should start at HR %3 to follow '%4' (%5), but "
-                                        "starts at HR %6.")
+            m_warn(rich::headline(coils ? tr("The selected coils are not consecutive.")
+                                        : tr("The selected registers are not consecutive."))
+                   + rich::paragraph(tr("'%1' (%2) should start at %7 %3 to follow '%4' (%5), but "
+                                        "starts at %7 %6.")
                                          .arg(next.name, registerRange(next, base))
                                          .arg(expected + base)
                                          .arg(prev.name, registerRange(prev, base))
-                                         .arg(next.address + base)));
+                                         .arg(next.address + base)
+                                         .arg(areaPrefix(next.area))));
             return;
         }
     }
-    if (totalRegisters > 123) {
+    if (!coils && totalRegisters > 123) {
         m_warn(rich::headline(tr("Too many registers: the selection spans %1 registers (maximum "
                                  "123).")
                                   .arg(totalRegisters)));
@@ -552,7 +657,8 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     // Write limits (all violations in one warning).
     QStringList outside;
     for (qsizetype i = 0; i < tags.size(); ++i)
-        if (std::isfinite(values->at(i)) && !tags.at(i).withinWriteLimits(values->at(i)))
+        if (!tags.at(i).isBit() && std::isfinite(values->at(i))
+            && !tags.at(i).withinWriteLimits(values->at(i)))
             outside.append(limitViolationText(tags.at(i), values->at(i)));
     if (!outside.isEmpty()) {
         m_warn(rich::headline(tr("Values outside the write limits:")) + rich::bullets(outside));
@@ -564,7 +670,7 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     QStringList unconfirmed;
     QList<TagId> unconfirmedIds;
     for (const Tag &tag : std::as_const(tags)) {
-        if (tag.encodingVerified)
+        if (tag.encodingVerified || tag.isBit())
             continue;
         if (registerCount(tag.type) == 2)
             unconfirmed.append(tr("'%1' reads %2 as %3 (%4)")
@@ -598,6 +704,10 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     QList<quint16> raws;
     QStringList bad;
     for (qsizetype i = 0; i < tags.size(); ++i) {
+        if (tags.at(i).isBit() && values->at(i) != 0.0 && values->at(i) != 1.0) {
+            bad.append(tr("%1 = %2 (coil: ON or OFF)").arg(tags.at(i).name, valueText(values->at(i))));
+            continue;
+        }
         const auto raw = encodeRegisters(tags.at(i), values->at(i));
         if (!raw)
             bad.append(tr("%1 = %2 (%3, gain %4, offset %5)")
@@ -639,15 +749,19 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     for (qsizetype i = 0; i < tags.size(); ++i) {
         const Tag &tag = tags.at(i);
         const auto cur = m_model->goodValue(tag.id);
-        table.append({tag.name, cur ? valueText(*cur) + unitSuffix(tag) : tr("unknown"),
-                      valueText(values->at(i)) + unitSuffix(tag)});
+        if (coils)
+            table.append({tag.name, cur ? bitText(*cur) : tr("unknown"), bitText(values->at(i))});
+        else
+            table.append({tag.name, cur ? valueText(*cur) + unitSuffix(tag) : tr("unknown"),
+                          valueText(values->at(i)) + unitSuffix(tag)});
     }
-    const QString range = shownFirst == shownLast ? QStringLiteral("HR %1").arg(shownFirst)
-                                                  : QStringLiteral("HR %1-%2").arg(shownFirst).arg(shownLast);
+    const QString prefix = areaPrefix(tags.first().area);
+    const QString range = shownFirst == shownLast ? QStringLiteral("%1 %2").arg(prefix).arg(shownFirst)
+                                                  : QStringLiteral("%1 %2-%3").arg(prefix).arg(shownFirst).arg(shownLast);
     const QString question =
         rich::headline(tags.size() == 1 ? tr("Write 1 tag?") : tr("Write %1 tags?").arg(tags.size()))
         + rich::grid({tr("Tag"), tr("Current"), tr("New")}, table, 2)
-        + rich::note(tr("%1 · FC16").arg(range));
+        + rich::note(tr("%1 · FC%2").arg(range).arg(writeFunctionCode(tags.first().area, 2)));
     if (!m_confirm(question))
         return;
 
@@ -676,10 +790,16 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
         const Tag &tag = tags.at(i);
         const qsizetype n = registerCount(tag.type);
         log.append(makeLogEntry(tag, base, m_model->goodValue(tag.id), values->at(i),
-                                raws.mid(offset, n), 16, QStringLiteral("selection"), m_server));
+                                raws.mid(offset, n), writeFunctionCode(tag.area, 2),
+                                QStringLiteral("selection"), m_server));
         offset += n;
     }
     m_pendingLog.insert(reqId, log);
+    if (coils) {
+        emit message(tr("Writing %1 coils CO %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
+        emit writeCoils(reqId, first, raws);
+        return;
+    }
     emit message(tr("Writing %1 registers HR %2..%3 ...").arg(totalRegisters).arg(shownFirst).arg(shownLast));
     emit writeRegisters(reqId, first, raws);
 }
@@ -729,7 +849,18 @@ void WriteController::onWriteFinished(quint64 requestId, const ModbusResult &res
                     registers += registerCount(m_model->tagAt(row).type);
             }
         }
-        if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1) {
+        bool coilWrite = false;
+        for (TagId id : ids) {
+            const int row = m_model->rowOf(id);
+            if (row >= 0 && m_model->tagAt(row).isBit())
+                coilWrite = true;
+        }
+        if (coilWrite) {
+            if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1)
+                m_warn(rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
+                       + rich::paragraph(tr("It answered \"Illegal function\": it does not accept FC15 "
+                                            "(write multiple coils). Nothing was written.")));
+        } else if (result.error == ModbusError::Exception && result.exceptionCode == 1 && registers > 1) {
             m_warn(rich::headline(tr("The device rejected the write of %1.").arg(quotedNames(names)))
                    + rich::paragraph(tr("It answered \"Illegal function\": it does not accept FC16 "
                                         "(write multiple registers), which 32-bit values and "

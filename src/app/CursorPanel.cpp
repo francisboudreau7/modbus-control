@@ -50,6 +50,12 @@ QString cursorName(int n)
     return QStringLiteral("C") + QString::number(n);
 }
 
+/// Value of a tag at a cursor: ON / OFF for bit tags, a number otherwise; "—" when missing.
+QString fmtValue(const Tag &tag, double v)
+{
+    return tag.isBit() && std::isfinite(v) ? bitText(v) : fmtNum(v);
+}
+
 QString tagLabel(const Tag &tag)
 {
     return tag.unit.isEmpty() ? tag.name
@@ -273,9 +279,9 @@ QString CursorPanel::readoutText() const
         for (auto it = m_cursors.cbegin(); it != m_cursors.cend(); ++it) {
             const double v = m_recorder ? m_recorder->sampleAt(tag.id, it.value()) : nan();
             y.insert(it.key(), v);
-            parts << cursorName(it.key()) + QLatin1Char(' ') + fmtNum(v);
+            parts << cursorName(it.key()) + QLatin1Char(' ') + fmtValue(tag, v);
         }
-        if (pair)
+        if (pair && !tag.isBit())
             parts << kDelta + QStringLiteral("Y ") + fmtNum(y.value(m_to) - y.value(m_from));
         lines << tagLabel(tag) + QStringLiteral(": ") + parts.join(QStringLiteral("   "));
     }
@@ -337,10 +343,11 @@ void CursorPanel::refresh()
         for (int key : keys) {
             const double v = m_recorder ? m_recorder->sampleAt(tag.id, m_cursors.value(key)) : nan();
             y.insert(key, v);
-            texts << fmtNum(v);
+            texts << fmtValue(tag, v);
         }
         if (pair)
-            texts << fmtNum(y.value(m_to) - y.value(m_from)); // NaN propagates
+            texts << (tag.isBit() ? QString()
+                                  : fmtNum(y.value(m_to) - y.value(m_from))); // NaN propagates
 
         for (int col = 0; col < colCount; ++col) {
             QTableWidgetItem *item = m_table->item(row, col);

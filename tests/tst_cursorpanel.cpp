@@ -153,6 +153,7 @@ private slots:
     void noCursorsText();
     void cursorListShowsColoursAndTimes();
     void decimalPointIsDot();
+    void bitTagsShowOnOff();
 };
 
 void TstCursorPanel::layoutContract()
@@ -434,6 +435,39 @@ void TstCursorPanel::readoutTextLines()
     QCOMPARE(lines.size(), qsizetype(4)); // cursor times + A, C, D
     QCOMPARE(lines.at(0), QStringLiteral("C2 = 2.000 s"));
     QCOMPARE(lines.at(3), QString(QStringLiteral(u"D: C2 7")));
+}
+
+// v1.3.4: a bit tag reads ON / OFF at each cursor and has no delta.
+void TstCursorPanel::bitTagsShowOnOff()
+{
+    Recorder rec2;
+    rec2.append(batch(0, {good(1, 10), good(5, 0)}));
+    rec2.append(batch(1, {good(1, 20), good(5, 1)}));
+    rec2.append(batch(2, {good(1, 30), good(5, 1)}));
+    rec2.append(batch(3, {good(1, 40), timeout(5)}));
+    Tag bit = makeTag(5, QStringLiteral("Pump"), QString(), QStringLiteral("#123456"), true);
+    bit.area = Area::Coil;
+    bit.type = ValueType::Bool;
+    CursorPanel panel;
+    panel.setRecorder(&rec2);
+    panel.setTags({standardTags().first(), bit});
+
+    panel.setCursors(0.5, 2.5);
+    QCOMPARE(cell(panel, 0, 1), QStringLiteral("10"));
+    QCOMPARE(cell(panel, 0, 3), QStringLiteral("20")); // numeric tags still get a delta
+    QCOMPARE(cell(panel, 1, 1), QStringLiteral("OFF"));
+    QCOMPARE(cell(panel, 1, 2), QStringLiteral("ON"));
+    QCOMPARE(cell(panel, 1, 3), QString());
+    QCOMPARE(tableOf(panel)->columnCount(), 4);
+
+    const QStringList lines = panel.readoutText().split(QLatin1Char('\n'));
+    QCOMPARE(lines.size(), qsizetype(4));
+    QCOMPARE(lines.at(2), QString(QStringLiteral(u"A [V]: C1 10   C2 30   ΔY 20")));
+    QCOMPARE(lines.at(3), QStringLiteral("Pump: C1 OFF   C2 ON"));
+
+    // No Good sample before the cursor -> "—"; a failed last sample counts as missing.
+    panel.setCursors(3.0, std::nullopt);
+    QCOMPARE(cell(panel, 1, 1), kDashText);
 }
 
 void TstCursorPanel::sixCursorsColumns()

@@ -267,6 +267,7 @@ private slots:
     void modelColorButton();
     void zeroPercentAtC1();
     void numberInputAcceptsComma();
+    void bitTagsAreNotOffered();
 };
 
 void TstAnalysisPanel::constructs()
@@ -1685,6 +1686,56 @@ void TstAnalysisPanel::numberInputAcceptsComma()
             QVERIFY2(dynamic_cast<NumberSpinBox *>(child<QDoubleSpinBox>(panel, name)), name);
     }
     QLocale::setDefault(QLocale::c());
+}
+
+void TstAnalysisPanel::bitTagsAreNotOffered()
+{
+    QList<Tag> tags = standardTags();
+    Tag bit = makeTag(9, QStringLiteral("Pump"), QString(), QStringLiteral("#123456"));
+    bit.area = Area::Coil;
+    bit.type = ValueType::Bool;
+    tags.append(bit);
+    Fx fx(true, tags);
+    auto *pv = child<QComboBox>(fx.panel, "pvCombo");
+    auto *co = child<QComboBox>(fx.panel, "coCombo");
+    auto *list = child<QListWidget>(fx.panel, "setpointTagList");
+    QCOMPARE(pv->findData(9u), -1);
+    QCOMPARE(co->findData(9u), -1);
+    QCOMPARE(pv->count(), 4); // Choose... + the three register tags
+    QCOMPARE(list->count(), 3);
+    for (int i = 0; i < list->count(); ++i)
+        QVERIFY(list->item(i)->data(Qt::UserRole).toUInt() != 9u);
+
+    // A project that names a bit tag loads and treats it as not chosen.
+    fx.apply([](AnalysisSettings &s) {
+        s.pvTagId = 9;
+        s.deltaCoTagId = 9;
+        s.setpointTagIds = {9};
+    });
+    QCOMPARE(fx.panel.settings().pvTagId, TagId(0));
+    QCOMPARE(fx.panel.settings().deltaCoTagId, TagId(0));
+    QCOMPARE(pv->currentIndex(), 0);
+    QCOMPARE(co->currentIndex(), 0);
+    QVERIFY(fx.panel.results().isEmpty());
+
+    // A bit tag among the setpoint tags is not analysed.
+    fx.apply([](AnalysisSettings &s) {
+        s.pvTagId = kPv;
+        s.setpointTagIds = {kPv, kOther};
+    });
+    const qsizetype two = fx.panel.results().size();
+    QCOMPARE(two, qsizetype(2));
+    fx.apply([](AnalysisSettings &s) { s.setpointTagIds = {kPv, 9}; });
+    QCOMPARE(fx.panel.results().size(), qsizetype(1));
+
+    // A tag that becomes a bit tag while chosen is dropped.
+    Fx fx2(true);
+    QCOMPARE(fx2.panel.settings().pvTagId, kPv);
+    QList<Tag> changed = standardTags();
+    changed[1].area = Area::DiscreteInput;
+    changed[1].type = ValueType::Bool;
+    fx2.panel.setTags(changed);
+    QCOMPARE(fx2.panel.settings().pvTagId, TagId(0));
 }
 
 QTEST_MAIN(TstAnalysisPanel)
