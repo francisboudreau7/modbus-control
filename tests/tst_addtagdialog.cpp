@@ -680,6 +680,133 @@ private slots:
         d.findChild<QLineEdit *>("nameEdit")->clear();
         QVERIFY(d.tag().name.isEmpty());
     }
+
+    // ---- v1.3.4 coils and discrete inputs ----
+    void areaComboListsFourAreas()
+    {
+        AddTagDialog d({}, 0, std::nullopt);
+        QCOMPARE(area(d)->count(), 4);
+        QCOMPARE(area(d)->itemText(0), QStringLiteral("Holding register (FC03/FC06/FC16)"));
+        QCOMPARE(area(d)->itemText(1), QStringLiteral("Input register (FC04)"));
+        QCOMPARE(area(d)->itemText(2), QStringLiteral("Coil (FC01/FC05/FC15)"));
+        QCOMPARE(area(d)->itemText(3), QStringLiteral("Discrete input (FC02)"));
+        QCOMPARE(area(d)->currentIndex(), -1);
+    }
+
+    void bitAreasForceBool()
+    {
+        AddTagDialog d({}, 0, std::nullopt);
+        QCheckBox *writable = d.findChild<QCheckBox *>("writableCheck");
+        choose(d, "12", 0);
+        type(d)->setCurrentIndex(type(d)->findText("float32"));
+        QVERIFY(order(d)->isEnabled());
+        QVERIFY(type(d)->isEnabled());
+
+        area(d)->setCurrentIndex(2);
+        QCOMPARE(type(d)->currentText(), QStringLiteral("bool"));
+        QVERIFY(!type(d)->isEnabled());
+        QVERIFY(!order(d)->isEnabled());
+        QVERIFY(writable->isEnabled());
+        writable->setChecked(true);
+        Tag t = d.tag();
+        QVERIFY(t.area == Area::Coil);
+        QVERIFY(t.type == ValueType::Bool);
+        QCOMPARE(t.address, quint16(12));
+        QVERIFY(t.byteOrder == ByteOrder::ABCD);
+        QVERIFY(t.writable);
+        QVERIFY(t.encodingVerified);
+        QVERIFY(ok(d)->isEnabled());
+
+        area(d)->setCurrentIndex(3);
+        QCOMPARE(type(d)->currentText(), QStringLiteral("bool"));
+        QVERIFY(!type(d)->isEnabled());
+        QVERIFY(!writable->isEnabled());
+        QVERIFY(!writable->isChecked());
+        t = d.tag();
+        QVERIFY(t.area == Area::DiscreteInput);
+        QVERIFY(t.type == ValueType::Bool);
+        QVERIFY(!t.writable);
+
+        // Back to a register area: the type is editable again and is not bool.
+        area(d)->setCurrentIndex(1);
+        QVERIFY(type(d)->isEnabled());
+        QCOMPARE(type(d)->currentText(), QStringLiteral("int16"));
+        QVERIFY(d.tag().type == ValueType::Int16);
+        QVERIFY(!writable->isEnabled());
+        area(d)->setCurrentIndex(0);
+        QVERIFY(writable->isEnabled());
+    }
+
+    void overlapIsPerArea()
+    {
+        Tag hr;
+        hr.id = 1;
+        hr.name = QStringLiteral("Level");
+        hr.address = 12;
+        Tag co;
+        co.id = 2;
+        co.name = QStringLiteral("Pump");
+        co.area = Area::Coil;
+        co.type = ValueType::Bool;
+        co.address = 20;
+        AddTagDialog d({hr, co}, 0, std::nullopt);
+        // A coil at a holding register's address does not overlap it.
+        choose(d, "12", 2);
+        QVERIFY(overlap(d)->isHidden());
+        QVERIFY(ok(d)->isEnabled());
+        // A discrete input at a coil's address neither.
+        choose(d, "20", 3);
+        QVERIFY(overlap(d)->isHidden());
+        // The same area and address does.
+        choose(d, "20", 2);
+        QVERIFY(!overlap(d)->isHidden());
+        QCOMPARE(overlap(d)->text(), QStringLiteral("Overlaps 'Pump' (CO 20)."));
+        QVERIFY(!ok(d)->isEnabled());
+        // Bits are one address wide: the next address is free.
+        address(d)->setText("21");
+        QVERIFY(overlap(d)->isHidden());
+        QVERIFY(ok(d)->isEnabled());
+        // And a holding register still overlaps the holding register.
+        choose(d, "12", 0);
+        QVERIFY(!overlap(d)->isHidden());
+        QCOMPARE(overlap(d)->text(), QStringLiteral("Overlaps 'Level' (HR 12)."));
+    }
+
+    void bitPreviewReadUsesBitArea()
+    {
+        AddTagDialog d({}, 0, std::nullopt);
+        Fake fake;
+        fake.regs[12] = 1;
+        fake.regs[5] = 0;
+        d.setReadFunction(fake.fn());
+        d.setConnected(true);
+        choose(d, "12", 2);
+        QVERIFY(readButton(d)->isEnabled());
+        QVERIFY(!detectButton(d)->isEnabled());
+        readButton(d)->click();
+        QTRY_VERIFY(plain(preview(d)).contains(QStringLiteral("CO 12 is ON")));
+        // One read of one bit in the coil area; no neighbours.
+        QCOMPARE(fake.calls.size(), 1);
+        QVERIFY(fake.calls.at(0).area == Area::Coil);
+        QCOMPARE(fake.calls.at(0).address, 12);
+        QCOMPARE(fake.calls.at(0).count, 1);
+
+        fake.calls.clear();
+        choose(d, "5", 3);
+        readButton(d)->click();
+        QTRY_VERIFY(plain(preview(d)).contains(QStringLiteral("DI 5 is OFF")));
+        QCOMPARE(fake.calls.size(), 1);
+        QVERIFY(fake.calls.at(0).area == Area::DiscreteInput);
+
+        // Failure reads like any other.
+        fake.calls.clear();
+        choose(d, "300", 2);
+        readButton(d)->click();
+        QTRY_VERIFY(plain(preview(d)).contains(QStringLiteral("CO 300 could not be read")));
+        // Detect is not offered, and the auto read after the typing delay reads one bit too.
+        QVERIFY(!detectButton(d)->isEnabled());
+        QVERIFY(!d.detectionConfirmed());
+    }
 };
 
 QTEST_MAIN(TstAddTagDialog)

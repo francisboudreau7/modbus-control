@@ -1272,7 +1272,7 @@ private slots:
         QVERIFY(m.data(qa).toString().isEmpty());
 
         // Area last: switching to Input makes the tag read-only.
-        pickComboItem(w, m.index(0, C::Area), QStringLiteral("Input"));
+        pickComboItem(w, m.index(0, C::Area), areaLabel(Area::InputRegister));
         QCOMPARE(m.data(m.index(0, C::Area)).toString(), QString("Input"));
         QVERIFY(!m.tagAt(0).writable);
     }
@@ -2618,6 +2618,380 @@ private slots:
             QCOMPARE(wr.at(0).at(1).toDouble(), 13.5);
         }
         QLocale::setDefault(previous);
+    }
+
+    // ---- v1.3.4 coils and discrete inputs ----
+    static Tag bitTag(TagId id, const QString &name, Area area, quint16 addr = 12, bool writable = false)
+    {
+        Tag t = makeTag(id, name, area, addr, writable);
+        t.type = ValueType::Bool;
+        t.encodingVerified = true;
+        return t;
+    }
+
+    static SampleBatch bitSample(TagId id, double value)
+    {
+        SampleBatch b;
+        TagSample s;
+        s.tagId = id;
+        s.value = value;
+        s.raw = value != 0.0 ? 1u : 0u;
+        s.quality = Quality::Good;
+        b.samples << s;
+        return b;
+    }
+
+    void bitAreaParsingAndTooltip()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({makeTag(1, "a", Area::HoldingRegister, 3)}, 2);
+        QCOMPARE(m.data(ix(m, 0, C::Area), Qt::ToolTipRole).toString(),
+                 areaLabel(Area::HoldingRegister));
+        QVERIFY(m.setData(ix(m, 0, C::Area), "coil"));
+        QVERIFY(m.tagAt(0).area == Area::Coil);
+        QCOMPARE(m.data(ix(m, 0, C::Area)).toString(), QStringLiteral("Coil"));
+        QCOMPARE(m.data(ix(m, 0, C::Area), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Coil (FC01/FC05/FC15)"));
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Discrete"));
+        QVERIFY(m.tagAt(0).area == Area::DiscreteInput);
+        QCOMPARE(m.data(ix(m, 0, C::Area), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Discrete input (FC02)"));
+        QVERIFY(m.setData(ix(m, 0, C::Area), areaLabel(Area::Coil)));
+        QVERIFY(m.tagAt(0).area == Area::Coil);
+        QVERIFY(!m.setData(ix(m, 0, C::Area), "Relay"));
+        // The lock tooltips win over the area label.
+        m.setConnected(true);
+        QCOMPARE(m.data(ix(m, 0, C::Area), Qt::ToolTipRole).toString(),
+                 QStringLiteral("Disconnect to change the register settings"));
+    }
+
+    void areaChangeBetweenRegisterAndBitAreas()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        Tag t = makeTag(1, "a", Area::HoldingRegister, 3);
+        t.type = ValueType::Float32;
+        t.byteOrder = mb::ByteOrder::CDAB;
+        t.gain = 2.0;
+        t.offset = 5.0;
+        t.writeMin = 1.0;
+        t.writeMax = 9.0;
+        t.quickA = 2.0;
+        t.quickB = 3.0;
+        m.setTags({t}, 2);
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Coil"));
+        const Tag &c = m.tagAt(0);
+        QVERIFY(c.type == ValueType::Bool);
+        QVERIFY(c.byteOrder == mb::ByteOrder::ABCD);
+        QCOMPARE(c.gain, 1.0);
+        QCOMPARE(c.offset, 0.0);
+        QVERIFY(!c.writeMin && !c.writeMax && !c.quickA && !c.quickB);
+        QVERIFY(c.encodingVerified);
+        QCOMPARE(m.data(ix(m, 0, C::Type)).toString(), QStringLiteral("bool"));
+        // Coil <-> discrete input keeps Bool; back to a register area gives int16.
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Discrete"));
+        QVERIFY(m.tagAt(0).type == ValueType::Bool);
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Input"));
+        QVERIFY(m.tagAt(0).type == ValueType::Int16);
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Coil"));
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Holding"));
+        QVERIFY(m.tagAt(0).type == ValueType::Int16);
+        // Coil -> Holding is not "was an input register".
+        bool wasInput = true;
+        m.setConfirmWritable([&wasInput](const TagTableModel::WritableAsk &a) {
+            wasInput = a.wasInput;
+            return true;
+        });
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!wasInput);
+        // typeFitsArea.
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "bool"));
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Coil"));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "int16"));
+        QVERIFY(!m.setData(ix(m, 0, C::Type), "float32"));
+        QVERIFY(m.setData(ix(m, 0, C::Type), "bool"));
+        // A new tag after a coil continues in the same area with the right type.
+        const int row = m.addTag();
+        QVERIFY(m.tagAt(row).area == Area::Coil);
+        QVERIFY(m.tagAt(row).type == ValueType::Bool);
+    }
+
+    void bitTagCells()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({bitTag(1, "run", Area::Coil, 12, true), bitTag(2, "alarm", Area::DiscreteInput, 5)}, 3);
+        const QString dash = QString(QChar(0x2014));
+        const QString tip = QStringLiteral("Not used by coils and discrete inputs");
+        for (int row = 0; row < 2; ++row) {
+            for (int col : {int(C::ByteOrder), int(C::Gain), int(C::Offset), int(C::WriteMin),
+                            int(C::WriteMax)}) {
+                QCOMPARE(m.data(ix(m, row, col)).toString(), dash);
+                QCOMPARE(m.data(ix(m, row, col), Qt::ToolTipRole).toString(), tip);
+                QVERIFY(!(m.flags(ix(m, row, col)) & Qt::ItemIsEditable));
+            }
+            QVERIFY(!m.setData(ix(m, row, C::Gain), 2.0));
+            QVERIFY(!m.setData(ix(m, row, C::Offset), 1.0));
+            QVERIFY(!m.setData(ix(m, row, C::ByteOrder), "CDAB"));
+            QVERIFY(!m.setData(ix(m, row, C::WriteMin), 0.0));
+            QCOMPARE(m.data(ix(m, row, C::Type)).toString(), QStringLiteral("bool"));
+            QVERIFY(m.flags(ix(m, row, C::Area)) & Qt::ItemIsEditable);
+            QVERIFY(m.flags(ix(m, row, C::Address)) & Qt::ItemIsEditable);
+        }
+        // Raw and Value.
+        QVERIFY(m.data(ix(m, 0, C::Raw)).toString().isEmpty());
+        m.updateSamples(bitSample(1, 1.0));
+        m.updateSamples(bitSample(2, 0.0));
+        QCOMPARE(m.data(ix(m, 0, C::Raw)).toString(), QStringLiteral("1"));
+        QCOMPARE(m.data(ix(m, 0, C::Value)).toString(), QStringLiteral("ON"));
+        QCOMPARE(m.data(ix(m, 1, C::Raw)).toString(), QStringLiteral("0"));
+        QCOMPARE(m.data(ix(m, 1, C::Value)).toString(), QStringLiteral("OFF"));
+        QCOMPARE(m.data(ix(m, 0, C::Value), Qt::EditRole).toString(), QStringLiteral("ON"));
+        // Never the encoding warning, even if a caller passes the flag cleared.
+        Tag unverified = bitTag(3, "u", Area::Coil, 1);
+        unverified.encodingVerified = false;
+        m.setTags({unverified}, 4);
+        QVERIFY(m.tagAt(0).encodingVerified);
+        QVERIFY(!m.data(ix(m, 0, C::Name), Qt::DecorationRole).isValid());
+        QVERIFY(m.data(ix(m, 0, C::Name), Qt::ToolTipRole).toString().isEmpty());
+    }
+
+    void coilValueAndQuickInputs()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({bitTag(1, "run", Area::Coil, 12, true)}, 2);
+        QSignalSpy wr(&m, &TagTableModel::writeRequested);
+        const QModelIndex v = ix(m, 0, C::Value);
+        QVERIFY(m.flags(v) & Qt::ItemIsEditable);
+        QVERIFY(m.setData(v, "ON"));
+        QVERIFY(m.setData(v, "off"));
+        QVERIFY(m.setData(v, "1"));
+        QVERIFY(m.setData(v, "0"));
+        QVERIFY(m.setData(v, true));
+        QVERIFY(m.setData(v, false));
+        QVERIFY(m.setData(v, 1));
+        QVERIFY(m.setData(v, 0.0));
+        QCOMPARE(wr.size(), 8);
+        const double expect[] = {1, 0, 1, 0, 1, 0, 1, 0};
+        for (int i = 0; i < 8; ++i) {
+            QCOMPARE(wr.at(i).at(0).toULongLong(), quint64(1));
+            QCOMPARE(wr.at(i).at(1).toDouble(), expect[i]);
+        }
+        QVERIFY(!m.setData(v, "maybe"));
+        QVERIFY(!m.setData(v, 2));
+        QVERIFY(!m.setData(v, ""));
+        QCOMPARE(wr.size(), 8);
+
+        // Quick presets: set on first ticking Writable.
+        m.setTags({bitTag(1, "run", Area::Coil, 12)}, 2);
+        QVERIFY(!(m.flags(ix(m, 0, C::QuickA)) & Qt::ItemIsEditable));
+        QVERIFY(!(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(m.tagAt(0).quickA.value_or(-1), 1.0);
+        QCOMPARE(m.tagAt(0).quickB.value_or(-1), 0.0);
+        QCOMPARE(m.data(ix(m, 0, C::QuickA)).toString(), QStringLiteral("ON"));
+        QCOMPARE(m.data(ix(m, 0, C::QuickB)).toString(), QStringLiteral("OFF"));
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), "off"));
+        QVERIFY(m.setData(ix(m, 0, C::QuickB), "ON"));
+        QCOMPARE(m.tagAt(0).quickA.value_or(-1), 0.0);
+        QCOMPARE(m.tagAt(0).quickB.value_or(-1), 1.0);
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), "7"));
+        QVERIFY(m.setData(ix(m, 0, C::QuickA), ""));
+        QVERIFY(!m.tagAt(0).quickA);
+        // A preset that is still set keeps the defaults from coming back.
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!m.tagAt(0).quickA);
+        QCOMPARE(m.tagAt(0).quickB.value_or(-1), 1.0);
+    }
+
+    void discreteInputsNeverWritable()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({bitTag(1, "di", Area::DiscreteInput, 5)}, 2);
+        const QModelIndex w = ix(m, 0, C::Writable);
+        QVERIFY(!(m.flags(w) & Qt::ItemIsEnabled));
+        QCOMPARE(m.data(w, Qt::ToolTipRole).toString(), QStringLiteral("Discrete inputs are read-only"));
+        QVERIFY(!m.setData(w, Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 0, C::Value), 1));
+        QVERIFY(!(m.flags(ix(m, 0, C::Value)) & Qt::ItemIsEditable));
+        // A coil's Writable is enabled.
+        m.setTags({bitTag(2, "co", Area::Coil, 5)}, 3);
+        QVERIFY(m.flags(w) & Qt::ItemIsEnabled);
+        QVERIFY(m.flags(w) & Qt::ItemIsUserCheckable);
+    }
+
+    void registerTextOfBitTags()
+    {
+        TagTableModel m;
+        const Tag co = bitTag(1, "co", Area::Coil, 12);
+        const Tag di = bitTag(2, "di", Area::DiscreteInput, 5);
+        QCOMPARE(m.registerText(co), QStringLiteral("CO 12"));
+        QCOMPARE(m.registerText(di), QStringLiteral("DI 5"));
+        m.setAddressBase(1);
+        QCOMPARE(m.registerText(co), QStringLiteral("CO 13"));
+        QCOMPARE(m.registerText(di), QStringLiteral("DI 6"));
+        QCOMPARE(m.registerText(makeTag(3, "h", Area::HoldingRegister, 5)),
+                 QStringLiteral("HR 6 · int16"));
+    }
+
+    void coilClassroomSafetyRules()
+    {
+        TagTableModel m;
+        QAbstractItemModelTester tester(&m);
+        m.setTags({bitTag(1, "pump", Area::Coil, 12), bitTag(2, "b", Area::Coil, 13)}, 3);
+        QList<TagTableModel::WritableAsk> asks;
+        bool answer = true;
+        m.setConfirmWritable([&](const TagTableModel::WritableAsk &a) {
+            asks << a;
+            return answer;
+        });
+        // confirmWritable.
+        answer = false;
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QCOMPARE(asks.size(), 1);
+        QCOMPARE(asks.at(0).registerText, QStringLiteral("CO 12"));
+        QCOMPARE(asks.at(0).tagName, QStringLiteral("pump"));
+        QVERIFY(!asks.at(0).wasInput);
+        QVERIFY(!m.tagAt(0).writable);
+        answer = true;
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(m.tagAt(0).writable);
+        // writeNeedsRead until a good reading.
+        QVERIFY(m.writeNeedsRead(1));
+        m.updateSamples(bitSample(1, 0.0));
+        QVERIFY(!m.writeNeedsRead(1));
+        // A new connection needs a reading again.
+        m.setConnected(true);
+        QVERIFY(m.writeNeedsRead(1));
+        // Lock while connected: Writable and the register settings cannot change.
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 1, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 0, C::Area), "Holding"));
+        QVERIFY(!(m.flags(ix(m, 0, C::Writable)) & Qt::ItemIsUserCheckable));
+        m.setConnected(false);
+        // Teacher lock.
+        m.setLocked(true);
+        QVERIFY(!m.setData(ix(m, 0, C::Writable), Qt::Unchecked, Qt::CheckStateRole));
+        QVERIFY(!m.setData(ix(m, 0, C::QuickA), "ON"));
+        QVERIFY(!m.setData(ix(m, 0, C::Address), 99));
+        QVERIFY(m.tagAt(0).writable);
+        m.setLocked(false);
+        // writableCleared with CO texts.
+        ClearProbe p;
+        probe(m, p);
+        QVERIFY(m.setData(ix(m, 0, C::Address), 20));
+        QVERIFY(!m.tagAt(0).writable);
+        QCOMPARE(p.ids, QList<TagId>{1});
+        QCOMPARE(p.was, QStringList{QStringLiteral("CO 12")});
+        QCOMPARE(p.now, QStringList{QStringLiteral("CO 20")});
+        // Changing a writable coil's area clears it too.
+        QVERIFY(m.setData(ix(m, 0, C::Writable), Qt::Checked, Qt::CheckStateRole));
+        p = ClearProbe();
+        probe(m, p);
+        QVERIFY(m.setData(ix(m, 0, C::Area), "Holding"));
+        QVERIFY(!m.tagAt(0).writable);
+        QVERIFY(p.was.contains(QStringLiteral("CO 20")));
+        QVERIFY(p.now.contains(QStringLiteral("HR 20 · int16")));
+    }
+
+    void bitTagEditorsInView()
+    {
+        TagTableModel m;
+        Tag co = bitTag(1, "run", Area::Coil, 12, true);
+        co.quickA = 1.0;
+        co.quickB = 0.0;
+        m.setTags({co, makeTag(2, "h", Area::HoldingRegister, 3)}, 3);
+        mb::TagTableWidget w(&m);
+        w.resize(1200, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+
+        // Area combo lists the four labelled areas and commits the chosen one.
+        {
+            auto *combo = openEditor<QComboBox>(w, m.index(1, C::Area));
+            QVERIFY(combo);
+            QCOMPARE(combo->count(), 4);
+            QCOMPARE(combo->itemText(2), QStringLiteral("Coil (FC01/FC05/FC15)"));
+            QCOMPARE(combo->itemText(3), QStringLiteral("Discrete input (FC02)"));
+            QCOMPARE(combo->currentIndex(), 0);
+            combo->hidePopup();
+            combo->setCurrentIndex(3);
+            emit combo->activated(3);
+            QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+            QVERIFY(m.tagAt(1).area == Area::DiscreteInput);
+            QVERIFY(m.tagAt(1).type == ValueType::Bool);
+            QVERIFY(m.setData(m.index(1, C::Area), "Holding"));
+        }
+        // Type: only bool for bit tags, only register types for register tags.
+        {
+            auto *combo = openEditor<QComboBox>(w, m.index(0, C::Type));
+            QVERIFY(combo);
+            QCOMPARE(combo->count(), 1);
+            QCOMPARE(combo->itemText(0), QStringLiteral("bool"));
+            combo->hidePopup();
+            QTest::keyClick(combo, Qt::Key_Escape);
+            QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+        }
+        {
+            auto *combo = openEditor<QComboBox>(w, m.index(1, C::Type));
+            QVERIFY(combo);
+            QCOMPARE(combo->count(), 5);
+            QCOMPARE(combo->findText("bool"), -1);
+            combo->hidePopup();
+            QTest::keyClick(combo, Qt::Key_Escape);
+            QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+        }
+        // A writable coil's Value is an ON/OFF combo that writes on pick.
+        {
+            QSignalSpy wr(&m, &TagTableModel::writeRequested);
+            auto *combo = openEditor<QComboBox>(w, m.index(0, C::Value));
+            QVERIFY(combo);
+            QCOMPARE(combo->count(), 2);
+            combo->hidePopup();
+            combo->setCurrentIndex(combo->findText("ON"));
+            emit combo->activated(combo->currentIndex());
+            QTRY_VERIFY(w.view()->findChild<QComboBox *>() == nullptr);
+            QCOMPARE(wr.size(), 1);
+            QCOMPARE(wr.at(0).at(1).toDouble(), 1.0);
+        }
+        // Quick A / B likewise; the presets are stored as 1 / 0.
+        pickComboItem(w, m.index(0, C::QuickA), "OFF");
+        QCOMPARE(m.tagAt(0).quickA.value_or(-1), 0.0);
+        pickComboItem(w, m.index(0, C::QuickB), "ON");
+        QCOMPARE(m.tagAt(0).quickB.value_or(-1), 1.0);
+    }
+
+    void bitTagMenuAndWriteButton()
+    {
+        TagTableModel m;
+        m.setTags({bitTag(1, "a", Area::Coil, 1, true), bitTag(2, "b", Area::Coil, 2, true),
+                   bitTag(3, "c", Area::DiscreteInput, 3), makeTag(4, "h")}, 5);
+        TagTableWidget w(&m);
+        QMenu *menu = w.rowMenu(0);
+        QVERIFY(menu);
+        QAction *detect = menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"));
+        QVERIFY(detect);
+        QVERIFY(!detect->isEnabled());
+        delete menu;
+        menu = w.rowMenu(3);
+        QVERIFY(menu->findChild<QAction *>(QStringLiteral("detectEncodingAction"))->isEnabled());
+        delete menu;
+
+        QPushButton *write = buttonNamed(&w, QStringLiteral("Write selected..."));
+        QVERIFY(write);
+        QVERIFY(!write->isEnabled());
+        w.view()->selectionModel()->select(m.index(0, 0),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        w.view()->selectionModel()->select(m.index(1, 0),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        QVERIFY(write->isEnabled());
+        w.view()->selectionModel()->select(m.index(2, 0),
+                                           QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        QVERIFY(!write->isEnabled());
     }
 };
 
