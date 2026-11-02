@@ -42,7 +42,9 @@ public:
     void setHvOpening(double pct);
     void setParams(const LoopParams &params);
     /// LIC-101 PID (v1.3.1): forwards to the model, and setAuto also calls
-    /// LoopServer::setOutWritable(!on); publishes and emits stateChanged().
+    /// LoopServer::setOutWritable(!on); publishes and emits stateChanged(). The published state
+    /// includes the mode (coil 0, v1.3.4): a coil write by a client calls setAuto() on the next
+    /// tick, so it behaves exactly like the faceplate's A/M button.
     void setAuto(bool on);
     void setPid(const PidSettings &pid);
 

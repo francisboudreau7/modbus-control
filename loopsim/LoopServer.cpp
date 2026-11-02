@@ -35,6 +35,7 @@ using NativeSocket = int;
 constexpr int kMaxClients = 60;  // select() on Windows is limited to FD_SETSIZE (64) sockets
 constexpr int kHoldingCount = 4; // SP (0-1), OUT (2-3)
 constexpr int kInputCount = 2;   // PV (0-1)
+constexpr int kCoilCount = 1;    // coil 0: Auto (OFF) / Manual (ON)
 
 NativeSocket native(int fd)
 {
@@ -118,6 +119,8 @@ struct Verdict {
     float sp = 0.0f;
     bool outWrite = false;
     float out = 0.0f;
+    bool modeWrite = false;
+    bool manual = false;
 };
 
 /// `pdu` points after the function code, `pduLen` bytes.
@@ -130,6 +133,37 @@ Verdict checkRequest(unsigned fc, const unsigned char *pdu, int pduLen)
             v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
         } else if (be16(pdu) != 0 || be16(pdu + 2) != 2) {
             v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+        }
+        break;
+    case MODBUS_FC_READ_COILS:
+        if (pduLen < 4) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
+        } else if (be16(pdu) != 0 || be16(pdu + 2) != 1) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+        }
+        break;
+    case MODBUS_FC_WRITE_SINGLE_COIL:
+        if (pduLen < 4) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
+        } else if (be16(pdu) != 0) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+        } else if (be16(pdu + 2) != 0xFF00u && be16(pdu + 2) != 0u) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
+        } else {
+            v.modeWrite = true;
+            v.manual = be16(pdu + 2) == 0xFF00u;
+        }
+        break;
+    case MODBUS_FC_WRITE_MULTIPLE_COILS:
+        if (pduLen < 4) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
+        } else if (be16(pdu) != 0 || be16(pdu + 2) != 1) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+        } else if (pduLen < 6 || pdu[4] != 1) {
+            v.exception = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
+        } else {
+            v.modeWrite = true;
+            v.manual = (pdu[5] & 1u) != 0;
         }
         break;
     case MODBUS_FC_READ_HOLDING_REGISTERS:
@@ -225,7 +259,7 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
                         .arg(port)
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
     }
-    m_mapping = modbus_mapping_new_start_address(0, 0, 0, 0, 0, kHoldingCount, 0, kInputCount);
+    m_mapping = modbus_mapping_new_start_address(0, kCoilCount, 0, 0, 0, kHoldingCount, 0, kInputCount);
     if (!m_mapping) {
         return fail(QStringLiteral("Cannot allocate the register mapping."));
     }
@@ -334,8 +368,11 @@ int LoopServer::clientCount() const
 
 void LoopServer::publishManual(bool manual)
 {
-    // T252 stub: coil 0 is not served yet.
-    Q_UNUSED(manual);
+    std::lock_guard lock(m_mutex);
+    // A client write not yet taken by the model wins over the model's older value.
+    if (!m_writes.modeWritten) {
+        m_manual = manual;
+    }
 }
 
 void LoopServer::publish(float pv, float sp, float out)
@@ -462,6 +499,13 @@ void LoopServer::run()
                         m_writes.outWritten = true;
                         m_writes.out = verdict.out;
                     }
+                    if (verdict.modeWrite) {
+                        // Always accepted, also in Auto; the controller switches the regulator.
+                        m_manual = verdict.manual;
+                        m_writes.modeWritten = true;
+                        m_writes.manual = verdict.manual;
+                    }
+                    m_mapping->tab_bits[0] = m_manual ? 1 : 0;
                     encodeFloat(m_regs.pv, m_mapping->tab_input_registers);
                     encodeFloat(m_regs.sp, m_mapping->tab_registers);
                     encodeFloat(m_regs.out, m_mapping->tab_registers + 2);

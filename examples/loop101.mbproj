@@ -10,7 +10,7 @@
     "pollPeriodMs": 100
   },
   "addressBase": 1,
-  "nextTagId": 4,
+  "nextTagId": 5,
   "tags": [
     {
       "id": 1,
@@ -59,6 +59,17 @@
       "writeMax": 100,
       "quickA": 50,
       "quickB": 60
+    },
+    {
+      "id": 4,
+      "name": "LIC-101 A/M",
+      "area": "coil",
+      "address": 0,
+      "type": "bool",
+      "unit": "",
+      "color": "#9467bd",
+      "plotted": false,
+      "writable": true
     }
   ],
   "analysis": {

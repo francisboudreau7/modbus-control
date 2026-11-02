@@ -355,6 +355,89 @@ bool readSignals(const ObjectReader &r, ServerConfig &cfg)
     return true;
 }
 
+bool readCoils(const ObjectReader &r, ServerConfig &cfg)
+{
+    const auto value = r.get("coils");
+    if (!value)
+        return true;
+    if (!value->isArray())
+        return r.fail("coils", QStringLiteral("must be an array"));
+
+    const QJsonArray items = value->toArray();
+    QList<quint16> on;
+    for (qsizetype i = 0; i < items.size(); ++i) {
+        const QJsonValue item = items.at(i);
+        if (!item.isObject())
+            return r.failRaw(QStringLiteral("\"coils[%1]\" must be an object").arg(i));
+        const QJsonObject object = item.toObject();
+        const QString prefix = QStringLiteral("coils[%1].").arg(i);
+        for (const QString &key : object.keys()) {
+            if (key != QStringLiteral("address") && key != QStringLiteral("value"))
+                return r.failRaw(QStringLiteral("\"%1%2\" is not a known key").arg(prefix, key));
+        }
+        const ObjectReader e(object, prefix, r.error());
+        if (!object.contains(QStringLiteral("address")))
+            return e.fail("address", QStringLiteral("is required"));
+        if (!object.contains(QStringLiteral("value")))
+            return e.fail("value", QStringLiteral("is required"));
+        quint16 address = 0;
+        bool state = false;
+        if (!e.readInt<quint16>("address", 0, 65535, address) || !e.readBool("value", state))
+            return false;
+        // A coil listed twice: the last entry wins.
+        on.removeAll(address);
+        if (state)
+            on.append(address);
+    }
+    cfg.coilsOn = on;
+    return true;
+}
+
+bool readBitSignals(const ObjectReader &r, ServerConfig &cfg)
+{
+    const auto value = r.get("bitSignals");
+    if (!value)
+        return true;
+    if (!value->isArray())
+        return r.fail("bitSignals", QStringLiteral("must be an array"));
+
+    const QJsonArray items = value->toArray();
+    QList<BitBinding> bindings;
+    for (qsizetype i = 0; i < items.size(); ++i) {
+        const QJsonValue item = items.at(i);
+        if (!item.isObject())
+            return r.failRaw(QStringLiteral("\"bitSignals[%1]\" must be an object").arg(i));
+        const QJsonObject object = item.toObject();
+        const QString prefix = QStringLiteral("bitSignals[%1].").arg(i);
+        static const QStringList kKeys = {QStringLiteral("discrete"), QStringLiteral("kind"),
+                                          QStringLiteral("periodS"), QStringLiteral("coil")};
+        for (const QString &key : object.keys()) {
+            if (!kKeys.contains(key))
+                return r.failRaw(QStringLiteral("\"%1%2\" is not a known key").arg(prefix, key));
+        }
+        const ObjectReader e(object, prefix, r.error());
+        if (!object.contains(QStringLiteral("discrete")))
+            return e.fail("discrete", QStringLiteral("is required"));
+        BitBinding binding;
+        if (!e.readInt<quint16>("discrete", 0, 65535, binding.discreteAddress))
+            return false;
+        QString kind;
+        if (!e.readString("kind", kind))
+            return false;
+        if (kind == QStringLiteral("square") || kind.isEmpty())
+            binding.kind = BitBinding::Kind::Square;
+        else if (kind == QStringLiteral("echo"))
+            binding.kind = BitBinding::Kind::Echo;
+        else
+            return e.fail("kind", QStringLiteral("has unknown kind \"%1\"").arg(kind));
+        if (!e.readPositive("periodS", binding.periodS) || !e.readInt<quint16>("coil", 0, 65535, binding.coil))
+            return false;
+        bindings.append(binding);
+    }
+    cfg.bitBindings = bindings;
+    return true;
+}
+
 bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
 {
     const ObjectReader r(root, QString(), error);
@@ -369,8 +452,12 @@ bool readRoot(const QJsonObject &root, ServerConfig &cfg, QString *error)
         && r.readBool("verbose", cfg.verbose)
         && r.readBool("logWrites", cfg.logWrites)
         && r.readBool("strict32Bit", cfg.strict32Bit)
+        && r.readInt("coilCount", 1, 65536, cfg.coilCount)
+        && r.readInt("discreteCount", 1, 65536, cfg.discreteCount)
         && readSignals(r, cfg)
-        && readHolding(r, cfg);
+        && readHolding(r, cfg)
+        && readCoils(r, cfg)
+        && readBitSignals(r, cfg);
     if (!ok)
         return false;
     if (cfg.host.isEmpty())
@@ -430,6 +517,46 @@ bool checkBindings(const ServerConfig &cfg, QString *error)
     return true;
 }
 
+/// Checks coil entries and bit signals against the final coilCount / discreteCount.
+bool checkBits(const ServerConfig &cfg, QString *error)
+{
+    for (qsizetype i = 0; i < cfg.coilsOn.size(); ++i) {
+        if (cfg.coilsOn.at(i) >= cfg.coilCount) {
+            setError(error, QStringLiteral("\"coils[%1].address\" is %2, but must be below coilCount (%3)")
+                                .arg(i)
+                                .arg(cfg.coilsOn.at(i))
+                                .arg(cfg.coilCount));
+            return false;
+        }
+    }
+    for (qsizetype i = 0; i < cfg.bitBindings.size(); ++i) {
+        const BitBinding &binding = cfg.bitBindings.at(i);
+        if (binding.discreteAddress >= cfg.discreteCount) {
+            setError(error, QStringLiteral("\"bitSignals[%1].discrete\" is %2, but must be below discreteCount (%3)")
+                                .arg(i)
+                                .arg(binding.discreteAddress)
+                                .arg(cfg.discreteCount));
+            return false;
+        }
+        if (binding.kind == BitBinding::Kind::Echo && binding.coil >= cfg.coilCount) {
+            setError(error, QStringLiteral("\"bitSignals[%1].coil\" is %2, but must be below coilCount (%3)")
+                                .arg(i)
+                                .arg(binding.coil)
+                                .arg(cfg.coilCount));
+            return false;
+        }
+        for (qsizetype j = 0; j < i; ++j) {
+            if (cfg.bitBindings.at(j).discreteAddress == binding.discreteAddress) {
+                setError(error, QStringLiteral("\"bitSignals[%1].discrete\" is already driven by \"bitSignals[%2]\"")
+                                    .arg(i)
+                                    .arg(j));
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 ServerConfig ServerConfig::defaults()
@@ -450,6 +577,11 @@ ServerConfig ServerConfig::defaults()
         {20, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::ABCD},
         {22, {SignalKind::Sine, 123.456, 0.0, 5.0, 2.0, 0}, RegisterFormat::Float32, WordOrder::CDAB},
         {24, {SignalKind::Sawtooth, 100000.0, 0.0, 8.0, 2.0, 0}, RegisterFormat::Int32, WordOrder::ABCD},
+    };
+    cfg.bitBindings = {
+        {0, BitBinding::Kind::Square, 4.0, 0},
+        {1, BitBinding::Kind::Echo, 4.0, 0},
+        {2, BitBinding::Kind::Echo, 4.0, 1},
     };
     return cfg;
 }
@@ -477,7 +609,14 @@ std::optional<ServerConfig> parseServerConfig(const QByteArray &json, QString *e
             return entry.address + registerCount(entry.format) > config.holdingCount;
         });
     }
-    if (!checkHoldingValues(config, error))
+    if (!document.object().contains(QStringLiteral("bitSignals"))) {
+        // Same for the default bit signals when a file shrinks coilCount / discreteCount.
+        config.bitBindings.removeIf([&config](const BitBinding &binding) {
+            return binding.discreteAddress >= config.discreteCount
+                || (binding.kind == BitBinding::Kind::Echo && binding.coil >= config.coilCount);
+        });
+    }
+    if (!checkHoldingValues(config, error) || !checkBits(config, error))
         return std::nullopt;
     return config;
 }

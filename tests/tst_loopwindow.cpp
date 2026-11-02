@@ -484,7 +484,7 @@ private slots:
         QCOMPARE(c.server().host(), QString("127.0.0.1"));
         auto *t = w.findChild<QTableWidget *>("modbusTable");
         QVERIFY(t);
-        QCOMPARE(t->rowCount(), 3);
+        QCOMPARE(t->rowCount(), 4);
         QVERIFY(!t->verticalHeader()->isVisible());
         QCOMPARE(t->item(0, 1)->text(), QString("Input register 1-2"));
         QCOMPARE(t->item(0, 2)->text(), QString("IR 0"));
@@ -515,6 +515,52 @@ private slots:
         c.setAuto(false);
         QCOMPARE(t->item(2, 5)->text(), QString("Read / write (0–100); read only in AUTO"));
         QVERIFY(w.findChild<QAction *>("modbusHelpAction"));
+
+        // Coil row: A/M, shown 1-based like the others.
+        QVERIFY(t->item(3, 0)->text().startsWith("LIC-101 A/M"));
+        QCOMPARE(t->item(3, 1)->text(), QString("Coil 1"));
+        QCOMPARE(t->item(3, 2)->text(), QString("CO 0"));
+        QCOMPARE(t->item(3, 4)->text(), QString("FC01 read, FC05 write"));
+        QCOMPARE(t->item(3, 6)->text(), QString("1 = Manual"));
+        c.setAuto(true);
+        QCOMPARE(t->item(3, 6)->text(), QString("0 = Auto"));
+        c.setAuto(false);
+        QCOMPARE(t->item(3, 6)->text(), QString("1 = Manual"));
+    }
+
+    void coilWriteSwitchesModeAndFaceplate()
+    {
+        LoopController c;
+        QString error;
+        QVERIFY2(c.startServer("127.0.0.1", 0, &error), qPrintable(error));
+        LoopWindow w(&c);
+        w.show();
+        w.findChild<QCheckBox *>("modbusCheck")->setChecked(true);
+        auto *t = w.findChild<QTableWidget *>("modbusTable");
+        QVERIFY(t);
+        QVERIFY(!c.model().isAuto());
+        QCOMPARE(t->item(3, 6)->text(), QString("1 = Manual"));
+
+        modbus_t *ctx = modbus_new_tcp("127.0.0.1", c.server().port());
+        QVERIFY(ctx);
+        QVERIFY(modbus_connect(ctx) == 0);
+        QCOMPARE(modbus_write_bit(ctx, 0, 0), 1); // Auto
+        c.tickFor(0.05);
+        QVERIFY(c.model().isAuto());
+        QCOMPARE(t->item(3, 6)->text(), QString("0 = Auto"));
+        QCOMPARE(t->item(2, 5)->text(), QString("Read only (AUTO)"));
+        auto *mode = w.faceplate()->findChild<QPushButton *>("modeButton");
+        QVERIFY(mode);
+        QCOMPARE(mode->text(), QString("AUTO"));
+
+        QCOMPARE(modbus_write_bit(ctx, 0, 1), 1); // Manual
+        c.tickFor(0.05);
+        QVERIFY(!c.model().isAuto());
+        QCOMPARE(t->item(3, 6)->text(), QString("1 = Manual"));
+        QCOMPARE(t->item(2, 5)->text(), QString("Read / write (0–100); read only in AUTO"));
+        QCOMPARE(mode->text(), QString("MAN"));
+        modbus_close(ctx);
+        modbus_free(ctx);
     }
 
     void modbusTableReadableInDarkTheme()

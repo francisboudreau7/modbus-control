@@ -101,6 +101,11 @@ private slots:
     void defaultHoldingEncoding();
     void unsignedEncoding();
     void strict32BitKey();
+    void bitDefaults();
+    void bitKeys();
+    void bitCountsShrinkDefaultSignals();
+    void bitRejects_data();
+    void bitRejects();
 };
 
 void TstServerConfig::defaultsMatchSpec()
@@ -650,6 +655,132 @@ void TstServerConfig::strict32BitKey()
         QVERIFY2(error.contains(QStringLiteral("strict32Bit")), qPrintable(error));
         QVERIFY2(error.contains(QStringLiteral("must be true or false")), qPrintable(error));
     }
+}
+
+void TstServerConfig::bitDefaults()
+{
+    const ServerConfig cfg = ServerConfig::defaults();
+    QCOMPARE(cfg.coilCount, 16);
+    QCOMPARE(cfg.discreteCount, 16);
+    QVERIFY(cfg.coilsOn.isEmpty());
+    QCOMPARE(cfg.bitBindings.size(), 3);
+    QCOMPARE(cfg.bitBindings.at(0).discreteAddress, quint16(0));
+    QCOMPARE(int(cfg.bitBindings.at(0).kind), int(BitBinding::Kind::Square));
+    QCOMPARE(cfg.bitBindings.at(0).periodS, 4.0);
+    QCOMPARE(cfg.bitBindings.at(1).discreteAddress, quint16(1));
+    QCOMPARE(int(cfg.bitBindings.at(1).kind), int(BitBinding::Kind::Echo));
+    QCOMPARE(cfg.bitBindings.at(1).coil, quint16(0));
+    QCOMPARE(cfg.bitBindings.at(2).discreteAddress, quint16(2));
+    QCOMPARE(int(cfg.bitBindings.at(2).kind), int(BitBinding::Kind::Echo));
+    QCOMPARE(cfg.bitBindings.at(2).coil, quint16(1));
+
+    QString error;
+    const auto parsed = parseServerConfig("{}", &error);
+    QVERIFY2(parsed.has_value(), qPrintable(error));
+    QCOMPARE(parsed->coilCount, 16);
+    QCOMPARE(parsed->bitBindings.size(), 3);
+}
+
+void TstServerConfig::bitKeys()
+{
+    QString error;
+    const auto cfg = parseServerConfig(R"JSON({
+        "coilCount": 40, "discreteCount": 8,
+        "coils": [ {"address": 3, "value": true}, {"address": 5, "value": false}, {"address": 39, "value": true} ],
+        "bitSignals": [ {"discrete": 0, "kind": "square", "periodS": 2.5},
+                        {"discrete": 7, "kind": "echo", "coil": 39},
+                        {"discrete": 4} ]
+    })JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->coilCount, 40);
+    QCOMPARE(cfg->discreteCount, 8);
+    QCOMPARE(cfg->coilsOn, (QList<quint16>{3, 39}));
+    QCOMPARE(cfg->bitBindings.size(), 3);
+    QCOMPARE(int(cfg->bitBindings.at(0).kind), int(BitBinding::Kind::Square));
+    QCOMPARE(cfg->bitBindings.at(0).periodS, 2.5);
+    QCOMPARE(int(cfg->bitBindings.at(1).kind), int(BitBinding::Kind::Echo));
+    QCOMPARE(cfg->bitBindings.at(1).discreteAddress, quint16(7));
+    QCOMPARE(cfg->bitBindings.at(1).coil, quint16(39));
+    QCOMPARE(int(cfg->bitBindings.at(2).kind), int(BitBinding::Kind::Square)); // default kind
+    QCOMPARE(cfg->bitBindings.at(2).periodS, 4.0);
+
+    // Present arrays replace the defaults, also when empty.
+    const auto none = parseServerConfig(R"JSON({"coils": [], "bitSignals": []})JSON", &error);
+    QVERIFY2(none.has_value(), qPrintable(error));
+    QVERIFY(none->coilsOn.isEmpty());
+    QVERIFY(none->bitBindings.isEmpty());
+
+    // Boundary: the largest counts.
+    QVERIFY(parseServerConfig(R"JSON({"coilCount": 65536, "discreteCount": 65536,
+        "coils": [ {"address": 65535, "value": true} ]})JSON", &error).has_value());
+}
+
+void TstServerConfig::bitCountsShrinkDefaultSignals()
+{
+    // Without "bitSignals", default bindings that do not fit the counts are dropped.
+    QString error;
+    auto cfg = parseServerConfig(R"JSON({"coilCount": 1})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->bitBindings.size(), 2); // DI2 echoes coil 1
+    cfg = parseServerConfig(R"JSON({"discreteCount": 1})JSON", &error);
+    QVERIFY2(cfg.has_value(), qPrintable(error));
+    QCOMPARE(cfg->bitBindings.size(), 1);
+    QCOMPARE(cfg->bitBindings.at(0).discreteAddress, quint16(0));
+}
+
+void TstServerConfig::bitRejects_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::addColumn<QString>("key");
+    QTest::newRow("coilCount zero") << QByteArray(R"({"coilCount":0})") << QStringLiteral("coilCount");
+    QTest::newRow("coilCount too large") << QByteArray(R"({"coilCount":65537})") << QStringLiteral("coilCount");
+    QTest::newRow("discreteCount zero") << QByteArray(R"({"discreteCount":0})") << QStringLiteral("discreteCount");
+    QTest::newRow("discreteCount fractional") << QByteArray(R"({"discreteCount":1.5})") << QStringLiteral("discreteCount");
+    QTest::newRow("coils not an array") << QByteArray(R"({"coils":{}})") << QStringLiteral("coils");
+    QTest::newRow("coil entry not an object") << QByteArray(R"({"coils":[1]})") << QStringLiteral("coils[0]");
+    QTest::newRow("coil address missing") << QByteArray(R"({"coils":[{"value":true}]})")
+                                          << QStringLiteral("coils[0].address");
+    QTest::newRow("coil value missing") << QByteArray(R"({"coils":[{"address":1}]})") << QStringLiteral("coils[0].value");
+    QTest::newRow("coil value number") << QByteArray(R"({"coils":[{"address":1,"value":1}]})")
+                                       << QStringLiteral("coils[0].value");
+    QTest::newRow("coil value string") << QByteArray(R"({"coils":[{"address":1,"value":"true"}]})")
+                                       << QStringLiteral("coils[0].value");
+    QTest::newRow("coil unknown key") << QByteArray(R"({"coils":[{"address":1,"value":true,"x":1}]})")
+                                      << QStringLiteral("coils[0].x");
+    QTest::newRow("coil address outside coilCount") << QByteArray(R"({"coilCount":4,"coils":[{"address":4,"value":true}]})")
+                                                    << QStringLiteral("coils[0].address");
+    QTest::newRow("coil address negative") << QByteArray(R"({"coils":[{"address":-1,"value":true}]})")
+                                           << QStringLiteral("coils[0].address");
+    QTest::newRow("bitSignals not an array") << QByteArray(R"({"bitSignals":1})") << QStringLiteral("bitSignals");
+    QTest::newRow("bit signal not an object") << QByteArray(R"({"bitSignals":[true]})") << QStringLiteral("bitSignals[0]");
+    QTest::newRow("bit signal discrete missing") << QByteArray(R"({"bitSignals":[{"kind":"square"}]})")
+                                                 << QStringLiteral("bitSignals[0].discrete");
+    QTest::newRow("bit signal unknown kind") << QByteArray(R"({"bitSignals":[{"discrete":0,"kind":"sine"}]})")
+                                             << QStringLiteral("bitSignals[0].kind");
+    QTest::newRow("bit signal unknown key") << QByteArray(R"({"bitSignals":[{"discrete":0,"format":"int16"}]})")
+                                            << QStringLiteral("bitSignals[0].format");
+    QTest::newRow("discrete outside discreteCount")
+        << QByteArray(R"({"discreteCount":2,"bitSignals":[{"discrete":2}]})") << QStringLiteral("bitSignals[0].discrete");
+    QTest::newRow("discrete driven twice")
+        << QByteArray(R"({"bitSignals":[{"discrete":3},{"discrete":3,"kind":"echo","coil":0}]})")
+        << QStringLiteral("bitSignals[1].discrete");
+    QTest::newRow("period zero") << QByteArray(R"({"bitSignals":[{"discrete":0,"periodS":0}]})")
+                                 << QStringLiteral("bitSignals[0].periodS");
+    QTest::newRow("period negative") << QByteArray(R"({"bitSignals":[{"discrete":0,"periodS":-1}]})")
+                                     << QStringLiteral("bitSignals[0].periodS");
+    QTest::newRow("echo coil outside coilCount")
+        << QByteArray(R"({"coilCount":2,"bitSignals":[{"discrete":0,"kind":"echo","coil":2}]})")
+        << QStringLiteral("bitSignals[0].coil");
+}
+
+void TstServerConfig::bitRejects()
+{
+    QFETCH(QByteArray, json);
+    QFETCH(QString, key);
+    QString error;
+    const auto cfg = parseServerConfig(json, &error);
+    QVERIFY(!cfg.has_value());
+    QVERIFY2(error.contains(key), qPrintable(error));
 }
 
 QTEST_GUILESS_MAIN(TstServerConfig)

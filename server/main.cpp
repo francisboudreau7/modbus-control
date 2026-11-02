@@ -222,6 +222,14 @@ int main(int argc, char *argv[])
         }
         std::printf("\n");
     }
+    std::printf("coils 0..%d (read/write), discrete inputs 0..%d\n", config.coilCount - 1, config.discreteCount - 1);
+    for (const mbsim::BitBinding &binding : std::as_const(config.bitBindings)) {
+        if (binding.kind == mbsim::BitBinding::Kind::Echo) {
+            std::printf("  DI%u: echo of coil %u\n", binding.discreteAddress, binding.coil);
+        } else {
+            std::printf("  DI%u: square (period %g s)\n", binding.discreteAddress, binding.periodS);
+        }
+    }
     if (config.delayMs > 0 || config.dropPercent > 0) {
         std::printf("fault injection: delay %d ms, drop %g%%\n", config.delayMs, config.dropPercent);
     }

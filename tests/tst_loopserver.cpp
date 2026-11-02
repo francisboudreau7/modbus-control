@@ -114,6 +114,10 @@ private slots:
     void controllerFaceplateSetPublishesAtOnce();
     void controllerCurrentScenarioAndReset();
     void autoModeRefusesOutWrites();
+    void coilReadsAndWrites();
+    void coilRefusals();
+    void coilPublishKeepsPendingWrite();
+    void controllerCoilSwitchesMode();
 };
 
 void TstLoopServer::startAndPort()
@@ -277,7 +281,9 @@ void TstLoopServer::invalidRequests()
     uint8_t bits[2];
     QCOMPARE(modbus_read_bits(c.ctx(), 0, 2, bits), -1);
     QCOMPARE(errno, kIllegalAddress);
-    QCOMPARE(modbus_write_bit(c.ctx(), 0, 1), -1);
+    QCOMPARE(modbus_write_bit(c.ctx(), 1, 1), -1); // only coil 0 exists
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_read_input_bits(c.ctx(), 0, 1, bits), -1); // no discrete inputs
     QCOMPARE(errno, kIllegalAddress);
     QCOMPARE(modbus_write_and_read_registers(c.ctx(), 0, 2, buf, 0, 2, buf + 4), -1);
     QCOMPARE(errno, kIllegalAddress);
@@ -629,6 +635,176 @@ void TstLoopServer::autoModeRefusesOutWrites()
     ctl.resetState();
     QVERIFY(!ctl.model().isAuto());
     QCOMPARE(c.writeFloat(2, 20.0f), 2);
+}
+
+void TstLoopServer::coilReadsAndWrites()
+{
+    LoopServer server;
+    QVERIFY(server.start(QStringLiteral("127.0.0.1"), 0));
+    Client c(server.port());
+    QVERIFY(c.connected());
+
+    uint8_t bit = 7;
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1); // default: Auto
+    QCOMPARE(int(bit), 0);
+    server.publishManual(true);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+    server.publishManual(false);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 0);
+    QVERIFY(!server.takeWrites().modeWritten);
+
+    // FC05 ON: reads back at once and is reported once.
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 1), 1);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+    LoopServer::Writes w = server.takeWrites();
+    QVERIFY(w.modeWritten);
+    QVERIFY(w.manual);
+    QVERIFY(!w.spWritten && !w.outWritten);
+    QVERIFY(!server.takeWrites().modeWritten);
+
+    // FC05 OFF, then FC15 with one coil.
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 0), 1);
+    w = server.takeWrites();
+    QVERIFY(w.modeWritten);
+    QVERIFY(!w.manual);
+    const uint8_t on = 1;
+    QCOMPARE(modbus_write_bits(c.ctx(), 0, 1, &on), 1);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+    w = server.takeWrites();
+    QVERIFY(w.modeWritten);
+    QVERIFY(w.manual);
+
+    // Accepted also while OUT is closed (Auto), and registers keep working.
+    server.setOutWritable(false);
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 0), 1);
+    QVERIFY(server.takeWrites().modeWritten);
+    float sp = 0, out = 0;
+    QVERIFY(c.readSpOut(&sp, &out));
+}
+
+void TstLoopServer::coilRefusals()
+{
+    LoopServer server;
+    QVERIFY(server.start(QStringLiteral("127.0.0.1"), 0));
+    Client c(server.port());
+    QVERIFY(c.connected());
+
+    uint8_t bits[4] = {};
+    const uint8_t two[2] = {1, 1};
+    errno = 0;
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 2, bits), -1);
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_read_bits(c.ctx(), 1, 1, bits), -1);
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_write_bit(c.ctx(), 1, 1), -1);
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_write_bits(c.ctx(), 0, 2, two), -1);
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_write_bits(c.ctx(), 1, 1, two), -1);
+    QCOMPARE(errno, kIllegalAddress);
+    QCOMPARE(modbus_read_input_bits(c.ctx(), 0, 1, bits), -1);
+    QCOMPARE(errno, kIllegalAddress);
+
+    // FC05 with a value other than 0xFF00 / 0x0000: illegal data value.
+    const uint8_t badValue[] = {1, 0x05, 0x00, 0x00, 0x12, 0x34};
+    uint8_t rsp[MODBUS_TCP_MAX_ADU_LENGTH] = {};
+    QVERIFY(modbus_send_raw_request(c.ctx(), badValue, int(sizeof(badValue))) > 0);
+    errno = 0;
+    const int rc = modbus_receive_confirmation(c.ctx(), rsp);
+    if (rc >= 9) {
+        QCOMPARE(int(rsp[7]), 0x85);
+        QCOMPARE(int(rsp[8]), 3);
+    } else {
+        QCOMPARE(rc, -1);
+        QCOMPARE(errno, kIllegalValue); // libmodbus reports the exception as an error
+    }
+
+    QVERIFY(!server.takeWrites().modeWritten);
+    uint8_t bit = 9;
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1); // still in step
+    QCOMPARE(int(bit), 0);
+}
+
+void TstLoopServer::coilPublishKeepsPendingWrite()
+{
+    // A client write not yet taken by the model wins over the model's older mode.
+    LoopServer server;
+    QVERIFY(server.start(QStringLiteral("127.0.0.1"), 0));
+    Client c(server.port());
+    QVERIFY(c.connected());
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 1), 1);
+    server.publishManual(false);
+    uint8_t bit = 0;
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+    QVERIFY(server.takeWrites().modeWritten);
+    server.publishManual(false);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 0);
+}
+
+void TstLoopServer::controllerCoilSwitchesMode()
+{
+    LoopController ctl;
+    QString error;
+    QVERIFY2(ctl.startServer(QStringLiteral("127.0.0.1"), 0, &error), qPrintable(error));
+    Client c(ctl.server().port());
+    QVERIFY(c.connected());
+
+    // Starts in Manual: the coil reads ON.
+    QVERIFY(!ctl.model().isAuto());
+    uint8_t bit = 0;
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+
+    // Coil OFF = Auto, bumplessly (OUT stays where it was), and OUT closes to clients.
+    QCOMPARE(c.writeFloat(2, 40.0f), 2);
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().outPct, 40.0);
+    QSignalSpy changed(&ctl, &LoopController::stateChanged);
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 0), 1);
+    ctl.tickFor(0.05);
+    QVERIFY(ctl.model().isAuto());
+    QVERIFY(changed.count() >= 1);
+    QVERIFY(std::abs(ctl.model().state().outPct - 40.0) < 1.0);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 0);
+    errno = 0;
+    QCOMPARE(c.writeFloat(2, 80.0f), -1);
+    QCOMPARE(errno, kIllegalValue);
+
+    // Writing the mode already in force changes nothing.
+    QCOMPARE(modbus_write_bit(c.ctx(), 0, 0), 1);
+    ctl.tickFor(0.05);
+    QVERIFY(ctl.model().isAuto());
+
+    // The faceplate's A/M button (setAuto) is published too.
+    ctl.setAuto(false);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
+    QCOMPARE(c.writeFloat(2, 30.0f), 2); // OUT writable again
+    ctl.tickFor(0.05);
+    QCOMPARE(ctl.model().state().outPct, 30.0);
+    ctl.setAuto(true);
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 0);
+
+    // Coil ON = Manual again, through FC15.
+    const uint8_t on = 1;
+    QCOMPARE(modbus_write_bits(c.ctx(), 0, 1, &on), 1);
+    ctl.tickFor(0.05);
+    QVERIFY(!ctl.model().isAuto());
+    QCOMPARE(c.writeFloat(2, 20.0f), 2);
+
+    // A reset goes back to Manual and the coil follows.
+    ctl.setAuto(true);
+    ctl.resetState();
+    QCOMPARE(modbus_read_bits(c.ctx(), 0, 1, &bit), 1);
+    QCOMPARE(int(bit), 1);
 }
 
 QTEST_GUILESS_MAIN(TstLoopServer)
