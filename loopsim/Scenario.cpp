@@ -1,5 +1,6 @@
 #include "Scenario.h"
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -27,7 +28,7 @@ bool checkKeys(const QJsonObject &obj, const QStringList &allowed, const QString
 {
     for (const QString &key : obj.keys()) {
         if (!allowed.contains(key)) {
-            setError(error, QStringLiteral("%1%2: unknown key").arg(prefix, key));
+            setError(error, QCoreApplication::translate("mbloop::Scenario", "%1%2: unknown key").arg(prefix, key));
             return false;
         }
     }
@@ -43,7 +44,7 @@ bool readObject(const QJsonObject &obj, const QString &key, QJsonObject &out, bo
     if (!present)
         return true;
     if (!value.isObject()) {
-        setError(error, QStringLiteral("%1: must be an object").arg(key));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "%1: must be an object").arg(key));
         return false;
     }
     out = value.toObject();
@@ -59,12 +60,12 @@ bool readRange(const QJsonObject &obj, const QString &key, const QString &prefix
         return true;
     const QString name = prefix + key;
     if (!value.isDouble()) {
-        setError(error, QStringLiteral("%1: must be a number").arg(name));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "%1: must be a number").arg(name));
         return false;
     }
     const double d = value.toDouble();
     if (d < min || d > max) {
-        setError(error, QStringLiteral("%1: must be %2..%3")
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "%1: must be %2..%3")
                             .arg(name, QString::number(min), QString::number(max)));
         return false;
     }
@@ -79,12 +80,12 @@ bool readSpeedFactor(const QJsonObject &obj, const QString &prefix, double &out,
         return true;
     const QString name = prefix + QStringLiteral("speedFactor");
     if (!value.isDouble()) {
-        setError(error, QStringLiteral("%1: must be a number").arg(name));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "%1: must be a number").arg(name));
         return false;
     }
     const double d = value.toDouble();
     if (d != 1.0 && d != 2.0 && d != 5.0) {
-        setError(error, QStringLiteral("%1: must be 1, 2 or 5").arg(name));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "%1: must be 1, 2 or 5").arg(name));
         return false;
     }
     out = d;
@@ -146,7 +147,7 @@ bool readPid(const QJsonObject &root, Scenario &scenario, QString *error)
     if (!mode.isUndefined()) {
         const QString m = mode.isString() ? mode.toString() : QString();
         if (m != QStringLiteral("manual") && m != QStringLiteral("auto")) {
-            setError(error, QStringLiteral("pid.mode: must be \"manual\" or \"auto\""));
+            setError(error, QCoreApplication::translate("mbloop::Scenario", "pid.mode: must be \"manual\" or \"auto\""));
             return false;
         }
         scenario.autoMode = m == QStringLiteral("auto");
@@ -155,7 +156,7 @@ bool readPid(const QJsonObject &root, Scenario &scenario, QString *error)
     if (!action.isUndefined()) {
         const QString a = action.isString() ? action.toString() : QString();
         if (a != QStringLiteral("reverse") && a != QStringLiteral("direct")) {
-            setError(error, QStringLiteral("pid.action: must be \"reverse\" or \"direct\""));
+            setError(error, QCoreApplication::translate("mbloop::Scenario", "pid.action: must be \"reverse\" or \"direct\""));
             return false;
         }
         pid.reverse = a == QStringLiteral("reverse");
@@ -233,31 +234,31 @@ std::optional<Scenario> scenarioFromJson(const QByteArray &json, QString *error)
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
-        setError(error, QStringLiteral("Invalid JSON: %1").arg(parseError.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Invalid JSON: %1").arg(parseError.errorString()));
         return std::nullopt;
     }
     if (!doc.isObject()) {
-        setError(error, QStringLiteral("Invalid scenario: top-level value must be a JSON object"));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Invalid scenario: top-level value must be a JSON object"));
         return std::nullopt;
     }
     const QJsonObject root = doc.object();
 
     if (root.value(QStringLiteral("format")).toString() != QStringLiteral("modbus-loop-scenario")) {
-        setError(error, QStringLiteral("Not a loop scenario: \"format\" must be \"modbus-loop-scenario\""));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Not a loop scenario: \"format\" must be \"modbus-loop-scenario\""));
         return std::nullopt;
     }
     const QJsonValue versionValue = root.value(QStringLiteral("version"));
     if (versionValue.isUndefined()) {
-        setError(error, QStringLiteral("Invalid scenario: \"version\" is missing"));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Invalid scenario: \"version\" is missing"));
         return std::nullopt;
     }
     const double version = versionValue.toDouble();
     if (!versionValue.isDouble() || std::trunc(version) != version) {
-        setError(error, QStringLiteral("Invalid scenario: \"version\" must be an integer"));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Invalid scenario: \"version\" must be an integer"));
         return std::nullopt;
     }
     if (version != static_cast<double>(kScenarioVersion)) {
-        setError(error, QStringLiteral("Unsupported scenario version %1 (expected %2)")
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Unsupported scenario version %1 (expected %2)")
                             .arg(QString::number(version, 'f', 0))
                             .arg(kScenarioVersion));
         return std::nullopt;
@@ -280,16 +281,16 @@ bool saveScenario(const QString &path, const Scenario &scenario, QString *error)
 {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
-        setError(error, QStringLiteral("Cannot write \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Cannot write \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     const QByteArray json = scenarioToJson(scenario);
     if (file.write(json) != json.size()) {
-        setError(error, QStringLiteral("Cannot write \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Cannot write \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     if (!file.commit()) {
-        setError(error, QStringLiteral("Cannot save \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Cannot save \"%1\": %2").arg(path, file.errorString()));
         return false;
     }
     return true;
@@ -299,12 +300,12 @@ std::optional<Scenario> loadScenario(const QString &path, QString *error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        setError(error, QStringLiteral("Cannot open \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Cannot open \"%1\": %2").arg(path, file.errorString()));
         return std::nullopt;
     }
     const QByteArray json = file.readAll();
     if (file.error() != QFile::NoError) {
-        setError(error, QStringLiteral("Cannot read \"%1\": %2").arg(path, file.errorString()));
+        setError(error, QCoreApplication::translate("mbloop::Scenario", "Cannot read \"%1\": %2").arg(path, file.errorString()));
         return std::nullopt;
     }
     QString parseError;
