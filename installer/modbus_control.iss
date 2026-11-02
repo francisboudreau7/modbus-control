@@ -44,9 +44,16 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 UninstallDisplayName={#MyAppName} {#AppVersion}
 UninstallDisplayIcon={app}\bin\modbus_control.exe
 ChangesAssociations=yes
+; English or French wizard, picked from the Windows language (the dialog appears only when
+; neither matches).
+ShowLanguageDialog=auto
+
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 ; Everything CMake installed (bin\, share\, licenses\).
@@ -77,4 +84,4 @@ Root: HKA; Subkey: "Software\Classes\ModbusControl.Project\DefaultIcon"; ValueTy
 Root: HKA; Subkey: "Software\Classes\ModbusControl.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bin\modbus_control.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\bin\modbus_control.exe"; Description: "Launch {#MyAppName}"; WorkingDir: "{app}\bin"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\bin\modbus_control.exe"; Description: "{cm:LaunchProgram,{#MyAppName}}"; WorkingDir: "{app}\bin"; Flags: nowait postinstall skipifsilent

@@ -2,6 +2,8 @@
 #include "Language.h"
 
 #include <QCoreApplication>
+#include <QFile>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -66,6 +68,45 @@ private slots:
 
         QVERIFY(!installTranslators(QStringLiteral("de")));
         QCOMPARE(QCoreApplication::translate("QPlatformTheme", "Cancel"), QStringLiteral("Cancel"));
+    }
+
+    void frenchCatalogTranslatesOurTexts()
+    {
+        QVERIFY(installTranslators(QStringLiteral("fr")));
+        QCOMPARE(QCoreApplication::translate("mb::MainWindow", "&File"), QStringLiteral("&Fichier"));
+        QCOMPARE(QCoreApplication::translate("mb::Tag", "Coil (FC01/FC05/FC15)"),
+                 QStringLiteral("Bobine (FC01/FC05/FC15)"));
+        QVERIFY(installTranslators(QStringLiteral("en")));
+        QCOMPARE(QCoreApplication::translate("mb::MainWindow", "&File"), QStringLiteral("&File"));
+    }
+
+    // Every text extracted by lupdate (update_translations target) has a finished translation,
+    // and no entry is left over from removed texts.
+    void catalogsAreComplete_data()
+    {
+        QTest::addColumn<QString>("file");
+        QTest::newRow("fr") << QStringLiteral(MC_TRANSLATIONS_DIR "/modbus_control_fr.ts");
+        QTest::newRow("en") << QStringLiteral(MC_TRANSLATIONS_DIR "/modbus_control_en.ts");
+    }
+    void catalogsAreComplete()
+    {
+        QFETCH(QString, file);
+        QFile f(file);
+        QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(file));
+        const QString ts = QString::fromUtf8(f.readAll());
+        QVERIFY(ts.contains(QLatin1String("<message")));
+        static const QRegularExpression stale(QStringLiteral(R"re(type="(unfinished|obsolete|vanished)")re"));
+        QStringList problems;
+        static const QRegularExpression message(QStringLiteral(R"re(<message[^>]*>.*?</message>)re"),
+                                                QRegularExpression::DotMatchesEverythingOption);
+        for (auto it = message.globalMatch(ts); it.hasNext();) {
+            const QString m = it.next().captured();
+            if (stale.match(m).hasMatch())
+                problems << m.section(QLatin1String("<source>"), 1).section(QLatin1String("</source>"), 0, 0);
+        }
+        QVERIFY2(problems.isEmpty(), qPrintable(QStringLiteral("%1 entries not translated: %2")
+                                                    .arg(problems.size())
+                                                    .arg(problems.mid(0, 10).join(QLatin1String(" | ")))));
     }
 };
 

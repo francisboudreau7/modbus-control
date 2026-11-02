@@ -87,6 +87,7 @@
     <name>mbloop::LoopWindow</name>
     <message numerus="yes">
         <source>Server &lt;b&gt;%1 : %2&lt;/b&gt; &amp;nbsp;&amp;nbsp; Unit 1 (any unit answered) &amp;nbsp;&amp;nbsp;–&amp;nbsp;&amp;nbsp; %n client(s) connected</source>
+        <extracomment>%1 = host address, %2 = port; %n = number of connected clients</extracomment>
         <translation>
             <numerusform>Server &lt;b&gt;%1 : %2&lt;/b&gt; &amp;nbsp;&amp;nbsp; Unit 1 (any unit answered) &amp;nbsp;&amp;nbsp;–&amp;nbsp;&amp;nbsp; %n client connected</numerusform>
             <numerusform>Server &lt;b&gt;%1 : %2&lt;/b&gt; &amp;nbsp;&amp;nbsp; Unit 1 (any unit answered) &amp;nbsp;&amp;nbsp;–&amp;nbsp;&amp;nbsp; %n clients connected</numerusform>
