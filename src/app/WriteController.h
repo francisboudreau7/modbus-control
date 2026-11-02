@@ -97,6 +97,20 @@ class TagTableModel;
 /// order. Requests still pending when setConnected(false) is called are logged with ok false and
 /// result "No reply (disconnected)"; a late reply for them is ignored. Refused writes (checks
 /// 1-5, cancelled prompts) are not logged.
+///
+/// Coils (v1.3.4): requestWrite / requestQuickWrite on a writable coil take 0.0 (OFF) or 1.0 (ON)
+/// (anything else -> warning "'X' is a coil: write ON or OFF."). Checks 1, 3a and the
+/// confirmation apply (limits, the 32-bit and encoding checks and the implausible check do not).
+/// The confirmation reads "Switch 'Pump' ON?" (or OFF), rows "Current state: OFF" (or
+/// "unknown") / "New state: ON", note "CO 12 · FC05". Quick writes of coils follow the 16-bit
+/// quickConfirm rule (the check box is offered). Then writeCoils is emitted (one coil: FC05).
+/// requestWriteSelection: either all rows are writable holding registers (as above) or all are
+/// writable coils, contiguous by address (at most 1968); a mix is refused ("Select either
+/// registers or coils, not both."). The values dialog offers ON/OFF per coil; one writeCoils with
+/// all values (FC15), confirmation note "CO 10-13 · FC15". Write log entries of coils: functionCode
+/// 5 or 15, registers "CO 12", oldValue/newValue "OFF"/"ON", raw "0"/"1" (space-separated).
+/// onWriteFinished: an FC15 refused with exception 1 gets the same kind of warning as FC16
+/// ("The device does not accept FC15 (write multiple coils)").
 class WriteController : public QObject
 {
     Q_OBJECT
@@ -124,6 +138,8 @@ signals:
     void detectEncodingRequested(mb::TagId id);
     /// Connect to PollWorker::writeRegisters (queued).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
+    /// v1.3.4: connect to PollWorker::writeCoils (queued). Values 0/1.
+    void writeCoils(quint64 requestId, quint16 address, const QList<quint16> &values);
     /// Status bar text.
     void message(const QString &text);
     /// v1.3.3: a write was answered (or abandoned at disconnect); see "Write log" above.

@@ -18,17 +18,20 @@ quint32 combineRegisters(const Tag &tag, quint16 r0, quint16 r1 = 0);
 /// gain/offset: decoded * gain + offset.
 /// Int16: low 16 bits as two's complement. UInt16: low 16 bits. Int32: two's complement.
 /// UInt32: unsigned. Float32: IEEE-754 single (NaN and infinities pass through unchanged).
+/// Bool (v1.3.4): 1.0 when raw != 0, else 0.0; gain and offset are not applied.
 double decodeValue(const Tag &tag, quint32 raw);
 
 /// Inverse of decodeValue for writes of 16-bit types: (scaled - offset) / gain, rounded to
 /// the nearest integer. Returns nullopt if gain is 0, the input is not finite, the result
 /// is outside the range of tag.type, or tag.type is a 32-bit type (use encodeRegisters).
+/// Bool (v1.3.4): 0.0 -> 0, 1.0 -> 1 (gain and offset ignored); any other value -> nullopt.
 std::optional<quint16> encodeValue(const Tag &tag, double scaled);
 
 /// Inverse of decodeValue + combineRegisters for writes of any type: returns the
 /// registerCount(tag.type) register values to write starting at tag.address, in device
 /// order (tag.byteOrder applied). x = (scaled - offset) / gain;
-/// Int16/UInt16: as encodeValue. Int32/UInt32: x rounded to nearest, range-checked.
+/// Int16/UInt16/Bool: as encodeValue (one value; for Bool 0 or 1, the coil state to write).
+/// Int32/UInt32: x rounded to nearest, range-checked.
 /// Float32: x converted to float; rejected if not finite or |x| > FLT_MAX.
 /// Returns nullopt if gain is 0, scaled is not finite, or the value is out of range.
 /// Invariant: decodeValue(tag, combineRegisters(tag, r[0], r[1])) == scaled for exactly

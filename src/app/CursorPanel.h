@@ -30,6 +30,7 @@ class Recorder;
 /// existing cursor in ascending order (header text in the cursor's colour), then "ΔY Ca→Cb"
 /// (= Y@Cb - Y@Ca of the compared pair; omitted when the pair is incomplete). Values come from
 /// Recorder::sampleAt(); NaN -> "—". Numbers use 6 significant digits with a '.' mark.
+/// v1.3.4: bit tags show "ON" / "OFF" at each cursor (readoutText too); their ΔY cell is empty.
 class CursorPanel : public QWidget
 {
     Q_OBJECT

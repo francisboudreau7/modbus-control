@@ -44,6 +44,8 @@ quint32 combineRegisters(const Tag &tag, quint16 r0, quint16 r1)
 
 double decodeValue(const Tag &tag, quint32 raw)
 {
+    if (tag.type == ValueType::Bool)
+        return raw != 0 ? 1.0 : 0.0; // no scaling for bits
     double decoded = 0.0;
     switch (tag.type) {
     case ValueType::Int16:
@@ -61,12 +63,19 @@ double decodeValue(const Tag &tag, quint32 raw)
     case ValueType::Float32:
         decoded = static_cast<double>(std::bit_cast<float>(raw));
         break;
+    case ValueType::Bool:
+        break; // handled above
     }
     return decoded * tag.gain + tag.offset;
 }
 
 std::optional<quint16> encodeValue(const Tag &tag, double scaled)
 {
+    if (tag.type == ValueType::Bool) {
+        if (scaled == 0.0 || scaled == 1.0)
+            return static_cast<quint16>(scaled);
+        return std::nullopt;
+    }
     if (registerCount(tag.type) != 1)
         return std::nullopt; // 32-bit tags are read-only for now
     if (tag.gain == 0.0 || !std::isfinite(scaled))
@@ -86,6 +95,8 @@ std::optional<quint16> encodeValue(const Tag &tag, double scaled)
         lo = 0.0;
         hi = 65535.0;
         break;
+    default:
+        return std::nullopt;
     }
 
     // Written as a positive comparison so that NaN (e.g. from a NaN offset) is rejected too.
@@ -137,6 +148,7 @@ std::optional<QList<quint16>> encodeRegisters(const Tag &tag, double scaled)
         break;
     case ValueType::Int16:
     case ValueType::UInt16:
+    case ValueType::Bool:
         return std::nullopt; // handled above
     }
 

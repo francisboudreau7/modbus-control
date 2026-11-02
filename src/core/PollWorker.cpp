@@ -226,6 +226,17 @@ void PollWorker::writeRegisters(quint64 requestId, quint16 address, const QList<
     }
 }
 
+void PollWorker::writeCoils(quint64 requestId, quint16 address, const QList<quint16> &values)
+{
+    // T251 stub: coil writes are not implemented yet.
+    Q_UNUSED(address);
+    Q_UNUSED(values);
+    ModbusResult result;
+    result.error = ModbusError::Other;
+    result.message = QStringLiteral("Coil writes are not implemented yet");
+    emit writeFinished(requestId, result);
+}
+
 void PollWorker::drainWrites()
 {
     m_writePassQueued = false;

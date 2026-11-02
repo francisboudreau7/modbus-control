@@ -42,7 +42,7 @@ struct ModbusResult {
 
 /// Thin RAII wrapper around one libmodbus TCP context. Not thread-safe: use from one
 /// thread only (PollWorker's thread). Protocol limits: read count 1..125, write
-/// multiple count 1..123.
+/// multiple count 1..123; bits (v1.3.4): read count 1..2000, write multiple count 1..1968.
 class ModbusConnection
 {
 public:
@@ -60,7 +60,15 @@ public:
     bool isOpen() const { return m_ctx != nullptr; }
 
     /// FC03 for HoldingRegister, FC04 for InputRegister. On success `out` holds `count` values.
+    /// A bit area gives InvalidArgument (use readBits).
     ModbusResult readRegisters(Area area, quint16 address, quint16 count, QList<quint16> &out);
+    /// v1.3.4: FC01 for Coil, FC02 for DiscreteInput. On success `out` holds `count` values,
+    /// each 0 or 1. A register area gives InvalidArgument (use readRegisters).
+    ModbusResult readBits(Area area, quint16 address, quint16 count, QList<quint16> &out);
+    /// v1.3.4: FC05 (write single coil): ON when `on`.
+    ModbusResult writeCoil(quint16 address, bool on);
+    /// v1.3.4: FC15 (write multiple coils); a value != 0 is ON.
+    ModbusResult writeCoils(quint16 address, const QList<quint16> &values);
     /// FC06.
     ModbusResult writeSingle(quint16 address, quint16 value);
     /// FC16.

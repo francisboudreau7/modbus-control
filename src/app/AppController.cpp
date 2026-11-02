@@ -300,6 +300,8 @@ void AppController::wireWrites()
             &WriteController::requestWriteSelection);
     connect(m_writes, &WriteController::writeRegisters, m_worker, &PollWorker::writeRegisters,
             Qt::QueuedConnection);
+    connect(m_writes, &WriteController::writeCoils, m_worker, &PollWorker::writeCoils,
+            Qt::QueuedConnection);
     connect(m_worker, &PollWorker::writeFinished, m_writes, &WriteController::onWriteFinished);
     connect(m_writes, &WriteController::message, this,
             [this](const QString &text) { m_window->showStatusMessage(text); });

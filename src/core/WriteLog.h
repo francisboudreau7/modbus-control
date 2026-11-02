@@ -18,8 +18,10 @@ struct WriteLogEntry {
     QString tagName;
     quint16 address = 0;     ///< protocol (zero-based) address of the tag's first register
     int count = 0;           ///< registers of the tag (1 or 2)
-    QString registers;       ///< with the address base: "HR 5009-5010", "HR 100"
-    int functionCode = 0;    ///< 6 (one register) or 16 (FC16), as PollWorker sends it
+    QString registers;       ///< with the address base: "HR 5009-5010", "HR 100", "CO 3" (v1.3.4)
+    /// As PollWorker sends it: 6 (one register) or 16 (FC16); v1.3.4 coils: 5 (one) or 15 (FC15).
+    /// For coils the raw field is "0" / "1" and old/new values are "OFF" / "ON".
+    int functionCode = 0;
     QString oldValue;        ///< scaled value with unit before the write ("50 %"), or "unknown"
     QString newValue;        ///< scaled value with unit written ("-25 %")
     QString raw;             ///< registers sent in hex, space-separated: "0xC1C8 0x0000"

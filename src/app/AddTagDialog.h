@@ -89,6 +89,10 @@ struct ProbeState;
 /// ThirtyTwo with the EncodingDialog accepted — and area, address, type and byte order have not
 /// changed since; any later change of those fields clears it, and so does starting another Detect
 /// (whatever its answer; a cancelled EncodingDialog leaves it false).
+/// v1.3.4: the Area combo lists the four areas with areaLabel() texts (function codes); choosing
+/// Coil or Discrete input forces Type "bool" (Type, Byte order, Gain, Offset disabled) and the
+/// register read for the preview uses the bit read; Writable is enabled for coils, disabled for
+/// discrete inputs.
 class AddTagDialog : public QDialog
 {
     Q_OBJECT

@@ -12,7 +12,44 @@ namespace mb {
 enum class Area : quint8 {
     HoldingRegister, ///< FC03 read, FC06/FC16 write
     InputRegister,   ///< FC04 read, read-only
+    Coil,            ///< v1.3.4: FC01 read, FC05 (one) / FC15 (several) write; 1 bit per address
+    DiscreteInput,   ///< v1.3.4: FC02 read, read-only; 1 bit per address
 };
+
+/// True for Coil and DiscreteInput (addresses hold bits, tags are ValueType::Bool).
+constexpr bool isBitArea(Area area)
+{
+    return area == Area::Coil || area == Area::DiscreteInput;
+}
+
+/// True for the areas a client can write: HoldingRegister and Coil.
+constexpr bool isWritableArea(Area area)
+{
+    return area == Area::HoldingRegister || area == Area::Coil;
+}
+
+/// Read function code of an area: 3 (HR), 4 (IR), 1 (coil), 2 (discrete input).
+constexpr int readFunctionCode(Area area)
+{
+    switch (area) {
+    case Area::HoldingRegister: return 3;
+    case Area::InputRegister: return 4;
+    case Area::Coil: return 1;
+    case Area::DiscreteInput: return 2;
+    }
+    return 0;
+}
+
+/// Write function code PollWorker uses for `count` consecutive addresses of a writable area:
+/// HR 6 (count 1) / 16 (more), coil 5 (count 1) / 15 (more); 0 for read-only areas.
+constexpr int writeFunctionCode(Area area, int count)
+{
+    if (area == Area::HoldingRegister)
+        return count == 1 ? 6 : 16;
+    if (area == Area::Coil)
+        return count == 1 ? 5 : 15;
+    return 0;
+}
 
 /// How the raw register(s) are interpreted before scaling.
 enum class ValueType : quint8 {
@@ -21,12 +58,20 @@ enum class ValueType : quint8 {
     Int32,   ///< 2 registers, two's complement
     UInt32,  ///< 2 registers, unsigned
     Float32, ///< 2 registers, IEEE-754 single precision
+    Bool,    ///< v1.3.4: one coil or discrete input, value 0 (OFF) or 1 (ON); no scaling
 };
 
-/// Number of consecutive registers a value of this type occupies (1 or 2).
+/// Number of consecutive addresses a value of this type occupies (1 or 2): registers for
+/// register types, one bit for Bool.
 constexpr int registerCount(ValueType type)
 {
-    return (type == ValueType::Int16 || type == ValueType::UInt16) ? 1 : 2;
+    return (type == ValueType::Int16 || type == ValueType::UInt16 || type == ValueType::Bool) ? 1 : 2;
+}
+
+/// The type/area rule: Bool goes with bit areas (Coil, DiscreteInput) and only with them.
+constexpr bool typeFitsArea(ValueType type, Area area)
+{
+    return (type == ValueType::Bool) == isBitArea(area);
 }
 
 /// Byte order of a 32-bit value spread over two consecutive registers. A..D are the
@@ -71,7 +116,7 @@ struct Tag {
     QString unit;
     QString color = QStringLiteral("#1f77b4"); ///< "#RRGGBB"
     bool plotted = true;
-    bool writable = false; ///< only meaningful for Area::HoldingRegister tags
+    bool writable = false; ///< only meaningful for writable areas (holding registers, coils)
     /// Read from projects before v1.2.6 only (ProjectIO maps it to AnalysisSettings::pvTagId and
     /// setpointTagIds); not used by the UI and no longer written.
     bool analyzed = false;
@@ -93,7 +138,10 @@ struct Tag {
     /// is not checked again automatically. Cleared when its area, address or type changes.
     bool confirmed16Bit = false;
 
-    bool isWritable() const { return writable && area == Area::HoldingRegister; }
+    bool isWritable() const { return writable && isWritableArea(area); }
+    /// v1.3.4: a coil or discrete input tag (type Bool). Gain, offset and byte order do not
+    /// apply; the value is 0 or 1.
+    bool isBit() const { return isBitArea(area); }
     /// True when `scaled` is finite and within writeMin/writeMax (unset limits don't apply).
     bool withinWriteLimits(double scaled) const
     {
@@ -105,8 +153,17 @@ struct Tag {
     friend bool operator==(const Tag &, const Tag &) = default;
 };
 
-QString toString(Area area);
-QString toString(ValueType type); ///< "int16", "uint16", "int32", "uint32", "float32"
+QString toString(Area area); ///< "Holding", "Input", "Coil", "Discrete" (the tag table's Area column)
+QString toString(ValueType type); ///< "int16", "uint16", "int32", "uint32", "float32", "bool"
+
+/// v1.3.4: register-text prefix of an area: "HR", "IR", "CO", "DI" (as in "CO 12").
+QString areaPrefix(Area area);
+/// v1.3.4: area name with its function codes, for combos and tooltips:
+/// "Holding register (FC03/FC06/FC16)", "Input register (FC04)", "Coil (FC01/FC05/FC15)",
+/// "Discrete input (FC02)".
+QString areaLabel(Area area);
+/// v1.3.4: a Bool value as text: "ON" for 1 (any non-zero), "OFF" for 0.
+QString bitText(double value);
 QString toString(ByteOrder order); ///< "ABCD", "CDAB", "BADC", "DCBA"
 QString toString(Quality quality);
 QString toString(YAxis axis); ///< "Left", "Right"

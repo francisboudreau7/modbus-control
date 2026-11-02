@@ -165,6 +165,8 @@ class TagTableModel;
 /// Writable tags lose Writable through the model's register-change rule. While the model
 /// isLocked(), the prompt is replaced by the message "<n> tags may be numbered one register off;
 /// the tag configuration is locked (Options > Lock tag configuration)." and nothing moves.
+/// v1.3.4: bit tags are skipped by the encoding checks and the half-of-a-32-bit check; the
+/// off-by-one probe applies to them too (same area, count 1, one bit away, PollWorker one-off read).
 class EncodingMonitor : public QObject
 {
     Q_OBJECT

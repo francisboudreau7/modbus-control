@@ -91,6 +91,26 @@ namespace mb {
 /// - Blocked cells (either lock) have a grey ForegroundRole (#9e9e9e).
 /// - Was-input tracking: when setData changes a tag's Area from Input to Holding, the tag is
 ///   remembered (until setTags or its removal) and WritableAsk::wasInput is true for it.
+///
+/// v1.3.4 coils and discrete inputs (PLAN.md "v1.3.4 Schools, phase 1"):
+/// - Area accepts "Coil" and "Discrete" too (toString(Area), case-insensitive on input; the full
+///   areaLabel() text is accepted as well). The Area cell's ToolTipRole is areaLabel() (the lock
+///   tooltips win). Changing Area between a register area and a bit area changes Type with it:
+///   to a bit area -> Bool (ByteOrder, Gain, Offset reset to defaults; WriteMin/WriteMax/QuickA/
+///   QuickB cleared); to a register area -> Int16. Type "bool" is refused on register areas and
+///   any other type on bit areas (typeFitsArea).
+/// - Bit tags: Type shows "bool"; ByteOrder, Gain and Offset show an em dash, are not editable and
+///   their ToolTipRole reads "Not used by coils and discrete inputs"; WriteMin/WriteMax likewise
+///   (not editable, same tooltip). Raw: "0" / "1". Value: bitText() ("ON"/"OFF"); EditRole of a
+///   writable coil's Value is "ON"/"OFF", and setData on it accepts "ON"/"OFF" (case-insensitive),
+///   "1"/"0", true/false or 1/0 and emits writeRequested(id, 1.0 or 0.0); anything else -> false.
+///   QuickA/QuickB of a writable coil: DisplayRole "ON"/"OFF", setData accepts the same inputs
+///   (stored 1.0 / 0.0); a coil made writable with no presets gets QuickA = 1 (ON), QuickB = 0 (OFF).
+/// - Writable applies to coils exactly as to holding registers (lock while connected, teacher
+///   lock, confirmWritable, writableCleared, writeNeedsRead). Discrete inputs are never writable
+///   (cell disabled, ToolTipRole "Discrete inputs are read-only", like input registers).
+/// - registerText(): "CO 12", "DI 5" (with the address base; no type suffix for bit tags).
+/// - Encoding: bit tags are always encodingVerified and never get the warning icon.
 class TagTableModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -214,7 +234,8 @@ public:
     /// See the class comment. False for an unknown id.
     bool writeNeedsRead(TagId id) const;
     /// Registers of a tag with the address base, its type and, for 32-bit tags, the byte order:
-    /// "HR 6639-6640 · float32 ABCD", "IR 100 · int16" (middle dot U+00B7).
+    /// "HR 6639-6640 · float32 ABCD", "IR 100 · int16" (middle dot U+00B7); bit tags "CO 12",
+    /// "DI 5" (v1.3.4).
     QString registerText(const Tag &tag) const;
 
 signals:

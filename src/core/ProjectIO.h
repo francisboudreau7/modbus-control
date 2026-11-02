@@ -43,6 +43,14 @@ inline constexpr int kProjectFormatVersion = 1;
 /// "ABCD"). The change from format version 1 that added the 32-bit types and "byteOrder"
 /// is additive, so the version stays 1. nextTagId is always at least max(tag id) + 1.
 ///
+/// Added in v1.3.4 (additive, the version stays 1): "area" "coil" and "discrete" (discrete input),
+/// "type" "bool". typeFitsArea() must hold: "bool" with a bit area and only there; anything else
+/// is rejected ("Tag <id>: type bool needs area coil or discrete" / "Tag <id>: area coil needs type
+/// bool"). A tag without "type" in a bit area reads as bool. For bit tags gain, offset and
+/// byteOrder are not written and are ignored (reset to the defaults) when read; "writable" is
+/// kept only for coils (a discrete input reads as writable false). Older versions reject such
+/// files with their unknown-area error.
+///
 /// Ranges (values outside them are rejected when loading): port 1..65535, unitId 0..247,
 /// timeoutMs 100..60000, pollPeriodMs 100..60000, tag id >= 1, address 0..65535. A 32-bit
 /// tag must also fit: address + 2 <= 65536, so address 65535 is only valid for 16-bit types.

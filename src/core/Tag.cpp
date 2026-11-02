@@ -7,8 +7,37 @@ QString toString(Area area)
     switch (area) {
     case Area::HoldingRegister: return QStringLiteral("Holding");
     case Area::InputRegister: return QStringLiteral("Input");
+    case Area::Coil: return QStringLiteral("Coil");
+    case Area::DiscreteInput: return QStringLiteral("Discrete");
     }
     return {};
+}
+
+QString areaPrefix(Area area)
+{
+    switch (area) {
+    case Area::HoldingRegister: return QStringLiteral("HR");
+    case Area::InputRegister: return QStringLiteral("IR");
+    case Area::Coil: return QStringLiteral("CO");
+    case Area::DiscreteInput: return QStringLiteral("DI");
+    }
+    return {};
+}
+
+QString areaLabel(Area area)
+{
+    switch (area) {
+    case Area::HoldingRegister: return QStringLiteral("Holding register (FC03/FC06/FC16)");
+    case Area::InputRegister: return QStringLiteral("Input register (FC04)");
+    case Area::Coil: return QStringLiteral("Coil (FC01/FC05/FC15)");
+    case Area::DiscreteInput: return QStringLiteral("Discrete input (FC02)");
+    }
+    return {};
+}
+
+QString bitText(double value)
+{
+    return value != 0.0 ? QStringLiteral("ON") : QStringLiteral("OFF");
 }
 
 QString toString(ValueType type)
@@ -19,6 +48,7 @@ QString toString(ValueType type)
     case ValueType::Int32: return QStringLiteral("int32");
     case ValueType::UInt32: return QStringLiteral("uint32");
     case ValueType::Float32: return QStringLiteral("float32");
+    case ValueType::Bool: return QStringLiteral("bool");
     }
     return {};
 }

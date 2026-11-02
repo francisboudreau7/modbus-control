@@ -55,6 +55,8 @@ class Recorder;
 ///   ranges.
 /// Every change made by the user (menu, wheel, pan, Fit Y) emits axisRangesChanged() once;
 /// setAxisRange() does not.
+/// v1.3.4: a bit tag (Tag::isBit(), values 0/1) is drawn as a step curve (QwtPlotCurve::Steps,
+/// the value holds until the next sample) on its axis like any other tag.
 class TrendPlot : public QWidget
 {
     Q_OBJECT

@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <system_error>
+#include <vector>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -216,7 +217,7 @@ ModbusResult ModbusConnection::readRegisters(Area area, quint16 address, quint16
 {
     if (!m_ctx)
         return notConnected();
-    if (count == 0 || count > MODBUS_MAX_READ_REGISTERS || !rangeOk(address, count))
+    if (isBitArea(area) || count == 0 || count > MODBUS_MAX_READ_REGISTERS || !rangeOk(address, count))
         return invalidArgument(QStringLiteral("Invalid register count or address range"));
 
     QList<quint16> buf(count);
@@ -232,6 +233,58 @@ ModbusResult ModbusConnection::readRegisters(Area area, quint16 address, quint16
     }
 
     out = std::move(buf);
+    return {};
+}
+
+ModbusResult ModbusConnection::readBits(Area area, quint16 address, quint16 count, QList<quint16> &out)
+{
+    if (!m_ctx)
+        return notConnected();
+    if (!isBitArea(area) || count == 0 || count > MODBUS_MAX_READ_BITS || !rangeOk(address, count))
+        return invalidArgument(QStringLiteral("Invalid bit count or address range"));
+
+    std::vector<uint8_t> bits(count);
+    clearErrors();
+    const int rc = area == Area::DiscreteInput
+        ? modbus_read_input_bits(m_ctx, address, count, bits.data())
+        : modbus_read_bits(m_ctx, address, count, bits.data());
+    if (rc == -1)
+        return mapError(captureError());
+    if (rc == 0 || rc != count)
+        return makeResult(ModbusError::ConnectionLost, QStringLiteral("Connection closed"));
+
+    QList<quint16> buf;
+    buf.reserve(count);
+    for (const uint8_t b : bits)
+        buf.append(b ? 1 : 0);
+    out = std::move(buf);
+    return {};
+}
+
+ModbusResult ModbusConnection::writeCoil(quint16 address, bool on)
+{
+    if (!m_ctx)
+        return notConnected();
+    clearErrors();
+    if (modbus_write_bit(m_ctx, address, on ? 1 : 0) == -1)
+        return mapError(captureError());
+    return {};
+}
+
+ModbusResult ModbusConnection::writeCoils(quint16 address, const QList<quint16> &values)
+{
+    if (!m_ctx)
+        return notConnected();
+    const int n = static_cast<int>(values.size());
+    if (n < 1 || n > MODBUS_MAX_WRITE_BITS || !rangeOk(address, n))
+        return invalidArgument(QStringLiteral("Invalid coil count or address range"));
+    std::vector<uint8_t> bits;
+    bits.reserve(values.size());
+    for (const quint16 v : values)
+        bits.push_back(v != 0 ? 1 : 0);
+    clearErrors();
+    if (modbus_write_bits(m_ctx, address, n, bits.data()) == -1)
+        return mapError(captureError());
     return {};
 }
 

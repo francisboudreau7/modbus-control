@@ -332,6 +332,12 @@ int LoopServer::clientCount() const
     return m_clients;
 }
 
+void LoopServer::publishManual(bool manual)
+{
+    // T252 stub: coil 0 is not served yet.
+    Q_UNUSED(manual);
+}
+
 void LoopServer::publish(float pv, float sp, float out)
 {
     std::lock_guard lock(m_mutex);

@@ -144,6 +144,8 @@ class TrendPlot;
 /// settings) when the cursors, settings or tags change, and in refresh() under the same "new data
 /// can still change the result" rule as before (last row older than max(C1, C2) + S/2). Emits
 /// resultsChanged() after every recompute.
+/// v1.3.4: bit tags (coils, discrete inputs) are not offered as PV, CO or setpoint tags; a project
+/// that names one keeps loading and treats it as not chosen.
 class AnalysisPanel : public QWidget
 {
     Q_OBJECT

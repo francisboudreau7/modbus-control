@@ -35,6 +35,8 @@ QString toString(ConnectionState state);
 /// planned block and emits exactly one samplesReady() with one TagSample per tag.
 /// A failed block marks its tags with the matching Quality; a ConnectionLost error
 /// ends the cycle, marks remaining tags Disconnected and enters Reconnecting.
+/// v1.3.4: coil and discrete-input tags are polled like registers (FC01/FC02 blocks, each value
+/// 0/1; TagSample::raw 0/1), and messages name them "CO n" / "DI n".
 /// When a block of more than one tag fails with a Modbus exception (a device may refuse some
 /// registers, e.g. one half of a 32-bit value, but serve the others), each of its tags is read
 /// on its own in the same cycle so every tag gets its own quality, and the block keeps being
@@ -71,7 +73,13 @@ public slots:
     /// device never holds half old, half new).
     /// Answered by exactly one writeFinished(requestId, ...).
     void writeRegisters(quint64 requestId, quint16 address, const QList<quint16> &values);
-    /// Queues a one-off read of `count` (1..125) consecutive registers of `area` starting at
+    /// v1.3.4: queues a write of consecutive coils starting at `address` (value != 0 = ON);
+    /// 1 value -> FC05, more -> ONE FC15 request. Served in the same queue and order as
+    /// writeRegisters, answered by exactly one writeFinished(requestId, ...). An FC15 refused with
+    /// exception 1 gets the hint " The device does not accept FC15 (write multiple coils)."
+    void writeCoils(quint64 requestId, quint16 address, const QList<quint16> &values);
+    /// Queues a one-off read of `count` (1..125; v1.3.4: 1..2000 for bit areas, values 0/1)
+    /// consecutive registers (or bits) of `area` starting at
     /// `address` (address + count <= 65536), served between poll cycles like writes (before the
     /// next cycle's reads). Not part of polling and never shown in samples. Answered by exactly
     /// one readFinished(requestId, ...): on success result.ok() and `values` has `count` registers;

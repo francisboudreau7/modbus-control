@@ -24,16 +24,23 @@ struct RegulatorRegisters {
 /// them 1-based like the ABB CM50 manual Rev. I):
 /// - input registers 0-1 (FC04): PV;
 /// - holding registers 0-1 (FC03 read, FC16 write): SP; holding registers 2-3: OUT.
+/// - v1.3.4: coil 0 (FC01 read, FC05 write; FC15 with count 1 at 0 accepted too): Auto/Manual,
+///   OFF = Auto, ON = Manual (like the CM50). Shown 1-based in the docs: coil 1.
 /// Rules, checked before libmodbus answers (replies built with modbus_reply_exception):
 /// - FC04 must read exactly within [0, 1], starting at 0 (count 2); FC03 within [0, 3], starting
 ///   on a pair (0 or 2) with an even count (2 or 4); FC16 likewise for writes. Anything else,
-///   including FC06, FC01/02/05/15/23 and other addresses: exception 2 (illegal data address).
+///   including FC06, FC02/23 and other addresses: exception 2 (illegal data address). Coils
+///   (v1.3.4): FC01 must read exactly coil 0 (count 1); FC05 / FC15 only coil 0, count 1.
 /// - FC16 values must be finite and within 0..100 (both SP and OUT): otherwise exception 3
 ///   (illegal data value), nothing written.
 /// - While setOutWritable(false) (LIC-101 in Auto), a write that includes OUT (holding 2-3) is
 ///   refused with exception 3 and nothing is written (also not SP in the same request).
 /// - A successful SP/OUT write updates the shared registers immediately (the model applies OUT on
 ///   its next tick through takeWrites()).
+/// - v1.3.4: a coil 0 write is always accepted (also in Auto); it updates the published mode at
+///   once and is reported by takeWrites() (modeWritten / manual); the controller switches the
+///   regulator bumplessly as the faceplate's A/M button does and then calls publishManual() and
+///   setOutWritable().
 /// Reads return the shared values at the time of the request.
 class LoopServer
 {
@@ -56,6 +63,8 @@ public:
 
     /// Model side: publishes PV (and, after a faceplate change, SP/OUT) for the next reads.
     void publish(float pv, float sp, float out);
+    /// v1.3.4: publishes the regulator mode for coil 0 reads (true = Manual). Default false (Auto).
+    void publishManual(bool manual);
     /// Model side: SP and OUT written by clients since the last call (each nullopt-like flag
     /// false when not written), then clears them.
     struct Writes {
@@ -63,6 +72,8 @@ public:
         float sp = 0.0f;
         bool outWritten = false;
         float out = 0.0f;
+        bool modeWritten = false; ///< v1.3.4: coil 0 written since the last call
+        bool manual = false;      ///< v1.3.4: the value written (true = Manual)
     };
     Writes takeWrites();
     /// False while LIC-101 is in Auto (see above). Default true.

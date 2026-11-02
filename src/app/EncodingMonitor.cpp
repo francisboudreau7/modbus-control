@@ -29,11 +29,6 @@ QString tagCount(qsizetype n, const QString &one, const QString &many)
     return n == 1 ? QStringLiteral("1 tag %1").arg(one) : QStringLiteral("%1 tags %2").arg(n).arg(many);
 }
 
-QString areaPrefix(Area area)
-{
-    return area == Area::HoldingRegister ? QStringLiteral("HR") : QStringLiteral("IR");
-}
-
 } // namespace
 
 EncodingMonitor::EncodingMonitor(TagTableModel *model, QWidget *dialogParent, QObject *parent)

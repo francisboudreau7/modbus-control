@@ -26,6 +26,18 @@ struct HoldingValue {
     WordOrder byteOrder = WordOrder::ABCD; ///< 2-register formats only
 };
 
+/// v1.3.4: drives discrete input `discreteAddress`.
+struct BitBinding {
+    enum class Kind : quint8 {
+        Square, ///< ON during the first half of each periodS, OFF during the second (from t = 0)
+        Echo,   ///< follows coil `coil` (the value a client last wrote there)
+    };
+    quint16 discreteAddress = 0;
+    Kind kind = Kind::Square;
+    double periodS = 4.0; ///< Square only, > 0
+    quint16 coil = 0;     ///< Echo only, < coilCount
+};
+
 /// Test server configuration. Registers are mapped from address 0.
 ///
 /// server.json (every key optional; missing keys keep the defaults below):
@@ -40,8 +52,17 @@ struct HoldingValue {
 ///                ... ],
 ///   "holding": [ { "address": 110, "value": 52.3,
 ///                  "format": "int16"|"uint16"|"int32"|"uint32"|"float32", "byteOrder": "ABCD"|... },
-///                ... ]
+///                ... ],
+///   "coilCount": 16, "discreteCount": 16,                                     (v1.3.4)
+///   "coils": [ { "address": 3, "value": true }, ... ],                        (v1.3.4)
+///   "bitSignals": [ { "discrete": 0, "kind": "square", "periodS": 4 },        (v1.3.4)
+///                   { "discrete": 1, "kind": "echo", "coil": 0 }, ... ]
 /// }
+/// v1.3.4 bits: coils 0..coilCount-1 are read (FC01) / written (FC05, FC15) by clients and start
+/// OFF unless listed in "coils"; discrete inputs 0..discreteCount-1 (FC02) are OFF unless driven
+/// by a "bitSignals" entry. "coils" / "bitSignals", when present, replace the defaults. Each
+/// discrete input is driven by at most one entry. RequestLog prints FC01/02/05/15 requests
+/// (verbose) and coil writes (logWrites) as "write coil(s) addr=... value(s)=ON/OFF".
 /// "host" defaults to loopback because the server has no authentication; use "0.0.0.0" to
 /// accept remote clients.
 /// If "signals" is present it replaces the default bindings entirely. If "holding" is present
@@ -66,6 +87,10 @@ struct ServerConfig {
     bool strict32Bit = false;
     QList<SignalBinding> signalBindings;
     QList<HoldingValue> holdingValues; ///< written into the holding registers at start
+    int coilCount = 16;     ///< v1.3.4: coils 0..coilCount-1 (1..65536)
+    int discreteCount = 16; ///< v1.3.4: discrete inputs 0..discreteCount-1 (1..65536)
+    QList<quint16> coilsOn; ///< v1.3.4: coils that start ON ("coils" entries with value true)
+    QList<BitBinding> bitBindings; ///< v1.3.4
 
     /// Defaults: IR0 sine(1000, 5 s), IR1 triangle(1000, 10 s), IR2 counter,
     /// IR3 square(1000, 4 s), IR4 noise(100), IR5 sawtooth(1000, 8 s),
@@ -73,6 +98,8 @@ struct ServerConfig {
     /// IR20-21 float32 ABCD sine(123.456, 5 s), IR22-23 float32 CDAB sine(123.456, 5 s),
     /// IR24-25 int32 ABCD sawtooth(100000, 8 s).
     /// Holding: HR110-111 float32 CDAB 52.3 (CM50-like setpoint), HR120-121 int32 ABCD 100.
+    /// Bits (v1.3.4): 16 coils, all OFF; 16 discrete inputs: DI0 square 4 s, DI1 echo of coil 0,
+    /// DI2 echo of coil 1.
     static ServerConfig defaults();
 };
 
@@ -83,7 +110,10 @@ struct ServerConfig {
 /// periodS/tauS <= 0, deadTimeS outside 0..60, tickMs < 1, dropPercent outside 0..100,
 /// holding entries that do not fit below holdingCount, overlap each other, have an
 /// unknown key, a missing address/value, a non-finite value, or a value outside the
-/// format's range (integer formats also need a whole number)).
+/// format's range (integer formats also need a whole number); v1.3.4: coil entries outside
+/// coilCount or with a non-boolean value, bitSignals with an unknown kind or key, a discrete
+/// address outside discreteCount, two entries for one discrete input, periodS <= 0, or an echo
+/// coil outside coilCount).
 std::optional<ServerConfig> parseServerConfig(const QByteArray &json, QString *error = nullptr);
 std::optional<ServerConfig> loadServerConfig(const QString &path, QString *error = nullptr);
 
