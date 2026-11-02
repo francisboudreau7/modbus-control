@@ -250,7 +250,7 @@ void SchematicView::build()
     baseItem->setData(0, QStringLiteral("TK-102"));
     baseItem->setZValue(1);
     text(QStringLiteral("TK-102"), 820, 590, 14, true);
-    text(QStringLiteral("Base tank"), 50, 590, 11);
+    text(tr("Base tank"), 50, 590, 11);
 
     // --- Process lines ----------------------------------------------------------------------
     pipe({{110, 610}, {110, 492}}, pipePen);                         // suction
@@ -278,7 +278,7 @@ void SchematicView::build()
         m_overflow->setZValue(2);
         arrow({670, 143.6}, {-1, 0});
         arrow({640, 360}, {0, 1});
-        text(QStringLiteral("overflow"), 648, 300, 11);
+        text(tr("overflow"), 648, 300, 11);
     }
 
     // --- P-101 pump -------------------------------------------------------------------------
@@ -414,20 +414,18 @@ void SchematicView::refresh(const LoopController &controller)
         }
     };
     set("lt-value", QStringLiteral("%1 %  %2 mA").arg(pct1(s.pvPct), ma2(s.pvPct)));
-    set("fcv-value", QStringLiteral("OUT %1 %  %2 mA\nPosition %3 %")
+    set("fcv-value", tr("OUT %1 %  %2 mA\nPosition %3 %")
                          .arg(pct1(s.outPct), ma2(s.outPct), pct1(s.stemPct)));
-    set("hv-value", QStringLiteral("%1 % open").arg(p.hvOpeningPct, 0, 'f', 0));
+    set("hv-value", tr("%1 % open").arg(p.hvOpeningPct, 0, 'f', 0));
     set("pump-value", QStringLiteral("%1 %").arg(p.pumpSpeedPct, 0, 'f', 0));
     set("lic-value", QStringLiteral("PV %1 %  SP %2 %  OUT %3 %")
                          .arg(pct1(s.pvPct), pct1(s.spPct), pct1(s.outPct)));
-    const QString proc = QStringLiteral("Level %1 m\nQin %2 L/min\nQhv %3 L/min\nOverflow %4 L/min\n"
-                                        "Pump %5 bar\nDead time %6 s")
-                             .arg(s.levelM, 0, 'f', 3)
-                             .arg(s.qIn * 60000.0, 0, 'f', 1)
-                             .arg(s.qHv * 60000.0, 0, 'f', 1)
-                             .arg(s.qOverflow * 60000.0, 0, 'f', 1)
-                             .arg(s.pumpPressureBar, 0, 'f', 2)
-                             .arg(p.deadTimeS, 0, 'f', 1);
+    const QString proc = tr("Level %1 m").arg(s.levelM, 0, 'f', 3) + QLatin1Char('\n')
+                         + tr("Qin %1 L/min").arg(s.qIn * 60000.0, 0, 'f', 1) + QLatin1Char('\n')
+                         + tr("Qhv %1 L/min").arg(s.qHv * 60000.0, 0, 'f', 1) + QLatin1Char('\n')
+                         + tr("Overflow %1 L/min").arg(s.qOverflow * 60000.0, 0, 'f', 1)
+                         + QLatin1Char('\n') + tr("Pump %1 bar").arg(s.pumpPressureBar, 0, 'f', 2)
+                         + QLatin1Char('\n') + tr("Dead time %1 s").arg(p.deadTimeS, 0, 'f', 1);
     set("process-data", proc);
 
     // Water in TK-101.
@@ -494,10 +492,10 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     auto *head = new QHBoxLayout;
     auto *title = new QLabel(QStringLiteral("LIC-101"), this);
     title->setStyleSheet(QStringLiteral("color: #e8eef4; font: bold 18px 'Segoe UI';"));
-    m_modeButton = new QPushButton(QStringLiteral("MAN"), this);
+    m_modeButton = new QPushButton(tr("MAN"), this);
     m_modeButton->setObjectName(QStringLiteral("modeButton"));
     m_modeButton->setFocusPolicy(Qt::NoFocus);
-    m_modeButton->setToolTip(QStringLiteral("Switch LIC-101 between Manual and Auto (PID)"));
+    m_modeButton->setToolTip(tr("Switch LIC-101 between Manual and Auto (PID)"));
     connect(m_modeButton, &QPushButton::clicked, this, [this] {
         if (m_controller) {
             m_controller->setAuto(!m_controller->model().isAuto());
@@ -534,11 +532,11 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     auto *btns = new QHBoxLayout;
     auto *up = new QPushButton(QStringLiteral("▲"), this);
     up->setObjectName(QStringLiteral("outUpButton"));
-    up->setToolTip(QStringLiteral("OUT +1 % (Shift: +5 %)"));
+    up->setToolTip(tr("OUT +1 % (Shift: +5 %)"));
     up->setFocusPolicy(Qt::NoFocus);
     auto *down = new QPushButton(QStringLiteral("▼"), this);
     down->setObjectName(QStringLiteral("outDownButton"));
-    down->setToolTip(QStringLiteral("OUT -1 % (Shift: -5 %)"));
+    down->setToolTip(tr("OUT -1 % (Shift: -5 %)"));
     down->setFocusPolicy(Qt::NoFocus);
     m_outUp = up;
     m_outDown = down;
@@ -561,7 +559,7 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     outCaption->setStyleSheet(QStringLiteral("color: #9aa7b3; font: 12px 'Segoe UI';"));
     m_outEdit = new QLineEdit(this);
     m_outEdit->setObjectName(QStringLiteral("outEdit"));
-    m_outEdit->setToolTip(QStringLiteral("Type OUT in % (0..100) and press Enter"));
+    m_outEdit->setToolTip(tr("Type OUT in % (0..100) and press Enter"));
     form->addWidget(outCaption);
     form->addWidget(m_outEdit);
     root->addLayout(form);
@@ -571,13 +569,13 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     spCaption->setMinimumWidth(outCaption->sizeHint().width());
     m_spEdit = new QLineEdit(this);
     m_spEdit->setObjectName(QStringLiteral("spEdit"));
-    m_spEdit->setToolTip(QStringLiteral("Type SP in % (0..100) and press Enter"));
+    m_spEdit->setToolTip(tr("Type SP in % (0..100) and press Enter"));
     form2->addWidget(spCaption);
     form2->addWidget(m_spEdit);
     root->addLayout(form2);
 
     // Tuning (v1.3.1): PID parameters and the action, applied with Enter / on selection.
-    auto *tuningCaption = new QLabel(QStringLiteral("Tuning"), this);
+    auto *tuningCaption = new QLabel(tr("Tuning"), this);
     tuningCaption->setStyleSheet(QStringLiteral("color: #e8eef4; font: bold 12px 'Segoe UI';"));
     root->addWidget(tuningCaption);
     auto *grid = new QGridLayout;
@@ -587,24 +585,24 @@ Faceplate::Faceplate(LoopController *controller, QWidget *parent)
     auto *kpCaption = new QLabel(QStringLiteral("Kp"), this);
     auto *tiCaption = new QLabel(QStringLiteral("Ti s"), this);
     auto *tdCaption = new QLabel(QStringLiteral("Td s"), this);
-    auto *actCaption = new QLabel(QStringLiteral("Action"), this);
+    auto *actCaption = new QLabel(tr("Action"), this);
     for (QLabel *c : {kpCaption, tiCaption, tdCaption, actCaption}) {
         c->setStyleSheet(captionStyle);
     }
     m_kpEdit = new QLineEdit(this);
     m_kpEdit->setObjectName(QStringLiteral("kpEdit"));
-    m_kpEdit->setToolTip(QStringLiteral("Proportional gain Kp, 0..100 (Enter applies)"));
+    m_kpEdit->setToolTip(tr("Proportional gain Kp, 0..100 (Enter applies)"));
     m_tiEdit = new QLineEdit(this);
     m_tiEdit->setObjectName(QStringLiteral("tiEdit"));
-    m_tiEdit->setToolTip(QStringLiteral("Integral time Ti in s, 0..3600 (0 = no I) (Enter applies)"));
+    m_tiEdit->setToolTip(tr("Integral time Ti in s, 0..3600 (0 = no I) (Enter applies)"));
     m_tdEdit = new QLineEdit(this);
     m_tdEdit->setObjectName(QStringLiteral("tdEdit"));
-    m_tdEdit->setToolTip(QStringLiteral("Derivative time Td in s, 0..600 (0 = no D) (Enter applies)"));
+    m_tdEdit->setToolTip(tr("Derivative time Td in s, 0..600 (0 = no D) (Enter applies)"));
     m_actionCombo = new QComboBox(this);
     m_actionCombo->setObjectName(QStringLiteral("actionCombo"));
-    m_actionCombo->setToolTip(QStringLiteral("Reverse: PV up -> OUT down; Direct: PV up -> OUT up"));
-    m_actionCombo->addItem(QStringLiteral("Reverse"));
-    m_actionCombo->addItem(QStringLiteral("Direct"));
+    m_actionCombo->setToolTip(tr("Reverse: PV up -> OUT down; Direct: PV up -> OUT up"));
+    m_actionCombo->addItem(tr("Reverse"));
+    m_actionCombo->addItem(tr("Direct"));
     grid->addWidget(kpCaption, 0, 0);
     grid->addWidget(m_kpEdit, 0, 1);
     grid->addWidget(tiCaption, 1, 0);
@@ -645,7 +643,7 @@ QString tuningText(double v)
 
 void Faceplate::applyMode(bool isAuto)
 {
-    m_modeButton->setText(isAuto ? QStringLiteral("AUTO") : QStringLiteral("MAN"));
+    m_modeButton->setText(isAuto ? tr("AUTO") : tr("MAN"));
     m_modeButton->setStyleSheet(QStringLiteral(
         "QPushButton { color: #1d2227; background: %1; border: none; border-radius: 3px;"
         " font: bold 14px 'Consolas'; padding: 1px 8px; min-height: 0px; }"
@@ -752,7 +750,7 @@ void Faceplate::refresh()
     }
 
     const bool isAuto = m_controller->model().isAuto();
-    if (m_modeButton->text() != (isAuto ? QStringLiteral("AUTO") : QStringLiteral("MAN"))) {
+    if (m_modeButton->text() != (isAuto ? tr("AUTO") : tr("MAN"))) {
         applyMode(isAuto);
     }
     const PidSettings &pid = m_controller->model().pid();
@@ -779,8 +777,8 @@ void Faceplate::refresh()
 LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     : QMainWindow(parent), m_controller(controller)
 {
-    setWindowTitle(QStringLiteral("Modbus Loop Simulator — Level loop 101"));
-    const QString filter = QStringLiteral("Loop scenario (*.mbloop)");
+    setWindowTitle(tr("Modbus Loop Simulator — Level loop 101"));
+    const QString filter = tr("Loop scenario (*.mbloop)");
     m_openFileName = [this, filter](const QString &caption) {
         return QFileDialog::getOpenFileName(this, caption, QString(), filter);
     };
@@ -815,7 +813,7 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     bar->addWidget(m_hvSlider, 1);
     bar->addWidget(m_hvValue);
     bar->addSpacing(12);
-    bar->addWidget(new QLabel(QStringLiteral("P-101 speed"), central));
+    bar->addWidget(new QLabel(tr("P-101 speed"), central));
     m_pumpSlider = new QSlider(Qt::Horizontal, central);
     m_pumpSlider->setObjectName(QStringLiteral("pumpSlider"));
     m_pumpSlider->setRange(0, 100);
@@ -825,14 +823,14 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     bar->addWidget(m_pumpSlider, 1);
     bar->addWidget(m_pumpValue);
     bar->addSpacing(12);
-    bar->addWidget(new QLabel(QStringLiteral("Speed"), central));
+    bar->addWidget(new QLabel(tr("Speed"), central));
     m_speedCombo = new QComboBox(central);
     m_speedCombo->setObjectName(QStringLiteral("speedCombo"));
     for (int k : {1, 2, 5}) {
         m_speedCombo->addItem(QStringLiteral("×%1").arg(k), static_cast<double>(k));
     }
     bar->addWidget(m_speedCombo);
-    m_pauseButton = new QPushButton(QStringLiteral("Pause"), central);
+    m_pauseButton = new QPushButton(tr("Pause"), central);
     m_pauseButton->setObjectName(QStringLiteral("pauseButton"));
     m_pauseButton->setCheckable(true);
     bar->addWidget(m_pauseButton);
@@ -840,33 +838,33 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     m_timeLabel->setObjectName(QStringLiteral("timeLabel"));
     m_timeLabel->setMinimumWidth(90);
     bar->addWidget(m_timeLabel);
-    m_processDataCheck = new QCheckBox(QStringLiteral("Show process data"), central);
+    m_processDataCheck = new QCheckBox(tr("Show process data"), central);
     m_processDataCheck->setObjectName(QStringLiteral("processDataCheck"));
     bar->addWidget(m_processDataCheck);
-    m_modbusCheck = new QCheckBox(QStringLiteral("Show Modbus registers"), central);
+    m_modbusCheck = new QCheckBox(tr("Show Modbus registers"), central);
     m_modbusCheck->setObjectName(QStringLiteral("modbusCheck"));
-    m_modbusCheck->setToolTip(QStringLiteral("Show which registers Modbus Control reads and writes"));
+    m_modbusCheck->setToolTip(tr("Show which registers Modbus Control reads and writes"));
     bar->addWidget(m_modbusCheck);
     col->addLayout(bar);
     setCentralWidget(central);
 
     // Menus.
-    QMenu *file = menuBar()->addMenu(QStringLiteral("&File"));
-    QAction *open = file->addAction(QStringLiteral("&Open scenario..."));
+    QMenu *file = menuBar()->addMenu(tr("&File"));
+    QAction *open = file->addAction(tr("&Open scenario..."));
     open->setObjectName(QStringLiteral("openAction"));
-    QAction *save = file->addAction(QStringLiteral("&Save scenario..."));
+    QAction *save = file->addAction(tr("&Save scenario..."));
     save->setObjectName(QStringLiteral("saveAction"));
     file->addSeparator();
-    QAction *reset = file->addAction(QStringLiteral("&Reset"));
+    QAction *reset = file->addAction(tr("&Reset"));
     reset->setObjectName(QStringLiteral("resetAction"));
     file->addSeparator();
-    QAction *quit = file->addAction(QStringLiteral("&Quit"));
+    QAction *quit = file->addAction(tr("&Quit"));
     quit->setObjectName(QStringLiteral("quitAction"));
     quit->setShortcut(QKeySequence::Quit);
-    QMenu *help = menuBar()->addMenu(QStringLiteral("&Help"));
-    QAction *about = help->addAction(QStringLiteral("&About"));
+    QMenu *help = menuBar()->addMenu(tr("&Help"));
+    QAction *about = help->addAction(tr("&About"));
     about->setObjectName(QStringLiteral("aboutAction"));
-    QAction *regs = help->addAction(QStringLiteral("&Modbus registers..."));
+    QAction *regs = help->addAction(tr("&Modbus registers..."));
     regs->setObjectName(QStringLiteral("modbusHelpAction"));
     connect(regs, &QAction::triggered, this, [this] { showModbusHelp(); });
 
@@ -879,9 +877,9 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     connect(quit, &QAction::triggered, this, &QWidget::close);
     connect(about, &QAction::triggered, this, [this] {
         QMessageBox::about(
-            this, QStringLiteral("About Modbus Loop Simulator"),
-            QStringLiteral("<b>Modbus Loop Simulator</b> %1<br>Level loop 101 with the LIC-101 "
-                           "regulator as a Modbus TCP server, for instrumentation courses.")
+            this, tr("About Modbus Loop Simulator"),
+            tr("<b>Modbus Loop Simulator</b> %1<br>Level loop 101 with the LIC-101 "
+               "regulator as a Modbus TCP server, for instrumentation courses.")
                 .arg(QCoreApplication::applicationVersion()));
     });
 
@@ -903,7 +901,7 @@ LoopWindow::LoopWindow(LoopController *controller, QWidget *parent)
     });
     connect(m_pauseButton, &QPushButton::toggled, this, [this](bool on) {
         m_controller->setPaused(on);
-        m_pauseButton->setText(on ? QStringLiteral("Run") : QStringLiteral("Pause"));
+        m_pauseButton->setText(on ? tr("Run") : tr("Pause"));
     });
     connect(m_processDataCheck, &QCheckBox::toggled, this,
             [this](bool on) { m_schematic->setProcessDataVisible(on); refresh(); });
@@ -935,23 +933,40 @@ struct RegisterRow {
     const char *access;
 };
 
-// Narrow literals are UTF-8 (/utf-8).
+// Narrow literals are UTF-8 (/utf-8). Texts are marked here and translated where they are shown
+// (QCoreApplication::translate with the same context).
 const RegisterRow kRegisterRows[4] = {
-    {"PV \u2013 LT-101 level, %", "Input register 1-2", "IR 0", "float32 ABCD (high word first)",
-     "FC04", "Read only"},
-    {"SP \u2013 LIC-101 setpoint, %", "Holding register 1-2", "HR 0", "float32 ABCD",
-     "FC03 read, FC16 write", "Read / write (0\u2013100)"},
-    {"OUT \u2013 LIC-101 output, %", "Holding register 3-4", "HR 2", "float32 ABCD",
-     "FC03 read, FC16 write", "Read / write (0\u2013100); read only in AUTO"},
-    {"LIC-101 A/M", "Coil 1", "CO 0", "bool (0 = Auto, 1 = Manual)", "FC01 read, FC05 write",
-     "Read / write (also in AUTO)"},
+    {QT_TRANSLATE_NOOP("mbloop::LoopWindow", "PV \u2013 LT-101 level, %"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Input register 1-2"), "IR 0",
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "float32 ABCD (high word first)"), "FC04",
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Read only")},
+    {QT_TRANSLATE_NOOP("mbloop::LoopWindow", "SP \u2013 LIC-101 setpoint, %"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Holding register 1-2"), "HR 0", "float32 ABCD",
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "FC03 read, FC16 write"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Read / write (0\u2013100)")},
+    {QT_TRANSLATE_NOOP("mbloop::LoopWindow", "OUT \u2013 LIC-101 output, %"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Holding register 3-4"), "HR 2", "float32 ABCD",
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "FC03 read, FC16 write"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Read / write (0\u2013100); read only in AUTO")},
+    {QT_TRANSLATE_NOOP("mbloop::LoopWindow", "LIC-101 A/M"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Coil 1"), "CO 0",
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "bool (0 = Auto, 1 = Manual)"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "FC01 read, FC05 write"),
+     QT_TRANSLATE_NOOP("mbloop::LoopWindow", "Read / write (also in AUTO)")},
 };
 
-const char *const kModbusNote =
+const char *const kModbusNote = QT_TRANSLATE_NOOP(
+    "mbloop::LoopWindow",
     "Each value is a 32-bit float on two registers: read or write both registers in one request "
     "(FC06 and half a float are refused). In Modbus Control tick Options \u203A Use 1-based register "
     "numbers, or open examples\\loop101.mbproj. The A/M coil is one bit: FC05 (or FC15 with one coil) "
-    "switches the controller like the A/M button.";
+    "switches the controller like the A/M button.");
+
+/// Translated text of a marked register-table string.
+QString regText(const char *source)
+{
+    return QCoreApplication::translate("mbloop::LoopWindow", source);
+}
 } // namespace
 
 void LoopWindow::buildModbusPanel(QWidget *parent)
@@ -965,7 +980,7 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
     auto *lay = new QVBoxLayout(m_modbusPanel);
     lay->setContentsMargins(8, 4, 8, 6);
     lay->setSpacing(3);
-    auto *title = new QLabel(QStringLiteral("Modbus TCP \u2013 connect Modbus Control here"), m_modbusPanel);
+    auto *title = new QLabel(tr("Modbus TCP \u2013 connect Modbus Control here"), m_modbusPanel);
     title->setStyleSheet(QStringLiteral("font: bold 12px 'Segoe UI'; color: #24425e;"));
     m_modbusConn = new QLabel(m_modbusPanel);
     m_modbusConn->setObjectName(QStringLiteral("modbusConnLabel"));
@@ -979,32 +994,31 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
 
     m_modbusTable = new QTableWidget(4, 7, m_modbusPanel);
     m_modbusTable->setObjectName(QStringLiteral("modbusTable"));
-    const QStringList headers{QStringLiteral("Signal"),
-                              QStringLiteral("Register (Modbus Control, 1-based)"),
-                              QStringLiteral("Address (0-based)"), QStringLiteral("Type"),
-                              QStringLiteral("Function codes"), QStringLiteral("Access"),
-                              QStringLiteral("Value")};
+    const QStringList headers{tr("Signal"), tr("Register (Modbus Control, 1-based)"),
+                              tr("Address (0-based)"), tr("Type"), tr("Function codes"),
+                              tr("Access"), tr("Value")};
     m_modbusTable->setHorizontalHeaderLabels(headers);
     const QStringList tips{
-        QStringLiteral("The value and where it comes from."),
-        QStringLiteral("Register number as Modbus Control shows it with Options > Use 1-based register "
-                       "numbers. A float32 takes two registers."),
-        QStringLiteral("Protocol address on the wire (0-based): IR = input register, HR = holding "
-                       "register. Use this if Modbus Control is in 0-based mode."),
-        QStringLiteral("float32 ABCD: IEEE 754, high word first (big-endian words)."),
-        QStringLiteral("FC03 = Read Holding Registers, FC04 = Read Input Registers, FC16 = Write "
-                       "Multiple Registers. FC06 (single register) is refused. FC01 = Read Coils, "
-                       "FC05 = Write Single Coil."),
-        QStringLiteral("What a client may do with the value."),
-        QStringLiteral("Current value in the simulator.")};
+        tr("The value and where it comes from."),
+        tr("Register number as Modbus Control shows it with Options > Use 1-based register "
+           "numbers. A float32 takes two registers."),
+        tr("Protocol address on the wire (0-based): IR = input register, HR = holding "
+           "register. Use this if Modbus Control is in 0-based mode."),
+        tr("float32 ABCD: IEEE 754, high word first (big-endian words)."),
+        tr("FC03 = Read Holding Registers, FC04 = Read Input Registers, FC16 = Write "
+           "Multiple Registers. FC06 (single register) is refused. FC01 = Read Coils, "
+           "FC05 = Write Single Coil."),
+        tr("What a client may do with the value."),
+        tr("Current value in the simulator.")};
     for (int c = 0; c < 7; ++c) {
         m_modbusTable->horizontalHeaderItem(c)->setToolTip(tips.at(c));
     }
     for (int r = 0; r < 4; ++r) {
         const RegisterRow &rr = kRegisterRows[r];
-        const char *cells[6] = {rr.signal, rr.reg, rr.addr, rr.type, rr.fc, rr.access};
+        const QString cells[6] = {regText(rr.signal), regText(rr.reg), QString::fromUtf8(rr.addr),
+                                  regText(rr.type),   regText(rr.fc),  regText(rr.access)};
         for (int c = 0; c < 6; ++c) {
-            auto *item = new QTableWidgetItem(QString::fromUtf8(cells[c]));
+            auto *item = new QTableWidgetItem(cells[c]);
             item->setFlags(Qt::ItemIsEnabled);
             item->setToolTip(tips.at(c));
             m_modbusTable->setItem(r, c, item);
@@ -1037,7 +1051,7 @@ void LoopWindow::buildModbusPanel(QWidget *parent)
     m_modbusTable->setFixedHeight(m_modbusTable->horizontalHeader()->sizeHint().height() + 4 * 20 + 4);
     lay->addWidget(m_modbusTable);
 
-    m_modbusNote = new QLabel(QString::fromUtf8(kModbusNote), m_modbusPanel);
+    m_modbusNote = new QLabel(regText(kModbusNote), m_modbusPanel);
     m_modbusNote->setObjectName(QStringLiteral("modbusNote"));
     m_modbusNote->setWordWrap(true);
     m_modbusNote->setStyleSheet(QStringLiteral("color: #4a5a68; font: 11px 'Segoe UI';"));
@@ -1060,8 +1074,8 @@ void LoopWindow::showModbusHelp()
         }
         html += QStringLiteral("</tr>");
     }
-    html += QStringLiteral("</table><p>%1</p>").arg(QString::fromUtf8(kModbusNote).toHtmlEscaped());
-    QMessageBox box(QMessageBox::Information, QStringLiteral("Modbus registers"), html,
+    html += QStringLiteral("</table><p>%1</p>").arg(regText(kModbusNote).toHtmlEscaped());
+    QMessageBox box(QMessageBox::Information, tr("Modbus registers"), html,
                     QMessageBox::Ok, this);
     box.setTextFormat(Qt::RichText);
     box.exec();
@@ -1100,7 +1114,7 @@ void LoopWindow::syncControls()
     {
         const QSignalBlocker b(m_pauseButton);
         m_pauseButton->setChecked(m_controller->isPaused());
-        m_pauseButton->setText(m_controller->isPaused() ? QStringLiteral("Run") : QStringLiteral("Pause"));
+        m_pauseButton->setText(m_controller->isPaused() ? tr("Run") : tr("Pause"));
     }
 }
 
@@ -1115,36 +1129,32 @@ void LoopWindow::refresh()
         const LoopServer &srv = m_controller->server();
         if (srv.port() != 0) {
             const int n = srv.clientCount();
+            //: %1 = host address, %2 = port; %n = number of connected clients
             m_modbusConn->setText(
-                QStringLiteral("Server <b>%1 : %2</b> &nbsp;&nbsp; Unit 1 (any unit answered) "
-                               "&nbsp;&nbsp;\u2013&nbsp;&nbsp; %3 %4 connected")
+                tr("Server <b>%1 : %2</b> &nbsp;&nbsp; Unit 1 (any unit answered) "
+                   "&nbsp;&nbsp;\u2013&nbsp;&nbsp; %n client(s) connected", nullptr, n)
                     .arg(srv.host().toHtmlEscaped())
-                    .arg(srv.port())
-                    .arg(n)
-                    .arg(n == 1 ? QStringLiteral("client") : QStringLiteral("clients")));
+                    .arg(srv.port()));
         } else {
             m_modbusConn->setText(
-                QStringLiteral("<span style='color:#c0392b;'><b>Server not running: %1</b></span>")
-                    .arg(m_serverStatus.toHtmlEscaped()));
+                QStringLiteral("<span style='color:#c0392b;'><b>%1</b></span>")
+                    .arg(tr("Server not running: %1").arg(m_serverStatus.toHtmlEscaped())));
         }
         const LoopState &st = m_controller->model().state();
         m_modbusTable->item(0, 6)->setText(pct1(st.pvPct) + QStringLiteral(" %"));
         m_modbusTable->item(1, 6)->setText(pct1(st.spPct) + QStringLiteral(" %"));
         m_modbusTable->item(2, 6)->setText(pct1(st.outPct) + QStringLiteral(" %"));
-        m_modbusTable->item(3, 6)->setText(m_controller->model().isAuto() ? QStringLiteral("0 = Auto")
-                                                                           : QStringLiteral("1 = Manual"));
+        m_modbusTable->item(3, 6)->setText(m_controller->model().isAuto() ? tr("0 = Auto")
+                                                                           : tr("1 = Manual"));
         m_modbusTable->item(2, 5)->setText(m_controller->model().isAuto()
-                                               ? QStringLiteral("Read only (AUTO)")
-                                               : QString::fromUtf8(kRegisterRows[2].access));
+                                               ? tr("Read only (AUTO)")
+                                               : regText(kRegisterRows[2].access));
     }
     if (!m_serverStatus.isEmpty()) {
         QString msg = m_serverStatus;
         if (m_controller->server().port() != 0) { // running: a client count only means something then
             const int n = m_controller->server().clientCount();
-            msg = QStringLiteral("%1, %2 %3")
-                      .arg(m_serverStatus)
-                      .arg(n)
-                      .arg(n == 1 ? QStringLiteral("client") : QStringLiteral("clients"));
+            msg = tr("%1, %n client(s)", nullptr, n).arg(m_serverStatus);
         }
         if (statusBar()->currentMessage() != msg) {
             statusBar()->showMessage(msg);
@@ -1154,14 +1164,14 @@ void LoopWindow::refresh()
 
 void LoopWindow::openScenario()
 {
-    const QString path = m_openFileName(QStringLiteral("Open scenario"));
+    const QString path = m_openFileName(tr("Open scenario"));
     if (path.isEmpty()) {
         return;
     }
     QString error;
     const auto scenario = loadScenario(path, &error);
     if (!scenario) {
-        m_warning(QStringLiteral("Open scenario"), error);
+        m_warning(tr("Open scenario"), error);
         return;
     }
     m_controller->loadScenario(*scenario);
@@ -1170,7 +1180,7 @@ void LoopWindow::openScenario()
 
 void LoopWindow::saveScenario()
 {
-    QString path = m_saveFileName(QStringLiteral("Save scenario"));
+    QString path = m_saveFileName(tr("Save scenario"));
     if (path.isEmpty()) {
         return;
     }
@@ -1179,7 +1189,7 @@ void LoopWindow::saveScenario()
     }
     QString error;
     if (!mbloop::saveScenario(path, m_controller->currentScenario(), &error)) {
-        m_warning(QStringLiteral("Save scenario"), error);
+        m_warning(tr("Save scenario"), error);
     }
 }
 

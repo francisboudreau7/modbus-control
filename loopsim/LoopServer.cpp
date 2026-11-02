@@ -15,6 +15,7 @@
 #include <modbus.h>
 
 #include <QByteArray>
+#include <QCoreApplication>
 
 #include <algorithm>
 #include <cmath>
@@ -245,7 +246,7 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
 
     if (m_thread.joinable() || m_ctx) {
         if (error) {
-            *error = QStringLiteral("The Modbus server is already running.");
+            *error = QCoreApplication::translate("mbloop::LoopServer", "The Modbus server is already running.");
         }
         return false;
     }
@@ -254,14 +255,14 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
     const bool anyHost = hostBytes.isEmpty() || hostBytes == "0.0.0.0";
     m_ctx = modbus_new_tcp(anyHost ? nullptr : hostBytes.constData(), port);
     if (!m_ctx) {
-        return fail(QStringLiteral("Cannot create the Modbus server on %1:%2: %3")
+        return fail(QCoreApplication::translate("mbloop::LoopServer", "Cannot create the Modbus server on %1:%2: %3")
                         .arg(host)
                         .arg(port)
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
     }
     m_mapping = modbus_mapping_new_start_address(0, kCoilCount, 0, 0, 0, kHoldingCount, 0, kInputCount);
     if (!m_mapping) {
-        return fail(QStringLiteral("Cannot allocate the register mapping."));
+        return fail(QCoreApplication::translate("mbloop::LoopServer", "Cannot allocate the register mapping."));
     }
 
 #ifdef _WIN32
@@ -294,11 +295,11 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
                 // an excluded (reserved) range.
                 if (bindError == WSAEADDRINUSE) {
                     WSACleanup();
-                    return fail(QStringLiteral("Port %1 is already in use.").arg(port));
+                    return fail(QCoreApplication::translate("mbloop::LoopServer", "Port %1 is already in use.").arg(port));
                 }
                 if (bindError == WSAEACCES) {
                     WSACleanup();
-                    return fail(QStringLiteral("Port %1 is already in use or reserved.").arg(port));
+                    return fail(QCoreApplication::translate("mbloop::LoopServer", "Port %1 is already in use or reserved.").arg(port));
                 }
             }
             WSACleanup();
@@ -308,7 +309,7 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
 
     m_listenSocket = modbus_tcp_listen(m_ctx, 16);
     if (m_listenSocket == -1) {
-        return fail(QStringLiteral("Cannot listen on %1:%2 (port in use or invalid address?): %3")
+        return fail(QCoreApplication::translate("mbloop::LoopServer", "Cannot listen on %1:%2 (port in use or invalid address?): %3")
                         .arg(host)
                         .arg(port)
                         .arg(QString::fromLocal8Bit(modbus_strerror(errno))));
@@ -317,7 +318,7 @@ bool LoopServer::start(const QString &host, quint16 port, QString *error)
     sockaddr_in addr {};
     socklen_t len = sizeof(addr);
     if (::getsockname(native(m_listenSocket), reinterpret_cast<sockaddr *>(&addr), &len) != 0) {
-        return fail(QStringLiteral("getsockname failed."));
+        return fail(QCoreApplication::translate("mbloop::LoopServer", "getsockname failed."));
     }
     m_port = ntohs(addr.sin_port);
     m_host = host;

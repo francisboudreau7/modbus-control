@@ -93,7 +93,7 @@ int fail(const QString &message, int code)
     } else {
         attachParentConsole(); // also show it on the console it was started from
         std::fprintf(stderr, "modbus_loop_sim: %s\n", qPrintable(message));
-        QMessageBox::critical(nullptr, QStringLiteral("Modbus Loop Simulator"), message);
+        QMessageBox::critical(nullptr, QCoreApplication::translate("mbloop::main", "Modbus Loop Simulator"), message);
     }
     return code;
 }
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     if (!parser.positionalArguments().isEmpty()) {
-        return fail(QStringLiteral("unexpected argument '%1'").arg(parser.positionalArguments().first()), 2);
+        return fail(QCoreApplication::translate("mbloop::main", "unexpected argument '%1'").arg(parser.positionalArguments().first()), 2);
     }
 
     bool ok = true;
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
     if (parser.isSet(portOption)) {
         const int p = parser.value(portOption).toInt(&ok);
         if (!ok || p < 0 || p > 65535) {
-            return fail(QStringLiteral("--port must be 0..65535"), 2);
+            return fail(QCoreApplication::translate("mbloop::main", "--port must be 0..65535"), 2);
         }
         port = static_cast<quint16>(p);
     }
@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
     if (parser.isSet(speedOption)) {
         const int s = parser.value(speedOption).toInt(&ok);
         if (!ok || (s != 1 && s != 2 && s != 5)) {
-            return fail(QStringLiteral("--speed must be 1, 2 or 5"), 2);
+            return fail(QCoreApplication::translate("mbloop::main", "--speed must be 1, 2 or 5"), 2);
         }
         speed = s;
     }
@@ -221,7 +221,7 @@ int main(int argc, char *argv[])
     }
 
     mbloop::LoopWindow window(&controller);
-    window.setServerStatus(serverOk ? QStringLiteral("Modbus server on %1:%2")
+    window.setServerStatus(serverOk ? QCoreApplication::translate("mbloop::main", "Modbus server on %1:%2")
                                           .arg(host)
                                           .arg(controller.server().port())
                                     : serverError);
