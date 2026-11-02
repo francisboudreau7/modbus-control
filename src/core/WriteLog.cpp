@@ -1,5 +1,6 @@
 #include "WriteLog.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -98,7 +99,7 @@ bool WriteLogFile::append(const WriteLogEntry &entry, QString *error)
 
     if (!QDir().mkpath(m_folder)) {
         if (error)
-            *error = QStringLiteral("Cannot create folder %1").arg(m_folder);
+            *error = QCoreApplication::translate("mb::WriteLog", "Cannot create folder %1").arg(m_folder);
         return false;
     }
 
@@ -117,17 +118,17 @@ bool WriteLogFile::append(const WriteLogEntry &entry, QString *error)
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
         if (error)
-            *error = QStringLiteral("Cannot open %1: %2").arg(path, file.errorString());
+            *error = QCoreApplication::translate("mb::WriteLog", "Cannot open %1: %2").arg(path, file.errorString());
         return false;
     }
     if (file.write(data) != data.size()) {
         if (error)
-            *error = QStringLiteral("Cannot write %1: %2").arg(path, file.errorString());
+            *error = QCoreApplication::translate("mb::WriteLog", "Cannot write %1: %2").arg(path, file.errorString());
         return false;
     }
     if (!file.flush()) {
         if (error)
-            *error = QStringLiteral("Cannot write %1: %2").arg(path, file.errorString());
+            *error = QCoreApplication::translate("mb::WriteLog", "Cannot write %1: %2").arg(path, file.errorString());
         return false;
     }
     file.close();

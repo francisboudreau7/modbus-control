@@ -1,5 +1,7 @@
 #include "Tuning.h"
 
+#include <QCoreApplication>
+
 #include <algorithm>
 #include <cmath>
 
@@ -9,11 +11,11 @@ QString toString(TuningRule rule)
 {
     switch (rule) {
     case TuningRule::ZieglerNichols:
-        return QStringLiteral("Ziegler-Nichols (open loop)");
+        return QCoreApplication::translate("mb::Tuning", "Ziegler-Nichols (open loop)");
     case TuningRule::CohenCoon:
         return QStringLiteral("Cohen-Coon");
     case TuningRule::ImcLambda:
-        return QStringLiteral("IMC / lambda");
+        return QCoreApplication::translate("mb::Tuning", "IMC / lambda");
     case TuningRule::Simc:
         return QStringLiteral("SIMC");
     }
