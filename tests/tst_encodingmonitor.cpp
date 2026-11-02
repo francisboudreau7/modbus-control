@@ -2752,6 +2752,167 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(offPrompts.size(), 1, 2000);
         QVERIFY(offPrompts[0].useLabel.isEmpty()); // a tag has read Good
     }
+
+    // ---- v1.3.4 bit tags (coils, discrete inputs) ---------------------------------------------
+
+    static Tag bitTag(const QString &name, quint16 address, Area area = Area::Coil)
+    {
+        Tag t;
+        t.name = name;
+        t.area = area;
+        t.address = address;
+        t.type = ValueType::Bool;
+        return t;
+    }
+
+    TagSample bitSample(TagId id, int value, Quality quality = Quality::Good) const
+    {
+        TagSample s;
+        s.tagId = id;
+        s.quality = quality;
+        s.raw = quint32(value);
+        s.value = value;
+        return s;
+    }
+
+    void bitTagsAreSkippedByTheEncodingChecks()
+    {
+        Tag writable = bitTag(QStringLiteral("Pump"), 12);
+        writable.writable = true;
+        load({writable, bitTag(QStringLiteral("Alarm"), 3, Area::DiscreteInput),
+              mkTag(QStringLiteral("Flow"), 100, ValueType::Float32)});
+        const TagId pump = 1;
+        const TagId alarm = 2;
+        mon->onConnected();
+        for (int i = 0; i < 6; ++i)
+            feed({bitSample(pump, i % 2), bitSample(alarm, 1)});
+        QVERIFY(reads.isEmpty());
+        QVERIFY(splits.isEmpty());
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(reviews.isEmpty());
+        QVERIFY(!mon->isPending(pump));
+        QVERIFY(!mon->isPending(alarm));
+        QVERIFY(tagOf(pump).encodingVerified);
+        QVERIFY(tagOf(pump).writable);
+        QVERIFY(tagOf(alarm).encodingVerified);
+        QVERIFY(messages->isEmpty());
+
+        // Manual checks do nothing for them either.
+        mon->detectNow(pump);
+        mon->detectNow(alarm);
+        QVERIFY(reads.isEmpty());
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(splits.isEmpty());
+
+        // Editing or adding one while connected starts nothing.
+        load({writable, bitTag(QStringLiteral("Other"), 4)});
+        mon->onConnected();
+        feed({bitSample(1, 1), bitSample(2, 0)});
+        QVERIFY(reads.isEmpty());
+        QVERIFY(!mon->isPending(1));
+    }
+
+    /// A device whose coil 11 answers but whose coil 12 is refused.
+    void coilDevice()
+    {
+        regs.clear();
+        for (int a = 8; a < 16; ++a)
+            regs[a] = quint16(a % 2);
+        readFails = [](quint16 address, int count) { return address == 12 && count == 1; };
+        installOffPrompt();
+    }
+
+    void offByOneProbesABitTag()
+    {
+        coilDevice();
+        offAnswer = EncodingMonitor::OffByOneAnswer::MoveTags;
+        Tag pump = bitTag(QStringLiteral("Pump"), 12);
+        pump.writable = true;
+        load({pump, bitTag(QStringLiteral("Other"), 30)});
+        mon->onConnected();
+        feed({bitSample(1, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(reads[0].area == Area::Coil);
+        QCOMPARE(reads[0].address, quint16(12)); // the tag alone: its own address, one bit
+        QCOMPARE(reads[0].count, 1);
+        QVERIFY(reads[1].area == Area::Coil);
+        QCOMPARE(reads[1].address, quint16(11)); // one bit below
+        QCOMPARE(reads[1].count, 1);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("Some registers may be numbered from 1.")));
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'Pump': CO 12 is refused, but CO 11 answers.")));
+        QCOMPARE(tagOf(1).address, quint16(11));
+        QVERIFY(tagOf(1).area == Area::Coil);
+        QVERIFY(tagOf(1).type == ValueType::Bool);
+        QCOMPARE(tagOf(2).address, quint16(30)); // MoveTags moves only the listed tags
+        QVERIFY(!mon->isPending(1));
+        QVERIFY(dialogs.isEmpty());
+        QVERIFY(splits.isEmpty());
+    }
+
+    void offByOneBitTagUseNumberingAndBaseOne()
+    {
+        coilDevice();
+        offAnswer = EncodingMonitor::OffByOneAnswer::UseNumbering;
+        model->setAddressBase(1);
+        regs[13] = 1;
+        readFails = [](quint16 address, int count) { return address == 12 && count == 1; };
+        // Typed as 13 with 1-based numbers: protocol address 12; the probe reads 13 (shown 14).
+        load({bitTag(QStringLiteral("Pump"), 12), bitTag(QStringLiteral("Other"), 30)});
+        mon->onConnected();
+        const std::unique_ptr<QSignalSpy> bases(new QSignalSpy(mon.get(), &EncodingMonitor::addressBaseChangeRequested));
+        feed({bitSample(1, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QCOMPARE(reads[1].address, quint16(13));
+        QCOMPARE(reads[1].count, 1);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("Some registers may be numbered from 0.")));
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'Pump': CO 13 is refused, but CO 14 answers.")));
+        QCOMPARE(offPrompts[0].useLabel, QStringLiteral("Use 0-based numbers"));
+        QCOMPARE(tagOf(1).address, quint16(13));
+        QCOMPARE(tagOf(2).address, quint16(31));
+        QCOMPARE(bases->size(), 1);
+        QCOMPARE(bases->first().first().toInt(), 0);
+    }
+
+    void offByOneDiscreteInputAndEdges()
+    {
+        coilDevice();
+        offAnswer = EncodingMonitor::OffByOneAnswer::MoveTags;
+        regs[5] = 1;
+        readFails = [](quint16 address, int count) { return address == 6 && count == 1; };
+        load({bitTag(QStringLiteral("Alarm"), 6, Area::DiscreteInput),
+              bitTag(QStringLiteral("Zero"), 0, Area::DiscreteInput),
+              bitTag(QStringLiteral("Taken"), 20), bitTag(QStringLiteral("Next"), 19)});
+        mon->onConnected();
+        feed({bitSample(1, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(reads[1].area == Area::DiscreteInput);
+        QCOMPARE(offPrompts.size(), 1);
+        QVERIFY(offPrompts[0].text.contains(QStringLiteral("'Alarm': DI 6 is refused, but DI 5 answers.")));
+        QCOMPARE(tagOf(1).address, quint16(5));
+
+        // Address 0 has nothing below it; a bit another tag maps is not probed.
+        offPrompts.clear();
+        reads.clear();
+        feed({bitSample(2, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 1);
+        feed({bitSample(3, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2); // the alone read only: CO 19 belongs to "Next"
+        QVERIFY(offPrompts.isEmpty());
+    }
+
+    void offByOneBitTagNoPromptWhenNothingAnswers()
+    {
+        coilDevice();
+        regs.remove(11);
+        load({bitTag(QStringLiteral("Pump"), 12)});
+        mon->onConnected();
+        feed({bitSample(1, 0, Quality::Exception)});
+        QCOMPARE(reads.size(), 2);
+        QVERIFY(offPrompts.isEmpty());
+        QCOMPARE(tagOf(1).address, quint16(12));
+    }
 };
 
 QTEST_MAIN(TstEncodingMonitor)

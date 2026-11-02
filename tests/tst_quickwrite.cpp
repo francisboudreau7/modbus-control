@@ -4,6 +4,7 @@
 #include "WriteController.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QLabel>
 #include <QLocale>
@@ -250,6 +251,7 @@ private:
         TagTableModel model;
         std::unique_ptr<WriteController> wc;
         std::unique_ptr<QSignalSpy> writes;
+        std::unique_ptr<QSignalSpy> coils;
         QStringList warns;
         QStringList confirms;
         QStringList implausibles;
@@ -285,6 +287,7 @@ private:
         r.model.setTags({sp, fl, nx, pl}, 0);
         r.wc = std::make_unique<WriteController>(&r.model, nullptr);
         r.writes = std::make_unique<QSignalSpy>(r.wc.get(), &WriteController::writeRegisters);
+        r.coils = std::make_unique<QSignalSpy>(r.wc.get(), &WriteController::writeCoils);
         Rig *p = &r;
         r.wc->m_confirmEncoding = [p](const QString &t) {
             p->encodingPrompts << t;
@@ -1468,6 +1471,449 @@ private slots:
         QVERIFY(seen.point);
         QVERIFY(!seen.thousands);
         QLocale::setDefault(previous);
+    }
+
+    // ---- v1.3.4 coils ----
+private:
+    static Tag coilTag(TagId id, const QString &name, int address, bool writable = true)
+    {
+        Tag t;
+        t.id = id;
+        t.name = name;
+        t.area = Area::Coil;
+        t.type = ValueType::Bool;
+        t.address = quint16(address);
+        t.writable = writable;
+        return t;
+    }
+
+    /// Coils 1 "Pump" CO 12, 2 "Valve" CO 10, 3 "Fan" CO 11, 4 "Heater" CO 13, 5 "Far" CO 40,
+    /// 6 read-only coil "Lamp" CO 50, 7 discrete input "Alarm" DI 3; register 8 "Reg" HR 200.
+    static void setupCoils(Rig &r, int base = 0)
+    {
+        setup(r);
+        Tag reg = makeTag(8, "Reg", true, std::nullopt, std::nullopt);
+        reg.type = ValueType::UInt16;
+        reg.address = 200;
+        Tag di = coilTag(7, "Alarm", 3, false);
+        di.area = Area::DiscreteInput;
+        r.model.setTags({coilTag(1, "Pump", 12), coilTag(2, "Valve", 10), coilTag(3, "Fan", 11),
+                         coilTag(4, "Heater", 13), coilTag(5, "Far", 40), coilTag(6, "Lamp", 50, false),
+                         di, reg},
+                        1000);
+        r.model.setAddressBase(base);
+    }
+
+    static QList<quint16> coilValues(const QSignalSpy &spy, int i)
+    {
+        return spy.at(i).at(2).value<QList<quint16>>();
+    }
+
+private slots:
+    void coilSingleWriteConfirmation()
+    {
+        Rig r;
+        setupCoils(r);
+        feed(r, 1, 0.0);
+        r.wc->requestWrite(1, 1.0);
+        QCOMPARE(r.confirms.size(), 1);
+        const QString t = r.confirms.at(0);
+        QVERIFY(t.startsWith(QStringLiteral("<p><b>Switch 'Pump' ON?</b></p>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Current state:</td><td>OFF</td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>New state:</td><td><b>ON</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<p><small>CO 12 · FC05</small></p>")));
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(r.coils->size(), 1);
+        QCOMPARE(r.coils->at(0).at(1).value<quint16>(), quint16(12));
+        QCOMPARE(coilValues(*r.coils, 0), QList<quint16>{1});
+
+        // OFF, with the current state unknown (no reading yet) and the address base shown.
+        Rig r2;
+        setupCoils(r2, 1);
+        r2.wc->requestWrite(2, 0.0);
+        QCOMPARE(r2.confirms.size(), 1);
+        QVERIFY(r2.confirms.at(0).startsWith(QStringLiteral("<p><b>Switch 'Valve' OFF?</b></p>")));
+        QVERIFY(r2.confirms.at(0).contains(QStringLiteral("<td>Current state:</td><td>unknown</td>")));
+        QVERIFY(r2.confirms.at(0).contains(QStringLiteral("<td>New state:</td><td><b>OFF</b></td>")));
+        QVERIFY(r2.confirms.at(0).contains(QStringLiteral("<p><small>CO 11 · FC05</small></p>")));
+        QCOMPARE(r2.coils->size(), 1);
+        QCOMPARE(r2.coils->at(0).at(1).value<quint16>(), quint16(10)); // protocol address
+        QCOMPARE(coilValues(*r2.coils, 0), QList<quint16>{0});
+    }
+
+    void coilDeclinedAndRefusals()
+    {
+        Rig r;
+        setupCoils(r);
+        // Only 0 and 1.
+        r.wc->requestWrite(1, 2.0);
+        r.wc->requestWrite(1, 0.5);
+        r.wc->requestQuickWrite(1, -1.0);
+        QCOMPARE(r.warns.size(), 3);
+        QCOMPARE(r.warns.at(0), rich::headline(QStringLiteral("'Pump' is a coil: write ON or OFF.")));
+        QVERIFY(r.confirms.isEmpty());
+        QCOMPARE(r.coils->size(), 0);
+
+        // Not writable: silently nothing (read-only coil, discrete input).
+        r.warns.clear();
+        r.wc->requestWrite(6, 1.0);
+        r.wc->requestWrite(7, 1.0);
+        QVERIFY(r.warns.isEmpty());
+        QVERIFY(r.confirms.isEmpty());
+
+        // Declined.
+        r.wc->m_confirm = [](const QString &) { return false; };
+        r.wc->requestWrite(1, 1.0);
+        QCOMPARE(r.coils->size(), 0);
+
+        // Not connected.
+        r.wc->m_confirm = [](const QString &) { return true; };
+        r.wc->setConnected(false);
+        QSignalSpy messages(r.wc.get(), &WriteController::message);
+        r.wc->requestWrite(1, 1.0);
+        QCOMPARE(r.coils->size(), 0);
+        QCOMPARE(messages.size(), 1);
+    }
+
+    void coilLimitsAndEncodingChecksDoNotApply()
+    {
+        Rig r;
+        setupCoils(r);
+        Tag c = coilTag(1, "Pump", 12);
+        c.writeMin = 5.0; // meaningless for a coil
+        c.writeMax = 10.0;
+        r.model.setTags({c}, 0);
+        r.wc->requestWrite(1, 1.0);
+        QVERIFY(r.warns.isEmpty());
+        QVERIFY(r.encodingPrompts.isEmpty());
+        QVERIFY(r.implausibles.isEmpty());
+        QCOMPARE(r.coils->size(), 1);
+    }
+
+    void coilWriteNeedsRead()
+    {
+        Rig r;
+        setupCoils(r);
+        Tag proto = coilTag(0, "Fresh", 30);
+        const int row = r.model.addTag(proto);
+        QVERIFY(row >= 0);
+        const TagId id = r.model.tagAt(row).id;
+        if (!r.model.writeNeedsRead(id))
+            QSKIP("a coil added from a prototype is not flagged by this model");
+        r.wc->requestWrite(id, 1.0);
+        QCOMPARE(r.coils->size(), 0);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains("No valid reading of 'Fresh' since it was made writable."));
+        QVERIFY(r.warns.at(0).contains("CO 30"));
+        QVERIFY(r.confirms.isEmpty());
+        feed(r, id, 0.0);
+        r.wc->requestWrite(id, 1.0);
+        QCOMPARE(r.coils->size(), 1);
+    }
+
+    void coilQuickWrite()
+    {
+        Rig r;
+        setupCoils(r);
+        feed(r, 1, 1.0);
+        r.wc->requestQuickWrite(1, 0.0);
+        QCOMPARE(r.quickCalls, 1);
+        QCOMPARE(r.confirms.size(), 1);
+        QVERIFY(r.confirms.at(0).startsWith(QStringLiteral("<p><b>Switch 'Pump' OFF?</b></p>")));
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<td>Current state:</td><td>ON</td>")));
+        QCOMPARE(r.coils->size(), 1);
+        QCOMPARE(coilValues(*r.coils, 0), QList<quint16>{0});
+
+        // No confirmation once quickConfirm is off.
+        r.wc->setQuickConfirm(false);
+        r.wc->requestQuickWrite(1, 1.0);
+        QCOMPARE(r.quickCalls, 1);
+        QCOMPARE(r.confirms.size(), 1);
+        QCOMPARE(r.coils->size(), 2);
+
+        // "Don't ask again" in the prompt switches it off.
+        r.wc->setQuickConfirm(true);
+        r.wc->m_quickConfirmPrompt = [](const QString &) {
+            return WriteController::QuickAnswer{true, true};
+        };
+        r.wc->requestQuickWrite(1, 1.0);
+        QVERIFY(!r.wc->quickConfirm());
+        QCOMPARE(r.coils->size(), 3);
+
+        // A refused quick write sends nothing.
+        r.wc->setQuickConfirm(true);
+        r.wc->m_quickConfirmPrompt = [](const QString &) {
+            return WriteController::QuickAnswer{false, false};
+        };
+        r.wc->requestQuickWrite(1, 1.0);
+        QCOMPARE(r.coils->size(), 3);
+    }
+
+    void coilLogEntries()
+    {
+        Rig r;
+        setupCoils(r);
+        r.wc->setServer(QStringLiteral("10.0.0.5:502 unit 3"));
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        feed(r, 1, 0.0);
+        r.wc->requestWrite(1, 1.0);
+        QCOMPARE(logged.size(), 0);
+        r.wc->onWriteFinished(r.coils->at(0).at(0).value<quint64>(), ModbusResult{});
+        QCOMPARE(logged.size(), 1);
+        WriteLogEntry e = loggedAt(logged, 0);
+        QCOMPARE(e.tagId, TagId(1));
+        QCOMPARE(e.address, quint16(12));
+        QCOMPARE(e.count, 1);
+        QCOMPARE(e.registers, QString("CO 12"));
+        QCOMPARE(e.functionCode, 5);
+        QCOMPARE(e.oldValue, QString("OFF"));
+        QCOMPARE(e.newValue, QString("ON"));
+        QCOMPARE(e.raw, QString("1"));
+        QCOMPARE(e.source, QString("table"));
+        QVERIFY(e.ok);
+        QCOMPARE(e.result, QString("OK"));
+        QCOMPARE(e.server, QString("10.0.0.5:502 unit 3"));
+
+        // Unknown old value, quick source, failure.
+        r.wc->requestQuickWrite(2, 0.0);
+        r.wc->onWriteFinished(r.coils->at(1).at(0).value<quint64>(), exception2());
+        e = loggedAt(logged, 1);
+        QCOMPARE(e.source, QString("quick"));
+        QCOMPARE(e.oldValue, QString("unknown"));
+        QCOMPARE(e.newValue, QString("OFF"));
+        QCOMPARE(e.raw, QString("0"));
+        QVERIFY(!e.ok);
+        QCOMPARE(e.result, QString("Modbus exception 2: Illegal data address"));
+
+        // Abandoned at disconnect.
+        r.wc->requestWrite(1, 0.0);
+        r.wc->setConnected(false);
+        QCOMPARE(logged.size(), 3);
+        QCOMPARE(loggedAt(logged, 2).result, QString("No reply (disconnected)"));
+        QCOMPARE(loggedAt(logged, 2).functionCode, 5);
+
+        // Address base in the registers text.
+        Rig b;
+        setupCoils(b, 1);
+        QSignalSpy loggedB(b.wc.get(), &WriteController::writeLogged);
+        b.wc->requestWrite(1, 1.0);
+        b.wc->onWriteFinished(b.coils->at(0).at(0).value<quint64>(), ModbusResult{});
+        QCOMPARE(loggedAt(loggedB, 0).registers, QString("CO 13"));
+        QCOMPARE(loggedAt(loggedB, 0).address, quint16(12));
+    }
+
+    void coilSelectionWrite()
+    {
+        Rig r;
+        setupCoils(r);
+        feed(r, 3, 1.0); // Fan CO 11 is ON; the others have no reading
+        QList<Tag> asked;
+        r.wc->m_askValues = [&](const QList<Tag> &tags, const QList<double> &) {
+            asked = tags;
+            return std::optional<QList<double>>(QList<double>{1.0, 0.0, 1.0, 1.0});
+        };
+        QSignalSpy logged(r.wc.get(), &WriteController::writeLogged);
+        r.wc->requestWriteSelection({0, 1, 2, 3}); // Pump, Valve, Fan, Heater: CO 12, 10, 11, 13
+        QCOMPARE(asked.size(), 4);
+        QCOMPARE(asked.at(0).name, QString("Valve")); // sorted by address
+        QCOMPARE(asked.at(3).name, QString("Heater"));
+        QCOMPARE(r.confirms.size(), 1);
+        const QString t = r.confirms.at(0);
+        QVERIFY(t.startsWith(QStringLiteral("<p><b>Write 4 tags?</b></p>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Valve</td><td>unknown</td><td><b>ON</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Fan</td><td>ON</td><td><b>OFF</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<td>Pump</td><td>unknown</td><td><b>ON</b></td>")));
+        QVERIFY(t.contains(QStringLiteral("<p><small>CO 10-13 · FC15</small></p>")));
+        QCOMPARE(r.writes->size(), 0);
+        QCOMPARE(r.coils->size(), 1);
+        QCOMPARE(r.coils->at(0).at(1).value<quint16>(), quint16(10));
+        QCOMPARE(coilValues(*r.coils, 0), (QList<quint16>{1, 0, 1, 1})); // CO 10, 11, 12, 13
+
+        const quint64 req = r.coils->at(0).at(0).value<quint64>();
+        r.wc->onWriteFinished(req, ModbusResult{});
+        QCOMPARE(logged.size(), 4);
+        const WriteLogEntry v = loggedAt(logged, 0);
+        QCOMPARE(v.tagName, QString("Valve"));
+        QCOMPARE(v.registers, QString("CO 10"));
+        QCOMPARE(v.functionCode, 15);
+        QCOMPARE(v.oldValue, QString("unknown"));
+        QCOMPARE(v.newValue, QString("ON"));
+        QCOMPARE(v.raw, QString("1"));
+        QCOMPARE(v.source, QString("selection"));
+        QVERIFY(v.ok);
+        QCOMPARE(loggedAt(logged, 1).oldValue, QString("ON"));
+        QCOMPARE(loggedAt(logged, 1).newValue, QString("OFF"));
+        QCOMPARE(loggedAt(logged, 1).raw, QString("0"));
+        QCOMPARE(loggedAt(logged, 2).newValue, QString("ON"));
+    }
+
+    void coilSelectionRefusals()
+    {
+        Rig r;
+        setupCoils(r);
+        bool asked = false;
+        r.wc->m_askValues = [&](const QList<Tag> &, const QList<double> &) {
+            asked = true;
+            return std::optional<QList<double>>();
+        };
+        // Coils and registers mixed.
+        r.wc->requestWriteSelection({0, 7});
+        QCOMPARE(r.warns.size(), 1);
+        QCOMPARE(r.warns.at(0), rich::headline(QStringLiteral("Select either registers or coils, not both.")));
+        // Not consecutive: Pump CO 12 and Far CO 40.
+        r.warns.clear();
+        r.wc->requestWriteSelection({0, 4});
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("The selected coils are not consecutive.")));
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("CO 40")));
+        // One coil only.
+        r.warns.clear();
+        r.wc->requestWriteSelection({0});
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("Select between 2 and 1968 writable coils (selected: 1).")));
+        // A read-only coil / a discrete input in the selection.
+        r.warns.clear();
+        r.wc->requestWriteSelection({0, 5});
+        r.wc->requestWriteSelection({0, 6});
+        QCOMPARE(r.warns.size(), 2);
+        QVERIFY(!asked);
+        QCOMPARE(r.coils->size(), 0);
+        QVERIFY(r.confirms.isEmpty());
+    }
+
+    void coilSelectionLimit()
+    {
+        Rig r;
+        setup(r);
+        QList<Tag> many;
+        for (int i = 0; i < 1969; ++i)
+            many << coilTag(TagId(i + 1), QStringLiteral("C%1").arg(i), i);
+        r.model.setTags(many, 0);
+        QList<int> rows;
+        for (int i = 0; i < 1969; ++i)
+            rows << i;
+        r.wc->m_askValues = [](const QList<Tag> &tags, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>(tags.size(), 1.0));
+        };
+        r.wc->requestWriteSelection(rows);
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("Select between 2 and 1968 writable coils (selected: 1969).")));
+        QCOMPARE(r.coils->size(), 0);
+        rows.removeLast();
+        r.warns.clear();
+        r.wc->requestWriteSelection(rows);
+        QVERIFY2(r.warns.isEmpty(), qPrintable(r.warns.join(QLatin1Char(' ')).left(300)));
+        QCOMPARE(r.coils->size(), 1);
+        QCOMPARE(coilValues(*r.coils, 0).size(), qsizetype(1968));
+        QVERIFY(r.confirms.last().contains(QStringLiteral("CO 0-1967 · FC15")));
+    }
+
+    void coilSelectionBadValuesRefused()
+    {
+        Rig r;
+        setupCoils(r);
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{1.0, 3.0});
+        };
+        r.wc->requestWriteSelection({1, 2}); // Valve CO 10, Fan CO 11
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("Out of range values:")));
+        QCOMPARE(r.coils->size(), 0);
+    }
+
+    void coilFc15RejectionWarns()
+    {
+        auto rejected = [](int code) {
+            ModbusResult res;
+            res.error = ModbusError::Exception;
+            res.exceptionCode = code;
+            res.message = QStringLiteral("Modbus exception %1").arg(code);
+            return res;
+        };
+        Rig r;
+        setupCoils(r);
+        r.wc->m_askValues = [](const QList<Tag> &, const QList<double> &) {
+            return std::optional<QList<double>>(QList<double>{1.0, 1.0});
+        };
+        r.wc->requestWriteSelection({1, 2});
+        QCOMPARE(r.coils->size(), 1);
+        r.wc->onWriteFinished(r.coils->at(0).at(0).value<quint64>(), rejected(1));
+        QCOMPARE(r.warns.size(), 1);
+        QVERIFY(r.warns.at(0).contains(QStringLiteral("does not accept FC15 (write multiple coils)")));
+        QVERIFY(!r.warns.at(0).contains(QStringLiteral("FC16")));
+
+        // Not for other exceptions, nor for a single coil (FC05).
+        r.warns.clear();
+        r.wc->requestWriteSelection({1, 2});
+        r.wc->onWriteFinished(r.coils->at(1).at(0).value<quint64>(), rejected(2));
+        r.wc->requestWrite(1, 1.0);
+        r.wc->onWriteFinished(r.coils->at(2).at(0).value<quint64>(), rejected(1));
+        QCOMPARE(r.warns.size(), 0);
+    }
+
+    void registerWritesUnchangedByCoilSupport()
+    {
+        Rig r;
+        setupCoils(r);
+        feed(r, 8, 3.0);
+        r.wc->requestWrite(8, 9.0);
+        QCOMPARE(r.writes->size(), 1);
+        QCOMPARE(r.coils->size(), 0);
+        QVERIFY(r.confirms.at(0).contains(QStringLiteral("<small>HR 200 · uint16 · raw 9</small>")));
+    }
+
+    void coilValuesDialogOffersOnOff()
+    {
+        Rig r;
+        setupCoils(r);
+        feed(r, 2, 0.0);
+        feed(r, 3, 1.0);
+        struct Seen { bool dialog = false; int combos = 0; int edits = 0; QStringList items;
+                      int initial0 = -1; int initial1 = -1; } seen;
+        QTimer::singleShot(0, [&] {
+            auto *dlg = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dlg)
+                return;
+            seen.dialog = true;
+            const auto combos = dlg->findChildren<QComboBox *>();
+            seen.combos = int(combos.size());
+            seen.edits = int(dlg->findChildren<QLineEdit *>().size());
+            if (combos.size() == 2) {
+                for (int i = 0; i < combos.at(0)->count(); ++i)
+                    seen.items << combos.at(0)->itemText(i);
+                seen.initial0 = combos.at(0)->currentIndex();
+                seen.initial1 = combos.at(1)->currentIndex();
+                combos.at(0)->setCurrentIndex(1); // Valve -> ON
+                combos.at(1)->setCurrentIndex(0); // Fan -> OFF
+            }
+            dlg->accept();
+        });
+        r.wc->requestWriteSelection({1, 2}); // Valve CO 10, Fan CO 11
+        QVERIFY(seen.dialog);
+        QCOMPARE(seen.combos, 2);
+        QCOMPARE(seen.edits, 0);
+        QCOMPARE(seen.items, (QStringList{"OFF", "ON"}));
+        QCOMPARE(seen.initial0, 0);
+        QCOMPARE(seen.initial1, 1);
+        QCOMPARE(r.coils->size(), 1);
+        QCOMPARE(coilValues(*r.coils, 0), (QList<quint16>{1, 0}));
+    }
+
+    void quickPanelShowsOnOffForCoils()
+    {
+        TagTableModel model;
+        Tag c = coilTag(1, "Pump", 12);
+        c.quickA = 0.0;
+        c.quickB = 1.0;
+        model.setTags({c}, 0);
+        QuickWritePanel panel(&model);
+        QCOMPARE(button(&panel, "quickA_1")->text(), QString("A: OFF"));
+        QCOMPARE(button(&panel, "quickB_1")->text(), QString("B: ON"));
+        panel.setConnected(true);
+        QSignalSpy spy(&panel, &QuickWritePanel::quickWriteRequested);
+        button(&panel, "quickB_1")->click();
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(spy.at(0).at(1).toDouble(), 1.0);
     }
 };
 

@@ -21,6 +21,13 @@ bool wide(const Tag &tag)
     return registerCount(tag.type) == 2;
 }
 
+/// A 16-bit register tag: the only kind the split and refused-register checks apply to (bit tags
+/// take part in the off-by-one check only).
+bool narrow(const Tag &tag)
+{
+    return !wide(tag) && !tag.isBit();
+}
+
 // Prompt texts are rich text built with mb::rich: a bold headline, then the readings laid out for
 // comparison.
 /// "1 tag reads" / "2 tags read" style counts.
@@ -148,6 +155,14 @@ void EncodingMonitor::onSamples(const SampleBatch &batch)
 {
     for (const TagSample &sample : batch.samples) {
         const Tag *found = findTag(sample.tagId);
+        if (found && found->isBit()) {
+            // Bit tags have no encoding to check; only a refused read starts the numbering check.
+            if (sample.quality == Quality::Exception && m_connected)
+                queueOffByOne(*found, false, true);
+            else if (sample.quality == Quality::Good && m_connected)
+                m_goodSeen = true;
+            continue;
+        }
         if (found && !wide(*found)) {
             m_lastQuality[sample.tagId] = sample.quality;
             if (sample.quality == Quality::Exception && m_connected) {
@@ -297,7 +312,7 @@ void EncodingMonitor::onConnected()
     m_offQuiet = false;
     m_offTimer.stop();
     for (const Tag &tag : m_model->tags()) {
-        if (!wide(tag) && !m_splitPending.contains(tag.id) && !tag.confirmed16Bit
+        if (narrow(tag) && !m_splitPending.contains(tag.id) && !tag.confirmed16Bit
             && !m_sessionChecked.contains(tag.id))
             m_connectWait.insert(tag.id);
     }
@@ -404,6 +419,18 @@ void EncodingMonitor::onTagsChanged()
         present.insert(tag.id);
         snapshot.insert(tag.id, tag);
         const auto it = m_snapshot.constFind(tag.id);
+        if (tag.isBit()) {
+            finishPending(tag.id);
+            m_readings.remove(tag.id);
+            forgetSplit(tag.id);
+            m_queue.removeAll(Request{tag.id, {}, 0});
+            if (it == m_snapshot.constEnd() || it->area != tag.area || it->address != tag.address) {
+                m_lastQuality.remove(tag.id);
+                m_offChecked.remove(tag.id);
+                m_sessionChecked.remove(tag.id);
+            }
+            continue;
+        }
         if (!wide(tag)) {
             finishPending(tag.id);
             m_readings.remove(tag.id);
@@ -487,6 +514,8 @@ void EncodingMonitor::detectNow(TagId id)
 {
     const Tag *tag = findTag(id);
     if (!tag)
+        return;
+    if (tag->isBit())
         return;
     if (!wide(*tag)) {
         if (m_lastQuality.value(id, Quality::Unknown) == Quality::Exception)
@@ -621,21 +650,21 @@ bool EncodingMonitor::splitProbeValid(const Probe &probe) const
 {
     const Tag *tag = findTag(probe.id);
     return m_connected && probe.generation == m_generation && probe.epoch == m_epoch && tag
-           && !wide(*tag) && tag->area == probe.tag.area && tag->address == probe.tag.address
+           && narrow(*tag) && tag->area == probe.tag.area && tag->address == probe.tag.address
            && tag->type == probe.tag.type;
 }
 
 bool EncodingMonitor::splitRequestValid(const Request &request) const
 {
     const Tag *tag = findTag(request.id);
-    return request.epoch == m_epoch && tag && !wide(*tag) && tag->area == request.tag.area
+    return request.epoch == m_epoch && tag && narrow(*tag) && tag->area == request.tag.area
            && tag->address == request.tag.address && tag->type == request.tag.type;
 }
 
 void EncodingMonitor::queueProbe(TagId id, ProbeMode mode)
 {
     const Tag *tag = findTag(id);
-    if (!tag || wide(*tag) || !m_connected)
+    if (!tag || !narrow(*tag) || !m_connected)
         return;
     if (mode != ProbeMode::Manual && tag->confirmed16Bit)
         return; // the user answered Keep: not checked automatically any more
@@ -979,7 +1008,7 @@ void EncodingMonitor::maybeFinishConnectPass()
     QStringList entries;
     for (const SplitFinding &f : found) {
         const Tag *tag = findTag(f.id);
-        if (f.epoch != m_epoch || !tag || wide(*tag) || tag->area != f.tag.area
+        if (f.epoch != m_epoch || !tag || !narrow(*tag) || tag->area != f.tag.area
             || tag->address != f.tag.address || tag->type != f.tag.type)
             continue;
         flagSplit(*tag, f.split);
@@ -1089,7 +1118,7 @@ void EncodingMonitor::runSplitRequest(const Request &request)
 void EncodingMonitor::queueRefused(TagId id, ProbeMode mode)
 {
     const Tag *tag = findTag(id);
-    if (!tag || wide(*tag) || !m_connected)
+    if (!tag || !narrow(*tag) || !m_connected)
         return;
     if (mode != ProbeMode::Manual && tag->confirmed16Bit)
         return;

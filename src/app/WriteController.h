@@ -156,6 +156,8 @@ private:
     };
     /// Shared by requestWrite (quick = false) and requestQuickWrite (quick = true).
     void writeValue(TagId id, double scaledValue, bool quick);
+    /// v1.3.4: the coil branch of writeValue (tag is a writable coil).
+    void writeCoil(const Tag &tag, double scaledValue, bool quick, quint64 generation);
 
     // Prompts are replaceable (tests); defaults are the real dialogs.
     std::function<QuickAnswer(const QString &question)> m_quickConfirmPrompt;

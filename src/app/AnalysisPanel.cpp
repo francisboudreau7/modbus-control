@@ -763,14 +763,14 @@ const Tag *AnalysisPanel::tagById(TagId id) const
         return nullptr;
     for (const Tag &t : m_tags) {
         if (t.id == id)
-            return &t;
+            return t.isBit() ? nullptr : &t; // bit tags are never a PV, CO or setpoint tag
     }
     return nullptr;
 }
 
 bool AnalysisPanel::shownTag(const Tag *tag) const
 {
-    return tag && m_settings.setpointTagIds.contains(tag->id) && tag->plotted;
+    return tag && m_settings.setpointTagIds.contains(tag->id) && tag->plotted && !tag->isBit();
 }
 
 QString AnalysisPanel::pvUnit() const
@@ -823,8 +823,10 @@ void AnalysisPanel::rebuildPvCombo()
     const QSignalBlocker blocker(m_pvCombo);
     m_pvCombo->clear();
     m_pvCombo->addItem(tr("Choose..."), 0u);
-    for (const Tag &t : std::as_const(m_tags))
-        m_pvCombo->addItem(tagLabel(t), t.id);
+    for (const Tag &t : std::as_const(m_tags)) {
+        if (!t.isBit())
+            m_pvCombo->addItem(tagLabel(t), t.id);
+    }
     const int idx = m_settings.pvTagId != 0 ? m_pvCombo->findData(m_settings.pvTagId) : -1;
     m_pvCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 }
@@ -835,7 +837,7 @@ void AnalysisPanel::rebuildCoCombo()
     m_coCombo->clear();
     m_coCombo->addItem(tr("Typed ΔCO"), 0u);
     for (const Tag &t : std::as_const(m_tags)) {
-        if (t.id != m_settings.pvTagId || m_settings.pvTagId == 0)
+        if (!t.isBit() && (t.id != m_settings.pvTagId || m_settings.pvTagId == 0))
             m_coCombo->addItem(tagLabel(t), t.id);
     }
     const int idx = m_settings.deltaCoTagId != 0 ? m_coCombo->findData(m_settings.deltaCoTagId) : -1;
@@ -847,7 +849,7 @@ void AnalysisPanel::rebuildSetpointList()
     const QSignalBlocker blocker(m_setpointTagList);
     m_setpointTagList->clear();
     for (const Tag &t : std::as_const(m_tags)) {
-        if (!t.plotted && t.id != m_settings.pvTagId)
+        if (t.isBit() || (!t.plotted && t.id != m_settings.pvTagId))
             continue;
         auto *item = new QListWidgetItem(tagLabel(t), m_setpointTagList);
         item->setData(Qt::UserRole, t.id);
@@ -1149,7 +1151,7 @@ void AnalysisPanel::recompute()
         for (const Tag &t : std::as_const(m_tags)) {
             // Unplotted setpoint tags show nothing, so they are not analysed either (the CSV
             // export then matches what the panel shows). The PV is analysed even unplotted.
-            if (t.id != m_settings.pvTagId && t.plotted
+            if (t.id != m_settings.pvTagId && t.plotted && !t.isBit()
                 && m_settings.setpointTagIds.contains(t.id))
                 m_results.append(analyzeStep(*m_recorder, t.id, cur->c1(), cur->c2(), m_settings));
         }

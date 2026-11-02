@@ -112,6 +112,33 @@ class TestTrendPlot : public QObject
     Q_OBJECT
 private slots:
     void resetDataReloadsReplacedRecording();
+    void bitTagsAreDrawnAsSteps()
+    {
+        Recorder rec;
+        for (int i = 0; i < 6; ++i)
+            addRow(rec, i, {good(1, i), good(2, i % 2)});
+        Tag bit = makeTag(2, QStringLiteral("Pump"), QString(), YAxis::Right);
+        bit.area = Area::Coil;
+        bit.type = ValueType::Bool;
+        TrendPlot tp;
+        tp.setRecorder(&rec);
+        tp.setTags({makeTag(1, QStringLiteral("A"), QStringLiteral("V"), YAxis::Left), bit});
+        tp.refresh();
+        QCOMPARE(curveTitled(tp.plot(), "A")->style(), QwtPlotCurve::Lines);
+        QCOMPARE(curveTitled(tp.plot(), "Pump")->style(), QwtPlotCurve::Steps);
+        QCOMPARE(curveTitled(tp.plot(), "Pump")->dataSize(), size_t(6));
+        QCOMPARE(curveTitled(tp.plot(), "Pump")->yAxis(), QwtPlot::yRight);
+
+        // A tag that becomes a bit tag (and back) changes style on the same curve.
+        Tag reg = bit;
+        reg.area = Area::HoldingRegister;
+        reg.type = ValueType::UInt16;
+        tp.setTags({makeTag(1, QStringLiteral("A"), QStringLiteral("V"), YAxis::Left), reg});
+        QCOMPARE(curveTitled(tp.plot(), "Pump")->style(), QwtPlotCurve::Lines);
+        tp.setTags({makeTag(1, QStringLiteral("A"), QStringLiteral("V"), YAxis::Left), bit});
+        QCOMPARE(curveTitled(tp.plot(), "Pump")->style(), QwtPlotCurve::Steps);
+    }
+
     void init()
     {
         m_rec = std::make_unique<Recorder>();

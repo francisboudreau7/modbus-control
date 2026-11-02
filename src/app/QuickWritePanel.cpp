@@ -11,8 +11,10 @@ namespace mb {
 
 namespace {
 
-QString buttonText(const QString &prefix, double value, const QString &unit)
+QString buttonText(const QString &prefix, double value, const QString &unit, bool bit)
 {
+    if (bit)
+        return QStringLiteral("%1: %2").arg(prefix, bitText(value));
     QString text = QStringLiteral("%1: %2").arg(prefix, QString::number(value, 'g', 6));
     if (!unit.isEmpty())
         text += QLatin1Char(' ') + unit;
@@ -96,6 +98,7 @@ void QuickWritePanel::rebuild()
         m_valueLabels.insert(tag.id, valueLabel);
 
         const TagId id = tag.id;
+        const bool isBit = tag.isBit();
         int col = 2;
         const std::pair<const char *, std::optional<double>> presets[] = {{"A", tag.quickA},
                                                                           {"B", tag.quickB}};
@@ -103,7 +106,7 @@ void QuickWritePanel::rebuild()
             if (!preset)
                 continue;
             const double value = *preset;
-            auto *button = new QPushButton(buttonText(QLatin1String(letter), value, tag.unit), m_content);
+            auto *button = new QPushButton(buttonText(QLatin1String(letter), value, tag.unit, isBit), m_content);
             button->setObjectName(QStringLiteral("quick%1_%2").arg(QLatin1String(letter)).arg(id));
             button->setEnabled(m_connected);
             connect(button, &QPushButton::clicked, this,

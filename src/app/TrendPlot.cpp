@@ -416,6 +416,8 @@ void TrendPlot::setTags(const QList<Tag> &tags)
         if (!c.isValid())
             c = Qt::black;
         entry->curve->setPen(c, m_thinPens ? kThinWidth : kWidth);
+        // Bit tags hold their value until the next sample.
+        entry->curve->setStyle(tag.isBit() ? QwtPlotCurve::Steps : QwtPlotCurve::Lines);
         next.append(entry);
     }
     for (CurveEntry *e : std::as_const(m_entries)) {
