@@ -641,7 +641,11 @@ void WriteController::requestWriteSelection(const QList<int> &rows)
     for (const Tag &tag : tags) {
         double v = decodeValue(tag, 0);
         const int row = m_model->rowOf(tag.id);
-        if (row >= 0) {
+        if (tag.isBit()) {
+            // A coil's EditRole is "ON"/"OFF": take the reading itself.
+            if (const std::optional<double> good = m_model->goodValue(tag.id))
+                v = *good;
+        } else if (row >= 0) {
             // EditRole carries the full-precision value; the display text is rounded.
             const QVariant live = m_model->data(m_model->index(row, TagTableModel::Value), Qt::EditRole);
             if (live.isValid())
