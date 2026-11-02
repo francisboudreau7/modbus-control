@@ -192,7 +192,7 @@ void EncodingDialog::updateApplyOthers()
         names << todo.at(i)->name;
     QString list = names.join(QStringLiteral(", "));
     if (todo.size() > kMaxNames)
-        list += tr(" and %1 more").arg(todo.size() - kMaxNames);
+        list = tr("%1 and %2 more").arg(list).arg(todo.size() - kMaxNames);
     m_applyOthers->setText(
         tr("Also use %1 for the other unconfirmed 32-bit tags: %2").arg(toString(chosen->order), list));
     m_applyOthers->setVisible(true);

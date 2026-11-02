@@ -19,6 +19,7 @@
 
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QCoreApplication>
 #include <QClipboard>
 #include <QColor>
 #include <QColorDialog>
@@ -117,13 +118,43 @@ QString fitWord(double fitRmsPercent)
 {
     switch (fitQuality(fitRmsPercent)) {
     case FitQuality::Good:
-        return QStringLiteral("Good");
+        return QCoreApplication::translate("mb::AnalysisPanel", "Good");
     case FitQuality::Acceptable:
-        return QStringLiteral("Acceptable");
+        return QCoreApplication::translate("mb::AnalysisPanel", "Acceptable");
     case FitQuality::Poor:
-        return QStringLiteral("Poor");
+        return QCoreApplication::translate("mb::AnalysisPanel", "Poor");
     }
     return {};
+}
+
+/// Display names of the model methods and tuning rules (the core toString() names are English).
+QString methodName(ModelMethod method)
+{
+    switch (method) {
+    case ModelMethod::ZeroTo632:
+        return QCoreApplication::translate("mb::AnalysisPanel", "0 % / 63.2 % (two points)");
+    case ModelMethod::Smith:
+        return QCoreApplication::translate("mb::AnalysisPanel", "Smith (28.3 % / 63.2 %)");
+    case ModelMethod::Sundaresan:
+        return QCoreApplication::translate("mb::AnalysisPanel",
+                                           "Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
+    case ModelMethod::Custom:
+        return QCoreApplication::translate("mb::AnalysisPanel", "Custom");
+    }
+    return toString(method);
+}
+
+QString ruleName(TuningRule rule)
+{
+    switch (rule) {
+    case TuningRule::ZieglerNichols:
+        return QCoreApplication::translate("mb::AnalysisPanel", "Ziegler-Nichols (open loop)");
+    case TuningRule::CohenCoon:
+    case TuningRule::ImcLambda:
+    case TuningRule::Simc:
+        break;
+    }
+    return toString(rule);
 }
 
 /// "name: meaning<br>line<br>line" - everything escaped, name in bold.
@@ -435,7 +466,7 @@ void AnalysisPanel::buildUi()
     m_methodCombo->setObjectName(QStringLiteral("methodCombo"));
     for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
                           ModelMethod::Custom})
-        m_methodCombo->addItem(toString(m), static_cast<int>(m));
+        m_methodCombo->addItem(methodName(m), static_cast<int>(m));
     m_methodCombo->setToolTip(
         tr("How L (dead time) and T (time constant) are found from two points of the response."));
     m_fromSpin = makeSpin("fromSpin", 0.0, 99.99, 2, 0.0, modelGroup);
@@ -497,7 +528,7 @@ void AnalysisPanel::buildUi()
     m_ruleCombo->setObjectName(QStringLiteral("ruleCombo"));
     for (TuningRule r : {TuningRule::ZieglerNichols, TuningRule::CohenCoon, TuningRule::ImcLambda,
                          TuningRule::Simc})
-        m_ruleCombo->addItem(toString(r), static_cast<int>(r));
+        m_ruleCombo->addItem(ruleName(r), static_cast<int>(r));
     m_lambdaSpin = makeSpin("lambdaSpin", 0.0, 1e6, 2, 0.0, tuningGroup);
     m_lambdaSpin->setSuffix(tr(" s"));
     m_lambdaSpin->setSpecialValueText(tr("Auto (= L)"));
@@ -1391,7 +1422,7 @@ void AnalysisPanel::rebuildTuningTable()
             const QString toolTip =
                 tip(toString(tr_.kind),
                     tr("%1 gives no %2 setting for this model.")
-                        .arg(toString(m_settings.tuningRule), toString(tr_.kind)),
+                        .arg(ruleName(m_settings.tuningRule), toString(tr_.kind)),
                     {});
             m_tuningTable->setItem(i, 0, makeItem(text, false, toolTip));
             m_tuningTable->setSpan(i, 0, 1, m_tuningTable->columnCount());
@@ -1523,7 +1554,7 @@ void AnalysisPanel::rebuildOverlays()
                                                  [](const QPointF &p, double t) { return p.x() < t; });
                 pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
             }
-            auto *curve = new QwtPlotCurve(tag->name + QStringLiteral(" model"));
+            auto *curve = new QwtPlotCurve(tr("%1 model").arg(tag->name));
             curve->setSamples(pts);
             // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
             double penWidth = 1.5;
@@ -1632,8 +1663,8 @@ QString AnalysisPanel::readoutText() const
     if (pv.timeConstant)
         model << QStringLiteral("T = ") + g4(*pv.timeConstant) + QStringLiteral(" s");
     if (pv.fitRmsPercent) {
-        model << QStringLiteral("fit ") + QString::number(*pv.fitRmsPercent, 'g', 3)
-                     + QStringLiteral(" % (") + fitWord(*pv.fitRmsPercent) + u')';
+        model << tr("fit %1 % (%2)")
+                     .arg(QString::number(*pv.fitRmsPercent, 'g', 3), fitWord(*pv.fitRmsPercent));
     }
     QString line = (pvTag ? tagLabel(*pvTag) : QString::number(pv.tagId)) + QStringLiteral(" (")
                    + fmtPercent(ab.first) + QStringLiteral(" / ") + fmtPercent(ab.second)
@@ -1655,8 +1686,8 @@ QString AnalysisPanel::readoutText() const
         QStringList sps;
         for (const SetpointResult &sp : r.setpoints) {
             sps << fmtPercent(sp.percent)
-                       + (sp.found ? QStringLiteral(" at ") + fmtSeconds(sp.time)
-                                   : QStringLiteral(" not found"));
+                       + (sp.found ? QStringLiteral(" ") + tr("at %1").arg(fmtSeconds(sp.time))
+                                   : QStringLiteral(" ") + tr("not found"));
         }
         lines << name + QStringLiteral(": ") + sps.join(QStringLiteral(", "));
     }
@@ -1726,7 +1757,7 @@ QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) con
         if (mean) {
             meaning = tr("mean of the PV over the %1 s before %2 (%3 % of the step).")
                           .arg(w, c, first ? QStringLiteral("0") : QStringLiteral("100"));
-            lines << y + QStringLiteral(" = mean of PV over [%1 - W, %1]").arg(c);
+            lines << tr("%1 = mean of PV over [%2 - W, %2]").arg(y, c);
         } else {
             meaning = tr("value of the PV at cursor %1 (%2 % of the step).")
                           .arg(c, first ? QStringLiteral("0") : QStringLiteral("100"));
@@ -1736,8 +1767,8 @@ QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) con
             const double t = first ? r->t1 : r->t2;
             const double v = first ? r->y0 : r->y100;
             if (mean) {
-                lines << y + QStringLiteral(" = mean of PV over [%1 - %2, %1] = %3")
-                                 .arg(fmtSeconds(t), w, withUnit(g4(v), pu));
+                lines << tr("%1 = mean of PV over [%2 - %3, %2] = %4")
+                                 .arg(y, fmtSeconds(t), w, withUnit(g4(v), pu));
             } else {
                 lines << y + QStringLiteral(" = PV(%1) = %2").arg(fmtSeconds(t), withUnit(g4(v), pu));
             }
@@ -1777,7 +1808,7 @@ QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) con
             }
         } else {
             meaning = tr("change of the controller output, typed in step 1.");
-            lines << kDelta + QStringLiteral("CO = typed in step 1");
+            lines << kDelta + tr("CO = typed in step 1");
             if (r && r->deltaCo)
                 lines << kDelta + QStringLiteral("CO = %1").arg(g4(*r->deltaCo));
         }
@@ -1795,7 +1826,7 @@ QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) con
     case Quantity::KPct:
         name = tr("K (%/%), process gain in percent of range");
         meaning = tr("K for signals expressed in percent of their ranges.");
-        lines << QStringLiteral("K (%/%) = K ") + kTimes + QStringLiteral(" CO span / PV span");
+        lines << tr("K (%/%) = K %1 CO span / PV span").arg(kTimes);
         if (r && r->gain && pvSpan() && coSpan()) {
             lines << QStringLiteral("K (%/%) = %1 %2 %3 / %4 = %5 %/%")
                          .arg(g4p(*r->gain), kTimes, g4p(*coSpan()), g4p(*pvSpan()),
@@ -1820,8 +1851,7 @@ QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) con
         name = tr("Fit error");
         meaning = tr("how far the model curve is from the recorded PV between the cursors: RMS of "
                      "(PV - model), and as % of |%1PV|.").arg(kDelta);
-        lines << QStringLiteral("fit % = 100 ") + kTimes + QStringLiteral(" RMS(PV - model) / |")
-                     + kDelta + QStringLiteral("PV|");
+        lines << tr("fit % = 100 %1 RMS(PV - model) / |%2PV|").arg(kTimes, kDelta);
         if (r && r->fitRms && r->fitRmsPercent) {
             lines << QStringLiteral("fit % = 100 %1 %2 / |%3| = %4 %")
                          .arg(kTimes, g4(*r->fitRms), g4(r->deltaPv), g4(*r->fitRmsPercent));
@@ -1944,22 +1974,22 @@ QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const Se
     case 1:
         name = fmtPercent(sp.percent) + QStringLiteral(" ") + tagName;
         meaning = tr("the requested share of the step: 0 % is y0, 100 % is y100.");
-        lines << QStringLiteral("target = y0 + p (y100 - y0)");
+        lines << tr("target = y0 + p (y100 - y0)");
         break;
     case 2:
         name = tr("Target");
         meaning = tr("the PV level of this setpoint.");
-        lines << QStringLiteral("target = y0 + p (y100 - y0)");
-        lines << QStringLiteral("target = %1 + %2 %3 (%4 - %5) = %6")
+        lines << tr("target = y0 + p (y100 - y0)");
+        lines << tr("target = %1 + %2 %3 (%4 - %5) = %6")
                      .arg(g4p(r.y0), p, kTimes, g4p(r.y100), g4p(r.y0), withUnit(g4(sp.target), unit));
         break;
     case 3:
         name = tr("Measured");
         meaning = tr("the recorded value at the found time, interpolated between the two "
                      "neighbouring samples.");
-        lines << QStringLiteral("measured = PV(t)");
+        lines << tr("measured = PV(t)");
         if (sp.found)
-            lines << QStringLiteral("measured = PV(%1) = %2")
+            lines << tr("measured = PV(%1) = %2")
                          .arg(fmtSeconds(sp.time), withUnit(g4(sp.measured), unit));
         break;
     case 4:
@@ -1967,11 +1997,11 @@ QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const Se
         if (sp.percent == 0.0) {
             meaning = tr("0 % is placed at C1, where the PV is at y0 = %1.")
                           .arg(withUnit(g4(sp.target), unit));
-            lines << QStringLiteral("t = time of C1");
+            lines << tr("t = time of C1");
         } else {
             meaning = tr("time at which the PV reaches y0 + p (y100 - y0) = %1.")
                           .arg(withUnit(g4(sp.target), unit));
-            lines << QStringLiteral("t = first time the PV crosses the target");
+            lines << tr("t = first time the PV crosses the target");
         }
         if (sp.found)
             lines << QStringLiteral("t = %1").arg(fmtSeconds(sp.time));
@@ -1981,7 +2011,7 @@ QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const Se
     default:
         name = QStringLiteral("t ") + kMinus + QStringLiteral(" C1");
         meaning = tr("time from the earlier cursor to the setpoint.");
-        lines << QStringLiteral("t - C1 = time - %1").arg(fmtSeconds(r.t1));
+        lines << tr("t - C1 = time - %1").arg(fmtSeconds(r.t1));
         if (sp.found)
             lines << QStringLiteral("t - C1 = %1 - %2 = %3 s")
                          .arg(g4p(sp.time), g4p(r.t1), g4(sp.time - r.t1));
@@ -2000,7 +2030,7 @@ QString AnalysisPanel::explainTuning(int column, ControllerKind kind, const Tuni
     const double L = r.deadTime.value_or(kNaN);
     const double T = r.timeConstant.value_or(kNaN);
     const double lam = effectiveLambda(L, m_settings.lambdaS);
-    const QString ruleName = toString(rule);
+    const QString ruleText = ruleName(rule);
     const QString kindName = toString(kind);
     QString name;
     QString meaning;
@@ -2012,7 +2042,7 @@ QString AnalysisPanel::explainTuning(int column, ControllerKind kind, const Tuni
     if (column == 3) {
         name = QStringLiteral("Kp (%/%), ") + kindName;
         meaning = tr("controller gain for signals expressed in percent of their ranges.");
-        lines << QStringLiteral("Kp (%/%) = Kp ") + kTimes + QStringLiteral(" PV span / CO span");
+        lines << tr("Kp (%/%) = Kp %1 PV span / CO span").arg(kTimes);
         if (row.kp && pvSpan() && coSpan()) {
             lines << QStringLiteral("Kp (%/%) = %1 %2 %3 / %4 = %5 %/%")
                          .arg(g4p(*row.kp), kTimes, g4p(*pvSpan()), g4p(*coSpan()),
@@ -2024,7 +2054,7 @@ QString AnalysisPanel::explainTuning(int column, ControllerKind kind, const Tuni
     const QString format = tuningFormula(rule, kind, column);
     const QString symbol = column == 0 ? QStringLiteral("Kp") : column == 1 ? QStringLiteral("Ti")
                                                                               : QStringLiteral("Td");
-    name = symbol + QStringLiteral(", ") + kindName + QStringLiteral(" (") + ruleName + u')';
+    name = symbol + QStringLiteral(", ") + kindName + QStringLiteral(" (") + ruleText + u')';
     meaning = column == 0   ? tr("proportional gain: controller output change per unit of PV error.")
               : column == 1 ? tr("integral time: how long the integral action takes to repeat the "
                                  "proportional action.")
