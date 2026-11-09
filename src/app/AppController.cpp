@@ -6,6 +6,8 @@
 #include "ConnectionBar.h"
 #include "DocsLinks.h"
 #include "Language.h"
+#include "SimulationCatalog.h"
+#include "SimulationDialog.h"
 #include "SimulatorLauncher.h"
 #include "CursorPanel.h"
 #include "EncodingMonitor.h"
@@ -95,7 +97,7 @@ void storeLastConnection(const ConnectionSettings &s)
 
 AppController::AppController(MainWindow *window, QObject *parent) : QObject(parent), m_window(window)
 {
-    m_simulator = new SimulatorLauncher(this);
+    setSimulatorLauncher(new SimulatorLauncher(this));
     m_simulatorProgram = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("modbus_loop_sim.exe"));
     m_thread = new QThread(this);
     m_worker = new PollWorker; // no parent: moved to the worker thread
@@ -185,15 +187,53 @@ AppController::~AppController()
     m_window->analysisPanel()->setRecorder(nullptr);
 }
 
+void AppController::connectWith(const ConnectionSettings &s)
+{
+    if (!prepareConnect())
+        return;
+    storeLastConnection(s);
+    m_writes->setServer(QStringLiteral("%1:%2 unit %3").arg(s.host).arg(s.port).arg(s.unitId));
+    QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
+}
+
+void AppController::setSimulatorLauncher(SimulatorLauncher *launcher)
+{
+    if (m_simulator) {
+        m_simulator->disconnect(this);
+        delete m_simulator;
+    }
+    m_simulator = launcher;
+    if (!m_simulator)
+        return;
+    m_simulator->setParent(this);
+    connect(m_simulator, &SimulatorLauncher::started, this, &AppController::onSimulatorStarted);
+    connect(m_simulator, &SimulatorLauncher::failed, this, &AppController::onSimulatorFailed);
+}
+
+void AppController::onSimulatorStarted()
+{
+    if (!m_connectPending)
+        return;
+    m_connectPending = false;
+    connectWith(m_window->connectionBar()->settings());
+}
+
+void AppController::onSimulatorFailed(const QString &reason)
+{
+    if (!m_connectPending) {
+        m_window->showStatusMessage(reason);
+        return;
+    }
+    m_connectPending = false;
+    warn(tr("Load simulation"), reason);
+}
+
 void AppController::wireConnection()
 {
     ConnectionBar *bar = m_window->connectionBar();
     connect(bar, &ConnectionBar::connectRequested, this, [this](const ConnectionSettings &s) {
-        if (!prepareConnect())
-            return;
-        storeLastConnection(s);
-        m_writes->setServer(QStringLiteral("%1:%2 unit %3").arg(s.host).arg(s.port).arg(s.unitId));
-        QMetaObject::invokeMethod(m_worker, [w = m_worker, s] { w->connectTo(s); }, Qt::QueuedConnection);
+        m_connectPending = false; // the user's Connect cancels a pending automatic connection
+        connectWith(s);
     });
     connect(bar, &ConnectionBar::disconnectRequested, this, [this] {
         QMetaObject::invokeMethod(m_worker, &PollWorker::disconnectFrom, Qt::QueuedConnection);
@@ -659,6 +699,7 @@ void AppController::newProject()
 {
     if (!maybeSave())
         return;
+    m_connectPending = false;
     disconnectForProjectChange();
     m_window->connectionBar()->setSettings(lastConnection());
     m_window->tagModel()->setTags({}, 1);
@@ -706,18 +747,74 @@ void AppController::openExampleDialog()
                                       tr("Modbus Control projects (*.mbproj)"));
     if (path.isEmpty())
         return;
+    loadAsExample(path);
+}
+
+bool AppController::loadAsExample(const QString &path)
+{
     // An example is a template: Save asks where to save it (the examples folder may be read-only,
     // or tracked in the source tree), and the last project folder is kept.
     const QVariant dir = QSettings().value(QStringLiteral("project/dir"));
-    if (loadFrom(path)) {
-        m_projectIsExample = true;
-        QSettings().setValue(QStringLiteral("project/dir"), dir);
-    }
+    if (!loadFrom(path))
+        return false;
+    m_projectIsExample = true;
+    QSettings().setValue(QStringLiteral("project/dir"), dir);
+    return true;
 }
 
-// Stub until the flow task.
 void AppController::loadSimulationDialog()
 {
+    const QList<SimulationEntry> entries = builtInSimulations();
+    SimulationDialog dialog(entries, m_window);
+    bool accepted = false;
+    QObject::connect(&dialog, &QDialog::accepted, &dialog, [&accepted] { accepted = true; });
+    runDialog(dialog);
+    const int index = dialog.selectedIndex();
+    if (!accepted || index < 0)
+        return;
+    const SimulationEntry &entry = entries.at(index);
+
+    if (!maybeSave())
+        return;
+
+    const QString title = tr("Load simulation");
+    const QString scenario = QDir(examplesDir()).absoluteFilePath(entry.scenarioFile);
+    const QString projectPath = QDir(examplesDir()).absoluteFilePath(entry.projectFile);
+    for (const QString &file : {m_simulatorProgram, scenario, projectPath}) {
+        if (!QFileInfo::exists(file)) {
+            warn(title, tr("Could not find \"%1\".").arg(QDir::toNativeSeparators(file)));
+            return;
+        }
+    }
+    QString error;
+    const std::optional<Project> project = loadProject(projectPath, &error);
+    if (!project) {
+        warn(title, tr("Could not open \"%1\":\n%2").arg(QDir::toNativeSeparators(projectPath), error));
+        return;
+    }
+    const quint16 port = project->connection.port;
+    const bool wasRunning = m_simulator->isRunning();
+    if (wasRunning) {
+        if (!askYesCancel(title, tr("Restart the Loop Simulator with %1?").arg(entry.name),
+                          tr("Restart")))
+            return;
+    } else if (m_simulator->isPortOpen(port)) {
+        warn(title, tr("Something is already listening on 127.0.0.1:%1. Close it, then try again.")
+                        .arg(int(port)));
+        return;
+    }
+
+    m_connectPending = false;
+    if (!loadAsExample(projectPath))
+        return;
+    if (wasRunning)
+        m_simulator->stop();
+    m_simulator->start(m_simulatorProgram,
+                       {QStringLiteral("--scenario"), scenario, QStringLiteral("--port"),
+                        QString::number(int(port))},
+                       port);
+    m_connectPending = true;
+    m_window->showStatusMessage(tr("Starting the Loop Simulator..."));
 }
 
 bool AppController::loadFrom(const QString &path)
@@ -729,6 +826,7 @@ bool AppController::loadFrom(const QString &path)
                              tr("Could not open \"%1\":\n%2").arg(path, error));
         return false;
     }
+    m_connectPending = false;
     applyProject(*project);
     m_projectPath = path;
     m_projectIsExample = false;
@@ -845,6 +943,7 @@ bool AppController::loadSessionFile(const QString &path)
     }
     QSettings().setValue(QStringLiteral("session/dir"), QFileInfo(path).absolutePath());
 
+    m_connectPending = false;
     // Samples already queued by the worker must not land in the loaded recording.
     if (m_state != ConnectionState::Disconnected)
         m_dropSamples = true;
