@@ -1214,6 +1214,7 @@ and `timeUnit` (`"s"` or `"min"`). A top-level `yAxes` object holds the fixed Y-
 | File > New | Ctrl+N | Empty tag list. The connection fields are reset to the last connected settings. |
 | File > Open... | Ctrl+O | Open a `.mbproj` file. |
 | File > Open example... | | Open one of the example projects (`demo.mbproj`, `cm50.mbproj`, `loop101.mbproj`) from the examples folder. |
+| Simulation > Load simulation... | | Load a simulation of the [Loop simulator](LOOP_SIMULATOR.md): its tags, then the simulator, then the connection. See [Loading a simulation](#loading-a-simulation). |
 | File > Save | Ctrl+S | Save to the current file. Asks for a name when the project has none. |
 | File > Save As... | Ctrl+Shift+S | Save under a new name. `.mbproj` is added when missing. |
 | File > Quit | Ctrl+Q | Close the application. |
@@ -1238,6 +1239,33 @@ the test server on 127.0.0.1:1502, unit 1, with a 200 ms period.
 [`examples/cm50.mbproj`](../examples/cm50.mbproj) is a starting point for an ABB CM50 (see the next
 section).
 [`examples/loop101.mbproj`](../examples/loop101.mbproj) is for the [Loop simulator](LOOP_SIMULATOR.md).
+
+### Loading a simulation
+
+The **Simulation** menu loads a simulation of the [Loop simulator](LOOP_SIMULATOR.md) in one step.
+Choose **Simulation > Load simulation...**. The window lists the simulations that the Loop Simulator
+supports, with a one-line description of the selected one. There is no file dialog. The list has one
+entry for now, "Level loop LIC-101, step test", which uses `loop101-step.mbloop` and `loop101.mbproj`.
+
+Choose a simulation and press **Load**. Modbus Control then:
+
+- asks about unsaved changes first, with the usual Save, Discard or Cancel prompt (Save asks for a
+  name when the project has none),
+- loads the tags of the matching project, as **File > Open example...** does,
+- opens the Loop Simulator with that scenario,
+- waits up to 10 s for the simulator to listen, then connects by itself.
+
+If Modbus Control opened a simulator that is still running, it asks whether to restart it with the
+chosen simulation. If another program already listens on the simulator's port, for example a simulator
+you started yourself, Modbus Control tells you to close it first and changes nothing.
+
+If the simulator does not start, a warning gives the reason. The tags stay loaded, but nothing connects.
+
+Closing Modbus Control also closes the simulator it opened. A simulator that you started another way is
+never closed.
+
+**File > Open** and **File > Open example...** are unchanged. Your own `.mbloop` files are not in the
+list. Open them from the simulator itself, with its File menu or with `--scenario`.
 
 ## Sessions
 
