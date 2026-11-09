@@ -54,7 +54,7 @@ depend on the language: projects, CSV exports, the write log and the other files
 English, and numbers keep the point as decimal mark whatever the language (a decimal comma is still
 accepted when you type). The one exception is the error text of a failed write in the write log, which
 follows the interface language. This guide shows the English labels; the French labels are in the
-[French guide](fr/GUIDE_UTILISATEUR.md).
+French guide.
 
 ## Connecting
 
