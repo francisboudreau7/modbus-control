@@ -24,14 +24,36 @@ tests on, see the [Loop simulator](LOOP_SIMULATOR.md).
   [Setpoints and options](#setpoints-and-options)).
 - **Write log** (bottom dock, tabbed with Tags): every write sent to the device in this session (see
   [Write log](#write-log)).
-- **Menus**: File, Export, View, Options and Help. Options includes **Lock tag configuration** (see
-  [Teacher lock](#teacher-lock)). **Help > Quick Start** and **Help > User Guide**
-  open these guides online (in French when Windows is in French), or the copy installed with the
+- **Menus**: File, Export, View, Simulation, Options and Help. Options includes **Lock tag
+  configuration** (see [Teacher lock](#teacher-lock)) and **Language** (see
+  [Language](#language)). **Help > Quick Start** and **Help > User Guide**
+  open these guides online (in the language of the interface), or the copy installed with the
   application when the browser cannot be opened.
 - **Status bar**: short messages (left), the **Tags locked** label when the tag configuration is locked,
   and the connection state (right).
 
 Docks can be closed and reopened from the View menu. Window size and dock layout are remembered.
+
+## Language
+
+The interface is available in English and in French. Choose it in **Options > Language**:
+
+| Choice | Meaning |
+|---|---|
+| **System language** | Follows the Windows display language: French if it is French, otherwise English. This is the default. |
+| **English** | Always English. |
+| **Français** | Always French. |
+
+The choice is saved and applied the next time Modbus Control starts. A message says so when you pick
+a language that differs from the current one. The Loop Simulator follows the same setting when it
+starts. **Help > Quick Start** and **Help > User Guide** open the guides in the language of the
+interface.
+
+Only the interface changes. The test server and the command-line help stay in English. Files do not
+depend on the language: projects, CSV exports, the write log and the other files are written in
+English, and numbers keep the point as decimal mark whatever the language (a decimal comma is still
+accepted when you type). This guide shows the English labels; the French labels are in the
+[French guide](fr/GUIDE_UTILISATEUR.md).
 
 ## Connecting
 
@@ -66,26 +88,26 @@ is reported in the status bar. Press **Disconnect** to stop retrying. Tags show 
 
 ## Tags
 
-Each row is one register value that the application reads. Columns:
+Each row is one register value, or one coil or discrete input, that the application reads. Columns:
 
 | Column | Meaning |
 |---|---|
 | Name | Name shown in the table, trend legend and cursor panel. Cannot be empty. |
-| Area | `Holding` (FC03 read, FC06/FC16 write) or `Input` (FC04 read). |
+| Area | One of four areas, listed with their function codes: `Holding register (FC03/FC06/FC16)`, `Input register (FC04)`, `Coil (FC01/FC05/FC15)` or `Discrete input (FC02)`. The table cell shows the short name (`Holding`, `Input`, `Coil`, `Discrete`). See [Coils and discrete inputs](#coils-and-discrete-inputs). |
 | Address | Zero-based Modbus address, 0..65535 (HR 100 is address 100). With Options > Use 1-based register numbers the column is headed **Register** and shows and accepts the number as printed in device manuals (1..65536; 1..65535 for 32-bit tags). See 1-based register numbers. |
-| Type | `int16` (signed) or `uint16` (unsigned), one register. `int32` (signed), `uint32` (unsigned) and `float32` (IEEE-754 single precision), two consecutive registers. See 32-bit values. |
-| Byte order | `ABCD`, `CDAB`, `BADC` or `DCBA`: how the two registers of a 32-bit value are arranged. Shows `—` for 16-bit types, where it has no effect. See 32-bit values. |
-| Gain | Multiplier applied to the raw value. Cannot be 0. |
-| Offset | Added after the gain. |
+| Type | `int16` (signed) or `uint16` (unsigned), one register. `int32` (signed), `uint32` (unsigned) and `float32` (IEEE-754 single precision), two consecutive registers. See 32-bit values. Coils and discrete inputs are always `bool`. |
+| Byte order | `ABCD`, `CDAB`, `BADC` or `DCBA`: how the two registers of a 32-bit value are arranged. Shows `—` for 16-bit types and for coils and discrete inputs, where it has no effect. See 32-bit values. |
+| Gain | Multiplier applied to the raw value. Cannot be 0. Shows `—` for coils and discrete inputs. |
+| Offset | Added after the gain. Shows `—` for coils and discrete inputs. |
 | Unit | Shown after the name in the legend and the CSV header. Optional. |
-| Writable | Allows writes from the Value column. Holding registers only, of any type. The box is disabled for input registers, and changing Area to Input clears it. |
+| Writable | Allows writes from the Value column. Holding registers (of any type) and coils. The box is disabled for input registers and discrete inputs, and changing Area to one of them clears it. |
 | Plot | Shows the tag in the trend. Unticked tags are still polled and recorded. |
 | Axis | `Left` or `Right`: the Y axis the tag's curve uses on the Trend. See [Trend](#trend). |
 | Color | Trend colour. Double-click the cell, or press F2 or Enter, to open the colour picker. |
-| Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`). Read-only. |
-| Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Read-only, except for writable tags (see Writing values). |
-| Min, Max | Write limits, in scaled units: the lowest and highest value that may be written. Empty means no limit. Editable only for writable tags; Min cannot be above Max. Every write, including quick writes, is refused outside the limits. See [Write safety](#write-safety). |
-| Quick A, Quick B | Preset values for the Quick write dock, in scaled units. Empty means no button. Only writable tags can have them, and a preset must be within the Min and Max limits. See [Quick writes](#quick-writes). |
+| Raw | The register value as read. 16-bit types show hex and decimal (`0x00AB (171)`); 32-bit types show the 32-bit value in hex (`0x42F6E979`); coils and discrete inputs show `1` or `0`. Read-only. |
+| Value | Scaled value: `raw * gain + offset`, with 6 significant digits (7 for `float32`). Coils and discrete inputs show `ON` or `OFF` instead. Read-only, except for writable tags (see Writing values). |
+| Min, Max | Write limits, in scaled units: the lowest and highest value that may be written. Empty means no limit. Editable only for writable tags; Min cannot be above Max. Every write, including quick writes, is refused outside the limits. Coils have no limits (the cells show `—`). See [Write safety](#write-safety). |
+| Quick A, Quick B | Preset values for the Quick write dock, in scaled units. Empty means no button. Only writable tags can have them, and a preset must be within the Min and Max limits. For a coil a preset is `ON` or `OFF`. See [Quick writes](#quick-writes). |
 | Quality | State of the last read. Read-only. |
 
 Quality values:
@@ -185,6 +207,44 @@ While the tag configuration is locked (see [Teacher lock](#teacher-lock)), the m
 "<n> tags may be numbered one register off; the tag configuration is locked (Options > Lock tag
 configuration)." Nothing moves.
 
+### Coils and discrete inputs
+
+Besides registers, the application reads bits. A **coil** is a read/write bit; a **discrete input** is
+a read-only bit. Controllers and PLCs often use them for alarm states, run/stop commands and
+Auto/Manual modes. The four areas are listed in the **Area** combo of the table and of the Add tag
+dialog, with their function codes:
+
+| Area | Function codes | Writable | Register text |
+|---|---|---|---|
+| Holding register (FC03/FC06/FC16) | FC03 read, FC06 and FC16 write | yes | `HR 100` |
+| Input register (FC04) | FC04 read | no | `IR 3` |
+| Coil (FC01/FC05/FC15) | FC01 read, FC05 (one coil) and FC15 (several) write | yes | `CO 12` |
+| Discrete input (FC02) | FC02 read | no | `DI 5` |
+
+How a coil or discrete input tag differs from a register tag:
+
+- **Type** is `bool` and cannot be anything else, and a register area cannot take `bool`. When you
+  change the Area between a register area and a coil or discrete input area, the type follows (`bool`,
+  or `int16` going back to registers) and Gain, Offset, Byte order, Min, Max, Quick A and Quick B go
+  back to their defaults.
+- **Value** shows `ON` or `OFF` (Raw shows `1` or `0`). There is no gain, offset or byte order: those
+  cells show `—`. There are no encoding checks either (no 32-bit detection, no warning icon), because
+  a bit has no encoding.
+- The register text in messages, the Write log and the table follows **Options > Use 1-based register
+  numbers**, like registers: `CO 12` is coil number 12 in the numbering in force. The protocol address
+  is stored zero-based, as for registers.
+- The [off-by-one check on connect](#off-by-one-check-on-connect) applies to bit tags: a coil or
+  discrete input that the device refuses with "illegal data address" is probed one address away.
+- On the Trend, the curve of a bit tag is a **step curve**: it stays flat and jumps when the bit
+  changes, instead of sloping between samples. The [cursors](#cursors) read `ON` or `OFF`.
+- Bit tags cannot be chosen as the process variable (PV) or the controller output (CO) in the
+  [Analysis](#analysis-step-response), nor as a setpoint tag.
+
+Writing a coil follows the same classroom rules as writing a holding register (see
+[Writing a coil](#writing-a-coil) and [Classroom safety](#classroom-safety)): ticking **Writable**
+asks for confirmation, the register settings are locked while connected, the teacher lock applies and
+every write goes to the Write log. Discrete inputs can never be written.
+
 ### Editing the table
 
 - Edit a cell by double-clicking it or pressing F2.
@@ -194,7 +254,7 @@ configuration)." Nothing moves.
 - **Remove**, or the Delete key, removes the selected rows. You are asked to confirm when more
   than one row is selected.
 - **Write selected...** is enabled when two or more rows are selected and all of them are
-  writable holding registers. See Writing values.
+  writable holding registers, or all of them writable coils. See Writing values.
 
 Tag edits mark the project as modified. Live values do not.
 
@@ -204,10 +264,11 @@ separator is not accepted: a single point or comma is the decimal mark, so `1,23
 
 ### Add tag dialog
 
-Choose the **Area** (holding or input register) and type the **Address**, in the numbering the
+Choose the **Area** (holding register, input register, coil or discrete input) and type the **Address**, in the numbering the
 Options menu shows. The area is empty and the address is blank when the dialog opens. The **Add**
 button stays disabled until both are valid and the tag does not share a register with an existing
 tag. A red line names the tag it overlaps. Name, type, byte order, unit and Writable are optional.
+For a coil or a discrete input the type is fixed to `bool` and there is no byte order.
 A blank name becomes `Tag <id>`.
 
 While connected, the dialog reads the register for you:
@@ -215,6 +276,8 @@ While connected, the dialog reads the register for you:
 - **Read** shows the raw register and its neighbours (as hex), and what they mean as a 16-bit
   value and as float32 in both directions. It also runs by itself shortly after you change the
   area or the address, or when you connect. Neighbours that belong to another tag are not read.
+- For a coil or discrete input, **Read** shows the state as `ON` or `OFF`, and **Detect encoding**
+  is disabled: a bit has no encoding to detect.
 - **Detect encoding** decides between a 16-bit value and a float32, at the address or one register
   earlier. If it looks like a float32, the encoding dialog opens (see Encoding detection). When you
   apply it, the dialog sets the type, the byte order and, if needed, the address one register
@@ -231,8 +294,9 @@ is checked when you connect, like any other new tag. Cancel adds nothing. The ne
 
 ## Writing values
 
-Writes go to the server between poll cycles. Only holding-register tags with **Writable** ticked
-can be written, of any type (16-bit or 32-bit).
+Writes go to the server between poll cycles. Only holding-register tags and coil tags with
+**Writable** ticked can be written. Holding registers can be of any type (16-bit or 32-bit); coils
+are covered in [Writing a coil](#writing-a-coil).
 
 ### One register
 
@@ -273,6 +337,30 @@ polled value, so it changes only when the next read returns the new value.
    the registers (for example "HR 100-103 · FC16"). The whole group is sent in one FC16 request.
    16-bit and 32-bit tags can be mixed; the 123-register limit counts registers, not tags.
 
+### Writing a coil
+
+A coil is written like a register, but its value is `ON` or `OFF`:
+
+1. Tick **Writable** on the coil tag (the question is the same as for a holding register, see
+   [Making a tag writable](#making-a-tag-writable)). A coil that has no presets then gets
+   **Quick A** = `ON` and **Quick B** = `OFF`, which you can change or clear.
+2. Connect. Double-click the **Value** cell and choose `ON` or `OFF`. The cell also accepts `1` and
+   `0`, and `true` and `false`.
+3. Confirm the question, for example "Switch 'Pump' ON?". It lists the **Current state** (or
+   "unknown") and the **New state**, and its note gives the coil, for example "CO 12 · FC05".
+
+A coil write uses FC05 (Write Single Coil). The same checks as for a register apply: a connection,
+and a Good reading since the tag was made writable (the first write is refused until then). There
+are no Min/Max limits and no encoding checks for a coil.
+
+**Write selected...** also works for two or more writable coils with consecutive addresses (up to
+1968 at once). Registers and coils cannot be mixed in one selection. Each coil gets an `ON`/`OFF`
+choice, and the whole group is sent in one FC15 (Write Multiple Coils) request. If a device does
+not accept FC15, the application says so.
+
+The Write log shows `FC05` or `FC15` for coil writes, the old and new state as `ON`/`OFF`, and `1` or
+`0` for each coil in the Raw column.
+
 ### Quick writes
 
 Quick writes are one-click writes of preset values, for setpoints you change often (for example
@@ -284,7 +372,8 @@ a "run" and a "stop" value).
    refused when you type it.
 2. Open the **Quick write** dock (right side, tabbed with Cursors and Analysis; reopen it from the View menu).
    It lists each writable tag that has a preset, with its name, live value and one button per
-   preset: **A: <value>** and **B: <value>**. The buttons are disabled while not connected.
+   preset: **A: <value>** and **B: <value>** (**A: ON** and **B: OFF** for a coil). The buttons are
+   disabled while not connected.
 3. Click a button. A question asks for confirmation, for example "Write 1000 to HR 100
    'Setpoint'?". The write is then sent like a write of one tag (range check; a 32-bit tag is sent in
    one FC16 request).
@@ -439,9 +528,9 @@ have scrolled up to read older rows.
 | Time | When the request was sent (hours, minutes, seconds and milliseconds). |
 | Tag | The tag's name. |
 | Register | The register numbers, with the numbering of **Options** (for example `HR 5009-5010`). |
-| FC | `FC06` (one register) or `FC16`. |
-| Old → New | The value before the write and the value written, with the unit. |
-| Raw | The registers sent, in hex. |
+| FC | `FC06` (one register) or `FC16`; `FC05` (one coil) or `FC15` for coils. |
+| Old → New | The value before the write and the value written, with the unit; `ON` or `OFF` for a coil. |
+| Raw | The registers sent, in hex; `1` or `0` for each coil. |
 | Result | `OK`, or the error, for example "Exception 2: Illegal data address" or "Timeout". Failures are shown in red. |
 
 Point at a row to see its date, its source (table edit, selection, or quick write) and the server.
@@ -1389,8 +1478,13 @@ The example file has **Min** and **Max** limits of 0 and 100 on **Loop 1 Local S
 **Alarm 1 Trip**. These are placeholder values, not the controller's real ranges. Replace them with
 the allowed range of each parameter from your controller before you write to it.
 
-**Not supported by this app:** coils and discrete inputs (alarm states, auto/manual mode) and
-Modbus RTU (serial). Use the controller's front panel or another tool for those.
+**Coils and discrete inputs.** The app reads and writes coils and reads discrete inputs (see
+[Coils and discrete inputs](#coils-and-discrete-inputs)), for example for alarm states or the
+Auto/Manual mode. Check your controller's manual for the coils and discrete inputs it has. They are
+numbered like the registers (see the numbering above).
+
+**Not supported by this app:** Modbus RTU (serial). Use the controller's front panel or another tool
+for that.
 
 ## Recording
 
@@ -1405,8 +1499,9 @@ Modbus RTU (serial). Use the controller's front panel or another tool for those.
 
 - One server at a time.
 - Modbus TCP only. No serial (RTU) connections.
-- Holding and input registers only, with `int16` and `uint16` (one register) or `int32`,
-  `uint32` and `float32` (two registers) types. There are no coils or discrete inputs.
+- Holding registers, input registers, coils and discrete inputs. Registers have `int16` or `uint16`
+  (one register) or `int32`, `uint32` or `float32` (two registers) types; coils and discrete inputs
+  are `bool`.
 - Some TCP servers ignore the unit id. It is still sent with each request.
 - The history is in memory only. A project file does not store it; a session file does (see
   [Sessions](#sessions)).

@@ -1,8 +1,8 @@
 # Test server (modbus_test_server)
 
 `modbus_test_server.exe` is a console Modbus TCP server for trying out Modbus Control without a
-device. It serves holding and input registers, some of which hold simulated signals, and it can
-inject delays and dropped connections. The integration tests start it too.
+device. It serves holding registers, input registers, coils and discrete inputs, some of which hold
+simulated signals, and it can inject delays and dropped connections. The integration tests start it too.
 
 ## Running it
 
@@ -46,7 +46,10 @@ Without a configuration file the server has:
 - Holding registers HR 0..199 (`holdingCount` 200). All are read/write and start at 0, except the
   initial values listed below.
 - Input registers IR 0..63 (`inputCount` 64). Unbound ones stay at 0.
-- Coils and discrete inputs are not mapped.
+- Coils 0..15 (`coilCount` 16). Clients read them with FC01 and write them with FC05 and FC15.
+  All start OFF.
+- Discrete inputs 0..15 (`discreteCount` 16), read with FC02. All are OFF except the ones driven by
+  the default bit signals listed below.
 
 Addresses outside these ranges return the Modbus exception "illegal data address" (code 2).
 
@@ -73,6 +76,17 @@ Default initial holding values (written when the server starts; they stay writab
 | HR 120-121 | int32 ABCD, 100 | a 32-bit value that is ambiguous when read in the wrong order |
 
 Writing HR 100 changes the lag output on IR 10, so a setpoint step shows as a first-order response.
+
+Default bit signals (discrete inputs):
+
+| Discrete input | Signal | Parameters |
+|---|---|---|
+| DI 0 | square | ON for the first 2 s of every 4 s period, then OFF |
+| DI 1 | echo | follows coil 0 (the value a client last wrote there) |
+| DI 2 | echo | follows coil 1 |
+
+So writing coil 0 or coil 1 from Modbus Control makes discrete input 1 or 2 change within one tick,
+which is an easy way to test coil writes end to end.
 
 ## Signals
 
@@ -137,6 +151,8 @@ The same content is in [`server/server.example.json`](../server/server.example.j
   "verbose": false,
   "logWrites": false,
   "strict32Bit": false,
+  "coilCount": 16,
+  "discreteCount": 16,
   "signals": [
     { "input": 0,  "kind": "sine",     "amplitude": 1000, "offset": 0, "periodS": 5 },
     { "input": 1,  "kind": "triangle", "amplitude": 1000, "offset": 0, "periodS": 10 },
@@ -152,6 +168,14 @@ The same content is in [`server/server.example.json`](../server/server.example.j
   "holding": [
     { "address": 110, "value": 52.3, "format": "float32", "byteOrder": "CDAB" },
     { "address": 120, "value": 100,  "format": "int32",   "byteOrder": "ABCD" }
+  ],
+  "coils": [
+    { "address": 3, "value": true }
+  ],
+  "bitSignals": [
+    { "discrete": 0, "kind": "square", "periodS": 4 },
+    { "discrete": 1, "kind": "echo", "coil": 0 },
+    { "discrete": 2, "kind": "echo", "coil": 1 }
   ]
 }
 ```
@@ -166,6 +190,10 @@ Keys:
 | `tickMs` | 1 or more | Simulation tick. |
 | `delayMs`, `dropPercent`, `verbose`, `logWrites` | 0 or more; 0..100; true/false; true/false | Fault injection and logging. |
 | `strict32Bit` | true/false, default false | Refuse 32-bit splits, see [Behaving like a CM50](#behaving-like-a-cm50). `--strict-32bit` turns it on even when the file says false. |
+| `coilCount` | 1..65536, default 16 | Coils 0..count-1, read with FC01, written with FC05 and FC15. |
+| `discreteCount` | 1..65536, default 16 | Discrete inputs 0..count-1, read with FC02. |
+| `coils` | array | Coils that start ON, see [Coils and discrete inputs](#coils-and-discrete-inputs). |
+| `bitSignals` | array | What drives the discrete inputs, see [Coils and discrete inputs](#coils-and-discrete-inputs). |
 | `signals` | array | Each entry has `input` (IR address), `kind`, and `amplitude`, `offset`, `periodS`, `tauS`, `deadTimeS` or `source` where they apply, and optionally `format` and `byteOrder` (see Value formats). |
 | `holding` | array | Initial holding register values, see below. Each entry has `address` (HR), `value`, and optionally `format` (`int16` default, `uint16`, `int32`, `uint32`, `float32`) and `byteOrder` (default `ABCD`, used by the 32-bit formats). |
 
@@ -203,6 +231,43 @@ strings are rejected with the message `invalid config: "holding[n].<key>" ...`.
 If `holding` is present it replaces the default initial values completely (`"holding": []` starts
 every holding register at 0). Without the key the defaults stay, except that default entries that do
 not fit below a smaller `holdingCount` are dropped, so older configuration files still load.
+
+### Coils and discrete inputs
+
+Coils and discrete inputs are bits. Coils are read and written by clients (FC01, FC05, FC15) and
+keep the value last written. Discrete inputs are read-only (FC02); the server sets them.
+
+`coils` lists coils that start ON. Each entry has `address` (below `coilCount`) and `value`
+(`true` or `false`, a real JSON boolean). Coils not listed start OFF. If a coil is listed twice,
+the last entry wins.
+
+`bitSignals` says what drives each discrete input. Each entry has `discrete` (the discrete input,
+below `discreteCount`) and a `kind`:
+
+| `kind` | Other keys | Value |
+|---|---|---|
+| `square` | `periodS`, greater than 0, default 4 | ON during the first half of each period (starting at server start), OFF during the second half |
+| `echo` | `coil` (below `coilCount`) | ON while that coil is ON, OFF while it is OFF |
+
+A discrete input can have at most one entry, and discrete inputs without an entry stay OFF.
+
+```json
+"coils": [
+  { "address": 3, "value": true }
+],
+"bitSignals": [
+  { "discrete": 0, "kind": "square", "periodS": 4 },
+  { "discrete": 1, "kind": "echo", "coil": 0 },
+  { "discrete": 2, "kind": "echo", "coil": 1 }
+]
+```
+
+If `coils` or `bitSignals` is present it replaces the default completely (`"bitSignals": []` leaves
+every discrete input OFF). Without the key the default stays, except that default bit signals that
+do not fit below a smaller `coilCount` or `discreteCount` are dropped, so older configuration files
+still load. Unknown keys, a coil or discrete input out of range, a non-boolean `value`, an unknown
+`kind` or two entries for the same discrete input are rejected with an `invalid config` message.
+The start-up banner lists the coil and discrete input ranges and the bit signals.
 
 ## Fault injection
 
@@ -244,9 +309,10 @@ neither, is served as usual. For example, with the defaults:
 | write multiple HR 111-112 (FC16) | exception 2, value unchanged |
 | write multiple HR 110-111 (FC16) | OK |
 
-Each refused request prints a `refused` line on the console, even without `-v`. Function codes
-FC05 (coils) and FC23 (read/write multiple) are not checked. Without the option the server
-serves these requests as usual.
+Each refused request prints a `refused` line on the console, even without `-v`. The strict check
+covers only FC03, FC04, FC06 and FC16: the coil and discrete input function codes (FC01, FC02,
+FC05, FC15) and FC23 (read/write multiple) are never refused. Without the option the server
+serves all requests as usual.
 
 ## Output
 
@@ -264,6 +330,9 @@ With `-v` each request is logged as one line, for example:
 ```
 [12] unit=1 fc=0x03 read addr=0 count=10
 [12] unit=1 fc=0x06 write addr=100 value=500
+[12] unit=1 fc=0x01 read addr=0 count=4
+[12] unit=1 fc=0x05 write coil addr=0 value=ON
+[12] unit=1 fc=0x0F write coils addr=0 count=3 values=ON,OFF,ON
 [12] disconnected (closed or error)
 ```
 
@@ -288,6 +357,10 @@ addresses are decoded together on an extra line:
 12:08:53.543 [576] unit=1 fc=0x06 write addr=121 value=0x42F7 (17143)
 12:08:53.543 [576]   FC06 pair addr=120-121 values=0x0000,0x42F7 | float ABCD=2.40224596e-41 CDAB=123.5 BADC=8.86993902e-41 DCBA=-3.93478746e+33
 ```
+
+Coil writes are logged too: FC05 as `write coil addr=<n> value=ON` (or `OFF`) and FC15 as
+`write coils addr=<n> count=<k> values=ON,OFF,...` (at most 16 values are shown, then `...`).
+FC01 and FC02 reads appear with `-v` as `read addr=<n> count=<k>`, like FC03 and FC04.
 
 `addr` is always the zero-based protocol address (register 6639 in a 1-based manual is
 `addr=6638`). Holding registers 0..199 are plain storage, so a value written there reads back

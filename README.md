@@ -19,6 +19,7 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
 ## Features
 
 - Holding registers (FC03 read, FC06/FC16 write) and input registers (FC04 read)
+- Coils (FC01 read, FC05/FC15 write) and discrete inputs (FC02 read), shown as ON/OFF with step curves on the trend
 - `int16`, `uint16`, `int32`, `uint32` and `float32` values with gain/offset scaling and a selectable
   byte order (ABCD, CDAB, BADC, DCBA)
 - Live trend with two cursors (Δt, ΔY), zoom, pan and a second Y axis
@@ -36,12 +37,14 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
   sends, flags 16-bit tags that sit on half of a float32, and asks before writing until confirmed
 - Export of the graph (PNG, SVG, PDF) and of the data and analysis results (CSV)
 - Projects (`.mbproj`) and recorded sessions (`.mbsession`) to review offline
-- Test server `modbus_test_server` with simulated signals and fault injection
+- French interface: Options > Language (system language, English or Français)
+- Test server `modbus_test_server` with simulated signals, coils and fault injection
   ([docs/TEST_SERVER.md](docs/TEST_SERVER.md))
 - Loop simulator `modbus_loop_sim`: a level control loop (P&ID, LIC-101 faceplate) that is a Modbus TCP
   server, for step tests and classes ([docs/LOOP_SIMULATOR.md](docs/LOOP_SIMULATOR.md))
 - PID auto mode in the loop simulator: switch LIC-101 to AUTO, enter Kp, Ti and Td and test a tuning on a
   closed loop
+- Simulation > Load simulation: starts the loop simulator and connects to it in one step
 
 ## Try it
 
