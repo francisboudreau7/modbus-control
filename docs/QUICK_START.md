@@ -76,6 +76,10 @@ Add the other two tags of the loop the same way:
 | Loop 1 Control Output | Input register | `5013` | `%` | Read-only. |
 | Loop 1 Local Setpoint 1 | Holding register | `6639` | `°C` | Tick **Writable** only if you are allowed to change the setpoint. |
 
+The **Area** list also offers **Coil (FC01/FC05/FC15)** and **Discrete input (FC02)** for on/off
+states such as alarms. Their value shows `ON` or `OFF`. See
+[Coils and discrete inputs](USER_GUIDE.md#coils-and-discrete-inputs).
+
 Compare each value in the **Value** column with the controller's display. If a value looks wrong,
 right-click the row and choose **Detect encoding...**.
 

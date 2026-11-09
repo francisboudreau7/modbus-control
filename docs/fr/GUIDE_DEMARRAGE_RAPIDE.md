@@ -82,6 +82,10 @@ Ajoutez de la même façon les deux autres étiquettes de la boucle :
 | Loop 1 Control Output | Input register | `5013` | `%` | Lecture seule. |
 | Loop 1 Local Setpoint 1 | Holding register | `6639` | `°C` | Cochez **Writable** seulement si vous avez le droit de modifier la consigne. |
 
+La liste **Area** propose aussi **Bobine (FC01/FC05/FC15)** et **Entrée discrète (FC02)** pour des états
+tout ou rien comme les alarmes. Leur valeur s'affiche `ON` ou `OFF`. Voir
+[Bobines et entrées discrètes](GUIDE_UTILISATEUR.md#bobines-et-entrées-discrètes).
+
 Comparez chaque valeur de la colonne **Value** avec l'affichage du régulateur. Si une valeur semble
 fausse, faites un clic droit sur la ligne et choisissez **Detect encoding...**.
 

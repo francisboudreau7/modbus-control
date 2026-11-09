@@ -43,6 +43,11 @@ bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop
 
 (Pour une installation pour tous les utilisateurs, utilisez `cd "C:\Program Files\Modbus Control"`.)
 
+La fenêtre suit la langue de l'interface de Modbus Control (**Options > Langue**, voir le
+[Guide de l'utilisateur](GUIDE_UTILISATEUR.md#langue)) au démarrage : en français si ce réglage est
+Français, ou Langue du système sur un Windows en français, sinon en anglais. L'aide de la ligne de commande
+et la sortie sans fenêtre restent en anglais.
+
 La version avec fenêtre est un programme graphique Windows : lancée depuis `cmd` ou PowerShell, elle
 rend l'invite tout de suite, et Ctrl+C ou la fermeture de la console ne l'arrête pas (fermez plutôt sa
 fenêtre). Son code de sortie n'est donc pas disponible pour l'interpréteur. Pour l'attendre et lire le
@@ -170,6 +175,7 @@ dans les trames sont plus petites de un.
 | LT-101 PV (niveau) | Registre d'entrée (FC04) | 1-2 | 0-1 | lecture seule, 0 à 100 % |
 | LIC-101 SP (consigne) | Registre de maintien (FC03, FC16) | 1-2 | 0-1 | 0 à 100 % |
 | LIC-101 OUT | Registre de maintien (FC03, FC16) | 3-4 | 2-3 | 0 à 100 % |
+| LIC-101 A/M | Bobine (FC01, FC05) | 1 | 0 | 0 = Auto, 1 = Manuel |
 
 Règles, comme le CM50 :
 
@@ -180,7 +186,7 @@ Règles, comme le CM50 :
   donnée illégale).
 - Tout le reste est refusé avec l'exception 2 (adresse de donnée illégale) : FC06, une requête qui
   commence au milieu d'un nombre, un nombre de registres qui coupe un nombre, toute autre adresse, ainsi
-  que les bobines (coils) et les entrées discrètes.
+  que les entrées discrètes (FC02). Pour la bobine, voir plus bas.
 - SP est mémorisée. En Manual, rien ne l'utilise : elle est seulement affichée sur la face avant et sur
   le schéma. En Auto, c'est la consigne du PID.
 - Quand LIC-101 est en **Auto**, une écriture qui touche OUT (registres 3-4) est refusée avec
@@ -190,6 +196,26 @@ Règles, comme le CM50 :
 
 En Manual, une valeur OUT écrite agit tout de suite sur FCV-101 (la tige se déplace ensuite à la vitesse
 de la course).
+
+**La bobine A/M.** La bobine 1 (adresse de protocole 0) est le mode Auto/Manuel de LIC-101, comme sur le
+CM50 : `0` (OFF) est Auto et `1` (ON) est Manuel. Le simulateur démarre en Manuel : elle vaut donc `1` au
+début.
+
+- FC01 la lit. La requête doit viser exactement la bobine 1, avec un nombre de 1 ; tout autre début ou
+  nombre est refusé avec l'exception 2 (adresse de donnée illégale).
+- FC05 l'écrit : `0xFF00` (ON) passe en Manuel et `0x0000` (OFF) en Auto. Toute autre valeur est refusée
+  avec l'exception 3 (valeur de donnée illégale), et toute autre bobine avec l'exception 2. FC15 avec une
+  seule bobine, la bobine 1, est accepté aussi.
+- Le passage est le même que celui du bouton A/M de la face avant, et il est sans à-coup : le passage en
+  Auto fait partir le PID de OUT actuelle, le passage en Manuel conserve OUT actuelle (voir
+  [Le régulateur PID](#le-régulateur-pid)). Écrire le mode déjà en vigueur ne change rien.
+- Une écriture de la bobine est toujours acceptée, même en Auto (contrairement à une écriture de OUT). Le
+  mode affiché sur la face avant la suit tout de suite, et la bobine se lit selon le mode que la face
+  avant affiche.
+
+Le fichier `examples/loop101.mbproj` contient cette bobine sous forme de l'étiquette **LIC-101 A/M**
+(inscriptible, non tracée). Connectez-vous, double-cliquez sur sa cellule **Valeur** et choisissez `ON`
+(Manuel) ou `OFF` (Auto).
 
 ## La fenêtre
 
@@ -206,9 +232,9 @@ de la course).
   qui écrit par Modbus change les mêmes valeurs. Le bouton de mode et les champs de réglage sont décrits
   dans [Le régulateur PID](#le-régulateur-pid).
 - **Modbus panel** (sous le schéma; cochez **Show Modbus registers** dans la barre du bas pour l’afficher, masqué par défaut) : l'adresse et le port réellement utilisés du
-  serveur (ou l'erreur de démarrage, en rouge), le nombre de clients connectés, et un tableau des trois
-  registres : PV (registres d'entrée 1-2, en lecture seule), SP (registres de maintien 1-2) et OUT
-  (registres de maintien 3-4), avec le numéro à base 1 affiché par Modbus Control, l'adresse à base 0,
+  serveur (ou l'erreur de démarrage, en rouge), le nombre de clients connectés, et un tableau des quatre
+  valeurs : PV (registres d'entrée 1-2, en lecture seule), SP (registres de maintien 1-2), OUT
+  (registres de maintien 3-4) et la bobine A/M (bobine 1), avec le numéro à base 1 affiché par Modbus Control, l'adresse à base 0,
   le type, les codes de fonction, l'accès et la valeur actuelle. L'accès de OUT devient « Read only
   (AUTO) » en mode Auto. **Help > Modbus registers...** affiche le même tableau dans une boîte de
   dialogue.
@@ -235,6 +261,7 @@ changer de mode. Le programme démarre en Manual.
 - **Auto** : le régulateur calcule OUT toutes les 0.1 s de temps simulé à partir de SP et de PV. Les
   boutons OUT et la case OUT sont désactivés, et les écritures Modbus dans OUT sont refusées
   (exception 3). Vous pouvez toujours changer SP, sur la face avant ou par Modbus.
+- Le mode peut aussi être changé par Modbus, avec la bobine A/M (voir [Registres Modbus](#registres-modbus)).
 - Le passage de MAN à AUTO est **sans à-coup** : OUT ne saute pas, parce que le régulateur part de OUT
   actuelle. Cela vaut aussi avec Ti = 0 : le régulateur garde alors un biais constant
   (fixé au transfert, comme un « manual reset »), de sorte que OUT = biais + Kp × e. Le retour à MAN conserve OUT actuelle.
@@ -305,9 +332,9 @@ dans le Guide de l'utilisateur.
    (ou depuis le menu Démarrer : la vitesse ×1 par défaut convient). Le niveau est stable à 50 %.
 2. Démarrez Modbus Control. Il démarre avec un projet vide : choisissez **File > Open example...** et ouvrez
    [examples/loop101.mbproj](../../examples/loop101.mbproj). Le projet
-   se connecte à `127.0.0.1:1601`, unité 1, avec trois étiquettes : **LT-101 PV** (registre d'entrée 1),
-   **LIC-101 SP** (registre de maintien 1) et **LIC-101 OUT** (registre de maintien 3). Cliquez sur
-   **Connect**.
+   se connecte à `127.0.0.1:1601`, unité 1, avec quatre étiquettes : **LT-101 PV** (registre d'entrée 1),
+   **LIC-101 SP** (registre de maintien 1), **LIC-101 OUT** (registre de maintien 3) et **LIC-101 A/M**
+   (bobine 1). Cliquez sur **Connect**.
 3. Attendez 10 s. **LT-101 PV** est à environ 50 % et plat. Trend affiche PV et OUT.
 4. Dans le panneau **Quick write**, cliquez sur **B: 60** pour faire passer OUT de 50 à 60 % (**A: 50**
    revient en arrière). La confirmation d'écriture s'affiche si elle est activée.

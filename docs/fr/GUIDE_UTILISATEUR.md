@@ -24,14 +24,37 @@ faire des essais à l'échelon, consultez le [Simulateur de boucle](SIMULATEUR_D
   [Repères et options](#repères-et-options)).
 - **Write log** (panneau du bas, en onglets avec Tags) : chaque écriture envoyée à l'appareil pendant la session (voir
   [Write log](#write-log)).
-- **Menus** : File, Export, View, Options et Help. Options contient **Lock tag configuration** (voir
-  [Verrou de l'enseignant](#verrou-de-lenseignant)). **Help > Quick Start** et **Help > User Guide**
-  ouvrent ces guides en ligne (en français quand Windows est en français), ou la copie installée
+- **Menus** : Fichier, Exporter, Affichage, Simulation, Options et Aide (File, Export, View, Simulation,
+  Options et Help dans l'interface anglaise). Options contient **Verrouiller la configuration des
+  étiquettes** (voir [Verrou de l'enseignant](#verrou-de-lenseignant)) et **Langue** (voir
+  [Langue](#langue)). **Aide > Démarrage rapide** et **Aide > Guide de l'utilisateur**
+  ouvrent ces guides en ligne (dans la langue de l'interface), ou la copie installée
   avec le logiciel quand le navigateur ne peut pas être ouvert.
 - **Barre d'état** : de courts messages (à gauche), l'étiquette **Tags locked** lorsque la configuration des étiquettes est verrouillée,
   et l'état de la connexion (à droite).
 
 Les panneaux peuvent être fermés et rouverts à partir du menu View. La taille de la fenêtre et la disposition des panneaux sont mémorisées.
+
+## Langue
+
+L'interface existe en anglais et en français. Choisissez-la dans **Options > Langue** :
+
+| Choix | Signification |
+|---|---|
+| **Langue du système** | Suit la langue d'affichage de Windows : le français si Windows est en français, sinon l'anglais. C'est le réglage par défaut. |
+| **English** | Toujours en anglais. |
+| **Français** | Toujours en français. |
+
+Le choix est enregistré et appliqué au prochain démarrage de Modbus Control. Un message l'indique lorsque
+vous choisissez une langue différente de la langue actuelle. Le Simulateur de boucle suit le même réglage
+lorsqu'il démarre. **Aide > Démarrage rapide** et **Aide > Guide de l'utilisateur** ouvrent les guides
+dans la langue de l'interface.
+
+Seule l'interface change. Le serveur de test et l'aide de la ligne de commande restent en anglais. Les
+fichiers ne dépendent pas de la langue : les projets, les exportations CSV, le journal des écritures et les
+autres fichiers sont écrits en anglais, et les nombres gardent le point comme séparateur décimal quelle
+que soit la langue (une virgule décimale reste acceptée à la saisie). Ce guide cite surtout les libellés
+anglais ; les libellés français sont ceux de l'interface en français.
 
 ## Connexion
 
@@ -66,26 +89,26 @@ est signalée dans la barre d'état. Appuyez sur **Disconnect** pour cesser les 
 
 ## Étiquettes
 
-Chaque ligne correspond à une valeur de registre que le logiciel lit. Colonnes :
+Chaque ligne correspond à une valeur de registre, ou à une bobine ou une entrée discrète, que le logiciel lit. Colonnes :
 
 | Colonne | Signification |
 |---|---|
 | Name | Nom affiché dans le tableau, dans la légende de la tendance et dans le panneau des curseurs. Ne peut pas être vide. |
-| Area | `Holding` (lecture FC03, écriture FC06/FC16) ou `Input` (lecture FC04). |
+| Area | Une de quatre zones, présentées avec leurs codes de fonction : `Registre de maintien (FC03/FC06/FC16)`, `Registre d'entrée (FC04)`, `Bobine (FC01/FC05/FC15)` ou `Entrée discrète (FC02)`. La cellule du tableau affiche le nom court (`Maintien`, `Entrée`, `Bobine`, `Discrète`). Voir [Bobines et entrées discrètes](#bobines-et-entrées-discrètes). |
 | Address | Adresse Modbus à partir de zéro, 0..65535 (HR 100 correspond à l'adresse 100). Avec Options > Use 1-based register numbers, la colonne est intitulée **Register** et affiche et accepte le numéro tel qu'il est imprimé dans les manuels des appareils (1..65536 ; 1..65535 pour les étiquettes 32 bits). Voir Numéros de registre à partir de 1. |
-| Type | `int16` (signé) ou `uint16` (non signé), un registre. `int32` (signé), `uint32` (non signé) et `float32` (virgule flottante simple précision IEEE-754), deux registres consécutifs. Voir Valeurs 32 bits. |
-| Byte order | `ABCD`, `CDAB`, `BADC` ou `DCBA` : la façon dont les deux registres d'une valeur 32 bits sont arrangés. Affiche `—` pour les types 16 bits, où elle n'a aucun effet. Voir Valeurs 32 bits. |
-| Gain | Multiplicateur appliqué à la valeur brute. Ne peut pas être 0. |
-| Offset | Ajouté après le gain. |
+| Type | `int16` (signé) ou `uint16` (non signé), un registre. `int32` (signé), `uint32` (non signé) et `float32` (virgule flottante simple précision IEEE-754), deux registres consécutifs. Voir Valeurs 32 bits. Les bobines et les entrées discrètes sont toujours `bool`. |
+| Byte order | `ABCD`, `CDAB`, `BADC` ou `DCBA` : la façon dont les deux registres d'une valeur 32 bits sont arrangés. Affiche `—` pour les types 16 bits et pour les bobines et les entrées discrètes, où elle n'a aucun effet. Voir Valeurs 32 bits. |
+| Gain | Multiplicateur appliqué à la valeur brute. Ne peut pas être 0. Affiche `—` pour les bobines et les entrées discrètes. |
+| Offset | Ajouté après le gain. Affiche `—` pour les bobines et les entrées discrètes. |
 | Unit | Affichée après le nom dans la légende et dans l'en-tête du CSV. Facultative. |
-| Writable | Permet les écritures à partir de la colonne Value. Registres de maintien seulement, de n'importe quel type. La case est désactivée pour les registres d'entrée, et le passage de Area à Input la décoche. |
+| Writable | Permet les écritures à partir de la colonne Value. Registres de maintien (de n'importe quel type) et bobines. La case est désactivée pour les registres d'entrée et les entrées discrètes, et le passage de Area à l'une de ces zones la décoche. |
 | Plot | Affiche l'étiquette dans la tendance. Les étiquettes non cochées sont quand même scrutées et enregistrées. |
 | Axis | `Left` ou `Right` : l'axe Y utilisé par la courbe de l'étiquette dans la Trend. Voir [Tendance](#tendance). |
 | Color | Couleur dans la tendance. Double-cliquez sur la cellule, ou appuyez sur F2 ou Entrée, pour ouvrir le sélecteur de couleur. |
-| Raw | La valeur du registre telle qu'elle a été lue. Les types 16 bits affichent l'hexadécimal et le décimal (`0x00AB (171)`) ; les types 32 bits affichent la valeur 32 bits en hexadécimal (`0x42F6E979`). Lecture seule. |
-| Value | Valeur mise à l'échelle : `raw * gain + offset`, avec 6 chiffres significatifs (7 pour `float32`). Lecture seule, sauf pour les étiquettes accessibles en écriture (voir Écrire des valeurs). |
-| Min, Max | Limites d'écriture, en unités mises à l'échelle : la valeur la plus basse et la plus haute qui peuvent être écrites. Vide signifie aucune limite. Modifiables seulement pour les étiquettes accessibles en écriture ; Min ne peut pas être supérieur à Max. Toute écriture, y compris les écritures rapides, est refusée hors des limites. Voir [Sécurité des écritures](#sécurité-des-écritures). |
-| Quick A, Quick B | Valeurs prédéfinies pour le panneau Quick write, en unités mises à l'échelle. Vide signifie aucun bouton. Seules les étiquettes accessibles en écriture peuvent en avoir, et une valeur prédéfinie doit respecter les limites Min et Max. Voir [Écritures rapides](#écritures-rapides). |
+| Raw | La valeur du registre telle qu'elle a été lue. Les types 16 bits affichent l'hexadécimal et le décimal (`0x00AB (171)`) ; les types 32 bits affichent la valeur 32 bits en hexadécimal (`0x42F6E979`) ; les bobines et les entrées discrètes affichent `1` ou `0`. Lecture seule. |
+| Value | Valeur mise à l'échelle : `raw * gain + offset`, avec 6 chiffres significatifs (7 pour `float32`). Les bobines et les entrées discrètes affichent `ON` ou `OFF`. Lecture seule, sauf pour les étiquettes accessibles en écriture (voir Écrire des valeurs). |
+| Min, Max | Limites d'écriture, en unités mises à l'échelle : la valeur la plus basse et la plus haute qui peuvent être écrites. Vide signifie aucune limite. Modifiables seulement pour les étiquettes accessibles en écriture ; Min ne peut pas être supérieur à Max. Toute écriture, y compris les écritures rapides, est refusée hors des limites. Les bobines n'ont pas de limites (les cellules affichent `—`). Voir [Sécurité des écritures](#sécurité-des-écritures). |
+| Quick A, Quick B | Valeurs prédéfinies pour le panneau Quick write, en unités mises à l'échelle. Vide signifie aucun bouton. Seules les étiquettes accessibles en écriture peuvent en avoir, et une valeur prédéfinie doit respecter les limites Min et Max. Pour une bobine, la valeur prédéfinie est `ON` ou `OFF`. Voir [Écritures rapides](#écritures-rapides). |
 | Quality | État de la dernière lecture. Lecture seule. |
 
 Valeurs de qualité :
@@ -185,6 +208,47 @@ Lorsque la configuration des étiquettes est verrouillée (voir [Verrou de l'ens
 le message est remplacé par « <n> tags may be numbered one register off; the tag configuration is locked
 (Options > Lock tag configuration). ». Rien ne bouge.
 
+### Bobines et entrées discrètes
+
+En plus des registres, le logiciel lit des bits. Une **bobine** est un bit en lecture et en écriture ; une
+**entrée discrète** est un bit en lecture seule. Les régulateurs et les automates s'en servent souvent pour
+des états d'alarme, des commandes de marche et d'arrêt et des modes automatique/manuel. Les quatre zones
+figurent dans la liste **Zone** du tableau et de la boîte de dialogue Ajouter une étiquette, avec leurs codes de fonction :
+
+| Zone | Codes de fonction | Inscriptible | Texte du registre |
+|---|---|---|---|
+| Registre de maintien (FC03/FC06/FC16) | lecture FC03, écriture FC06 et FC16 | oui | `HR 100` |
+| Registre d'entrée (FC04) | lecture FC04 | non | `IR 3` |
+| Bobine (FC01/FC05/FC15) | lecture FC01, écriture FC05 (une bobine) et FC15 (plusieurs) | oui | `CO 12` |
+| Entrée discrète (FC02) | lecture FC02 | non | `DI 5` |
+
+En quoi une étiquette de bobine ou d'entrée discrète diffère d'une étiquette de registre :
+
+- Le **type** est `bool` et ne peut être autre chose, et une zone de registres ne peut pas prendre `bool`.
+  Quand vous changez la zone entre une zone de registres et une zone de bobines ou d'entrées discrètes, le
+  type suit (`bool`, ou `int16` en revenant aux registres) et Gain, Décalage, Ordre des octets, Min, Max,
+  Rapide A et Rapide B reprennent leurs valeurs par défaut.
+- La **valeur** affiche `ON` ou `OFF` (Brut affiche `1` ou `0`). Il n'y a ni gain, ni décalage, ni ordre des
+  octets : ces cellules affichent `—`. Il n'y a pas non plus de vérification du codage (ni détection 32 bits,
+  ni icône d'avertissement), parce qu'un bit n'a pas de codage.
+- Le texte du registre dans les messages, le journal des écritures et le tableau suit **Options >
+  Numéroter les registres à partir de 1**, comme pour les registres : `CO 12` est la bobine numéro 12 dans la
+  numérotation en vigueur. L'adresse de protocole est stockée à partir de zéro, comme pour les registres.
+- La [vérification de décalage d'un registre à la connexion](#vérification-de-décalage-dun-registre-à-la-connexion)
+  s'applique aux étiquettes de bits : une bobine ou une entrée discrète que l'appareil refuse avec « adresse
+  de données illégale » est sondée une adresse plus loin.
+- Dans la tendance, la courbe d'une étiquette de bit est une **courbe en escalier** : elle reste plate et
+  saute au changement du bit, au lieu de pencher entre les échantillons. Les [curseurs](#curseurs) lisent
+  `ON` ou `OFF`.
+- Les étiquettes de bits ne peuvent pas être choisies comme variable mesurée (PV) ni comme sortie du
+  régulateur (CO) dans l'[analyse](#analyse-réponse-à-léchelon), ni comme étiquette de consigne.
+
+L'écriture d'une bobine suit les mêmes règles de classe que celle d'un registre de maintien (voir
+[Écrire une bobine](#écrire-une-bobine) et [Sécurité en classe](#sécurité-en-classe)) : cocher
+**Inscriptible** demande une confirmation, les réglages de registre sont verrouillés pendant la connexion, le
+verrou de l'enseignant s'applique et chaque écriture va dans le journal des écritures. Une entrée discrète
+ne peut jamais être écrite.
+
 ### Modifier le tableau
 
 - Modifiez une cellule en double-cliquant dessus ou en appuyant sur F2.
@@ -194,7 +258,8 @@ le message est remplacé par « <n> tags may be numbered one register off; the t
 - **Remove**, ou la touche Suppr, supprime les lignes sélectionnées. Une confirmation vous est demandée lorsque plus
   d'une ligne est sélectionnée.
 - **Write selected...** est activé lorsque deux lignes ou plus sont sélectionnées et que toutes sont des
-  registres de maintien accessibles en écriture. Voir Écrire des valeurs.
+  registres de maintien accessibles en écriture, ou toutes des bobines accessibles en écriture. Voir Écrire
+  des valeurs.
 
 Les modifications des étiquettes marquent le projet comme modifié. Les valeurs en direct ne le font pas.
 
@@ -205,10 +270,11 @@ point est le séparateur décimal, de sorte que `1,234.5` est refusé.
 
 ### Boîte de dialogue Add tag
 
-Choisissez l'**Area** (registre de maintien ou registre d'entrée) et saisissez l'**Address**, dans la numérotation
+Choisissez l'**Area** (registre de maintien, registre d'entrée, bobine ou entrée discrète) et saisissez l'**Address**, dans la numérotation
 qu'affiche le menu Options. La zone est vide et l'adresse est en blanc à l'ouverture de la boîte de dialogue. Le bouton **Add**
 reste désactivé tant que les deux ne sont pas valides et que l'étiquette ne partage pas un registre avec une étiquette existante.
 Une ligne rouge indique l'étiquette avec laquelle il y a chevauchement. Le nom, le type, l'ordre des octets, l'unité et Writable sont facultatifs.
+Pour une bobine ou une entrée discrète, le type est fixé à `bool` et il n'y a pas d'ordre des octets.
 Un nom laissé en blanc devient `Tag <id>`.
 
 Lorsque vous êtes connecté, la boîte de dialogue lit le registre pour vous :
@@ -216,6 +282,8 @@ Lorsque vous êtes connecté, la boîte de dialogue lit le registre pour vous :
 - **Read** affiche le registre brut et ses voisins (en hexadécimal), ainsi que leur signification comme valeur 16 bits
   et comme `float32` dans les deux sens. Elle s'exécute aussi d'elle-même peu après que vous avez changé la
   zone ou l'adresse, ou lorsque vous vous connectez. Les voisins qui appartiennent à une autre étiquette ne sont pas lus.
+- Pour une bobine ou une entrée discrète, **Read** affiche l'état sous la forme `ON` ou `OFF`, et **Detect
+  encoding** est désactivé : un bit n'a pas de codage à détecter.
 - **Detect encoding** tranche entre une valeur 16 bits et un `float32`, à l'adresse indiquée ou un registre
   plus tôt. S'il s'agit probablement d'un `float32`, la boîte de dialogue d'encodage s'ouvre (voir Détection de l'encodage). Lorsque vous
   l'appliquez, la boîte de dialogue définit le type, l'ordre des octets et, au besoin, l'adresse un registre
@@ -232,8 +300,9 @@ est vérifiée à la connexion, comme toute autre nouvelle étiquette. Cancel n'
 
 ## Écrire des valeurs
 
-Les écritures sont envoyées au serveur entre les cycles de scrutation. Seules les étiquettes de registre de maintien dont **Writable** est coché
-peuvent être écrites, de n'importe quel type (16 bits ou 32 bits).
+Les écritures sont envoyées au serveur entre les cycles de scrutation. Seules les étiquettes de registre de maintien et de bobine dont **Writable** est coché
+peuvent être écrites. Les registres de maintien peuvent être de n'importe quel type (16 bits ou 32 bits) ; les
+bobines sont décrites dans [Écrire une bobine](#écrire-une-bobine).
 
 ### Un registre
 
@@ -274,6 +343,31 @@ valeur scrutée, de sorte qu'elle ne change que lorsque la prochaine lecture ren
    les registres (par exemple « HR 100-103 · FC16 »). Tout le groupe est envoyé dans une seule requête FC16.
    Les étiquettes 16 bits et 32 bits peuvent être mélangées ; la limite de 123 registres compte des registres, pas des étiquettes.
 
+### Écrire une bobine
+
+Une bobine s'écrit comme un registre, mais sa valeur est `ON` ou `OFF` :
+
+1. Cochez **Inscriptible** sur l'étiquette de la bobine (la question est la même que pour un registre de
+   maintien, voir [Rendre une étiquette accessible en écriture](#rendre-une-étiquette-accessible-en-écriture)).
+   Une bobine qui n'a pas de valeurs prédéfinies reçoit alors **Rapide A** = `ON` et **Rapide B** = `OFF`, que
+   vous pouvez modifier ou vider.
+2. Connectez-vous. Double-cliquez sur la cellule **Valeur** et choisissez `ON` ou `OFF`. La cellule accepte
+   aussi `1` et `0`, ainsi que `true` et `false`.
+3. Confirmez la question, par exemple « Basculer « Pompe » à ON ? ». Elle indique l'**État actuel** (ou
+   « inconnu ») et le **Nouvel état**, et sa note donne la bobine, par exemple « CO 12 · FC05 ».
+
+L'écriture d'une bobine utilise FC05 (Write Single Coil). Les mêmes vérifications que pour un registre
+s'appliquent : une connexion, et une bonne lecture depuis que l'étiquette a été rendue inscriptible (la
+première écriture est refusée d'ici là). Une bobine n'a ni limites Min/Max ni vérification du codage.
+
+**Écrire la sélection...** fonctionne aussi pour deux bobines inscriptibles ou plus, d'adresses consécutives
+(jusqu'à 1968 à la fois). Les registres et les bobines ne peuvent pas être mélangés dans une même sélection.
+Chaque bobine reçoit un choix `ON`/`OFF`, et tout le groupe est envoyé dans une seule requête FC15 (Write
+Multiple Coils). Si un appareil n'accepte pas FC15, le logiciel l'indique.
+
+Le journal des écritures affiche `FC05` ou `FC15` pour les écritures de bobines, l'ancien et le nouvel état
+sous la forme `ON`/`OFF`, et `1` ou `0` pour chaque bobine dans la colonne Raw.
+
 ### Écritures rapides
 
 Les écritures rapides sont des écritures en un clic de valeurs prédéfinies, pour les consignes que vous changez souvent (par exemple
@@ -285,7 +379,7 @@ une valeur « marche » et une valeur « arrêt »).
    refusée au moment où vous la saisissez.
 2. Ouvrez le panneau **Quick write** (à droite, regroupé en onglets avec Cursors et Analysis ; rouvrez-le à partir du menu View).
    Il liste chaque étiquette accessible en écriture qui a une valeur prédéfinie, avec son nom, sa valeur en direct et un bouton par
-   valeur prédéfinie : **A: <value>** et **B: <value>**. Les boutons sont désactivés lorsque vous n'êtes pas connecté.
+   valeur prédéfinie : **A: <value>** et **B: <value>** (**A: ON** et **B: OFF** pour une bobine). Les boutons sont désactivés lorsque vous n'êtes pas connecté.
 3. Cliquez sur un bouton. Une question demande confirmation, par exemple « Write 1000 to HR 100
    'Setpoint'? ». L'écriture est ensuite envoyée comme l'écriture d'une seule étiquette (vérification de la plage ; une étiquette 32 bits est envoyée dans
    une seule requête FC16).
@@ -441,9 +535,9 @@ l'appareil pendant la session. L'écriture la plus récente est en bas, et le ta
 | Time | Moment de l'envoi de la requête (heures, minutes, secondes et millisecondes). |
 | Tag | Le nom de l'étiquette. |
 | Register | Les numéros de registre, selon la numérotation de **Options** (par exemple `HR 5009-5010`). |
-| FC | `FC06` (un registre) ou `FC16`. |
-| Old → New | La valeur avant l'écriture et la valeur écrite, avec l'unité. |
-| Raw | Les registres envoyés, en hexadécimal. |
+| FC | `FC06` (un registre) ou `FC16` ; `FC05` (une bobine) ou `FC15` pour les bobines. |
+| Old → New | La valeur avant l'écriture et la valeur écrite, avec l'unité ; `ON` ou `OFF` pour une bobine. |
+| Raw | Les registres envoyés, en hexadécimal ; `1` ou `0` pour chaque bobine. |
 | Result | `OK`, ou l'erreur, par exemple « Exception 2: Illegal data address » ou « Timeout ». Les échecs sont affichés en rouge. |
 
 Pointez une ligne pour voir sa date, sa source (modification du tableau, sélection ou écriture rapide) et le serveur.
@@ -1486,9 +1580,13 @@ Le fichier d'exemple a des limites **Min** et **Max** de 0 et 100 sur **Loop 1 L
 **Alarm 1 Trip**. Ce sont des valeurs provisoires, et non les vraies plages du régulateur.
 Remplacez-les par la plage permise de chaque paramètre, d'après votre régulateur, avant d'y écrire.
 
-**Non pris en charge par cette application :** les bobines (coils) et les entrées discrètes (états
-d'alarme, mode automatique/manuel) ainsi que Modbus RTU (série). Utilisez la face avant du régulateur
-ou un autre outil pour ceux-ci.
+**Bobines et entrées discrètes.** Le logiciel lit et écrit des bobines et lit des entrées discrètes (voir
+[Bobines et entrées discrètes](#bobines-et-entrées-discrètes)), par exemple pour des états d'alarme ou
+le mode automatique/manuel. Consultez le manuel de votre régulateur pour savoir quelles bobines et quelles
+entrées discrètes il a. Elles sont numérotées comme les registres (voir la numérotation plus haut).
+
+**Non pris en charge par cette application :** Modbus RTU (série). Utilisez la face avant du régulateur
+ou un autre outil pour cela.
 
 ## Enregistrement des données
 
@@ -1505,9 +1603,9 @@ ou un autre outil pour ceux-ci.
 
 - Un seul serveur à la fois.
 - Modbus TCP seulement. Aucune connexion série (RTU).
-- Registres de maintien et registres d'entrée seulement, avec les types `int16` et `uint16` (un
-  registre) ou `int32`, `uint32` et `float32` (deux registres). Il n'y a ni bobines (coils) ni
-  entrées discrètes.
+- Registres de maintien, registres d'entrée, bobines et entrées discrètes. Les registres ont les types
+  `int16` ou `uint16` (un registre) ou `int32`, `uint32` ou `float32` (deux registres) ; les bobines et
+  les entrées discrètes sont `bool`.
 - Certains serveurs TCP ignorent le numéro d'unité. Il est tout de même envoyé avec chaque requête.
 - L'historique est en mémoire seulement. Un fichier de projet ne le conserve pas ; un fichier de
   session, oui (voir [Sessions](#sessions)).

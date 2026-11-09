@@ -40,6 +40,11 @@ bin\modbus_loop_sim.exe --scenario examples\loop101-step.mbloop
 
 (For an all-users installation, use `cd "C:\Program Files\Modbus Control"`.)
 
+The window follows the interface language of Modbus Control (**Options > Language**, see the
+[User Guide](USER_GUIDE.md#language)) when it starts: French if that setting is French, or is System
+language on a French Windows, otherwise English. The command-line help and the headless output stay in
+English.
+
 The window version is a Windows GUI program: started from `cmd` or PowerShell it returns to the prompt
 at once, and Ctrl+C or closing the console does not stop it (close its window instead). Its exit
 code is therefore not available to the shell. To wait for it and read the exit code, use
@@ -162,6 +167,7 @@ shows them (**Address base 1**). The protocol addresses in the frames are one le
 | LT-101 PV (level) | Input register (FC04) | 1-2 | 0-1 | read only, 0 to 100 % |
 | LIC-101 SP | Holding register (FC03, FC16) | 1-2 | 0-1 | 0 to 100 % |
 | LIC-101 OUT | Holding register (FC03, FC16) | 3-4 | 2-3 | 0 to 100 % |
+| LIC-101 A/M | Coil (FC01, FC05) | 1 | 0 | 0 = Auto, 1 = Manual |
 
 Rules, like the CM50:
 
@@ -169,7 +175,8 @@ Rules, like the CM50:
 - A write of SP or OUT must be a FC16 request on a pair (start at 1 or 3, an even count). A value
   outside 0 to 100, or a value that is not a number, is refused with exception 3 (illegal data value).
 - Anything else is refused with exception 2 (illegal data address): FC06, a request that starts in the
-  middle of a float, a count that splits a float, any other address, and the coils and discrete inputs.
+  middle of a float, a count that splits a float, any other address, and the discrete inputs (FC02).
+  For the coil see below.
 - SP is stored. In Manual nothing uses it: it is only shown on the faceplate and on the schematic. In
   Auto it is the setpoint of the PID.
 - While LIC-101 is in **Auto**, a write that includes OUT (registers 3-4) is refused with exception 3
@@ -178,6 +185,22 @@ Rules, like the CM50:
   as before.
 
 In Manual, a written OUT takes effect at once on FCV-101 (the stem then moves at the stroke speed).
+
+**The A/M coil.** Coil 1 (protocol address 0) is the Auto/Manual mode of LIC-101, as on the CM50:
+`0` (OFF) is Auto and `1` (ON) is Manual. The simulator starts in Manual, so it reads `1` at first.
+
+- FC01 reads it. The request must be exactly coil 1 with a count of 1; any other start or count is
+  refused with exception 2 (illegal data address).
+- FC05 writes it: `0xFF00` (ON) switches to Manual and `0x0000` (OFF) to Auto. Any other value is
+  refused with exception 3 (illegal data value), and any other coil with exception 2. FC15 with one
+  coil at coil 1 is accepted too.
+- The switch is the same as the A/M button of the faceplate, and it is bumpless: going to Auto starts
+  the PID from the present OUT, going to Manual keeps the present OUT (see
+  [The PID controller](#the-pid-controller)). Writing the mode already in force changes nothing.
+- A coil write is always accepted, also in Auto (unlike a write of OUT). The mode shown on the faceplate
+  follows it at once, and the coil reads the mode the faceplate shows.
+
+`examples/loop101.mbproj` has this coil as the tag **LIC-101 A/M** (writable, not plotted). Connect, double-click its **Value** cell and choose `ON` (Manual) or `OFF` (Auto).
 
 ## The window
 
@@ -192,10 +215,10 @@ In Manual, a written OUT takes effect at once on FCV-101 (the stem then moves at
   100 are clamped. A client that writes by Modbus changes the same values. The mode button and the
   tuning fields are described in [The PID controller](#the-pid-controller).
 - **Modbus panel** (under the schematic; tick **Show Modbus registers** in the bottom bar to show it, hidden by default): the server address and port actually in use
-  (or the start error in red), the number of connected clients, and a table of the three registers: PV
-  (input registers 1-2, read only), SP (holding registers 1-2) and OUT (holding registers 3-4), with the
-  1-based number shown by Modbus Control, the 0-based address, the type, the function codes, the access
-  and the current value. The Access of OUT reads "Read only (AUTO)" in Auto. **Help > Modbus
+  (or the start error in red), the number of connected clients, and a table of the four values: PV
+  (input registers 1-2, read only), SP (holding registers 1-2), OUT (holding registers 3-4) and the A/M
+  coil (coil 1), with the 1-based number shown by Modbus Control, the 0-based address, the type, the
+  function codes, the access and the current value. The Access of OUT reads "Read only (AUTO)" in Auto. **Help > Modbus
   registers...** shows the same table in a dialog.
 - **Sliders** (bottom bar): **HV-102** opening (0 to 100 %) and **P-101 speed** (0 to 100 %). Moving
   HV-102 is the load disturbance of the loop.
@@ -218,6 +241,7 @@ program starts in Manual.
 - **Auto**: the controller computes OUT every 0.1 s of simulation time from SP and PV. The OUT
   buttons and the OUT box are disabled, and Modbus writes to OUT are refused (exception 3). You can
   still change SP, on the faceplate or by Modbus.
+- The mode can also be switched by Modbus, with the A/M coil (see [Modbus registers](#modbus-registers)).
 - Going from MAN to AUTO is **bumpless**: OUT does not jump, because the controller starts from the
   present OUT. This holds with Ti = 0 too: the controller then keeps a constant bias (set at the
   transfer, like a manual reset) so that OUT = bias + Kp × e. Going back to MAN keeps the present OUT.
@@ -285,8 +309,9 @@ for the panel.
    (or start it from the Start menu: the default speed ×1 is right). The level is steady at 50 %.
 2. Start Modbus Control. It starts with an empty project, so choose **File > Open example...** and open
    [examples/loop101.mbproj](../examples/loop101.mbproj). The project
-   connects to `127.0.0.1:1601`, unit 1, with three tags: **LT-101 PV** (input register 1), **LIC-101 SP**
-   (holding register 1) and **LIC-101 OUT** (holding register 3). Click **Connect**.
+   connects to `127.0.0.1:1601`, unit 1, with four tags: **LT-101 PV** (input register 1), **LIC-101 SP**
+   (holding register 1), **LIC-101 OUT** (holding register 3) and **LIC-101 A/M** (coil 1). Click
+   **Connect**.
 3. Wait 10 s. **LT-101 PV** is about 50 % and flat. The Trend shows PV and OUT.
 4. In the **Quick write** dock, click **B: 60** to step OUT from 50 to 60 % (**A: 50** goes back).
    The write confirmation appears if it is turned on.
