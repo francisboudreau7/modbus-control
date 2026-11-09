@@ -2307,6 +2307,32 @@ private slots:
         noUnexpected();
     }
 
+    void classroomAddWritableCoilIsNotAnInputRegister()
+    {
+        // Tag 0 of the demo is an input register: a coil with the same number is unrelated.
+        QVERIFY(model()->tagAt(0).area == Area::InputRegister);
+        const QString address = QString::number(model()->tagAt(0).address);
+        const int rows = model()->rowCount();
+        d.onExec = [address](QDialog &dialog) {
+            auto *dlg = qobject_cast<AddTagDialog *>(&dialog);
+            QVERIFY(dlg);
+            chooseTarget(*dlg, int(Area::Coil), address);
+            dlg->findChild<QLineEdit *>(QStringLiteral("nameEdit"))->clear();
+            dlg->findChild<QCheckBox *>(QStringLiteral("writableCheck"))->setChecked(true);
+            dlg->accept();
+        };
+        d.answers << QMessageBox::Yes;
+        addButton()->click();
+        QCOMPARE(model()->rowCount(), rows + 1);
+        QVERIFY(model()->tagAt(rows).area == Area::Coil);
+        QCOMPARE(d.questions.size(), 1);
+        const QString q = d.questions.first();
+        QVERIFY2(q.contains(QStringLiteral("Make 'CO ")), qPrintable(q));
+        QVERIFY2(!q.contains(QStringLiteral("HR ")), qPrintable(q));
+        QVERIFY2(!q.contains(QStringLiteral("was an input register")), qPrintable(q));
+        noUnexpected();
+    }
+
     void classroomWriteLogReachesPanelAndFile()
     {
         WriteLogEntry e;

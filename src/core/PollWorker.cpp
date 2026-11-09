@@ -199,7 +199,7 @@ void PollWorker::disconnectFrom()
     m_writePassQueued = false;
     failAllWrites(notConnectedResult());
     failAllReads(notConnectedResult());
-    setState(ConnectionState::Disconnected, QStringLiteral("Disconnected"));
+    setState(ConnectionState::Disconnected, QString()); // the UI shows its translated state name
 }
 
 void PollWorker::failAllWrites(const ModbusResult &result)

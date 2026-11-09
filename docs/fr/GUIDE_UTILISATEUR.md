@@ -53,7 +53,8 @@ dans la langue de l'interface.
 Seule l'interface change. Le serveur de test et l'aide de la ligne de commande restent en anglais. Les
 fichiers ne dépendent pas de la langue : les projets, les exportations CSV, le journal des écritures et les
 autres fichiers sont écrits en anglais, et les nombres gardent le point comme séparateur décimal quelle
-que soit la langue (une virgule décimale reste acceptée à la saisie). Ce guide cite surtout les libellés
+que soit la langue (une virgule décimale reste acceptée à la saisie). Seule exception : le texte d'erreur
+d'une écriture qui échoue, dans le journal des écritures, suit la langue de l'interface. Ce guide cite surtout les libellés
 anglais ; les libellés français sont ceux de l'interface en français.
 
 ## Connexion

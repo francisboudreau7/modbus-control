@@ -1189,7 +1189,7 @@ void AppController::addTagDialog()
     const Tag added = dialog.tag();
     const int base = model->addressBase();
     const auto range = [base](const Tag &t) {
-        const QString prefix = t.area == Area::InputRegister ? QStringLiteral("IR") : QStringLiteral("HR");
+        const QString prefix = areaPrefix(t.area);
         return registerCount(t.type) == 2
                    ? QStringLiteral("%1 %2-%3").arg(prefix).arg(t.address + base).arg(t.address + 1 + base)
                    : QStringLiteral("%1 %2").arg(prefix).arg(t.address + base);
@@ -1215,7 +1215,8 @@ void AppController::addTagDialog()
         for (const Tag &t : model->tags()) {
             const int tFirst = t.address;
             const int tLast = tFirst + registerCount(t.type) - 1;
-            if (t.area == Area::InputRegister && first <= tLast && tFirst <= last) {
+            if (added.area == Area::HoldingRegister && t.area == Area::InputRegister && first <= tLast
+                && tFirst <= last) {
                 Tag asInput = added;
                 asInput.area = Area::InputRegister;
                 ask.wasInput = true;

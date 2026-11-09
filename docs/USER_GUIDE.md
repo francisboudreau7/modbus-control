@@ -52,7 +52,8 @@ interface.
 Only the interface changes. The test server and the command-line help stay in English. Files do not
 depend on the language: projects, CSV exports, the write log and the other files are written in
 English, and numbers keep the point as decimal mark whatever the language (a decimal comma is still
-accepted when you type). This guide shows the English labels; the French labels are in the
+accepted when you type). The one exception is the error text of a failed write in the write log, which
+follows the interface language. This guide shows the English labels; the French labels are in the
 [French guide](fr/GUIDE_UTILISATEUR.md).
 
 ## Connecting

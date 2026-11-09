@@ -27,6 +27,7 @@ QString functionCodeText(int functionCode)
 }
 
 /// The log entries (and the CSV file) keep English tokens; the panel translates them for display.
+/// Only a failed write's error text in the result column follows the interface language.
 QString displayText(const QString &text)
 {
     if (text == QLatin1String("unknown"))
