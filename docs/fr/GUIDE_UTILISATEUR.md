@@ -1331,9 +1331,10 @@ entrée, « Boucle de niveau LIC-101, essai à l'échelon », qui utilise `loop1
 
 Choisissez une simulation et cliquez sur **Charger**. Modbus Control fait alors ce qui suit.
 
-- Si le projet a des modifications non enregistrées, la question habituelle s'affiche d'abord (Save,
-  Discard ou Cancel). Avec Save, on vous demande un nom si le projet n'en a pas.
-- Il charge les étiquettes du projet correspondant, comme le fait **File > Open example...**.
+- Si le projet a des modifications non enregistrées, la question habituelle s'affiche d'abord
+  (Enregistrer, Ne pas enregistrer ou Annuler). Avec Enregistrer, on vous demande un nom si le projet
+  n'en a pas.
+- Il charge les étiquettes du projet correspondant, comme le fait **Fichier > Ouvrir un exemple...**.
 - Il ouvre le simulateur de boucle avec ce scénario.
 - Il attend jusqu'à 10 s que le simulateur écoute, puis s'y connecte tout seul.
 

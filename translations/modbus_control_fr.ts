@@ -713,6 +713,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>La configuration des étiquettes est verrouillée (Options &gt; Verrouiller la configuration des étiquettes)</translation>
     </message>
     <message>
+        <source>Load simulation</source>
+        <translation>Charger une simulation</translation>
+    </message>
+    <message>
         <source>Clear data</source>
         <translation>Effacer les données</translation>
     </message>
@@ -846,10 +850,30 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>Projets Modbus Control (*.mbproj)</translation>
     </message>
     <message>
+        <source>Could not find &quot;%1&quot;.</source>
+        <translation>Fichier introuvable&#xa0;: «&#xa0;%1&#xa0;».</translation>
+    </message>
+    <message>
         <source>Could not open &quot;%1&quot;:
 %2</source>
         <translation>Impossible d&apos;ouvrir «&#xa0;%1&#xa0;»&#xa0;:
 %2</translation>
+    </message>
+    <message>
+        <source>Restart the Loop Simulator with %1?</source>
+        <translation>Redémarrer le simulateur de boucle avec «&#xa0;%1&#xa0;»&#xa0;?</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Redémarrer</translation>
+    </message>
+    <message>
+        <source>Something is already listening on 127.0.0.1:%1. Close it, then try again.</source>
+        <translation>Un programme écoute déjà sur 127.0.0.1:%1. Fermez-le, puis réessayez.</translation>
+    </message>
+    <message>
+        <source>Starting the Loop Simulator...</source>
+        <translation>Démarrage du simulateur de boucle...</translation>
     </message>
     <message>
         <source>Save session</source>
@@ -1588,6 +1612,14 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>&amp;Affichage</translation>
     </message>
     <message>
+        <source>&amp;Simulation</source>
+        <translation>&amp;Simulation</translation>
+    </message>
+    <message>
+        <source>&amp;Load simulation...</source>
+        <translation>&amp;Charger une simulation...</translation>
+    </message>
+    <message>
         <source>&amp;Options</source>
         <translation>&amp;Options</translation>
     </message>
@@ -2168,6 +2200,43 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>Tag %1: %2</source>
         <translation>Étiquette %1&#xa0;: %2</translation>
+    </message>
+</context>
+<context>
+    <name>mb::SimulationCatalog</name>
+    <message>
+        <source>Level loop LIC-101, step test</source>
+        <translation>Boucle de niveau LIC-101, essai à l&apos;échelon</translation>
+    </message>
+    <message>
+        <source>Tank level loop with its regulator, starting at a steady level.</source>
+        <translation>Boucle de niveau du réservoir avec son régulateur, à partir d&apos;un niveau stable.</translation>
+    </message>
+</context>
+<context>
+    <name>mb::SimulationDialog</name>
+    <message>
+        <source>Load simulation</source>
+        <translation>Charger une simulation</translation>
+    </message>
+    <message>
+        <source>Load</source>
+        <translation>Charger</translation>
+    </message>
+</context>
+<context>
+    <name>mb::SimulatorLauncher</name>
+    <message>
+        <source>The Loop Simulator did not start listening on port %1 within %2 s.</source>
+        <translation>Le simulateur de boucle n&apos;a pas commencé à écouter sur le port %1 en %2 s.</translation>
+    </message>
+    <message>
+        <source>The Loop Simulator could not be started: %1</source>
+        <translation>Impossible de démarrer le simulateur de boucle&#xa0;: %1</translation>
+    </message>
+    <message>
+        <source>The Loop Simulator closed before it started listening (exit code %1).</source>
+        <translation>Le simulateur de boucle s&apos;est fermé avant de commencer à écouter (code de sortie %1).</translation>
     </message>
 </context>
 <context>
