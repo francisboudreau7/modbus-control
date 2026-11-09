@@ -1294,6 +1294,7 @@ qui en est dépourvu se charge avec les valeurs par défaut (la vue compacte pou
 | File > New | Ctrl+N | Liste d'étiquettes vide. Les champs de connexion reprennent les derniers paramètres de connexion. |
 | File > Open... | Ctrl+O | Ouvre un fichier `.mbproj`. |
 | File > Open example... | | Ouvre un des projets d'exemple (`demo.mbproj`, `cm50.mbproj`, `loop101.mbproj`) du dossier des exemples. |
+| Simulation > Charger une simulation... | | Charge une simulation du [simulateur de boucle](SIMULATEUR_DE_BOUCLE.md). Elle charge les étiquettes, ouvre le simulateur et s'y connecte. Voir [Charger une simulation](#charger-une-simulation). |
 | File > Save | Ctrl+S | Enregistre dans le fichier courant. Demande un nom quand le projet n'en a pas. |
 | File > Save As... | Ctrl+Shift+S | Enregistre sous un nouveau nom. `.mbproj` est ajouté s'il manque. |
 | File > Quit | Ctrl+Q | Ferme l'application. |
@@ -1318,6 +1319,37 @@ et se connecte au serveur de test à 127.0.0.1:1502, unité 1, avec une période
 [`examples/cm50.mbproj`](../../examples/cm50.mbproj) est un point de départ pour un ABB CM50 (voir la
 section suivante).
 [`examples/loop101.mbproj`](../../examples/loop101.mbproj) sert au [simulateur de boucle](SIMULATEUR_DE_BOUCLE.md).
+
+### Charger une simulation
+
+Le menu **Simulation** charge une simulation du [simulateur de boucle](SIMULATEUR_DE_BOUCLE.md) en une
+seule étape. Choisissez **Simulation > Charger une simulation...**. La boîte de dialogue liste les
+simulations prises en charge par le simulateur de boucle, avec une description d'une ligne pour celle
+qui est sélectionnée. Il n'y a pas de sélecteur de fichier. Pour l'instant, la liste ne contient qu'une
+entrée, « Boucle de niveau LIC-101, essai à l'échelon », qui utilise `loop101-step.mbloop` et
+`loop101.mbproj`.
+
+Choisissez une simulation et cliquez sur **Charger**. Modbus Control fait alors ce qui suit.
+
+- Si le projet a des modifications non enregistrées, la question habituelle s'affiche d'abord (Save,
+  Discard ou Cancel). Avec Save, on vous demande un nom si le projet n'en a pas.
+- Il charge les étiquettes du projet correspondant, comme le fait **File > Open example...**.
+- Il ouvre le simulateur de boucle avec ce scénario.
+- Il attend jusqu'à 10 s que le simulateur écoute, puis s'y connecte tout seul.
+
+Si Modbus Control a ouvert un simulateur encore en marche, il demande s'il faut le redémarrer avec la
+simulation choisie. Si un autre programme écoute déjà sur le port du simulateur, par exemple un
+simulateur que vous avez lancé vous-même, Modbus Control vous demande de le fermer d'abord et ne change
+rien.
+
+Si le simulateur ne démarre pas, un avertissement en donne la raison. Les étiquettes restent chargées,
+mais rien ne se connecte.
+
+Fermer Modbus Control ferme aussi le simulateur qu'il a ouvert. Un simulateur lancé autrement n'est
+jamais fermé.
+
+**File > Open** et **File > Open example...** ne changent pas. Vos propres fichiers `.mbloop` ne figurent
+pas dans la liste. Ouvrez-les depuis le simulateur lui-même, avec le menu File ou l'option `--scenario`.
 
 ## Sessions
 

@@ -69,6 +69,23 @@ est utilisé, seulement avec `--headless`), 2 pour une ligne de commande ou un f
 invalide. Sans `--headless`, une erreur de démarrage est affichée dans la barre d'état et la fenêtre
 reste ouverte.
 
+### Depuis Modbus Control
+
+Pour lancer une simulation sans passer par la ligne de commande, choisissez **Simulation > Charger une
+simulation...** dans Modbus Control, sélectionnez « Boucle de niveau LIC-101, essai à l'échelon » et
+cliquez sur **Charger**. Modbus Control démarre le simulateur avec ce scénario, charge les étiquettes
+correspondantes et s'y connecte tout seul. Vous pouvez donc passer directement aux exercices ci-dessous.
+Fermer Modbus Control ferme aussi le simulateur qu'il a ouvert. Voir
+[Charger une simulation](GUIDE_UTILISATEUR.md#charger-une-simulation) pour les détails.
+
+- Si un simulateur ouvert par Modbus Control est encore en marche, Modbus Control demande s'il faut le
+  redémarrer avec la simulation choisie.
+- Si un autre programme écoute déjà sur le port du simulateur, fermez-le d'abord. Modbus Control ne
+  change alors rien.
+- Un simulateur que vous avez lancé vous-même n'est jamais fermé par Modbus Control.
+- Vos propres fichiers `.mbloop` ne figurent pas dans la liste. Ouvrez-les depuis le menu File ou avec
+  l'option `--scenario`.
+
 ## Le schéma TI
 
 Le dessin suit les symboles ISA (ISA-5.1). Les conduites du procédé sont en trait plein. Les traits

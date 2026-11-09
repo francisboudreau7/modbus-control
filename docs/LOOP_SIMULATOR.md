@@ -64,6 +64,21 @@ Exit codes: 0 for a normal stop, 1 when the server cannot start (for example the
 only in `--headless`), 2 for an invalid command line or scenario file. Without `--headless`, a start
 error is shown in the status bar and the window stays open.
 
+### From Modbus Control
+
+To start a simulation without the command line, choose **Simulation > Load simulation...** in Modbus
+Control, select "Level loop LIC-101, step test" and press **Load**. Modbus Control starts the simulator
+with that scenario, loads the matching tags and connects by itself, so you can go straight to the
+exercises below. Closing Modbus Control also closes the simulator it opened. See
+[Loading a simulation](USER_GUIDE.md#loading-a-simulation) for the details.
+
+- If a simulator that Modbus Control opened is still running, Modbus Control asks whether to restart it
+  with the chosen simulation.
+- If another program already listens on the simulator's port, close it first. Modbus Control then
+  changes nothing.
+- A simulator you started yourself is never closed by Modbus Control.
+- Your own `.mbloop` files are not in the list. Open them from the File menu or with `--scenario`.
+
 ## The P&ID
 
 The drawing follows the ISA symbols (ISA-5.1). Process lines are solid. The dashed lines are
