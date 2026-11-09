@@ -25,6 +25,7 @@ namespace mb {
 
 class EncodingMonitor;
 class MainWindow;
+class SimulatorLauncher;
 class WriteController;
 
 /// Application logic. Owns the PollWorker (on its own QThread), the Recorder, the
@@ -117,6 +118,27 @@ class WriteController;
 ///     first append failure of the session shows a status message "Write log not saved: <error>"
 ///     and WriteLogPanel::setFileError(error); later failures only update the panel; a later
 ///     success clears the error.
+/// - Simulation > Load simulation... (v1.3.4), loadSimulationDialog(), in this order:
+///   1. SimulationDialog over builtInSimulations() through m_prompts.exec; Cancel stops.
+///   2. maybeSave() (unsaved-changes prompt); Cancel stops.
+///   3. Checks; a refusal changes nothing. Warning (title "Load simulation") when
+///      modbus_loop_sim.exe (m_simulatorProgram) or the entry's files in examplesDir() are
+///      missing ("Could not find \"<path>\"."), or the project can't be parsed (the load error).
+///      When m_simulator->isRunning(): question (title "Load simulation") "Restart the Loop
+///      Simulator with <name>?", Yes ("Restart") / Cancel (default); Cancel stops. Otherwise, when
+///      m_simulator->isPortOpen(project port): warning "Something is already listening on
+///      127.0.0.1:<port>. Close it, then try again." and stop.
+///   4. The project is loaded like Open example (Save acts as Save As, the last project folder
+///      is kept; a connection is dropped as for any project load).
+///   5. m_simulator->stop() if it was running, then m_simulator->start(m_simulatorProgram,
+///      {"--scenario", <absolute scenario path>, "--port", <project port>}, project port);
+///      status message "Starting the Loop Simulator...".
+///   6. started(): connects with the loaded project's settings, as the Connect button does.
+///      failed(reason): warning (title "Load simulation") with the reason; the tags stay loaded
+///      and nothing connects.
+///   The automatic connection is cancelled when the user presses Connect, or a project or
+///   session is opened or created, before started(); started() then does nothing and failed()
+///   only shows the reason in the status bar.
 /// Every dialog goes through private seams (m_prompts, m_continuePrompt) whose defaults show
 /// the real dialogs; tests (TstAppController) replace them. QSettings keys are written under
 /// the application's organization/application names (tests use their own).
@@ -190,6 +212,8 @@ private:
     void openDialog();
     /// File > Open example...: unsaved-changes prompt, then the file dialog in examplesDir().
     void openExampleDialog();
+    /// Simulation > Load simulation... (see the class comment).
+    void loadSimulationDialog();
     /// Folder of the example projects (see the class comment).
     static QString examplesDir();
     bool loadFrom(const QString &path);
@@ -228,6 +252,11 @@ private:
     QHash<quint64, std::function<void(const ModbusResult &, const QList<quint16> &)>> m_addTagReads;
     bool recordingDirty() const;
     std::optional<double> lastRowTime() const;
+
+    /// Owned by this object; its destructor closes a simulator we opened. Tests replace it.
+    SimulatorLauncher *m_simulator = nullptr;
+    /// Default: modbus_loop_sim.exe next to this executable. Tests may replace it.
+    QString m_simulatorProgram;
 
     MainWindow *m_window = nullptr;
     QThread *m_thread = nullptr;

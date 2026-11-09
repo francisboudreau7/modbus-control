@@ -62,7 +62,7 @@ foreach(name tst_tagtablemodel tst_cursorpanel tst_exportimage
              tst_clipboard tst_quickwrite tst_trendplot
              tst_exportcsvdialog tst_plotcursors tst_encodingdialog tst_encodingmonitor
              tst_richtext tst_addtagdialog tst_analysispanel tst_writelogpanel
-             tst_numbertext)
+             tst_numbertext tst_simulationdialog)
   mc_add_qtest(${name} LIBS mbui)
   set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT_MODIFICATION
     "QT_QPA_PLATFORM=set:offscreen"
@@ -79,7 +79,13 @@ set_property(TEST tst_appcontroller APPEND PROPERTY ENVIRONMENT_MODIFICATION
 target_compile_definitions(tst_appcontroller PRIVATE
   MC_TEST_SERVER_PATH="$<TARGET_FILE:modbus_test_server>"
   MC_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
-add_dependencies(tst_appcontroller modbus_test_server)
+add_dependencies(tst_appcontroller modbus_test_server modbus_loop_sim)
+
+# SimulatorLauncher: starts the real Loop Simulator (headless, --port 0).
+mc_add_qtest(tst_simulatorlauncher LIBS mbui)
+target_compile_definitions(tst_simulatorlauncher PRIVATE
+  MC_LOOP_SIM_PATH="$<TARGET_FILE:modbus_loop_sim>")
+add_dependencies(tst_simulatorlauncher modbus_loop_sim)
 
 # Integration: starts modbus_test_server and talks to it through mbcore.
 mc_add_qtest(tst_integration LIBS mbcore)

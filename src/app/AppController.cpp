@@ -6,6 +6,7 @@
 #include "ConnectionBar.h"
 #include "DocsLinks.h"
 #include "Language.h"
+#include "SimulatorLauncher.h"
 #include "CursorPanel.h"
 #include "EncodingMonitor.h"
 #include "ExportCsvDialog.h"
@@ -94,6 +95,8 @@ void storeLastConnection(const ConnectionSettings &s)
 
 AppController::AppController(MainWindow *window, QObject *parent) : QObject(parent), m_window(window)
 {
+    m_simulator = new SimulatorLauncher(this);
+    m_simulatorProgram = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("modbus_loop_sim.exe"));
     m_thread = new QThread(this);
     m_worker = new PollWorker; // no parent: moved to the worker thread
     m_worker->moveToThread(m_thread);
@@ -329,6 +332,7 @@ void AppController::wireActions()
     connect(a.newProject, &QAction::triggered, this, [this] { newProject(); });
     connect(a.openProject, &QAction::triggered, this, [this] { openDialog(); });
     connect(a.openExample, &QAction::triggered, this, [this] { openExampleDialog(); });
+    connect(a.loadSimulation, &QAction::triggered, this, [this] { loadSimulationDialog(); });
     connect(a.saveProject, &QAction::triggered, this, [this] { save(); });
     connect(a.saveProjectAs, &QAction::triggered, this, [this] { saveAs(); });
     connect(a.saveSession, &QAction::triggered, this, [this] { saveSessionDialog(); });
@@ -709,6 +713,11 @@ void AppController::openExampleDialog()
         m_projectIsExample = true;
         QSettings().setValue(QStringLiteral("project/dir"), dir);
     }
+}
+
+// Stub until the flow task.
+void AppController::loadSimulationDialog()
+{
 }
 
 bool AppController::loadFrom(const QString &path)

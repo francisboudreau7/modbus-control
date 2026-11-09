@@ -21,6 +21,9 @@ add_library(mbui STATIC
   RichText.h RichText.cpp
   WriteLogPanel.h WriteLogPanel.cpp
   NumberSpinBox.h NumberSpinBox.cpp
+  SimulationCatalog.h SimulationCatalog.cpp
+  SimulationDialog.h SimulationDialog.cpp
+  SimulatorLauncher.h SimulatorLauncher.cpp
 )
 target_include_directories(mbui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qwt::Qwt

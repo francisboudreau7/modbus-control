@@ -36,7 +36,7 @@ class WriteLogPanel;
 /// - Bottom dock "Write log" (objectName "writeLogDock", v1.3.3): WriteLogPanel, tabified with
 ///   Tags (Tags stays the raised tab); View menu toggle.
 /// - Menus: File (New, Open..., Open example..., Save, Save As..., Save session..., Open session..., Quit), Export (Graph image...,
-///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Options (Use 1-based register numbers, Confirm quick writes, separator, Lock tag configuration, separator, Language submenu), Help (Quick Start, User Guide, About).
+///   Data (CSV)..., Analysis results (CSV)...), View (dock toggles), Simulation (Load simulation...), Options (Use 1-based register numbers, Confirm quick writes, separator, Lock tag configuration, separator, Language submenu), Help (Quick Start, User Guide, About).
 /// - Status bar: transient messages on the left, permanent labels on the right: "lockLabel"
 ///   (bold "Tags locked", tooltip "The tag configuration is locked (Options > Lock tag
 ///   configuration)"; hidden unless setTagsLocked(true)) and the connection label.
@@ -62,6 +62,9 @@ public:
         QAction *exportCsv = nullptr;
         /// "Analysis &results (CSV)..."; enabled by AppController when results exist.
         QAction *exportAnalysisCsv = nullptr;
+        /// v1.3.4 Simulation menu: "&Load simulation..." (AppController shows the list of
+        /// supported simulations).
+        QAction *loadSimulation = nullptr;
         /// Options menu, checkable: "Use 1-based register numbers".
         QAction *oneBasedAddresses = nullptr;
         /// Options menu, checkable, checked at start: "Confirm &quick writes".

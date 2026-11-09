@@ -136,6 +136,10 @@ MainWindow::MainWindow(QWidget *parent)
     viewMenu->addAction(setpointsDock->toggleViewAction());
     viewMenu->addAction(writeLogDock->toggleViewAction());
 
+    // Simulation menu
+    auto *simulationMenu = menuBar()->addMenu(tr("&Simulation"));
+    m_actions.loadSimulation = simulationMenu->addAction(tr("&Load simulation..."));
+
     // Options menu
     auto *optionsMenu = menuBar()->addMenu(tr("&Options"));
     m_actions.oneBasedAddresses = optionsMenu->addAction(tr("Use &1-based register numbers"));
