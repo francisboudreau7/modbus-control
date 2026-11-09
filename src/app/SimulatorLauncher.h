@@ -1,10 +1,12 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QString>
 #include <QStringList>
 
 class QProcess;
+class QTcpSocket;
 class QTimer;
 
 namespace mb {
@@ -54,7 +56,21 @@ signals:
 
 private:
     // Implementation-defined; the task may change the private section freely.
+    void tick();
+    void onProbeConnected();
+    void onProcessError(int error);
+    void onProcessFinished(int exitCode);
+    void endWatch();
+    void releaseProcess(bool stopIt);
+    void fail(const QString &reason);
+
     QProcess *m_process = nullptr;
+    QTimer *m_timer = nullptr;
+    QTcpSocket *m_probe = nullptr;
+    QElapsedTimer m_elapsed;
+    quint16 m_port = 0;
+    bool m_pending = false;
+    quint64 m_generation = 0;
     int m_startTimeoutMs = 10000;
     int m_stopTimeoutMs = 3000;
 };

@@ -26,7 +26,7 @@ add_library(mbui STATIC
   SimulatorLauncher.h SimulatorLauncher.cpp
 )
 target_include_directories(mbui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qwt::Qwt
+target_link_libraries(mbui PUBLIC mbcore Qt6::Widgets Qt6::Svg Qt6::PrintSupport Qt6::Network Qwt::Qwt
                            PRIVATE mc_warnings)
 
 add_executable(modbus_control WIN32 main.cpp modbus_control.rc)
