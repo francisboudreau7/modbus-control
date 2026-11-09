@@ -11,9 +11,13 @@
 #include "MetaTypes.h"
 #include "ModbusConnection.h"
 #include "PlotCursors.h"
+#include "ProjectIO.h"
 #include "QuickWritePanel.h"
 #include "Recorder.h"
 #include "SessionIO.h"
+#include "SimulationCatalog.h"
+#include "SimulationDialog.h"
+#include "SimulatorLauncher.h"
 #include "TagTableModel.h"
 #include "TagTableWidget.h"
 #include "TrendPlot.h"
@@ -144,6 +148,36 @@ TagSample sampleOf(TagId id, double value)
     return s;
 }
 
+/// Stands in for the Loop Simulator launcher: never starts a process.
+class FakeSimulatorLauncher : public SimulatorLauncher
+{
+public:
+    struct Start {
+        QString program;
+        QStringList arguments;
+        quint16 port = 0;
+    };
+
+    bool isRunning() const override { return running; }
+    bool isPortOpen(quint16) const override { return portOpen; }
+    void start(const QString &program, const QStringList &arguments, quint16 port) override
+    {
+        calls << QStringLiteral("start");
+        starts << Start{program, arguments, port};
+        running = true;
+    }
+    void stop() override
+    {
+        calls << QStringLiteral("stop");
+        running = false;
+    }
+
+    bool running = false;
+    bool portOpen = false;
+    QStringList calls;
+    QList<Start> starts;
+};
+
 } // namespace
 
 class TstAppController : public QObject
@@ -196,6 +230,7 @@ class TstAppController : public QObject
     ServerProcess m_server;
     std::unique_ptr<MainWindow> win;
     std::unique_ptr<AppController> ctl;
+    FakeSimulatorLauncher *fakeSim = nullptr; ///< owned by ctl
 
     static void clearSettings()
     {
@@ -340,6 +375,8 @@ class TstAppController : public QObject
         win = std::make_unique<MainWindow>();
         ctl = std::make_unique<AppController>(win.get());
         installSeams();
+        fakeSim = new FakeSimulatorLauncher;
+        ctl->setSimulatorLauncher(fakeSim);
         if (withDemo)
             loadDemoProject();
     }
@@ -361,6 +398,7 @@ class TstAppController : public QObject
 
     void stopApp()
     {
+        fakeSim = nullptr;
         ctl.reset();
         win.reset();
     }
@@ -2379,6 +2417,248 @@ private slots:
         noUnexpected();
     }
 
+
+    // ---- Simulation > Load simulation ---------------------------------------------------------
+
+    /// The dialog seam: accepts (or rejects) with the first entry selected.
+    void chooseSimulation(bool accept = true)
+    {
+        d.onExec = [accept](QDialog &dialog) {
+            if (accept)
+                dialog.accept();
+            else
+                dialog.reject();
+        };
+    }
+
+    static QString simName() { return builtInSimulations().first().name; }
+
+    void simulationCatalogFilesExistAndParse()
+    {
+        const QList<SimulationEntry> entries = builtInSimulations();
+        QVERIFY(!entries.isEmpty());
+        QSet<QString> ids;
+        for (const SimulationEntry &e : entries) {
+            QVERIFY(!e.id.isEmpty() && !e.name.isEmpty() && !e.description.isEmpty());
+            QVERIFY(!ids.contains(e.id));
+            ids.insert(e.id);
+            const QDir dir(AppController::examplesDir());
+            QVERIFY2(QFileInfo::exists(dir.filePath(e.scenarioFile)), qPrintable(e.scenarioFile));
+            QString error;
+            QVERIFY2(loadProject(dir.filePath(e.projectFile), &error).has_value(), qPrintable(error));
+        }
+    }
+
+    void loadSimulationCancelInDialogChangesNothing()
+    {
+        const int rows = model()->rowCount();
+        chooseSimulation(false);
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(d.execCount, 1);
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(fakeSim->calls.isEmpty());
+        QVERIFY(!ctl->m_connectPending);
+        noUnexpected();
+    }
+
+    void loadSimulationUnsavedChangesCancel()
+    {
+        const int rows = model()->rowCount();
+        ctl->setModified(true);
+        chooseSimulation();
+        d.answers << QMessageBox::Cancel;
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(d.questions.size(), 1);
+        QVERIFY(modified());
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(fakeSim->calls.isEmpty());
+        noUnexpected();
+    }
+
+    void loadSimulationMissingProgramWarns()
+    {
+        const int rows = model()->rowCount();
+        ctl->m_simulatorProgram = P(QStringLiteral("no_such_simulator.exe"));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(d.warnings.size(), 1);
+        QVERIFY(d.warnings.first().startsWith(QStringLiteral("Load simulation: Could not find \"")));
+        QVERIFY(d.warnings.first().contains(QStringLiteral("no_such_simulator.exe")));
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(fakeSim->calls.isEmpty());
+        QVERIFY(!ctl->m_connectPending);
+        d.warnings.clear();
+        noUnexpected();
+    }
+
+    void loadSimulationPortInUseWarns()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        const int rows = model()->rowCount();
+        fakeSim->portOpen = true;
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(d.warnings.size(), 1);
+        QCOMPARE(d.warnings.first(),
+                 QStringLiteral("Load simulation: Something is already listening on 127.0.0.1:1601. "
+                                "Close it, then try again."));
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(fakeSim->calls.isEmpty());
+        d.warnings.clear();
+        noUnexpected();
+    }
+
+    void loadSimulationRunningCancelChangesNothing()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        const int rows = model()->rowCount();
+        fakeSim->running = true;
+        chooseSimulation();
+        d.answers << QMessageBox::Cancel;
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(d.questions,
+                 QStringList{QStringLiteral("Load simulation: Restart the Loop Simulator with %1?")
+                                 .arg(simName())});
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(fakeSim->calls.isEmpty());
+        QVERIFY(!ctl->m_connectPending);
+        noUnexpected();
+    }
+
+    void loadSimulationRunningYesStopsThenStarts()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        fakeSim->running = true;
+        chooseSimulation();
+        d.answers << QMessageBox::Yes;
+        win->actions().loadSimulation->trigger();
+        QCOMPARE(fakeSim->calls, (QStringList{QStringLiteral("stop"), QStringLiteral("start")}));
+        QCOMPARE(fakeSim->starts.size(), 1);
+        QVERIFY(ctl->m_connectPending);
+        noUnexpected();
+    }
+
+    void loadSimulationStartsAndConnects()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        // The test server stands in for the simulator; nothing is ever sent to port 1601.
+        QVERIFY2(m_server.start(), qPrintable(m_server.log()));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+
+        QCOMPARE(fakeSim->starts.size(), 1);
+        const auto &start = fakeSim->starts.first();
+        const QString scenario = QDir(AppController::examplesDir())
+                                     .absoluteFilePath(builtInSimulations().first().scenarioFile);
+        QCOMPARE(start.program, ctl->m_simulatorProgram);
+        QCOMPARE(start.arguments, (QStringList{QStringLiteral("--scenario"), scenario,
+                                                QStringLiteral("--port"), QStringLiteral("1601")}));
+        QCOMPARE(start.port, quint16(1601));
+        QVERIFY(QDir::isAbsolutePath(start.arguments.at(1)));
+        QVERIFY(win->statusBar()->currentMessage().contains(QStringLiteral("Starting the Loop Simulator")));
+        QVERIFY(model()->rowCount() > 0);
+        QVERIFY(win->windowTitle().startsWith(QStringLiteral("loop101")));
+        QVERIFY(!modified());
+        QVERIFY(ctl->m_projectIsExample);
+        QCOMPARE(win->connectionBar()->settings().port, quint16(1601));
+        QVERIFY(ctl->m_connectPending);
+        QVERIFY(ctl->m_state == ConnectionState::Disconnected);
+
+        // Save asks where (an example), never overwriting the example file.
+        d.saveNames << QString();
+        win->actions().saveProject->trigger();
+        QCOMPARE(d.saveCaptions.size(), 1);
+
+        // Point the connection at the test server before started(): never at port 1601.
+        ConnectionSettings s = win->connectionBar()->settings();
+        s.port = m_server.port();
+        s.pollPeriodMs = 100;
+        win->connectionBar()->setSettings(s);
+        Q_EMIT fakeSim->started();
+        QVERIFY(!ctl->m_connectPending);
+        waitState(ConnectionState::Connected);
+        noUnexpected();
+        disconnectLive();
+    }
+
+    void loadSimulationStartedAfterUserConnectDoesNothing()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        QVERIFY(ctl->m_connectPending);
+        connectLive(); // retargets the bar to the test server, then presses Connect
+        QVERIFY(!ctl->m_connectPending);
+        QSignalSpy spy(ctl->m_worker, &PollWorker::stateChanged);
+        Q_EMIT fakeSim->started();
+        QTest::qWait(300);
+        QVERIFY(ctl->m_state == ConnectionState::Connected);
+        QVERIFY(spy.isEmpty());
+        noUnexpected();
+        disconnectLive();
+    }
+
+    void loadSimulationStartedAfterNewProjectDoesNothing()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        QVERIFY(ctl->m_connectPending);
+        win->actions().newProject->trigger();
+        QVERIFY(!ctl->m_connectPending);
+        Q_EMIT fakeSim->started();
+        QTest::qWait(300);
+        QVERIFY(ctl->m_state == ConnectionState::Disconnected);
+        noUnexpected();
+    }
+
+    void loadSimulationStartedAfterOpeningAnExampleDoesNothing()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        QVERIFY(ctl->m_connectPending);
+        d.openNames << QStringLiteral(MC_EXAMPLES_DIR "/cm50.mbproj");
+        win->actions().openExample->trigger();
+        QVERIFY(!ctl->m_connectPending);
+        // Keep any stray connection away from port 1601.
+        ConnectionSettings s = win->connectionBar()->settings();
+        s.port = 1;
+        win->connectionBar()->setSettings(s);
+        Q_EMIT fakeSim->started();
+        QTest::qWait(300);
+        QVERIFY(ctl->m_state == ConnectionState::Disconnected);
+        noUnexpected();
+    }
+
+    void loadSimulationFailedWarnsAndKeepsTags()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        const int rows = model()->rowCount();
+        Q_EMIT fakeSim->failed(QStringLiteral("it broke"));
+        QCOMPARE(d.warnings, QStringList{QStringLiteral("Load simulation: it broke")});
+        QCOMPARE(model()->rowCount(), rows);
+        QVERIFY(rows > 0);
+        QVERIFY(!ctl->m_connectPending);
+        QTest::qWait(200);
+        QVERIFY(ctl->m_state == ConnectionState::Disconnected);
+        d.warnings.clear();
+        noUnexpected();
+    }
+
+    void loadSimulationFailedAfterCancellationOnlyShowsStatus()
+    {
+        QVERIFY(QFileInfo::exists(ctl->m_simulatorProgram));
+        chooseSimulation();
+        win->actions().loadSimulation->trigger();
+        win->actions().newProject->trigger();
+        Q_EMIT fakeSim->failed(QStringLiteral("it broke"));
+        QVERIFY(d.warnings.isEmpty());
+        QVERIFY(win->statusBar()->currentMessage().contains(QStringLiteral("it broke")));
+        noUnexpected();
+    }
 };
 
 QTEST_MAIN(TstAppController)

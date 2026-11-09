@@ -214,6 +214,14 @@ private:
     void openExampleDialog();
     /// Simulation > Load simulation... (see the class comment).
     void loadSimulationDialog();
+    /// Opens `path` as an example: Save acts as Save As, the last project folder is kept.
+    bool loadAsExample(const QString &path);
+    /// The Connect button's sequence (also the automatic connection after a simulator started).
+    void connectWith(const ConnectionSettings &settings);
+    /// Replaces the launcher (tests): disconnects and deletes the old one, takes ownership.
+    void setSimulatorLauncher(SimulatorLauncher *launcher);
+    void onSimulatorStarted();
+    void onSimulatorFailed(const QString &reason);
     /// Folder of the example projects (see the class comment).
     static QString examplesDir();
     bool loadFrom(const QString &path);
@@ -257,6 +265,8 @@ private:
     SimulatorLauncher *m_simulator = nullptr;
     /// Default: modbus_loop_sim.exe next to this executable. Tests may replace it.
     QString m_simulatorProgram;
+    /// A simulator was started and the connection to it is made when it reports started().
+    bool m_connectPending = false;
 
     MainWindow *m_window = nullptr;
     QThread *m_thread = nullptr;
