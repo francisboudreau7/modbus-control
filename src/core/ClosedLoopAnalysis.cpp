@@ -11,11 +11,6 @@ namespace {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-QString tr(const char *text)
-{
-    return QCoreApplication::translate("mb::ClosedLoopAnalysis", text);
-}
-
 /// One analysed sample: both PV and SP are known.
 struct Pt {
     double t = 0.0;
@@ -118,7 +113,7 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
     ClosedLoopResult r;
     r.test = settings.test;
     if (!std::isfinite(t1) || !std::isfinite(t2)) {
-        r.error = tr("Place both cursors");
+        r.error = QCoreApplication::translate("mb::ClosedLoopAnalysis", "Place both cursors");
         return r;
     }
     if (t1 > t2) {
@@ -143,7 +138,7 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
         }
     }
     if (win.size() < 2) {
-        r.error = tr("No data between the cursors");
+        r.error = QCoreApplication::translate("mb::ClosedLoopAnalysis", "No data between the cursors");
         return r;
     }
 
@@ -154,7 +149,7 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
         r.spAfter = interpolate(all, &Pt::sp, t2);
         d = r.spAfter - r.spBefore;
         if (!(std::abs(d) >= 1e-12)) {
-            r.error = tr("The setpoint does not change between the cursors");
+            r.error = QCoreApplication::translate("mb::ClosedLoopAnalysis", "The setpoint does not change between the cursors");
             r.checks.append(ClosedLoopCheck::NoSetpointStep);
             return r;
         }
@@ -376,7 +371,7 @@ ClosedLoopResult analyzeClosedLoop(const Recorder &recorder, TagId pvTag, TagId 
         r.test = settings.test;
         r.t1 = t1;
         r.t2 = t2;
-        r.error = tr("Place both cursors");
+        r.error = QCoreApplication::translate("mb::ClosedLoopAnalysis", "Place both cursors");
         return r;
     }
     if (t1 > t2) {
