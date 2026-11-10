@@ -389,9 +389,9 @@ Fermez HV-102 (0 %) et le réservoir se remplit jusqu'au trop-plein.
 
 Vous mettez le régulateur en Auto avec le réglage obtenu de l'essai à l'échelon, puis vous comparez des
 règles de réglage. Faites d'abord l'[essai à l'échelon](#exercice--essai-à-léchelon-avec-modbus-control),
-pour que K, L et T soient dans le panneau Analysis.
+pour que K, L et T soient dans la zone Open loop du panneau Analysis.
 
-**1. Lire le réglage.** Dans le panneau **Analysis**, le groupe Tuning transforme K, L et T en réglages.
+**1. Lire le réglage.** Dans la zone **Open loop** du panneau **Analysis**, le groupe Tuning transforme K, L et T en réglages.
 Avec les nombres de l'essai à l'échelon avec la méthode de Smith (K 2.2 %/%, L environ 4 s, T environ
 32 s), vous obtenez à peu près les valeurs ci-dessous, avec le dépassement (en pourcentage de l'échelon
 de 10 %) et le temps de stabilisation mesurés pour SP de 50 à 60 %. Les vôtres seront un peu
@@ -413,29 +413,72 @@ ne se stabilise pas, et OUT oscille entre 0 et 100 %.
 avant, tapez Kp et Ti (Td reste à 0, Action à Reverse), puis cliquez sur **MAN**. Le bouton devient
 **AUTO**, et OUT ne bouge pas.
 
-**3. Faire un échelon de consigne.** Dans Modbus Control, écrivez 60 dans **LIC-101 SP**. Ouvrez Trend et
-réglez son axe de gauche de 0 à 100 : faites un clic droit sur l'axe Y de gauche et choisissez
-**0 to 100** (voir [Plages des axes Y](GUIDE_UTILISATEUR.md#plages-des-axes-y) dans le Guide de
-l'utilisateur). Trend ne change alors pas d'échelle pendant que la boucle bouge. Tracez PV et OUT sur
-cet axe.
+**3. Faire un échelon de consigne et le mesurer.** Dans Modbus Control, ouvrez Trend et réglez son axe
+de gauche de 0 à 100 : faites un clic droit sur l'axe Y de gauche et choisissez **0 to 100** (voir
+[Plages des axes Y](GUIDE_UTILISATEUR.md#plages-des-axes-y) dans le Guide de l'utilisateur). Trend ne
+change alors pas d'échelle pendant que la boucle bouge. Tracez PV et OUT sur cet axe. Écrivez ensuite 60
+dans **LIC-101 SP**.
 
 Avec les valeurs par défaut (Kp 1, Ti 30 s), PV monte à 60 % sans dépassement et reste à moins de 0.5 %
 de SP après environ 30 s. OUT saute d'abord de Kp × 10 % = 10 %, à 60 %, puis redescend et se stabilise
 à environ 55 %, la valeur de OUT qui maintient un niveau de 60 % avec HV-102 à 50 %.
 
-**4. Comparer les règles.** Ramenez SP à 50 %, essayez chaque paire de valeurs à tour de rôle et écrivez
-de nouveau 60 dans SP. Observez le dépassement (de combien PV dépasse 60 %) et le temps de stabilisation
-(le temps jusqu'à ce que PV reste à ±0.5 % de 60 %). Le PI de Ziegler-Nichols est le plus agressif :
-son Kp est plus grand et son Ti plus court. PV dépasse de plus de la moitié de l'échelon (elle culmine
-près de 66 %) et oscille avant de se stabiliser. Ziegler-Nichols vise une atténuation au quart
-d'amplitude et le rejet des perturbations, pas des changements de consigne nets. IMC et SIMC avec
-λ = L dépassent de quelques pour cent. Un λ plus grand est plus lent et plus doux. Les curseurs et le
-panneau Analysis peuvent mesurer les temps pour vous.
+Mesurez maintenant la réponse dans le panneau **Analysis** :
+
+- Cliquez sur **Closed loop** (boucle fermée), sous le groupe Controller. Dans **1. Signals**, choisissez
+  **LIC-101 SP** comme **Setpoint (SP)**. Le projet a déjà choisi la PV et la CO (**LIC-101 OUT**).
+- Placez C1 juste avant le changement de consigne et C2 après la stabilisation de PV, avec **Place
+  cursors** sur Trend. **Find step** est conçu pour les essais en boucle ouverte : placez les curseurs
+  vous-même.
+- Dans **3. Test**, choisissez **Setpoint step** (échelon de consigne) et une bande de stabilisation de
+  **2 %**.
+- Dans **4. Performance**, lisez **Overshoot** (dépassement), **Settling time** (temps de
+  stabilisation), **Decay ratio** (rapport d'amortissement) et **IAE**. Avec Kp 1 et Ti 30 s, il n'y a
+  pas de dépassement, et le rapport d'amortissement affiche « — », parce que la réponse n'oscille pas.
+  Placez le curseur de la souris sur une valeur pour voir sa définition. **Output max** et **Output
+  travel** montrent à quel point OUT a travaillé.
+
+**4. Comparer les règles.** Ramenez SP à 50 %, puis essayez chaque paire de valeurs à tour de rôle :
+tapez Kp et Ti sur la face avant et écrivez de nouveau 60 dans SP. Placez les curseurs autour de chaque
+échelon et lisez les mêmes quatre nombres dans le tableau de performance. Le temps de stabilisation
+dépend de la bande : gardez la même bande pour tous les essais. Le PI de Ziegler-Nichols est le plus
+agressif : son Kp est plus grand et son Ti plus court. PV dépasse de plus de la moitié de l'échelon
+(elle culmine près de 66 %) et oscille avant de se stabiliser : son rapport d'amortissement est grand
+et son IAE est le pire. Ziegler-Nichols vise une atténuation au quart d'amplitude et le rejet des
+perturbations, pas des changements de consigne nets. IMC et SIMC avec λ = L dépassent de quelques pour
+cent. Un λ plus grand est plus lent et plus doux.
+
+**Prédire avant d'essayer.** Le modèle de l'essai à l'échelon permet au panneau de prédire ces
+réponses. Dans **5. Prediction**, cochez **Predict from the open-loop model**. La ligne **Model**
+affiche K, L et T (environ 2.2 %/%, 4.0 s et 32.5 s) : le panneau les a pris de l'essai à l'échelon et
+les garde, de sorte que vous pouvez déplacer les curseurs vers l'échelon de consigne. Tapez les Kp et Ti
+du réglage, ou choisissez la règle dans le groupe Tuning de la zone **Open loop** et utilisez **Take
+tuning** et **Use**. La colonne **Predicted** apparaît à côté de **Measured**, et la PV et la OUT
+prédites sont tracées en tirets sur Trend. Avec le modèle K 2.2 %/%, L 4.0 s et T 32.5 s, le panneau
+prédit, pour l'échelon de 10 % et une bande de 2 % :
+
+| Règle | Régulateur | Dépassement prédit | Temps de stabilisation prédit |
+|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | environ 4.7 % | environ 24.5 s |
+| Ziegler-Nichols | PI | environ 70 % | environ 59 s |
+
+Comparez-les avec les valeurs mesurées du tableau ci-dessus (environ 5 % et 21 s pour IMC, environ 60 %
+et 42 s pour Ziegler-Nichols). La prédiction est proche pour IMC et trop pessimiste pour
+Ziegler-Nichols. Le modèle est un retard du premier ordre avec temps mort : il ignore la non-linéarité
+du réservoir (T n'est pas le même à 50 et à 60 %) et les petits retards de la vanne et de
+l'amortissement de LT-101. Plus le réglage est agressif, plus ces détails comptent, et moins la
+prédiction et la vraie boucle concordent.
 
 **5. Perturbation de charge.** La boucle en Auto et PV stable à SP (60 %), déplacez le curseur **HV-102**
 de 50 à 60 %. La sortie est plus grande, donc PV baisse d'abord. Le régulateur ouvre la vanne, et l'action
-intégrale ramène PV à SP : OUT finit à environ 66 %, contre environ 55 % avant. Comparez le creux de PV
-et le mouvement de OUT pour différents réglages.
+intégrale ramène PV à SP : OUT finit à environ 66 %, contre environ 55 % avant. Mesurez-la avec l'essai
+**Disturbance** (perturbation) : dans **3. Test** de la zone Closed loop, choisissez **Disturbance**, et
+placez C1 juste avant de déplacer le curseur et C2 après le retour de PV à SP. Le tableau affiche alors
+**Max deviation** (le creux de PV), **Time of max deviation** et **Settling time** (la bande est un
+pourcentage de la déviation maximale), avec l'IAE et les lignes de la sortie. Comparez le creux de PV et
+le mouvement de OUT pour différents réglages. Pour prédire le creux, cochez **Predict from the open-loop
+model** et tapez environ −11 dans **Load step (CO units)** : une vidange plus grande agit comme une OUT
+plus basse de 11 %, ce que le régulateur doit redonner à la fin.
 
 Tapez maintenant Ti = 0 (P seul) et recommencez à partir d'un état stable. PV ne revient plus à SP : il
 reste un **écart permanent**, parce qu'un régulateur P a besoin d'une erreur pour donner une autre OUT.

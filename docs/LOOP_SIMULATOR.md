@@ -361,9 +361,9 @@ and the tank fills up to the overflow.
 
 You put the controller in Auto with the settings that the step test gave, and compare tuning rules.
 Do the [step test](#exercise-step-test-with-modbus-control) first, so that K, L and T are in the
-Analysis panel.
+Open loop area of the Analysis panel.
 
-**1. Read the tuning.** In the **Analysis** dock, the Tuning group turns K, L and T into settings. With
+**1. Read the tuning.** In the **Open loop** area of the **Analysis** dock, the Tuning group turns K, L and T into settings. With
 the numbers of the step test with the Smith method (K 2.2 %/%, L about 4 s, T about 32 s) you get
 roughly the values below, with the overshoot (as a percentage of the 10 % step) and the settling time
 measured for SP 50 to 60 %. Yours will differ a little. The PV and the OUT of this loop are both in %,
@@ -384,27 +384,65 @@ swings between 0 and 100 %.
 faceplate, type Kp and Ti (Td stays 0, Action Reverse), then click **MAN**. It becomes **AUTO**, and
 OUT does not move.
 
-**3. Step the setpoint.** In Modbus Control, write 60 to **LIC-101 SP**. Open the Trend and set its
-left axis to 0 to 100: right-click the left Y axis and choose **0 to 100** (see
-[Y-axis ranges](USER_GUIDE.md#y-axis-ranges) in the User Guide). The Trend then does not rescale while
-the loop moves. Plot PV and OUT on that axis.
+**3. Step the setpoint and measure it.** In Modbus Control, open the Trend and set its left axis to 0 to
+100: right-click the left Y axis and choose **0 to 100** (see [Y-axis ranges](USER_GUIDE.md#y-axis-ranges)
+in the User Guide). The Trend then does not rescale while the loop moves. Plot PV and OUT on that axis.
+Then write 60 to **LIC-101 SP**.
 
 With the default values (Kp 1, Ti 30 s) PV rises to 60 % with no overshoot and stays within 0.5 % of
 SP after about 30 s. OUT first jumps by Kp × 10 % = 10 %, to 60 %, then falls back and settles at about
 55 %, the OUT that holds a level of 60 % with HV-102 at 50 %.
 
-**4. Compare the rules.** Return SP to 50 %, then try each pair of values in turn and write SP to 60 %
-again. Look at the overshoot (how far PV goes above 60 %) and at the settling time (the time until PV
-stays within ±0.5 % of 60 %). The Ziegler-Nichols PI is the most aggressive: its Kp is larger and
-its Ti shorter. PV overshoots by more than half of the step (it peaks near 66 %) and oscillates
-before it settles. Ziegler-Nichols aims at a quarter-amplitude decay and at rejecting disturbances,
-not at clean setpoint changes. IMC and SIMC with λ = L overshoot by a few percent. A larger λ is slower
-and gentler. The cursors and the Analysis panel can measure the times for you.
+Now measure it in the **Analysis** dock:
+
+- Click **Closed loop**, below the Controller group. In **1. Signals**, choose **LIC-101 SP** as the
+  **Setpoint (SP)**. The project has already chosen the PV and the CO (**LIC-101 OUT**).
+- Place C1 just before the setpoint change and C2 after PV has settled, with **Place cursors** on the
+  Trend. **Find step** is made for open-loop tests, so place the cursors yourself.
+- In **3. Test**, choose **Setpoint step** and a **2 %** settling band.
+- In **4. Performance**, read **Overshoot**, **Settling time**, **Decay ratio** and **IAE**. With
+  Kp 1 and Ti 30 s there is no overshoot, and the decay ratio shows "—", because the response does not
+  oscillate. Hover over a value to see how it is defined. **Output max** and **Output travel** tell
+  you how hard OUT worked.
+
+**4. Compare the rules.** Return SP to 50 %, then try each pair of values in turn: type Kp and Ti on the
+faceplate and write SP to 60 % again. Place the cursors around each step and read the same four numbers
+in the Performance table. The settling time depends on the band, so keep the same band for all the
+tests. The Ziegler-Nichols PI is the most aggressive: its Kp is larger and its Ti shorter. PV overshoots
+by more than half of the step (it peaks near 66 %) and oscillates before it settles, so its decay ratio
+is large and its IAE is the worst. Ziegler-Nichols aims at a quarter-amplitude decay and at rejecting
+disturbances, not at clean setpoint changes. IMC and SIMC with λ = L overshoot by a few percent. A
+larger λ is slower and gentler.
+
+**Predict before you try.** The model of the step test lets the panel predict these responses. In
+**5. Prediction**, tick **Predict from the open-loop model**. The **Model** line shows K, L and T
+(about 2.2 %/%, 4.0 s and 32.5 s): the panel took them from the step test and keeps them, so you can
+move the cursors to the setpoint step. Type the Kp and Ti of the tuning, or choose the rule in the
+Tuning group of the **Open loop** area and use **Take tuning** and **Use**. The **Predicted** column
+appears beside **Measured**, and the predicted PV and OUT are drawn as dashed curves on the Trend. With
+the model K 2.2 %/%, L 4.0 s and T 32.5 s the panel predicts, for the 10 % step and a 2 % band:
+
+| Rule | Controller | Predicted overshoot | Predicted settling time |
+|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | about 4.7 % | about 24.5 s |
+| Ziegler-Nichols | PI | about 70 % | about 59 s |
+
+Compare them with the measured values of the table above (about 5 % and 21 s for IMC, about 60 % and
+42 s for Ziegler-Nichols). The prediction is close for IMC and too pessimistic for Ziegler-Nichols. The
+model is a first-order lag with a dead time: it ignores the tank's nonlinearity (T is not the same at 50
+and at 60 %) and the small lags of the valve and of the LT-101 damping. The more aggressive the tuning,
+the more those details matter, so the prediction and the real loop agree less.
 
 **5. Load disturbance.** With the loop in Auto and PV steady at SP (60 %), move the **HV-102**
 slider from 50 to 60 %. The outlet is larger, so PV falls at first. The controller opens the valve,
 and the integral action brings PV back to SP: OUT ends at about 66 %, against about 55 % before.
-Compare the dip in PV and the movement of OUT for different tunings.
+Measure it with the **Disturbance** test: in **3. Test** of the Closed loop area, choose
+**Disturbance**, and place C1 just before you move the slider and C2 after PV is back at SP. The table
+now shows the **Max deviation** (the dip of PV), the **Time of max deviation** and the **Settling
+time** (the band is a percentage of the maximum deviation), with the IAE and the output rows. Compare
+the dip in PV and the movement of OUT for different tunings. To predict the dip, tick **Predict from
+the open-loop model** and type about −11 in **Load step (CO units)**: a bigger outlet acts like 11 %
+less OUT, which is what the controller has to give back at the end.
 
 Now type Ti = 0 (P-only) and repeat from a steady state. PV no longer returns to SP: an **offset**
 remains, because a P controller needs an error to give a different OUT. A larger Kp makes the offset

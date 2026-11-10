@@ -148,7 +148,9 @@ C2. Ils sont dessinés comme des marqueurs sur la courbe.
 Placez le pointeur sur n'importe quelle valeur pour voir comment elle a été calculée.
 
 **Pour aller plus loin :** l'onglet **Analysis** ajuste aussi un modèle du premier ordre (gain K,
-temps mort L, constante de temps T) et propose des réglages PID. Consultez
+temps mort L, constante de temps T) et propose des réglages PID (sa zone **Open loop**, boucle ouverte). Sa zone
+**Closed loop** (boucle fermée) mesure le dépassement et le temps de stabilisation d'une boucle en Auto, et les prédit à partir du
+modèle. Consultez
 [Analyse (réponse à l'échelon)](GUIDE_UTILISATEUR.md#analyse-réponse-à-léchelon) dans le Guide de
 l'utilisateur. Pour conserver votre travail, utilisez **File > Save** (le projet) ou
 **File > Save session...** (le projet, l'enregistrement des données et les curseurs).
