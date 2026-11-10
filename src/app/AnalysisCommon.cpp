@@ -84,6 +84,11 @@ const PlotCursors *Context::cursors() const
     return plot ? plot->cursors() : nullptr;
 }
 
+PidSpans Context::pidSpans() const
+{
+    return PidSpans{pvSpan(), coSpan()};
+}
+
 bool Context::hasBothCursors() const
 {
     const PlotCursors *cur = cursors();
@@ -186,6 +191,120 @@ QString ruleName(TuningRule rule)
 QString tip(const QString &name, const QString &meaning, const QStringList &lines)
 {
     QString s = rich::bold(name) + QStringLiteral(": ") + rich::escaped(meaning);
+    for (const QString &line : lines) {
+        if (!line.isEmpty())
+            s += QStringLiteral("<br>") + rich::escaped(line);
+    }
+    return s;
+}
+
+PidColumnLabels pidColumnLabels(const ControllerSettings &c, bool minutes)
+{
+    const QString unit = minutes ? QStringLiteral("min") : QStringLiteral("s");
+    PidColumnLabels l;
+    if (c.gain == GainUnit::ProportionalBand)
+        l.gain = toString(GainUnit::ProportionalBand);
+    else
+        l.gain = c.form == PidForm::Series ? QStringLiteral("Kc'") : QStringLiteral("Kp");
+    switch (c.form) {
+    case PidForm::Ideal:
+        l.integral = c.integral == IntegralUnit::RepeatsPerMinute
+                         ? toString(IntegralUnit::RepeatsPerMinute)
+                         : QStringLiteral("Ti (%1)").arg(unit);
+        l.derivative = QStringLiteral("Td (%1)").arg(unit);
+        break;
+    case PidForm::Series:
+        l.integral = c.integral == IntegralUnit::RepeatsPerMinute
+                         ? toString(IntegralUnit::RepeatsPerMinute)
+                         : QStringLiteral("Ti' (%1)").arg(unit);
+        l.derivative = QStringLiteral("Td' (%1)").arg(unit);
+        break;
+    case PidForm::Parallel:
+        l.integral = QStringLiteral("Ki (1/%1)").arg(unit);
+        l.derivative = QStringLiteral("Kd (%1)").arg(unit);
+        break;
+    }
+    return l;
+}
+
+QStringList pidConversionLines(int part, const IdealPid &pid, const ControllerSettings &c,
+                               const PidSpans &spans, bool minutes)
+{
+    const bool hasI = pid.ti && *pid.ti > 0.0;
+    const bool hasD = pid.td && *pid.td > 0.0;
+    const bool series = c.form == PidForm::Series && hasI && hasD;
+    double r = 1.0;
+    double q = 1.0;
+    if (series) {
+        r = 1.0 - 4.0 * *pid.td / *pid.ti;
+        if (r < 0.0)
+            return {};
+        q = std::sqrt(r);
+    }
+    const bool pb = c.gain == GainUnit::ProportionalBand;
+    const bool spansSet = spans.pv && spans.co && *spans.pv != 0.0 && *spans.co != 0.0;
+    if (pb && !spansSet)
+        return {};
+    const QString unit = minutes ? QStringLiteral("min") : QStringLiteral("s");
+    const double tf = minutes ? 1.0 / 60.0 : 1.0;
+    const QString gainSym = c.form == PidForm::Series ? QStringLiteral("Kc'") : QStringLiteral("Kp");
+    const double gain = series ? pid.kp * (1.0 + q) / 2.0 : pid.kp;
+    const double gainPct = pb ? gain * *spans.pv / *spans.co : gain;
+    const double tiUsed = hasI ? (series ? *pid.ti * (1.0 + q) / 2.0 : *pid.ti) : 0.0;
+    QStringList lines;
+
+    if (part == 0) {
+        if (series) {
+            lines << QStringLiteral(u"Kc' = Kp (1 + √r) / 2 with r = 1 - 4 Td / Ti = %1").arg(g4(r));
+            lines << QStringLiteral(u"Kc' = %1 (1 + √%2) / 2 = %3").arg(g4p(pid.kp), g4p(r), g4(gain));
+        }
+        if (pb) {
+            lines << QStringLiteral(u"PB = 100 / (%1 × PV span / CO span)").arg(gainSym);
+            lines << QStringLiteral(u"PB = 100 / (%1 × %2 / %3) = %4 %")
+                         .arg(g4p(gain), g4p(*spans.pv), g4p(*spans.co),
+                              g4(gainPct != 0.0 ? 100.0 / gainPct : kNaN));
+        }
+    } else if (part == 1 && hasI) {
+        if (c.form == PidForm::Parallel) {
+            const QString kpS = pb ? QStringLiteral("Kp%") : QStringLiteral("Kp");
+            lines << QStringLiteral("Ki = %1 / Ti").arg(kpS);
+            lines << QStringLiteral("Ki = %1 / %2 = %3 1/%4")
+                         .arg(g4p(gainPct), g4p(*pid.ti * tf), g4(gainPct / (*pid.ti * tf)), unit);
+            if (pb)
+                lines << QStringLiteral(u"Kp% = Kp × PV span / CO span = %1").arg(g4(gainPct));
+        } else {
+            const QString tiSym = c.form == PidForm::Series ? QStringLiteral("Ti'") : QStringLiteral("Ti");
+            if (series) {
+                lines << QStringLiteral(u"Ti' = Ti (1 + √r) / 2 with r = 1 - 4 Td / Ti = %1").arg(g4(r));
+                lines << QStringLiteral(u"Ti' = %1 (1 + √%2) / 2 = %3 s")
+                             .arg(g4p(*pid.ti), g4p(r), g4(tiUsed));
+            }
+            if (c.integral == IntegralUnit::RepeatsPerMinute) {
+                lines << QStringLiteral("Repeats/min = 60 / %1 (%1 in s)").arg(tiSym);
+                lines << QStringLiteral("Repeats/min = 60 / %1 = %2").arg(g4p(tiUsed), g4(60.0 / tiUsed));
+            } else if (minutes) {
+                lines << QStringLiteral("%1 = %2 s = %3 min").arg(tiSym, g4(tiUsed), g4(tiUsed / 60.0));
+            }
+        }
+    } else if (part == 2 && hasD) {
+        if (c.form == PidForm::Parallel) {
+            const QString kpS = pb ? QStringLiteral("Kp%") : QStringLiteral("Kp");
+            lines << QStringLiteral("Kd = %1 Td").arg(kpS);
+            lines << QStringLiteral(u"Kd = %1 × %2 = %3 %4")
+                         .arg(g4p(gainPct), g4p(*pid.td * tf), g4(gainPct * *pid.td * tf), unit);
+        } else if (series) {
+            lines << QStringLiteral(u"Td' = Ti (1 - √r) / 2 with r = 1 - 4 Td / Ti = %1").arg(g4(r));
+            const double tdUsed = *pid.ti * (1.0 - q) / 2.0;
+            lines << QStringLiteral(u"Td' = %1 (1 - √%2) / 2 = %3 s")
+                         .arg(g4p(*pid.ti), g4p(r), g4(tdUsed));
+        }
+    }
+    return lines;
+}
+
+QString appendLines(const QString &tooltip, const QStringList &lines)
+{
+    QString s = tooltip;
     for (const QString &line : lines) {
         if (!line.isEmpty())
             s += QStringLiteral("<br>") + rich::escaped(line);

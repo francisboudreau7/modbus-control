@@ -3,6 +3,7 @@
 // Internal helpers shared by AnalysisPanel and its pages (OpenLoopPage, ClosedLoopPage). Not a
 // contract: only the analysis panel's files include it.
 
+#include "PidForm.h"
 #include "StepAnalysis.h"
 #include "Tag.h"
 #include "Tuning.h"
@@ -55,6 +56,8 @@ struct Context {
     std::optional<double> pvSpan() const;
     std::optional<double> coSpan() const;
     bool percentGainsShown() const;
+    /// The PV and CO spans as PidSpans (for toForm / fromForm).
+    PidSpans pidSpans() const;
     /// The plot's cursors, null without a plot.
     const PlotCursors *cursors() const;
     bool hasBothCursors() const;
@@ -81,6 +84,23 @@ QString ruleName(TuningRule rule);
 QString tip(const QString &name, const QString &meaning, const QStringList &lines);
 /// Replaces %1..%5 in `format` (QString::arg would warn about unused numbers).
 QString substitute(QString format, const QStringList &values);
+
+/// Column headers of a PID table for the chosen controller form and units: "Kp" / "Kc'" / "PB (%)";
+/// "Ti (s)" / "Ti' (min)" / "Repeats/min" / "Ki (1/s)"; "Td (s)" / "Td' (s)" / "Kd (s)".
+struct PidColumnLabels {
+    QString gain;
+    QString integral;
+    QString derivative;
+};
+PidColumnLabels pidColumnLabels(const ControllerSettings &controller, bool minutes);
+/// Tooltip lines that show how one value of toForm() follows from the ideal settings, with the
+/// numbers (e.g. "Kc' = Kp (1 + √r) / 2 with r = 1 - 4 Td / Ti = 0.5"). part: 0 = gain,
+/// 1 = integral, 2 = derivative. Empty when there is nothing to convert or the form is
+/// unavailable.
+QStringList pidConversionLines(int part, const IdealPid &pid, const ControllerSettings &controller,
+                               const PidSpans &spans, bool minutes);
+/// `tooltip` (made by tip()) followed by more escaped lines, each after a "<br>".
+QString appendLines(const QString &tooltip, const QStringList &lines);
 
 QTableWidgetItem *makeItem(const QString &text, bool alignRight, const QString &toolTip = {});
 QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, double value,

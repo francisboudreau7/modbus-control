@@ -258,6 +258,33 @@ void AnalysisPanel::buildUi()
     col->addWidget(cursorsGroup);
     connect(m_findStepButton, &QPushButton::clicked, this, [this] { onFindStep(); });
 
+    // Controller: how the PID settings are shown (both modes)
+    auto *controllerGroup = new QGroupBox(tr("Controller"), body);
+    controllerGroup->setObjectName(QStringLiteral("controllerGroup"));
+    auto *ctl = new QHBoxLayout(controllerGroup);
+    m_formCombo = new QComboBox(controllerGroup);
+    m_formCombo->setObjectName(QStringLiteral("formCombo"));
+    for (PidForm f : {PidForm::Ideal, PidForm::Series, PidForm::Parallel})
+        m_formCombo->addItem(toString(f), static_cast<int>(f));
+    m_formCombo->setToolTip(
+        tr("Choose the form your controller uses; the app computes in the ideal form and converts."));
+    m_gainUnitCombo = new QComboBox(controllerGroup);
+    m_gainUnitCombo->setObjectName(QStringLiteral("gainUnitCombo"));
+    for (GainUnit g : {GainUnit::Gain, GainUnit::ProportionalBand})
+        m_gainUnitCombo->addItem(toString(g), static_cast<int>(g));
+    m_gainUnitCombo->setToolTip(tr("PB = 100 / Kp in %/%: needs the PV and CO ranges."));
+    m_integralUnitCombo = new QComboBox(controllerGroup);
+    m_integralUnitCombo->setObjectName(QStringLiteral("integralUnitCombo"));
+    for (IntegralUnit u : {IntegralUnit::Time, IntegralUnit::RepeatsPerMinute})
+        m_integralUnitCombo->addItem(toString(u), static_cast<int>(u));
+    m_integralUnitCombo->setToolTip(tr("Repeats per minute = 60 / Ti (Ti in s)."));
+    ctl->addWidget(m_formCombo, 2);
+    ctl->addWidget(m_gainUnitCombo, 1);
+    ctl->addWidget(m_integralUnitCombo, 1);
+    col->addWidget(controllerGroup);
+    for (QComboBox *c : {m_formCombo, m_gainUnitCombo, m_integralUnitCombo})
+        connect(c, &QComboBox::currentIndexChanged, this, [this] { onControllerChanged(); });
+
     // Mode switch and the pages
     auto *modeSwitch = new QWidget(body);
     modeSwitch->setObjectName(QStringLiteral("modeSwitch"));
@@ -482,6 +509,15 @@ void AnalysisPanel::normalizeSettings()
                    percents.end());
     m_ctx->settings.percents = percents.mid(0, kMaxPercents);
 
+    // Compared methods: fixed order, no duplicates, never Custom.
+    QList<ModelMethod> compare;
+    for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
+                          ModelMethod::Tangent}) {
+        if (m_ctx->settings.compareMethods.contains(m))
+            compare.append(m);
+    }
+    m_ctx->settings.compareMethods = compare;
+
     // Tags that are not in the project (deleted before the file was saved) mean "none".
     if (!m_ctx->tags.isEmpty()) {
         if (!m_ctx->tagById(m_ctx->settings.pvTagId))
@@ -586,6 +622,7 @@ void AnalysisPanel::rebuildPercentList()
 
 void AnalysisPanel::updateEnabled()
 {
+    m_integralUnitCombo->setEnabled(m_ctx->settings.controller.form != PidForm::Parallel);
     m_deltaCoSpin->setEnabled(m_coCombo->currentIndex() == 0);
     m_windowSpin->setEnabled(m_ctx->settings.reference == ReferenceMode::WindowMean);
 }
@@ -644,6 +681,15 @@ void AnalysisPanel::syncControlsFromSettings()
         const QSignalBlocker b10(m_pvMaxEdit);
         const QSignalBlocker b11(m_coMinSpin);
         const QSignalBlocker b12(m_coMaxSpin);
+        const QSignalBlocker b13(m_formCombo);
+        const QSignalBlocker b14(m_gainUnitCombo);
+        const QSignalBlocker b15(m_integralUnitCombo);
+        m_formCombo->setCurrentIndex(
+            std::max(0, m_formCombo->findData(static_cast<int>(m_ctx->settings.controller.form))));
+        m_gainUnitCombo->setCurrentIndex(
+            std::max(0, m_gainUnitCombo->findData(static_cast<int>(m_ctx->settings.controller.gain))));
+        m_integralUnitCombo->setCurrentIndex(std::max(
+            0, m_integralUnitCombo->findData(static_cast<int>(m_ctx->settings.controller.integral))));
         m_guideLinesCheck->setChecked(m_ctx->settings.guideLines);
         m_detailedLabelsCheck->setChecked(m_ctx->settings.detailedLabels);
         m_referenceCombo->setCurrentIndex(m_ctx->settings.reference == ReferenceMode::WindowMean ? 1 : 0);
@@ -706,6 +752,18 @@ void AnalysisPanel::onSpChanged()
     if (m_updating)
         return;
     m_ctx->settings.spTagId = m_spCombo->currentData().toUInt();
+    userChangedSettings();
+}
+
+void AnalysisPanel::onControllerChanged()
+{
+    if (m_updating)
+        return;
+    ControllerSettings &c = m_ctx->settings.controller;
+    c.form = static_cast<PidForm>(m_formCombo->currentData().toInt());
+    c.gain = static_cast<GainUnit>(m_gainUnitCombo->currentData().toInt());
+    c.integral = static_cast<IntegralUnit>(m_integralUnitCombo->currentData().toInt());
+    updateEnabled();
     userChangedSettings();
 }
 

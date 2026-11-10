@@ -71,6 +71,13 @@ struct Context;
 ///   output in the visible range." A step found with settled == false also shows the NotSettled
 ///   check, even when checkStep() does not report it: a private flag set by Find step is cleared by
 ///   the next cursor change that Find step did not make, and by a PV / CO / settings change.
+/// - v1.4.0: group "Controller" ("controllerGroup", shared by both modes, between group 2 and the
+///   mode switch): one row of three combo boxes = AnalysisSettings::controller. "formCombo"
+///   (PidForm: Ideal (ISA), Series (interacting), Parallel; toString()), "gainUnitCombo" (Kp /
+///   PB (%)), "integralUnitCombo" (Time / Repeats/min; disabled for Parallel, which always shows
+///   Ki). Each has a one-sentence tooltip. A user change recomputes both pages and emits
+///   settingsChanged() once; the app still computes in the ideal form and only converts what it
+///   shows (PidForm.h).
 /// - v1.4.0: mode switch "modeSwitch": two checkable, exclusive QToolButtons "openLoopButton"
 ///   "Open loop" and "closedLoopButton" "Closed loop" = AnalysisSettings::mode (default Open
 ///   loop). A click by the user emits settingsChanged() once (setSettings() does not); switching
@@ -81,10 +88,32 @@ struct Context;
 ///   (ClosedLoopPage.h) is filled by a later task; for now it shows the label
 ///   "closedLoopPlaceholder" "The closed-loop analysis is not available yet.".
 /// - Group "3. Model" ("modelGroup", on the open-loop page):
-///   * "methodCombo": the four ModelMethod values (toString), "fromSpin"/"toSpin" (0..99.99,
-///     enabled for Custom only; an edit that breaks a < b is reverted). A fresh panel (and
+///   * "methodCombo": the five ModelMethod values in the order 0 % / 63.2 %, Smith, Sundaresan,
+///     Tangent, Custom, "fromSpin"/"toSpin" (0..99.99, enabled for Custom only; an edit that breaks
+///     a < b is reverted). A fresh panel (and
 ///     File > New) shows the AnalysisSettings defaults (v1.3.5): Smith, 28.3 % / 63.2 % in the
 ///     spins, setpoint percents 0, 28.3 and 63.2.
+///   * v1.4.0, method Tangent: the spins show 0 % / 100 % (disabled) and a check box
+///     "tangentT632Check" "T from the 63.2 % point" (AnalysisSettings::tangentT632) is shown, only
+///     with Tangent. The tooltips of L and T give the construction: "L = time the tangent reaches
+///     y0 - step time", "T = ΔPV / slope" (or "T = t63.2 - step time - L"), with the numbers. The
+///     overlay is the tangent drawn from its crossing of y0 to its crossing of y100 (dashed, model
+///     colour, title "<name> tangent", not in the legend) with a small marker at the tangent point,
+///     only while the PV is plotted and the result has a tangent. StepCheck::TangentNoisy shows
+///     its sentence in the checks list.
+///   * v1.4.0, "Compare with:" ("compareRow") under resultsTable: check boxes
+///     "compare0632Check", "compareSmithCheck", "compareSundaresanCheck", "compareTangentCheck"
+///     = AnalysisSettings::compareMethods (kept in that fixed order, no duplicates, never Custom;
+///     setSettings() normalises a loaded list). The selected method's own box is hidden (its state
+///     is kept) and it is never compared with itself. For each compared method analyzeStep() runs
+///     with that method (all other settings unchanged) into a row of "compareTable" (columns Method,
+///     L (s), T (s), Fit error; the selected method first, marked "(used for tuning)"; tooltips of
+///     the L, T and Fit cells explain that method's numbers); the table is hidden when nothing is
+///     compared. While compared (showModel or not), each method's model curve is drawn on the
+///     plot (the PV's when plotted) like the main model curve but dotted, dash-dotted, dash-dot-dot
+///     (the Tangent one with a long-dash pattern), in the model colour, title
+///     "<name> model (<method>)", not in the legend. "Copy results" includes compareTable while it
+///     is shown. The selected method alone drives the tuning.
 ///   * "checksList" also shows StepCheck::DeadTimeFromFirstMove (checkStep() with the settings)
 ///     when the lower model point is 0 % and the rule is Ziegler-Nichols or Cohen-Coon; it
 ///     follows the method and rule combos.
@@ -110,15 +139,27 @@ struct Context;
 ///       step.";
 ///     DeadTimeDominant "L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be
 ///       aggressive; prefer IMC / lambda or SIMC.";
-///     FitPoor "The model does not fit the response well (fit error > 8 %)."
+///     FitPoor "The model does not fit the response well (fit error > 8 %).";
+///     v1.4.0, computed by the page (not a StepCheck), shown last: "CO moved by itself": a CO tag is
+///     chosen and, from the step time + L (+ 1 s when there is no L) to C2, the CO tag changes by
+///     more than 10 % of |ΔCO| between two consecutive samples, or between the first and the last
+///     sample of that window: "The controller output changes after the step: the loop looks
+///     closed. Put the controller in manual for an open-loop test, or use the Closed loop area."
 /// - Group "4. Tuning" ("tuningGroup", on the open-loop page):
 ///   * "ruleCombo" (TuningRule, toString); "lambdaSpin" ("λ", s, 0..1e6, special value "Auto (= L)"
 ///     at 0; enabled for IMC / lambda and SIMC); "minutesCheck" "Ti, Td in minutes".
 ///   * "tuningTable": rows P, PI, PID; columns Kp, Kp (%/%) (only when both ranges are set), Ti,
 ///     Td; values from tune(K, L, T, rule, lambdaS); "—" for a missing value, "not defined" across
 ///     the row for an unavailable row. Empty (no rows) while K, L or T is missing or L <= 0.
+///     v1.4.0: the values and headers follow the Controller group, through toForm() of the ideal
+///     row: gain "Kp" (Ideal, Parallel) / "Kc'" (Series) or "PB (%)"; integral "Ti (s|min)" /
+///     "Ti' (s|min)" / "Repeats/min" / "Ki (1/s|1/min)"; derivative "Td (s|min)" / "Td' (s|min)" /
+///     "Kd (s|min)". The Kp (%/%) column stays only for Ideal with Kp (PB is already the percent
+///     form). A row whose form is unavailable (Series with Ti < 4 Td, PB without the ranges) shows
+///     the reason across the row, like "not defined". The tooltips keep the rule's formula first,
+///     then the conversion with the numbers (pidConversionLines())
 ///   * "tuningNote": "Ideal (ISA) form: u = Kp (e + 1/Ti ∫e dt + Td de/dt). Ti and Td in s." (or
-///     "in min"); when K < 0 it adds "K is negative: the controller must be direct acting (Kp is
+///     "in min"); for Series and Parallel it adds "Converted from the ideal form."; when K < 0 it adds "K is negative: the controller must be direct acting (Kp is
 ///     shown negative)."
 /// - Setpoints page (setpointsPage(), object name "setpointsPage"; not in the panel's layout: the
 ///   main window shows it in its own "Setpoints" dock): "Show setpoints on" list ("setpointTagList",
@@ -250,6 +291,7 @@ private:
     void onPvChanged();
     void onCoChanged();
     void onSpChanged();
+    void onControllerChanged();
     void onRangesChanged();
     void onAddPercent();
     void onRemovePercent();
@@ -278,6 +320,9 @@ private:
     QLabel *m_cursorLabel = nullptr;
     QPushButton *m_findStepButton = nullptr;
     QLabel *m_hintLabel = nullptr;
+    QComboBox *m_formCombo = nullptr;
+    QComboBox *m_gainUnitCombo = nullptr;
+    QComboBox *m_integralUnitCombo = nullptr;
     QToolButton *m_openLoopButton = nullptr;
     QToolButton *m_closedLoopButton = nullptr;
     QStackedWidget *m_modeStack = nullptr;
