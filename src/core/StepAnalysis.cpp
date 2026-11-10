@@ -123,6 +123,80 @@ double interpolateCrossing(double ta, double va, double tb, double vb, double ta
     return ta + (target - va) / dv * (tb - ta);
 }
 
+/// Standard deviation (n - 1) of the raw samples of `tag` in [from, to]; nullopt with fewer than
+/// 3 samples.
+std::optional<double> rawStdDev(const Recorder &recorder, TagId tag, double from, double to)
+{
+    const Series s = dropNaN(extractRows(recorder, tag, from, to));
+    if (s.t.size() < 3) {
+        return std::nullopt;
+    }
+    const double n = double(s.t.size());
+    double mean = 0.0;
+    for (const double v : s.v) {
+        mean += v;
+    }
+    mean /= n;
+    double ss = 0.0;
+    for (const double v : s.v) {
+        ss += (v - mean) * (v - mean);
+    }
+    return std::sqrt(ss / (n - 1.0));
+}
+
+/// Steepest point of a series in direction `dir` (+1 rising, -1 falling): the slope is the
+/// least-squares line over the samples within +-widthS/2 of each sample (at least 3 samples);
+/// the point is the line's value at that sample time. nullopt when no window qualifies or the
+/// steepest slope is not in the step's direction.
+std::optional<StepResult::TangentLine> steepestTangent(const Series &s, double dir, double widthS)
+{
+    const qsizetype n = s.t.size();
+    if (n < 3) {
+        return std::nullopt;
+    }
+    // Prefix sums of centred values (time from the first sample, value from the first value).
+    const double tRef = s.t.first();
+    const double vRef = s.v.first();
+    QList<double> st(n + 1, 0.0), sv(n + 1, 0.0), stt(n + 1, 0.0), stv(n + 1, 0.0);
+    for (qsizetype i = 0; i < n; ++i) {
+        const double x = s.t[i] - tRef;
+        const double y = s.v[i] - vRef;
+        st[i + 1] = st[i] + x;
+        sv[i + 1] = sv[i] + y;
+        stt[i + 1] = stt[i] + x * x;
+        stv[i + 1] = stv[i] + x * y;
+    }
+    const double half = widthS / 2.0;
+    double bestSlope = 0.0;
+    std::optional<StepResult::TangentLine> best;
+    for (qsizetype i = 0; i < n; ++i) {
+        const qsizetype lo = std::lower_bound(s.t.begin(), s.t.end(), s.t[i] - half) - s.t.begin();
+        const qsizetype hi = std::upper_bound(s.t.begin(), s.t.end(), s.t[i] + half) - s.t.begin();
+        const double m = double(hi - lo);
+        if (m < 3.0) {
+            continue;
+        }
+        const double sumT = st[hi] - st[lo];
+        const double sumV = sv[hi] - sv[lo];
+        const double den = m * (stt[hi] - stt[lo]) - sumT * sumT;
+        if (!(den > 0.0)) {
+            continue;
+        }
+        const double slope = (m * (stv[hi] - stv[lo]) - sumT * sumV) / den;
+        if (slope * dir > bestSlope) {
+            bestSlope = slope * dir;
+            const double meanT = sumT / m;
+            const double meanV = sumV / m;
+            StepResult::TangentLine line;
+            line.time = s.t[i];
+            line.value = vRef + meanV + slope * ((s.t[i] - tRef) - meanT);
+            line.slope = slope;
+            best = line;
+        }
+    }
+    return best;
+}
+
 } // namespace
 
 QList<double> smoothValues(const QList<double> &times, const QList<double> &values, double widthS)
@@ -364,7 +438,33 @@ StepResult analyzeStep(const Recorder &recorder, TagId pvTag, double t1, double 
     const auto [percentA, percentB] = modelPercents(settings);
     const double a = percentA / 100.0;
     const double b = percentB / 100.0;
-    if (a >= 0.0 && a < b && b < 1.0) {
+    if (settings.method == ModelMethod::Tangent) {
+        // Steepest-slope tangent on the smoothed rows of [t1, t2].
+        const Series smooth = dropNaN(rows.t, smoothValues(rows.t, rows.v, settings.smoothingS));
+        double interval = 0.0;
+        if (smooth.t.size() >= 2) {
+            interval = (smooth.t.last() - smooth.t.first()) / double(smooth.t.size() - 1);
+        }
+        const double width = std::max(settings.smoothingS, 5.0 * interval);
+        const double dir = r.deltaPv > 0.0 ? 1.0 : -1.0;
+        if (const auto line = steepestTangent(smooth, dir, width)) {
+            r.tangent = line;
+            const double reachY0 = line->time + (r.y0 - line->value) / line->slope;
+            const double L = reachY0 - r.stepTime;
+            std::optional<double> T;
+            if (settings.tangentT632) {
+                if (const auto t632 = findCrossingTime(search.t, search.v, r.y0, r.y100, 63.2)) {
+                    T = *t632 - r.stepTime - L;
+                }
+            } else {
+                T = r.deltaPv / line->slope;
+            }
+            if (T && *T > 0.0) {
+                r.timeConstant = T;
+                r.deadTime = L;
+            }
+        }
+    } else if (a >= 0.0 && a < b && b < 1.0) {
         // Searched on the same series even when a / b are not in settings.percents.
         const auto ta = findCrossingTime(search.t, search.v, r.y0, r.y100, percentA);
         const auto tb = findCrossingTime(search.t, search.v, r.y0, r.y100, percentB);
@@ -625,12 +725,22 @@ QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result,
                                 || settings.tuningRule == TuningRule::CohenCoon;
     const bool lowerIsZero = settings.method != ModelMethod::Tangent
                              && std::abs(modelPercents(settings).first) < 1e-9;
+    const auto insertInOrder = [&out](StepCheck check) {
+        qsizetype pos = 0;
+        while (pos < out.size() && out.at(pos) < check)
+            ++pos;
+        out.insert(pos, check);
+    };
     if (ruleDividesByL && lowerIsZero && result.deadTime && *result.deadTime > 0.0
         && result.timeConstant && *result.timeConstant > 0.0) {
-        qsizetype pos = 0;
-        while (pos < out.size() && out.at(pos) < StepCheck::DeadTimeFromFirstMove)
-            ++pos;
-        out.insert(pos, StepCheck::DeadTimeFromFirstMove); // keep enum order
+        insertInOrder(StepCheck::DeadTimeFromFirstMove);
+    }
+    if (settings.method == ModelMethod::Tangent && !(settings.smoothingS > 0.0)) {
+        const double span = result.t2 - result.t1;
+        const auto sd = rawStdDev(recorder, result.tagId, result.t1 - 0.1 * span, result.t1);
+        if (sd && *sd > 0.02 * std::abs(result.deltaPv)) {
+            insertInOrder(StepCheck::TangentNoisy);
+        }
     }
     return out;
 }
