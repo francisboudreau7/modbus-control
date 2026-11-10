@@ -1,16 +1,17 @@
 #include "AnalysisPanel.h"
 
+#include "AnalysisCommon.h"
 #include "ClipboardCopy.h"
+#include "ClosedLoopPage.h"
+#include "OpenLoopPage.h"
 #include "PlotCursors.h"
 #include "NumberSpinBox.h"
 #include "NumberText.h"
 #include "Recorder.h"
-#include "RichText.h"
 #include "TrendPlot.h"
 
 #include <qwt_interval.h>
 #include <qwt_plot.h>
-#include <qwt_plot_curve.h>
 #include <qwt_plot_item.h>
 #include <qwt_plot_marker.h>
 #include <qwt_scale_map.h>
@@ -18,14 +19,13 @@
 #include <qwt_text.h>
 
 #include <QAbstractItemView>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QClipboard>
 #include <QColor>
-#include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
-#include <QDoubleValidator>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -40,13 +40,14 @@
 #include <QPainter>
 #include <QPen>
 #include <QPushButton>
-#include <QResizeEvent>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QStackedWidget>
 #include <QStringList>
-#include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -54,159 +55,12 @@
 
 namespace mb {
 
-namespace {
+using namespace analysis;
 
-const QString kDash = QStringLiteral(u"—");  // em dash: missing value
-const QString kDelta = QStringLiteral(u"Δ");
-const QString kMinus = QStringLiteral(u"−");
-const QString kTimes = QStringLiteral(u"×");
+namespace {
 
 constexpr int kMaxPercents = 20;
 constexpr int kGuideRtti = QwtPlotItem::Rtti_PlotUserItem + 1;
-constexpr int kModelPoints = 400;
-
-/// 4 significant digits (tables and tooltips); "—" for NaN / infinite.
-QString g4(double v)
-{
-    return std::isfinite(v) ? QString::number(v, 'g', 4) : kDash;
-}
-
-QString g4(std::optional<double> v)
-{
-    return v ? g4(*v) : kDash;
-}
-
-/// Negative numbers in parentheses, for use inside formulas ("a - (-3)").
-QString g4p(double v)
-{
-    return v < 0.0 ? QStringLiteral("(") + g4(v) + QStringLiteral(")") : g4(v);
-}
-
-/// 6 significant digits (setpoint table).
-QString g6(double v)
-{
-    return std::isfinite(v) ? QString::number(v, 'g', 6) : kDash;
-}
-
-QString withUnit(const QString &number, const QString &unit)
-{
-    return unit.isEmpty() ? number : number + u' ' + unit;
-}
-
-QString fmtSeconds(double t)
-{
-    return QString::number(t, 'f', 3) + QStringLiteral(" s");
-}
-
-QString fmtPlain(double p)
-{
-    return QLocale::c().toString(p, 'g', 6);
-}
-
-QString fmtPercent(double p)
-{
-    return fmtPlain(p) + QStringLiteral(" %");
-}
-
-QString tagLabel(const Tag &tag)
-{
-    return tag.unit.isEmpty() ? tag.name
-                              : tag.name + QStringLiteral(" [") + tag.unit + QStringLiteral("]");
-}
-
-QString fitWord(double fitRmsPercent)
-{
-    switch (fitQuality(fitRmsPercent)) {
-    case FitQuality::Good:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Good");
-    case FitQuality::Acceptable:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Acceptable");
-    case FitQuality::Poor:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Poor");
-    }
-    return {};
-}
-
-/// Display names of the model methods and tuning rules (the core toString() names are English).
-QString methodName(ModelMethod method)
-{
-    switch (method) {
-    case ModelMethod::ZeroTo632:
-        return QCoreApplication::translate("mb::AnalysisPanel", "0 % / 63.2 % (two points)");
-    case ModelMethod::Smith:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Smith (28.3 % / 63.2 %)");
-    case ModelMethod::Sundaresan:
-        return QCoreApplication::translate("mb::AnalysisPanel",
-                                           "Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
-    case ModelMethod::Custom:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Custom");
-    case ModelMethod::Tangent:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Tangent (steepest slope)");
-    }
-    return toString(method);
-}
-
-QString ruleName(TuningRule rule)
-{
-    switch (rule) {
-    case TuningRule::ZieglerNichols:
-        return QCoreApplication::translate("mb::AnalysisPanel", "Ziegler-Nichols (open loop)");
-    case TuningRule::CohenCoon:
-    case TuningRule::ImcLambda:
-    case TuningRule::Simc:
-        break;
-    }
-    return toString(rule);
-}
-
-/// "name: meaning<br>line<br>line" - everything escaped, name in bold.
-QString tip(const QString &name, const QString &meaning, const QStringList &lines)
-{
-    QString s = rich::bold(name) + QStringLiteral(": ") + rich::escaped(meaning);
-    for (const QString &line : lines) {
-        if (!line.isEmpty())
-            s += QStringLiteral("<br>") + rich::escaped(line);
-    }
-    return s;
-}
-
-QTableWidgetItem *makeItem(const QString &text, bool alignRight, const QString &toolTip = {})
-{
-    auto *item = new QTableWidgetItem(text);
-    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-    if (alignRight)
-        item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    if (!toolTip.isEmpty())
-        item->setToolTip(toolTip);
-    return item;
-}
-
-QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, double value,
-                         QWidget *parent)
-{
-    auto *spin = new NumberSpinBox(parent);
-    spin->setObjectName(QLatin1String(name));
-    spin->setDecimals(decimals);
-    spin->setRange(lo, hi);
-    spin->setValue(value);
-    spin->setKeyboardTracking(false);
-    return spin;
-}
-
-void fitTableHeight(QTableWidget *t)
-{
-    int h = t->horizontalHeader()->sizeHint().height() + 2 * t->frameWidth() + 2;
-    for (int r = 0; r < t->rowCount(); ++r)
-        h += t->rowHeight(r);
-    t->setFixedHeight(h);
-}
-
-void setupTable(QTableWidget *t)
-{
-    t->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    t->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    installCopyShortcut(t);
-}
 
 /// Setpoint marker: a white disc with a dark ring, so it stands out on a curve of any colour,
 /// and a small dot of the tag's colour in the middle to show which tag it belongs to.
@@ -280,73 +134,10 @@ private:
     QList<GuidePoint> m_points;
 };
 
-/// Replaces %1..%5 in `format` (QString::arg would warn about unused numbers).
-QString substitute(QString format, const QStringList &values)
-{
-    for (int i = values.size(); i >= 1; --i)
-        format.replace(QStringLiteral("%") + QString::number(i), values.at(i - 1));
-    return format;
-}
-
-/// Format string of a tuning cell: %1 = K, %2 = L, %3 = T, %4 = lambda, %5 = L/T. column 0 = Kp,
-/// 1 = Ti, 2 = Td. Empty when the rule has no such cell.
-QString tuningFormula(TuningRule rule, ControllerKind kind, int column)
-{
-    using K = ControllerKind;
-    switch (rule) {
-    case TuningRule::ZieglerNichols:
-        if (column == 0) {
-            return kind == K::P    ? QStringLiteral("%3 / (%1 × %2)")
-                   : kind == K::PI ? QStringLiteral("0.9 × %3 / (%1 × %2)")
-                                   : QStringLiteral("1.2 × %3 / (%1 × %2)");
-        }
-        if (column == 1 && kind == K::PI)
-            return QStringLiteral("%2 / 0.3");
-        if (column == 1 && kind == K::PID)
-            return QStringLiteral("2 × %2");
-        if (column == 2 && kind == K::PID)
-            return QStringLiteral("0.5 × %2");
-        return {};
-    case TuningRule::CohenCoon:
-        if (column == 0) {
-            return kind == K::P    ? QStringLiteral("(%3 / (%1 × %2)) × (1 + %5 / 3)")
-                   : kind == K::PI ? QStringLiteral("(%3 / (%1 × %2)) × (0.9 + %5 / 12)")
-                                   : QStringLiteral("(%3 / (%1 × %2)) × (4/3 + %5 / 4)");
-        }
-        if (column == 1 && kind == K::PI)
-            return QStringLiteral("%2 × (30 + 3 × %5) / (9 + 20 × %5)");
-        if (column == 1 && kind == K::PID)
-            return QStringLiteral("%2 × (32 + 6 × %5) / (13 + 8 × %5)");
-        if (column == 2 && kind == K::PID)
-            return QStringLiteral("4 × %2 / (11 + 2 × %5)");
-        return {};
-    case TuningRule::ImcLambda:
-        if (kind == K::PI) {
-            return column == 0   ? QStringLiteral("%3 / (%1 × (%4 + %2))")
-                   : column == 1 ? QStringLiteral("%3")
-                                 : QString();
-        }
-        if (kind == K::PID) {
-            return column == 0   ? QStringLiteral("(%3 + %2 / 2) / (%1 × (%4 + %2 / 2))")
-                   : column == 1 ? QStringLiteral("%3 + %2 / 2")
-                                 : QStringLiteral("%3 × %2 / (2 × %3 + %2)");
-        }
-        return {};
-    case TuningRule::Simc:
-        if (kind == K::P || kind == K::PI) {
-            if (column == 0)
-                return QStringLiteral("%3 / (%1 × (%4 + %2))");
-            if (column == 1 && kind == K::PI)
-                return QStringLiteral("min(%3, 4 × (%4 + %2))");
-        }
-        return {};
-    }
-    return {};
-}
-
 } // namespace
 
-AnalysisPanel::AnalysisPanel(QWidget *parent) : QWidget(parent)
+AnalysisPanel::AnalysisPanel(QWidget *parent)
+    : QWidget(parent), m_ctx(std::make_unique<Context>())
 {
     buildUi();
     syncControlsFromSettings();
@@ -355,7 +146,7 @@ AnalysisPanel::AnalysisPanel(QWidget *parent) : QWidget(parent)
 
 AnalysisPanel::~AnalysisPanel()
 {
-    clearOverlays(true);
+    clearOverlays();
 }
 
 QWidget *AnalysisPanel::setpointsPage() const
@@ -406,6 +197,10 @@ void AnalysisPanel::buildUi()
            "choose \"Typed ΔCO\" to enter ΔCO by hand."));
     m_deltaCoSpin = makeSpin("deltaCoSpin", -1e9, 1e9, 4, 0.0, signalsGroup);
     m_deltaCoSpin->setToolTip(tr("Change of the controller output (0 = unknown, no gain K)."));
+    m_spCombo = new QComboBox(signalsGroup);
+    m_spCombo->setObjectName(QStringLiteral("spCombo"));
+    m_spCombo->setToolTip(tr("The setpoint (SP) of the control loop, used by the closed-loop "
+                             "analysis. Choose \"Typed\" to enter it by hand there."));
     m_pvMinEdit = new QLineEdit(signalsGroup);
     m_pvMinEdit->setObjectName(QStringLiteral("pvMinEdit"));
     m_pvMinEdit->setPlaceholderText(tr("PV min"));
@@ -427,17 +222,20 @@ void AnalysisPanel::buildUi()
     sg->addWidget(m_coCombo, 1, 1, 1, 2);
     sg->addWidget(new QLabel(kDelta + tr("CO (typed)"), signalsGroup), 2, 0);
     sg->addWidget(m_deltaCoSpin, 2, 1, 1, 2);
-    sg->addWidget(new QLabel(tr("Ranges for %/% gains"), signalsGroup), 3, 0, 1, 3);
-    sg->addWidget(new QLabel(tr("PV"), signalsGroup), 4, 0);
-    sg->addWidget(m_pvMinEdit, 4, 1);
-    sg->addWidget(m_pvMaxEdit, 4, 2);
-    sg->addWidget(new QLabel(tr("CO"), signalsGroup), 5, 0);
-    sg->addWidget(m_coMinSpin, 5, 1);
-    sg->addWidget(m_coMaxSpin, 5, 2);
+    sg->addWidget(new QLabel(tr("Setpoint (SP)"), signalsGroup), 3, 0);
+    sg->addWidget(m_spCombo, 3, 1, 1, 2);
+    sg->addWidget(new QLabel(tr("Ranges for %/% gains"), signalsGroup), 4, 0, 1, 3);
+    sg->addWidget(new QLabel(tr("PV"), signalsGroup), 5, 0);
+    sg->addWidget(m_pvMinEdit, 5, 1);
+    sg->addWidget(m_pvMaxEdit, 5, 2);
+    sg->addWidget(new QLabel(tr("CO"), signalsGroup), 6, 0);
+    sg->addWidget(m_coMinSpin, 6, 1);
+    sg->addWidget(m_coMaxSpin, 6, 2);
     col->addWidget(signalsGroup);
     connect(m_pvCombo, &QComboBox::currentIndexChanged, this, [this] { onPvChanged(); });
     connect(m_coCombo, &QComboBox::currentIndexChanged, this, [this] { onCoChanged(); });
     connect(m_deltaCoSpin, &QDoubleSpinBox::valueChanged, this, [this] { onCoChanged(); });
+    connect(m_spCombo, &QComboBox::currentIndexChanged, this, [this] { onSpChanged(); });
     connect(m_pvMinEdit, &QLineEdit::textChanged, this, [this] { onRangesChanged(); });
     connect(m_pvMaxEdit, &QLineEdit::textChanged, this, [this] { onRangesChanged(); });
     connect(m_coMinSpin, &QDoubleSpinBox::valueChanged, this, [this] { onRangesChanged(); });
@@ -460,119 +258,45 @@ void AnalysisPanel::buildUi()
     col->addWidget(cursorsGroup);
     connect(m_findStepButton, &QPushButton::clicked, this, [this] { onFindStep(); });
 
-    // 3. Model
-    auto *modelGroup = new QGroupBox(tr("3. Model"), body);
-    modelGroup->setObjectName(QStringLiteral("modelGroup"));
-    auto *mg = new QGridLayout(modelGroup);
-    m_methodCombo = new QComboBox(modelGroup);
-    m_methodCombo->setObjectName(QStringLiteral("methodCombo"));
-    for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
-                          ModelMethod::Custom})
-        m_methodCombo->addItem(methodName(m), static_cast<int>(m));
-    m_methodCombo->setToolTip(
-        tr("How L (dead time) and T (time constant) are found from two points of the response."));
-    m_fromSpin = makeSpin("fromSpin", 0.0, 99.99, 2, 0.0, modelGroup);
-    m_fromSpin->setSuffix(QStringLiteral(" %"));
-    m_toSpin = makeSpin("toSpin", 0.0, 99.99, 2, 63.2, modelGroup);
-    m_toSpin->setSuffix(QStringLiteral(" %"));
-    m_resultsTable = new QTableWidget(0, 2, modelGroup);
-    m_resultsTable->setObjectName(QStringLiteral("resultsTable"));
-    m_resultsTable->setHorizontalHeaderLabels({tr("Quantity"), tr("Value")});
-    m_resultsTable->verticalHeader()->setVisible(false);
-    m_resultsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_resultsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    m_resultsTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setupTable(m_resultsTable);
-    m_showModelCheck = new QCheckBox(tr("Show model curve"), modelGroup);
-    m_showModelCheck->setObjectName(QStringLiteral("showModelCheck"));
-    m_checksList = new QListWidget(modelGroup);
-    m_checksList->setObjectName(QStringLiteral("checksList"));
-    m_checksList->setSelectionMode(QAbstractItemView::NoSelection);
-    m_checksList->setFocusPolicy(Qt::NoFocus);
-    m_checksList->setWordWrap(true);
-    m_checksList->setTextElideMode(Qt::ElideNone);
-    m_checksList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_checksList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    mg->addWidget(new QLabel(tr("Method"), modelGroup), 0, 0);
-    mg->addWidget(m_methodCombo, 0, 1, 1, 3);
-    mg->addWidget(new QLabel(tr("From %"), modelGroup), 1, 0);
-    mg->addWidget(m_fromSpin, 1, 1);
-    mg->addWidget(new QLabel(tr("To %"), modelGroup), 1, 2);
-    mg->addWidget(m_toSpin, 1, 3);
-    mg->addWidget(m_resultsTable, 2, 0, 1, 4);
-    m_modelColorButton = new QPushButton(modelGroup);
-    m_modelColorButton->setObjectName(QStringLiteral("modelColorButton"));
-    m_modelColorButton->setToolTip(tr("Colour of the model curve"));
-    m_modelColorButton->setFixedSize(28, 20);
-    m_pickColor = [](const QColor &initial, QWidget *parent) {
-        return QColorDialog::getColor(initial, parent, tr("Colour of the model curve"));
-    };
-    mg->addWidget(m_showModelCheck, 3, 0, 1, 3);
-    mg->addWidget(m_modelColorButton, 3, 3, Qt::AlignRight);
-    mg->addWidget(m_checksList, 4, 0, 1, 4);
-    col->addWidget(modelGroup);
-    connect(m_methodCombo, &QComboBox::currentIndexChanged, this, [this] { onMethodChanged(); });
-    connect(m_fromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
-    connect(m_toSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
-    connect(m_modelColorButton, &QPushButton::clicked, this, [this] { onPickModelColor(); });
-    connect(m_showModelCheck, &QCheckBox::toggled, this, [this](bool on) {
-        if (m_updating)
-            return;
-        m_settings.showModel = on;
-        userChangedSettings();
-    });
+    // Mode switch and the pages
+    auto *modeSwitch = new QWidget(body);
+    modeSwitch->setObjectName(QStringLiteral("modeSwitch"));
+    auto *ml = new QHBoxLayout(modeSwitch);
+    ml->setContentsMargins(0, 0, 0, 0);
+    ml->setSpacing(0);
+    m_openLoopButton = new QToolButton(modeSwitch);
+    m_openLoopButton->setObjectName(QStringLiteral("openLoopButton"));
+    m_openLoopButton->setText(tr("Open loop"));
+    m_openLoopButton->setToolTip(
+        tr("Open loop: identify a model from a step of the controller output and tune the "
+           "controller."));
+    m_closedLoopButton = new QToolButton(modeSwitch);
+    m_closedLoopButton->setObjectName(QStringLiteral("closedLoopButton"));
+    m_closedLoopButton->setText(tr("Closed loop"));
+    m_closedLoopButton->setToolTip(
+        tr("Closed loop: performance of a recorded response of the control loop."));
+    auto *modeGroup = new QButtonGroup(modeSwitch);
+    modeGroup->setExclusive(true);
+    for (QToolButton *b : {m_openLoopButton, m_closedLoopButton}) {
+        b->setCheckable(true);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        ml->addWidget(b);
+    }
+    modeGroup->addButton(m_openLoopButton, static_cast<int>(AnalysisMode::OpenLoop));
+    modeGroup->addButton(m_closedLoopButton, static_cast<int>(AnalysisMode::ClosedLoop));
+    m_openLoopButton->setChecked(true);
+    col->addWidget(modeSwitch);
+    connect(modeGroup, &QButtonGroup::idClicked, this,
+            [this](int id) { onModeClicked(static_cast<AnalysisMode>(id)); });
 
-    // 4. Tuning
-    auto *tuningGroup = new QGroupBox(tr("4. Tuning"), body);
-    tuningGroup->setObjectName(QStringLiteral("tuningGroup"));
-    auto *tg = new QGridLayout(tuningGroup);
-    m_ruleCombo = new QComboBox(tuningGroup);
-    m_ruleCombo->setObjectName(QStringLiteral("ruleCombo"));
-    for (TuningRule r : {TuningRule::ZieglerNichols, TuningRule::CohenCoon, TuningRule::ImcLambda,
-                         TuningRule::Simc})
-        m_ruleCombo->addItem(ruleName(r), static_cast<int>(r));
-    m_lambdaSpin = makeSpin("lambdaSpin", 0.0, 1e6, 2, 0.0, tuningGroup);
-    m_lambdaSpin->setSuffix(tr(" s"));
-    m_lambdaSpin->setSpecialValueText(tr("Auto (= L)"));
-    m_lambdaSpin->setToolTip(
-        tr("λ, the closed-loop time constant of IMC / lambda and SIMC (Auto = L)."));
-    m_minutesCheck = new QCheckBox(tr("Ti, Td in minutes"), tuningGroup);
-    m_minutesCheck->setObjectName(QStringLiteral("minutesCheck"));
-    m_tuningTable = new QTableWidget(0, 4, tuningGroup);
-    m_tuningTable->setObjectName(QStringLiteral("tuningTable"));
-    m_tuningTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_tuningTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setupTable(m_tuningTable);
-    m_tuningNote = new QLabel(tuningGroup);
-    m_tuningNote->setObjectName(QStringLiteral("tuningNote"));
-    m_tuningNote->setWordWrap(true);
-    tg->addWidget(new QLabel(tr("Rule"), tuningGroup), 0, 0);
-    tg->addWidget(m_ruleCombo, 0, 1, 1, 2);
-    tg->addWidget(new QLabel(QStringLiteral("λ"), tuningGroup), 1, 0);
-    tg->addWidget(m_lambdaSpin, 1, 1, 1, 2);
-    tg->addWidget(m_minutesCheck, 2, 0, 1, 3);
-    tg->addWidget(m_tuningTable, 3, 0, 1, 3);
-    tg->addWidget(m_tuningNote, 4, 0, 1, 3);
-    col->addWidget(tuningGroup);
-    connect(m_ruleCombo, &QComboBox::currentIndexChanged, this, [this] {
-        if (m_updating)
-            return;
-        m_settings.tuningRule = static_cast<TuningRule>(m_ruleCombo->currentData().toInt());
-        updateEnabled();
-        userChangedSettings();
-    });
-    connect(m_lambdaSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
-        if (m_updating)
-            return;
-        m_settings.lambdaS = v;
-        userChangedSettings();
-    });
-    connect(m_minutesCheck, &QCheckBox::toggled, this, [this](bool on) {
-        if (m_updating)
-            return;
-        m_settings.timeInMinutes = on;
-        userChangedSettings();
-    });
+    m_modeStack = new QStackedWidget(body);
+    m_modeStack->setObjectName(QStringLiteral("modeStack"));
+    const auto edited = [this] { userChangedSettings(); };
+    m_openLoopPage = new OpenLoopPage(m_ctx.get(), edited, m_modeStack);
+    m_closedLoopPage = new ClosedLoopPage(m_ctx.get(), edited, m_modeStack);
+    m_modeStack->addWidget(m_openLoopPage);
+    m_modeStack->addWidget(m_closedLoopPage);
+    col->addWidget(m_modeStack);
 
     // Setpoints page: its own dock in the main window (hidden child until reparented).
     m_setpointsPage = new QWidget(this);
@@ -655,7 +379,7 @@ void AnalysisPanel::buildUi()
     connect(m_referenceCombo, &QComboBox::currentIndexChanged, this, [this] {
         if (m_updating)
             return;
-        m_settings.reference = m_referenceCombo->currentData().toInt() == 1
+        m_ctx->settings.reference = m_referenceCombo->currentData().toInt() == 1
                                    ? ReferenceMode::WindowMean : ReferenceMode::CursorValue;
         updateEnabled();
         userChangedSettings();
@@ -663,13 +387,13 @@ void AnalysisPanel::buildUi()
     connect(m_windowSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         if (m_updating)
             return;
-        m_settings.referenceWindowS = v;
+        m_ctx->settings.referenceWindowS = v;
         userChangedSettings();
     });
     connect(m_smoothingSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         if (m_updating)
             return;
-        m_settings.smoothingS = v;
+        m_ctx->settings.smoothingS = v;
         userChangedSettings();
     });
     connect(m_addPercentButton, &QPushButton::clicked, this, [this] { onAddPercent(); });
@@ -677,21 +401,15 @@ void AnalysisPanel::buildUi()
     connect(m_detailedLabelsCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (m_updating)
             return;
-        m_settings.detailedLabels = on;
+        m_ctx->settings.detailedLabels = on;
         userChangedSettings();
     });
     connect(m_guideLinesCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (m_updating)
             return;
-        m_settings.guideLines = on;
+        m_ctx->settings.guideLines = on;
         userChangedSettings();
     });
-}
-
-void AnalysisPanel::resizeEvent(QResizeEvent *event)
-{
-    QWidget::resizeEvent(event);
-    rebuildChecks();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -699,31 +417,32 @@ void AnalysisPanel::resizeEvent(QResizeEvent *event)
 
 void AnalysisPanel::setRecorder(const Recorder *recorder)
 {
-    m_recorder = recorder;
+    m_ctx->recorder = recorder;
     recompute();
 }
 
 void AnalysisPanel::setPlot(TrendPlot *plot)
 {
-    if (plot == m_plot)
+    if (plot == m_ctx->plot)
         return;
-    clearOverlays(true);
+    clearOverlays();
     disconnect(m_cursorsConnection);
     disconnect(m_plotDestroyedConnection);
-    m_plot = plot;
-    if (m_plot) {
-        m_cursorsConnection = connect(m_plot->cursors(), &PlotCursors::cursorsChanged, this, [this] {
+    m_ctx->plot = plot;
+    if (m_ctx->plot) {
+        m_cursorsConnection = connect(m_ctx->plot->cursors(), &PlotCursors::cursorsChanged, this, [this] {
             if (!m_settingCursors) {
-                m_findNotSettled = false; // the user moved a cursor: Find step's verdict is stale
+                m_ctx->findNotSettled = false; // the user moved a cursor: Find step's verdict is stale
                 recompute();
             }
         });
         // The plot owns (and deletes) the overlay items when it goes away first.
-        m_plotDestroyedConnection = connect(m_plot, &QObject::destroyed, this, [this] {
+        m_plotDestroyedConnection = connect(m_ctx->plot, &QObject::destroyed, this, [this] {
             m_markers.clear();
             m_guideItems.clear();
-            m_modelCurves.clear();
-            m_plot = nullptr;
+            m_openLoopPage->forgetOverlays();
+            m_closedLoopPage->forgetOverlays();
+            m_ctx->plot = nullptr;
             recompute();
         });
     }
@@ -732,14 +451,17 @@ void AnalysisPanel::setPlot(TrendPlot *plot)
 
 void AnalysisPanel::setTags(const QList<Tag> &tags)
 {
-    m_tags = tags;
+    m_ctx->tags = tags;
     // Keep the PV / CO while their tags exist.
-    if (!tagById(m_settings.pvTagId))
-        m_settings.pvTagId = 0;
-    if (!tagById(m_settings.deltaCoTagId) || m_settings.deltaCoTagId == m_settings.pvTagId)
-        m_settings.deltaCoTagId = 0;
+    if (!m_ctx->tagById(m_ctx->settings.pvTagId))
+        m_ctx->settings.pvTagId = 0;
+    if (!m_ctx->tagById(m_ctx->settings.deltaCoTagId) || m_ctx->settings.deltaCoTagId == m_ctx->settings.pvTagId)
+        m_ctx->settings.deltaCoTagId = 0;
+    if (!m_ctx->tagById(m_ctx->settings.spTagId) || m_ctx->settings.spTagId == m_ctx->settings.pvTagId)
+        m_ctx->settings.spTagId = 0;
     rebuildPvCombo();
     rebuildCoCombo();
+    rebuildSpCombo();
     rebuildSetpointList();
     updateEnabled();
     recompute();
@@ -750,7 +472,7 @@ void AnalysisPanel::normalizeSettings()
     // Keep the list invariant (sorted, no duplicates, 0..100, at most 20) even for a hand-edited
     // project file.
     QList<double> percents;
-    for (double p : std::as_const(m_settings.percents)) {
+    for (double p : std::as_const(m_ctx->settings.percents)) {
         if (p >= 0.0 && p <= 100.0)
             percents.append(p);
     }
@@ -758,23 +480,27 @@ void AnalysisPanel::normalizeSettings()
     percents.erase(std::unique(percents.begin(), percents.end(),
                                [](double a, double b) { return std::abs(a - b) < 1e-9; }),
                    percents.end());
-    m_settings.percents = percents.mid(0, kMaxPercents);
+    m_ctx->settings.percents = percents.mid(0, kMaxPercents);
 
     // Tags that are not in the project (deleted before the file was saved) mean "none".
-    if (!m_tags.isEmpty()) {
-        if (!tagById(m_settings.pvTagId))
-            m_settings.pvTagId = 0;
-        if (!tagById(m_settings.deltaCoTagId))
-            m_settings.deltaCoTagId = 0;
+    if (!m_ctx->tags.isEmpty()) {
+        if (!m_ctx->tagById(m_ctx->settings.pvTagId))
+            m_ctx->settings.pvTagId = 0;
+        if (!m_ctx->tagById(m_ctx->settings.deltaCoTagId))
+            m_ctx->settings.deltaCoTagId = 0;
+        if (!m_ctx->tagById(m_ctx->settings.spTagId))
+            m_ctx->settings.spTagId = 0;
     }
-    if (m_settings.pvTagId != 0 && m_settings.deltaCoTagId == m_settings.pvTagId)
-        m_settings.deltaCoTagId = 0;
+    if (m_ctx->settings.pvTagId != 0 && m_ctx->settings.deltaCoTagId == m_ctx->settings.pvTagId)
+        m_ctx->settings.deltaCoTagId = 0;
+    if (m_ctx->settings.pvTagId != 0 && m_ctx->settings.spTagId == m_ctx->settings.pvTagId)
+        m_ctx->settings.spTagId = 0;
 }
 
 void AnalysisPanel::setSettings(const AnalysisSettings &settings)
 {
-    m_settings = settings;
-    m_findNotSettled = false;
+    m_ctx->settings = settings;
+    m_ctx->findNotSettled = false;
     normalizeSettings();
     syncControlsFromSettings();
     recompute();
@@ -782,70 +508,12 @@ void AnalysisPanel::setSettings(const AnalysisSettings &settings)
 
 AnalysisSettings AnalysisPanel::settings() const
 {
-    return m_settings;
+    return m_ctx->settings;
 }
 
 QList<StepResult> AnalysisPanel::results() const
 {
-    return m_results;
-}
-
-const Tag *AnalysisPanel::tagById(TagId id) const
-{
-    if (id == 0)
-        return nullptr;
-    for (const Tag &t : m_tags) {
-        if (t.id == id)
-            return t.isBit() ? nullptr : &t; // bit tags are never a PV, CO or setpoint tag
-    }
-    return nullptr;
-}
-
-bool AnalysisPanel::shownTag(const Tag *tag) const
-{
-    return tag && m_settings.setpointTagIds.contains(tag->id) && tag->plotted && !tag->isBit();
-}
-
-QString AnalysisPanel::pvUnit() const
-{
-    const Tag *t = tagById(m_settings.pvTagId);
-    return t ? t->unit : QString();
-}
-
-QString AnalysisPanel::coUnit() const
-{
-    const Tag *t = tagById(m_settings.deltaCoTagId);
-    return t ? t->unit : QString();
-}
-
-QString AnalysisPanel::kUnit() const
-{
-    const QString p = pvUnit();
-    const QString c = coUnit();
-    return (!p.isEmpty() && !c.isEmpty()) ? p + u'/' + c : QString();
-}
-
-std::optional<double> AnalysisPanel::pvSpan() const
-{
-    if (m_settings.pvRangeMin && m_settings.pvRangeMax) {
-        const double s = *m_settings.pvRangeMax - *m_settings.pvRangeMin;
-        if (s != 0.0 && std::isfinite(s))
-            return s;
-    }
-    return std::nullopt;
-}
-
-std::optional<double> AnalysisPanel::coSpan() const
-{
-    const double s = m_settings.coRangeMax - m_settings.coRangeMin;
-    if (s != 0.0 && std::isfinite(s))
-        return s;
-    return std::nullopt;
-}
-
-bool AnalysisPanel::percentGainsShown() const
-{
-    return pvSpan() && coSpan();
+    return m_ctx->results;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -856,11 +524,11 @@ void AnalysisPanel::rebuildPvCombo()
     const QSignalBlocker blocker(m_pvCombo);
     m_pvCombo->clear();
     m_pvCombo->addItem(tr("Choose..."), 0u);
-    for (const Tag &t : std::as_const(m_tags)) {
+    for (const Tag &t : std::as_const(m_ctx->tags)) {
         if (!t.isBit())
             m_pvCombo->addItem(tagLabel(t), t.id);
     }
-    const int idx = m_settings.pvTagId != 0 ? m_pvCombo->findData(m_settings.pvTagId) : -1;
+    const int idx = m_ctx->settings.pvTagId != 0 ? m_pvCombo->findData(m_ctx->settings.pvTagId) : -1;
     m_pvCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 }
 
@@ -869,25 +537,39 @@ void AnalysisPanel::rebuildCoCombo()
     const QSignalBlocker blocker(m_coCombo);
     m_coCombo->clear();
     m_coCombo->addItem(tr("Typed ΔCO"), 0u);
-    for (const Tag &t : std::as_const(m_tags)) {
-        if (!t.isBit() && (t.id != m_settings.pvTagId || m_settings.pvTagId == 0))
+    for (const Tag &t : std::as_const(m_ctx->tags)) {
+        if (!t.isBit() && (t.id != m_ctx->settings.pvTagId || m_ctx->settings.pvTagId == 0))
             m_coCombo->addItem(tagLabel(t), t.id);
     }
-    const int idx = m_settings.deltaCoTagId != 0 ? m_coCombo->findData(m_settings.deltaCoTagId) : -1;
+    const int idx = m_ctx->settings.deltaCoTagId != 0 ? m_coCombo->findData(m_ctx->settings.deltaCoTagId) : -1;
     m_coCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+}
+
+void AnalysisPanel::rebuildSpCombo()
+{
+    // Same rules as the CO combo: every non-bit tag except the PV.
+    const QSignalBlocker blocker(m_spCombo);
+    m_spCombo->clear();
+    m_spCombo->addItem(tr("Typed"), 0u);
+    for (const Tag &t : std::as_const(m_ctx->tags)) {
+        if (!t.isBit() && (t.id != m_ctx->settings.pvTagId || m_ctx->settings.pvTagId == 0))
+            m_spCombo->addItem(tagLabel(t), t.id);
+    }
+    const int idx = m_ctx->settings.spTagId != 0 ? m_spCombo->findData(m_ctx->settings.spTagId) : -1;
+    m_spCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 }
 
 void AnalysisPanel::rebuildSetpointList()
 {
     const QSignalBlocker blocker(m_setpointTagList);
     m_setpointTagList->clear();
-    for (const Tag &t : std::as_const(m_tags)) {
-        if (t.isBit() || (!t.plotted && t.id != m_settings.pvTagId))
+    for (const Tag &t : std::as_const(m_ctx->tags)) {
+        if (t.isBit() || (!t.plotted && t.id != m_ctx->settings.pvTagId))
             continue;
         auto *item = new QListWidgetItem(tagLabel(t), m_setpointTagList);
         item->setData(Qt::UserRole, t.id);
         item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
-        item->setCheckState(m_settings.setpointTagIds.contains(t.id) ? Qt::Checked : Qt::Unchecked);
+        item->setCheckState(m_ctx->settings.setpointTagIds.contains(t.id) ? Qt::Checked : Qt::Unchecked);
         item->setData(Qt::DecorationRole, QColor(t.color));
     }
 }
@@ -896,38 +578,50 @@ void AnalysisPanel::rebuildPercentList()
 {
     const QSignalBlocker blocker(m_percentList);
     m_percentList->clear();
-    for (double p : std::as_const(m_settings.percents)) {
+    for (double p : std::as_const(m_ctx->settings.percents)) {
         auto *item = new QListWidgetItem(fmtPercent(p), m_percentList);
         item->setData(Qt::UserRole, p);
     }
 }
 
-void AnalysisPanel::syncModelSpins()
-{
-    const QSignalBlocker b1(m_fromSpin);
-    const QSignalBlocker b2(m_toSpin);
-    if (m_settings.method == ModelMethod::Custom) {
-        m_fromSpin->setValue(m_settings.modelPercentA);
-        m_toSpin->setValue(m_settings.modelPercentB);
-    } else {
-        const auto ab = modelPercents(m_settings);
-        m_fromSpin->setValue(ab.first);
-        m_toSpin->setValue(ab.second);
-    }
-    m_prevFrom = m_fromSpin->value();
-    m_prevTo = m_toSpin->value();
-}
-
 void AnalysisPanel::updateEnabled()
 {
     m_deltaCoSpin->setEnabled(m_coCombo->currentIndex() == 0);
-    const bool custom = m_settings.method == ModelMethod::Custom;
-    m_fromSpin->setEnabled(custom);
-    m_toSpin->setEnabled(custom);
-    m_windowSpin->setEnabled(m_settings.reference == ReferenceMode::WindowMean);
-    const bool lam = m_settings.tuningRule == TuningRule::ImcLambda
-                     || m_settings.tuningRule == TuningRule::Simc;
-    m_lambdaSpin->setEnabled(lam);
+    m_windowSpin->setEnabled(m_ctx->settings.reference == ReferenceMode::WindowMean);
+}
+
+void AnalysisPanel::updateModeSwitch()
+{
+    // Only the shown page and the overlays on the plot change; nothing is recomputed. The hidden
+    // page's height is ignored so the stack is as tall as the shown page.
+    const bool open = m_ctx->settings.mode != AnalysisMode::ClosedLoop;
+    {
+        const QSignalBlocker b1(m_openLoopButton);
+        const QSignalBlocker b2(m_closedLoopButton);
+        m_openLoopButton->setChecked(open);
+        m_closedLoopButton->setChecked(!open);
+    }
+    QWidget *shown = open ? static_cast<QWidget *>(m_openLoopPage) : m_closedLoopPage;
+    QWidget *hidden = open ? static_cast<QWidget *>(m_closedLoopPage) : m_openLoopPage;
+    hidden->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
+    shown->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_modeStack->setCurrentWidget(shown);
+    m_modeStack->updateGeometry();
+    const bool changed = m_openLoopPage->overlaysShown() != open
+                         || m_closedLoopPage->overlaysShown() == open;
+    m_openLoopPage->setOverlaysShown(open);
+    m_closedLoopPage->setOverlaysShown(!open);
+    if (changed && m_ctx->plot)
+        m_ctx->plot->plot()->replot();
+}
+
+void AnalysisPanel::onModeClicked(AnalysisMode mode)
+{
+    if (m_updating || mode == m_ctx->settings.mode)
+        return;
+    m_ctx->settings.mode = mode;
+    updateModeSwitch();
+    emit settingsChanged();
 }
 
 void AnalysisPanel::syncControlsFromSettings()
@@ -936,45 +630,37 @@ void AnalysisPanel::syncControlsFromSettings()
     m_updating = true;
     rebuildPvCombo();
     rebuildCoCombo();
+    rebuildSpCombo();
     rebuildSetpointList();
     rebuildPercentList();
     {
         const QSignalBlocker b1(m_referenceCombo);
         const QSignalBlocker b2(m_windowSpin);
         const QSignalBlocker b3(m_smoothingSpin);
-        const QSignalBlocker b4(m_methodCombo);
         const QSignalBlocker b5(m_deltaCoSpin);
         const QSignalBlocker b6(m_detailedLabelsCheck);
         const QSignalBlocker b7(m_guideLinesCheck);
-        const QSignalBlocker b8(m_showModelCheck);
         const QSignalBlocker b9(m_pvMinEdit);
         const QSignalBlocker b10(m_pvMaxEdit);
         const QSignalBlocker b11(m_coMinSpin);
         const QSignalBlocker b12(m_coMaxSpin);
-        const QSignalBlocker b13(m_ruleCombo);
-        const QSignalBlocker b14(m_lambdaSpin);
-        const QSignalBlocker b15(m_minutesCheck);
-        m_guideLinesCheck->setChecked(m_settings.guideLines);
-        m_showModelCheck->setChecked(m_settings.showModel);
-        updateModelColorButton();
-        m_detailedLabelsCheck->setChecked(m_settings.detailedLabels);
-        m_referenceCombo->setCurrentIndex(m_settings.reference == ReferenceMode::WindowMean ? 1 : 0);
-        m_windowSpin->setValue(m_settings.referenceWindowS);
-        m_smoothingSpin->setValue(m_settings.smoothingS);
-        m_methodCombo->setCurrentIndex(std::max(0, m_methodCombo->findData(static_cast<int>(m_settings.method))));
-        m_deltaCoSpin->setValue(m_settings.manualDeltaCo);
-        m_pvMinEdit->setText(m_settings.pvRangeMin ? QLocale::c().toString(*m_settings.pvRangeMin, 'g', 10)
+        m_guideLinesCheck->setChecked(m_ctx->settings.guideLines);
+        m_detailedLabelsCheck->setChecked(m_ctx->settings.detailedLabels);
+        m_referenceCombo->setCurrentIndex(m_ctx->settings.reference == ReferenceMode::WindowMean ? 1 : 0);
+        m_windowSpin->setValue(m_ctx->settings.referenceWindowS);
+        m_smoothingSpin->setValue(m_ctx->settings.smoothingS);
+        m_deltaCoSpin->setValue(m_ctx->settings.manualDeltaCo);
+        m_pvMinEdit->setText(m_ctx->settings.pvRangeMin ? QLocale::c().toString(*m_ctx->settings.pvRangeMin, 'g', 10)
                                                    : QString());
-        m_pvMaxEdit->setText(m_settings.pvRangeMax ? QLocale::c().toString(*m_settings.pvRangeMax, 'g', 10)
+        m_pvMaxEdit->setText(m_ctx->settings.pvRangeMax ? QLocale::c().toString(*m_ctx->settings.pvRangeMax, 'g', 10)
                                                    : QString());
-        m_coMinSpin->setValue(m_settings.coRangeMin);
-        m_coMaxSpin->setValue(m_settings.coRangeMax);
-        m_ruleCombo->setCurrentIndex(std::max(0, m_ruleCombo->findData(static_cast<int>(m_settings.tuningRule))));
-        m_lambdaSpin->setValue(m_settings.lambdaS);
-        m_minutesCheck->setChecked(m_settings.timeInMinutes);
+        m_coMinSpin->setValue(m_ctx->settings.coRangeMin);
+        m_coMaxSpin->setValue(m_ctx->settings.coRangeMax);
     }
-    syncModelSpins();
     updateEnabled();
+    m_openLoopPage->syncFromSettings();
+    m_closedLoopPage->syncFromSettings();
+    updateModeSwitch();
     m_updating = was;
 }
 
@@ -989,13 +675,16 @@ void AnalysisPanel::onPvChanged()
     if (m_updating)
         return;
     const TagId id = m_pvCombo->currentData().toUInt();
-    m_findNotSettled = false;
-    m_settings.pvTagId = id;
-    if (id != 0 && !m_settings.setpointTagIds.contains(id))
-        m_settings.setpointTagIds.append(id);
-    if (id != 0 && m_settings.deltaCoTagId == id)
-        m_settings.deltaCoTagId = 0;
+    m_ctx->findNotSettled = false;
+    m_ctx->settings.pvTagId = id;
+    if (id != 0 && !m_ctx->settings.setpointTagIds.contains(id))
+        m_ctx->settings.setpointTagIds.append(id);
+    if (id != 0 && m_ctx->settings.deltaCoTagId == id)
+        m_ctx->settings.deltaCoTagId = 0;
+    if (id != 0 && m_ctx->settings.spTagId == id)
+        m_ctx->settings.spTagId = 0;
     rebuildCoCombo();
+    rebuildSpCombo();
     rebuildSetpointList();
     updateEnabled();
     userChangedSettings();
@@ -1005,40 +694,18 @@ void AnalysisPanel::onCoChanged()
 {
     if (m_updating)
         return;
-    m_findNotSettled = false;
-    m_settings.deltaCoTagId = m_coCombo->currentData().toUInt();
-    m_settings.manualDeltaCo = m_deltaCoSpin->value();
+    m_ctx->findNotSettled = false;
+    m_ctx->settings.deltaCoTagId = m_coCombo->currentData().toUInt();
+    m_ctx->settings.manualDeltaCo = m_deltaCoSpin->value();
     updateEnabled();
     userChangedSettings();
 }
 
-void AnalysisPanel::onMethodChanged()
+void AnalysisPanel::onSpChanged()
 {
     if (m_updating)
         return;
-    m_settings.method = static_cast<ModelMethod>(m_methodCombo->currentData().toInt());
-    syncModelSpins();
-    updateEnabled();
-    userChangedSettings();
-}
-
-void AnalysisPanel::onModelPercentChanged()
-{
-    if (m_updating || m_settings.method != ModelMethod::Custom)
-        return;
-    const double a = m_fromSpin->value();
-    const double b = m_toSpin->value();
-    if (!(a < b)) {
-        const QSignalBlocker b1(m_fromSpin);
-        const QSignalBlocker b2(m_toSpin);
-        m_fromSpin->setValue(m_prevFrom);
-        m_toSpin->setValue(m_prevTo);
-        return;
-    }
-    m_prevFrom = a;
-    m_prevTo = b;
-    m_settings.modelPercentA = a;
-    m_settings.modelPercentB = b;
+    m_ctx->settings.spTagId = m_spCombo->currentData().toUInt();
     userChangedSettings();
 }
 
@@ -1048,29 +715,29 @@ void AnalysisPanel::onRangesChanged()
         return;
     const auto pvMin = parseNumber(m_pvMinEdit->text());
     const auto pvMax = parseNumber(m_pvMaxEdit->text());
-    const bool changed = pvMin != m_settings.pvRangeMin || pvMax != m_settings.pvRangeMax
-                         || m_coMinSpin->value() != m_settings.coRangeMin
-                         || m_coMaxSpin->value() != m_settings.coRangeMax;
+    const bool changed = pvMin != m_ctx->settings.pvRangeMin || pvMax != m_ctx->settings.pvRangeMax
+                         || m_coMinSpin->value() != m_ctx->settings.coRangeMin
+                         || m_coMaxSpin->value() != m_ctx->settings.coRangeMax;
     if (!changed)
         return;
-    m_settings.pvRangeMin = pvMin;
-    m_settings.pvRangeMax = pvMax;
-    m_settings.coRangeMin = m_coMinSpin->value();
-    m_settings.coRangeMax = m_coMaxSpin->value();
+    m_ctx->settings.pvRangeMin = pvMin;
+    m_ctx->settings.pvRangeMax = pvMax;
+    m_ctx->settings.coRangeMin = m_coMinSpin->value();
+    m_ctx->settings.coRangeMax = m_coMaxSpin->value();
     userChangedSettings();
 }
 
 void AnalysisPanel::onAddPercent()
 {
-    if (m_updating || m_settings.percents.size() >= kMaxPercents)
+    if (m_updating || m_ctx->settings.percents.size() >= kMaxPercents)
         return;
     const double p = std::round(m_percentSpin->value() * 100.0) / 100.0;
-    for (double q : std::as_const(m_settings.percents)) {
+    for (double q : std::as_const(m_ctx->settings.percents)) {
         if (std::abs(q - p) < 1e-9)
             return;
     }
-    m_settings.percents.append(p);
-    std::sort(m_settings.percents.begin(), m_settings.percents.end());
+    m_ctx->settings.percents.append(p);
+    std::sort(m_ctx->settings.percents.begin(), m_ctx->settings.percents.end());
     rebuildPercentList();
     userChangedSettings();
 }
@@ -1080,9 +747,9 @@ void AnalysisPanel::onRemovePercent()
     if (m_updating)
         return;
     const int row = m_percentList->currentRow();
-    if (row < 0 || row >= m_settings.percents.size())
+    if (row < 0 || row >= m_ctx->settings.percents.size())
         return;
-    m_settings.percents.removeAt(row);
+    m_ctx->settings.percents.removeAt(row);
     rebuildPercentList();
     userChangedSettings();
 }
@@ -1093,10 +760,10 @@ void AnalysisPanel::onSetpointItemChanged(QListWidgetItem *item)
         return;
     const TagId id = item->data(Qt::UserRole).toUInt();
     const bool checked = item->checkState() == Qt::Checked;
-    if (checked && !m_settings.setpointTagIds.contains(id))
-        m_settings.setpointTagIds.append(id);
+    if (checked && !m_ctx->settings.setpointTagIds.contains(id))
+        m_ctx->settings.setpointTagIds.append(id);
     else if (!checked)
-        m_settings.setpointTagIds.removeAll(id);
+        m_ctx->settings.setpointTagIds.removeAll(id);
     else
         return;
     userChangedSettings();
@@ -1107,22 +774,22 @@ void AnalysisPanel::onSetpointItemChanged(QListWidgetItem *item)
 
 void AnalysisPanel::onFindStep()
 {
-    const TagId co = m_settings.deltaCoTagId;
-    const TagId pv = m_settings.pvTagId;
-    if (!m_recorder || !m_plot || co == 0 || pv == 0)
+    const TagId co = m_ctx->settings.deltaCoTagId;
+    const TagId pv = m_ctx->settings.pvTagId;
+    if (!m_ctx->recorder || !m_ctx->plot || co == 0 || pv == 0)
         return;
     m_hintOverride.clear();
-    m_findNotSettled = false;
-    if (m_recorder->size() < 2) {
+    m_ctx->findNotSettled = false;
+    if (m_ctx->recorder->size() < 2) {
         m_hintOverride = tr("No step found in the controller output in the visible range.");
         updateHint();
         return;
     }
-    const double first = m_recorder->timeAt(0);
-    const double last = m_recorder->timeAt(m_recorder->size() - 1);
+    const double first = m_ctx->recorder->timeAt(0);
+    const double last = m_ctx->recorder->timeAt(m_ctx->recorder->size() - 1);
     double from = first;
     double to = last;
-    if (QwtPlot *p = m_plot->plot()) {
+    if (QwtPlot *p = m_ctx->plot->plot()) {
         const QwtInterval iv = p->axisInterval(QwtPlot::xBottom);
         if (iv.isValid()) {
             from = std::max(first, iv.minValue());
@@ -1132,9 +799,9 @@ void AnalysisPanel::onFindStep()
     auto hasCoSamples = [&](double a, double b) {
         if (!(b > a))
             return false;
-        const auto range = m_recorder->rowRange(a, b);
+        const auto range = m_ctx->recorder->rowRange(a, b);
         for (qsizetype i = range.first; i < range.second; ++i) {
-            if (!std::isnan(m_recorder->valueAt(i, co)))
+            if (!std::isnan(m_ctx->recorder->valueAt(i, co)))
                 return true;
         }
         return false;
@@ -1143,18 +810,18 @@ void AnalysisPanel::onFindStep()
         from = first;
         to = last;
     }
-    const std::optional<StepWindow> w = findStep(*m_recorder, co, pv, from, to);
+    const std::optional<StepWindow> w = findStep(*m_ctx->recorder, co, pv, from, to);
     if (!w) {
         m_hintOverride = tr("No step found in the controller output in the visible range.");
         updateHint();
         return;
     }
-    PlotCursors *cur = m_plot->cursors();
+    PlotCursors *cur = m_ctx->plot->cursors();
     m_settingCursors = true;
     cur->setC1(w->c1);
     cur->setC2(w->c2);
     m_settingCursors = false;
-    m_findNotSettled = !w->settled;
+    m_ctx->findNotSettled = !w->settled;
     recompute();
 }
 
@@ -1163,10 +830,10 @@ void AnalysisPanel::onFindStep()
 
 void AnalysisPanel::rememberDataState()
 {
-    if (m_recorder && m_recorder->size() > 0) {
-        m_lastSize = m_recorder->size();
-        m_lastTime = m_recorder->timeAt(m_lastSize - 1);
-        m_lastEvicted = m_recorder->evictedCount();
+    if (m_ctx->recorder && m_ctx->recorder->size() > 0) {
+        m_lastSize = m_ctx->recorder->size();
+        m_lastTime = m_ctx->recorder->timeAt(m_lastSize - 1);
+        m_lastEvicted = m_ctx->recorder->evictedCount();
     } else {
         m_lastSize = 0;
         m_lastTime = 0.0;
@@ -1176,30 +843,29 @@ void AnalysisPanel::rememberDataState()
 void AnalysisPanel::recompute()
 {
     m_hintOverride.clear();
-    m_results.clear();
-    const PlotCursors *cur = m_plot ? m_plot->cursors() : nullptr;
-    if (m_recorder && cur && cur->hasC1() && cur->hasC2() && m_settings.pvTagId != 0) {
-        m_results.append(
-            analyzeStep(*m_recorder, m_settings.pvTagId, cur->c1(), cur->c2(), m_settings));
-        for (const Tag &t : std::as_const(m_tags)) {
+    m_ctx->results.clear();
+    const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
+    if (m_ctx->recorder && cur && cur->hasC1() && cur->hasC2() && m_ctx->settings.pvTagId != 0) {
+        m_ctx->results.append(
+            analyzeStep(*m_ctx->recorder, m_ctx->settings.pvTagId, cur->c1(), cur->c2(), m_ctx->settings));
+        for (const Tag &t : std::as_const(m_ctx->tags)) {
             // Unplotted setpoint tags show nothing, so they are not analysed either (the CSV
             // export then matches what the panel shows). The PV is analysed even unplotted.
-            if (t.id != m_settings.pvTagId && t.plotted && !t.isBit()
-                && m_settings.setpointTagIds.contains(t.id))
-                m_results.append(analyzeStep(*m_recorder, t.id, cur->c1(), cur->c2(), m_settings));
+            if (t.id != m_ctx->settings.pvTagId && t.plotted && !t.isBit()
+                && m_ctx->settings.setpointTagIds.contains(t.id))
+                m_ctx->results.append(analyzeStep(*m_ctx->recorder, t.id, cur->c1(), cur->c2(), m_ctx->settings));
         }
     }
     rememberDataState();
 
-    const bool valid = !m_results.isEmpty() && m_results.first().valid;
+    const bool valid = !m_ctx->results.isEmpty() && m_ctx->results.first().valid;
     m_copyResultsButton->setEnabled(valid);
     m_exportButton->setEnabled(valid);
 
     updateCursorLabel();
     updateFindButton();
-    rebuildResultsTable();
-    rebuildChecks();
-    rebuildTuningTable();
+    m_openLoopPage->recompute();
+    m_closedLoopPage->recompute();
     rebuildSetpointTable();
     rebuildOverlays();
     updateHint();
@@ -1208,7 +874,7 @@ void AnalysisPanel::recompute()
 
 void AnalysisPanel::updateCursorLabel()
 {
-    const PlotCursors *cur = m_plot ? m_plot->cursors() : nullptr;
+    const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
     const QString c1 = (cur && cur->hasC1()) ? fmtSeconds(cur->c1()) : kDash;
     const QString c2 = (cur && cur->hasC2()) ? fmtSeconds(cur->c2()) : kDash;
     m_cursorLabel->setText(QStringLiteral("C1 = %1, C2 = %2").arg(c1, c2));
@@ -1217,13 +883,13 @@ void AnalysisPanel::updateCursorLabel()
 void AnalysisPanel::updateHint()
 {
     QString text;
-    const PlotCursors *cur = m_plot ? m_plot->cursors() : nullptr;
-    if (m_settings.pvTagId == 0) {
+    const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
+    if (m_ctx->settings.pvTagId == 0) {
         text = tr("Choose the process value (PV) in step 1.");
     } else if (!(cur && cur->hasC1() && cur->hasC2())) {
         text = tr("Place C1 just before the step and C2 after the PV has settled, or click Find step.");
-    } else if (!m_results.isEmpty() && !m_results.first().valid) {
-        text = m_results.first().error;
+    } else if (!m_ctx->results.isEmpty() && !m_ctx->results.first().valid) {
+        text = m_ctx->results.first().error;
     }
     if (!m_hintOverride.isEmpty())
         text = m_hintOverride;
@@ -1233,11 +899,11 @@ void AnalysisPanel::updateHint()
 void AnalysisPanel::updateFindButton()
 {
     QString why;
-    if (m_settings.pvTagId == 0)
+    if (m_ctx->settings.pvTagId == 0)
         why = tr("Choose the process value (PV) in step 1.");
-    else if (m_settings.deltaCoTagId == 0)
+    else if (m_ctx->settings.deltaCoTagId == 0)
         why = tr("Choose the controller output (CO) in step 1: Find step looks for its step.");
-    else if (!m_recorder)
+    else if (!m_ctx->recorder)
         why = tr("There is no recording to search.");
     m_findStepButton->setEnabled(why.isEmpty());
     m_findStepButton->setToolTip(
@@ -1247,227 +913,13 @@ void AnalysisPanel::updateFindButton()
             : why);
 }
 
-void AnalysisPanel::rebuildResultsTable()
-{
-    m_resultsTable->setRowCount(0);
-    const StepResult *r = m_results.isEmpty() ? nullptr : &m_results.first();
-    const bool ok = r && r->valid;
-
-    struct Row {
-        Quantity q;
-        QString label;
-    };
-    QList<Row> rows = {
-        {Quantity::Y0, QStringLiteral("y0")},
-        {Quantity::Y100, QStringLiteral("y100")},
-        {Quantity::DeltaPv, kDelta + QStringLiteral("PV")},
-        {Quantity::DeltaCo, kDelta + QStringLiteral("CO")},
-        {Quantity::K, QStringLiteral("K")},
-    };
-    if (percentGainsShown())
-        rows.append({Quantity::KPct, QStringLiteral("K (%/%)")});
-    rows.append({{Quantity::L, QStringLiteral("L")},
-                 {Quantity::T, QStringLiteral("T")},
-                 {Quantity::LOverT, QStringLiteral("L/T")},
-                 {Quantity::Fit, tr("Fit error")}});
-
-    const QString pu = pvUnit();
-    for (const Row &row : std::as_const(rows)) {
-        QString value = kDash;
-        if (ok) {
-            switch (row.q) {
-            case Quantity::Y0:
-                value = withUnit(g4(r->y0), pu);
-                break;
-            case Quantity::Y100:
-                value = withUnit(g4(r->y100), pu);
-                break;
-            case Quantity::DeltaPv:
-                value = withUnit(g4(r->deltaPv), pu);
-                break;
-            case Quantity::DeltaCo:
-                value = r->deltaCo ? withUnit(g4(*r->deltaCo), coUnit()) : kDash;
-                break;
-            case Quantity::K:
-                value = r->gain ? withUnit(g4(*r->gain), kUnit()) : kDash;
-                break;
-            case Quantity::KPct:
-                if (r->gain)
-                    value = g4(*r->gain * *coSpan() / *pvSpan()) + QStringLiteral(" %/%");
-                break;
-            case Quantity::L:
-                value = r->deadTime ? g4(*r->deadTime) + QStringLiteral(" s") : kDash;
-                break;
-            case Quantity::T:
-                value = r->timeConstant ? g4(*r->timeConstant) + QStringLiteral(" s") : kDash;
-                break;
-            case Quantity::LOverT:
-                if (r->deadTime && r->timeConstant)
-                    value = g4(*r->deadTime / *r->timeConstant);
-                break;
-            case Quantity::Fit:
-                if (r->fitRms) {
-                    value = withUnit(g4(*r->fitRms), pu);
-                    if (r->fitRmsPercent) {
-                        value += QStringLiteral(" (") + QString::number(*r->fitRmsPercent, 'g', 3)
-                                 + QStringLiteral(" %) ") + kDash.at(0) + u' '
-                                 + fitWord(*r->fitRmsPercent);
-                    }
-                }
-                break;
-            }
-        }
-        const QString toolTip = explainResult(row.q, ok ? r : nullptr);
-        const int n = m_resultsTable->rowCount();
-        m_resultsTable->insertRow(n);
-        m_resultsTable->setItem(n, 0, makeItem(row.label, false, toolTip));
-        m_resultsTable->setItem(n, 1, makeItem(value, true, toolTip));
-    }
-    fitTableHeight(m_resultsTable);
-}
-
-void AnalysisPanel::rebuildChecks()
-{
-    m_checksList->clear();
-    if (m_recorder && !m_results.isEmpty() && m_results.first().valid) {
-        const auto ab = modelPercents(m_settings);
-        const QIcon icon = style()->standardIcon(QStyle::SP_MessageBoxWarning);
-        QList<StepCheck> checks = checkStep(*m_recorder, m_results.first(), m_settings);
-        // Find step reported that the PV never settled before the end of the range: say so even
-        // when the slope test at C2 does not fire (noisy or flat end).
-        if (m_findNotSettled && !checks.contains(StepCheck::NotSettled)) {
-            qsizetype pos = 0;
-            while (pos < checks.size() && checks.at(pos) < StepCheck::NotSettled)
-                ++pos;
-            checks.insert(pos, StepCheck::NotSettled); // keep enum order
-        }
-        const int textWidth = std::max(120, m_checksList->viewport()->width() - 40);
-        int total = 4;
-        for (StepCheck c : checks) {
-            QString text;
-            switch (c) {
-            case StepCheck::NoDeltaCo:
-                if (m_settings.deltaCoTagId != 0) {
-                    text = tr("The controller output (CO) does not change between the cursors: K "
-                              "can't be computed. Move the cursors around the step.");
-                } else {
-                    text = tr("K can't be computed: choose the controller output (CO) or type ΔCO "
-                              "in step 1.");
-                }
-                break;
-            case StepCheck::NoModel:
-                text = tr("L and T can't be computed: the PV does not reach both model points "
-                          "(%1 % and %2 %) between the cursors.")
-                           .arg(fmtPlain(ab.first), fmtPlain(ab.second));
-                break;
-            case StepCheck::NotSettled:
-                text = tr("The PV is still moving at C2: move C2 later.");
-                break;
-            case StepCheck::SmallStep:
-                text = tr("The step is small compared with the noise: the results are uncertain.");
-                break;
-            case StepCheck::NegativeDeadTime:
-                text = tr("L is negative: C1 is after the start of the response. Move C1 before "
-                          "the step.");
-                break;
-            case StepCheck::DeadTimeDominant:
-                text = tr("L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be "
-                          "aggressive; prefer IMC / lambda or SIMC.");
-                break;
-            case StepCheck::DeadTimeFromFirstMove:
-                text = tr("L is taken at the first movement of the PV, so lags such as transmitter "
-                          "damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon "
-                          "then give a Kp that is too high: choose the Smith method, or IMC / "
-                          "lambda or SIMC.");
-                break;
-            case StepCheck::TangentNoisy:
-                text = tr("The tangent is taken on noisy data, so its slope is uncertain. Set a "
-                          "smoothing S, or choose the Smith method.");
-                break;
-            case StepCheck::FitPoor:
-                text = tr("The model does not fit the response well (fit error > 8 %).");
-                break;
-            }
-            auto *item = new QListWidgetItem(icon, text, m_checksList);
-            item->setFlags(Qt::ItemIsEnabled);
-            item->setToolTip(text);
-            const int h = m_checksList->fontMetrics()
-                              .boundingRect(0, 0, textWidth, 2000, Qt::TextWordWrap, text)
-                              .height()
-                          + 8;
-            item->setSizeHint(QSize(0, std::max(h, 24)));
-            total += std::max(h, 24);
-        }
-        m_checksList->setFixedHeight(total);
-    }
-    m_checksList->setVisible(m_checksList->count() > 0);
-}
-
-void AnalysisPanel::rebuildTuningTable()
-{
-    m_tuningTable->clearSpans();
-    m_tuningTable->setRowCount(0);
-    const bool pct = percentGainsShown();
-    const bool minutes = m_settings.timeInMinutes;
-    const QString tUnit = minutes ? QStringLiteral("min") : QStringLiteral("s");
-    QStringList headers{QStringLiteral("Kp")};
-    if (pct)
-        headers << QStringLiteral("Kp (%/%)");
-    headers << QStringLiteral("Ti (%1)").arg(tUnit) << QStringLiteral("Td (%1)").arg(tUnit);
-    m_tuningTable->setColumnCount(int(headers.size()));
-    m_tuningTable->setHorizontalHeaderLabels(headers);
-
-    const StepResult *r = (!m_results.isEmpty() && m_results.first().valid) ? &m_results.first() : nullptr;
-    QList<TuningRow> rows;
-    if (r && r->gain && r->deadTime && r->timeConstant) {
-        rows = tune(*r->gain, *r->deadTime, *r->timeConstant, m_settings.tuningRule,
-                    m_settings.lambdaS);
-    }
-    QStringList rowLabels;
-    const double div = minutes ? 60.0 : 1.0;
-    for (int i = 0; i < rows.size(); ++i) {
-        const TuningRow &tr_ = rows.at(i);
-        rowLabels << toString(tr_.kind);
-        m_tuningTable->insertRow(i);
-        if (!tr_.available) {
-            const QString text = tr("not defined");
-            const QString toolTip =
-                tip(toString(tr_.kind),
-                    tr("%1 gives no %2 setting for this model.")
-                        .arg(ruleName(m_settings.tuningRule), toString(tr_.kind)),
-                    {});
-            m_tuningTable->setItem(i, 0, makeItem(text, false, toolTip));
-            m_tuningTable->setSpan(i, 0, 1, m_tuningTable->columnCount());
-            continue;
-        }
-        int c = 0;
-        auto put = [&](const QString &text, int column) {
-            const QString toolTip = explainTuning(column, tr_.kind, tr_, *r);
-            m_tuningTable->setItem(i, c++, makeItem(text, true, toolTip));
-        };
-        put(g4(tr_.kp), 0);
-        if (pct)
-            put(tr_.kp ? g4(*tr_.kp * *pvSpan() / *coSpan()) : kDash, 3);
-        put(tr_.ti ? g4(*tr_.ti / div) : kDash, 1);
-        put(tr_.td ? g4(*tr_.td / div) : kDash, 2);
-    }
-    m_tuningTable->setVerticalHeaderLabels(rowLabels);
-    fitTableHeight(m_tuningTable);
-
-    QString note = tr("Ideal (ISA) form: u = Kp (e + 1/Ti ∫e dt + Td de/dt). Ti and Td in %1.")
-                       .arg(minutes ? tr("min") : tr("s"));
-    if (r && r->gain && *r->gain < 0.0)
-        note += u' ' + tr("K is negative: the controller must be direct acting (Kp is shown negative).");
-    m_tuningNote->setText(note);
-}
-
 void AnalysisPanel::rebuildSetpointTable()
 {
     m_setpointTable->setRowCount(0);
     int row = 0;
-    for (const StepResult &r : std::as_const(m_results)) {
-        const Tag *tag = tagById(r.tagId);
-        if (!r.valid || !shownTag(tag))
+    for (const StepResult &r : std::as_const(m_ctx->results)) {
+        const Tag *tag = m_ctx->tagById(r.tagId);
+        if (!r.valid || !m_ctx->shownTag(tag))
             continue;
         const QString label = tagLabel(*tag);
         const QColor color(tag->color);
@@ -1495,9 +947,10 @@ void AnalysisPanel::rebuildSetpointTable()
 // ---------------------------------------------------------------------------------------------
 // Plot overlays
 
-void AnalysisPanel::clearOverlays(bool detach)
+void AnalysisPanel::clearOverlays()
 {
-    Q_UNUSED(detach)
+    m_openLoopPage->clearOverlays();
+    m_closedLoopPage->clearOverlays();
     for (QwtPlotMarker *m : std::as_const(m_markers)) {
         m->detach();
         delete m;
@@ -1508,89 +961,27 @@ void AnalysisPanel::clearOverlays(bool detach)
         delete g;
     }
     m_guideItems.clear();
-    for (QwtPlotCurve *c : std::as_const(m_modelCurves)) {
-        c->detach();
-        delete c;
-    }
-    m_modelCurves.clear();
-}
-
-void AnalysisPanel::updateModelColorButton()
-{
-    QColor c(m_settings.modelColor);
-    if (!c.isValid())
-        c = QColor(0x20, 0x20, 0x20);
-    m_modelColorButton->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: %1; border: 1px solid #808080; }")
-            .arg(c.name()));
-}
-
-void AnalysisPanel::onPickModelColor()
-{
-    QColor initial(m_settings.modelColor);
-    if (!initial.isValid())
-        initial = QColor(0x20, 0x20, 0x20);
-    const QColor chosen = m_pickColor ? m_pickColor(initial, this) : QColor();
-    if (!chosen.isValid())
-        return;
-    m_settings.modelColor = chosen.name();
-    updateModelColorButton();
-    userChangedSettings();
 }
 
 void AnalysisPanel::rebuildOverlays()
 {
-    clearOverlays(true);
-    if (!m_plot)
+    clearOverlays();
+    if (!m_ctx->plot)
         return;
-    QwtPlot *plot = m_plot->plot();
+    QwtPlot *plot = m_ctx->plot->plot();
+    // The pages attach their overlays only while their mode is shown.
+    m_openLoopPage->rebuildOverlays();
+    m_closedLoopPage->rebuildOverlays();
+    // Setpoint markers and guide lines belong to the setpoints page: shown in both modes.
     QMap<int, QList<GuidePoint>> guidePoints; // by Y axis (QwtPlot::yLeft / yRight)
-    for (int i = 0; i < m_results.size(); ++i) {
-        const StepResult &r = m_results.at(i);
-        const Tag *tag = tagById(r.tagId);
+    for (const StepResult &r : std::as_const(m_ctx->results)) {
+        const Tag *tag = m_ctx->tagById(r.tagId);
         if (!r.valid || !tag)
             continue;
         const QColor color(tag->color);
         const int axis = tag->axis == YAxis::Right ? QwtPlot::yRight : QwtPlot::yLeft;
 
-        if (i == 0 && tag->plotted && m_settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
-            QVector<QPointF> pts;
-            pts.reserve(kModelPoints + 2);
-            for (int k = 0; k < kModelPoints; ++k) {
-                const double t = r.t1 + (r.t2 - r.t1) * k / (kModelPoints - 1);
-                pts.append(QPointF(t, fopdtModelValue(r, t)));
-            }
-            const double tb = r.stepTime + *r.deadTime;
-            if (tb > r.t1 && tb < r.t2) {
-                const auto it = std::lower_bound(pts.begin(), pts.end(), tb,
-                                                 [](const QPointF &p, double t) { return p.x() < t; });
-                pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
-            }
-            auto *curve = new QwtPlotCurve(tr("%1 model").arg(tag->name));
-            curve->setSamples(pts);
-            // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
-            double penWidth = 1.5;
-            const QString pvTitle = tag->unit.isEmpty()
-                                        ? tag->name
-                                        : QStringLiteral("%1 [%2]").arg(tag->name, tag->unit);
-            const QwtPlotItemList curves = plot->itemList(QwtPlotItem::Rtti_PlotCurve);
-            for (QwtPlotItem *item : curves) {
-                if (item->title().text() == pvTitle) {
-                    penWidth = static_cast<QwtPlotCurve *>(item)->pen().widthF();
-                    break;
-                }
-            }
-            QColor modelColor(m_settings.modelColor);
-            if (!modelColor.isValid())
-                modelColor = QColor(0x20, 0x20, 0x20);
-            curve->setPen(QPen(modelColor, penWidth + 1.0, Qt::DashLine));
-            curve->setItemAttribute(QwtPlotItem::Legend, false);
-            curve->setYAxis(axis);
-            curve->setZ(12.0);
-            curve->attach(plot);
-            m_modelCurves.append(curve);
-        }
-        if (!shownTag(tag))
+        if (!m_ctx->shownTag(tag))
             continue;
         for (const SetpointResult &sp : r.setpoints) {
             if (!sp.found)
@@ -1600,7 +991,7 @@ void AnalysisPanel::rebuildOverlays()
             marker->setSymbol(new SetpointSymbol(color));
             marker->setZ(25.0); // above the curves and the model curve
             QString text = fmtPercent(sp.percent);
-            if (m_settings.detailedLabels) {
+            if (m_ctx->settings.detailedLabels) {
                 text += QStringLiteral("\nt = ") + QString::number(sp.time, 'f', 3)
                         + QStringLiteral(" s\ny = ") + g6(sp.target);
                 if (!tag->unit.isEmpty())
@@ -1621,7 +1012,7 @@ void AnalysisPanel::rebuildOverlays()
             m_markers.append(marker);
         }
     }
-    if (m_settings.guideLines) {
+    if (m_ctx->settings.guideLines) {
         for (auto it = guidePoints.cbegin(); it != guidePoints.cend(); ++it) {
             auto *item = new GuideLineItem(it.value());
             item->setYAxis(it.key());
@@ -1637,58 +1028,36 @@ void AnalysisPanel::rebuildOverlays()
 
 void AnalysisPanel::copyResults()
 {
-    // The tuning table's controller names are row headers, which tableToTsv() does not include.
-    QString tuning = tableToTsv(m_tuningTable->model(), {});
-    QStringList lines = tuning.split(QStringLiteral("\r\n"));
-    QString tuningWithKinds;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).isEmpty() && i == lines.size() - 1)
-            break;
-        const QString kind =
-            i == 0 ? tr("Controller")
-                   : (m_tuningTable->verticalHeaderItem(i - 1) ? m_tuningTable->verticalHeaderItem(i - 1)->text()
-                                                               : QString());
-        tuningWithKinds += kind + u'\t' + lines.at(i) + QStringLiteral("\r\n");
+    // Open-loop tables (as before), the closed-loop part in Closed loop mode, the setpoint table.
+    QString text = m_openLoopPage->copyText() + QStringLiteral("\r\n");
+    if (m_ctx->settings.mode == AnalysisMode::ClosedLoop) {
+        const QString closed = m_closedLoopPage->copyText();
+        if (!closed.isEmpty())
+            text += closed + QStringLiteral("\r\n");
     }
-    const QString text = tableToTsv(m_resultsTable->model(), {}) + QStringLiteral("\r\n")
-                         + tuningWithKinds + QStringLiteral("\r\n")
-                         + tableToTsv(m_setpointTable->model(), {});
+    text += tableToTsv(m_setpointTable->model(), {});
     QGuiApplication::clipboard()->setText(text);
 }
 
 QString AnalysisPanel::readoutText() const
 {
-    const PlotCursors *cur = m_plot ? m_plot->cursors() : nullptr;
-    if (!cur || !cur->hasC1() || !cur->hasC2() || m_results.isEmpty() || !m_results.first().valid)
+    const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
+    if (!cur || !cur->hasC1() || !cur->hasC2() || m_ctx->results.isEmpty() || !m_ctx->results.first().valid)
         return {};
 
     // No "C1 = ..., C2 = ..." line: the cursor readout composed before this text has it.
     QStringList lines;
-    const StepResult &pv = m_results.first();
-    const Tag *pvTag = tagById(pv.tagId);
-    const auto ab = modelPercents(m_settings);
-    QStringList model;
-    if (pv.gain)
-        model << QStringLiteral("K = ") + withUnit(g4(*pv.gain), kUnit());
-    if (pv.deadTime)
-        model << QStringLiteral("L = ") + g4(*pv.deadTime) + QStringLiteral(" s");
-    if (pv.timeConstant)
-        model << QStringLiteral("T = ") + g4(*pv.timeConstant) + QStringLiteral(" s");
-    if (pv.fitRmsPercent) {
-        model << tr("fit %1 % (%2)")
-                     .arg(QString::number(*pv.fitRmsPercent, 'g', 3), fitWord(*pv.fitRmsPercent));
+    lines << m_openLoopPage->readoutText();
+    if (m_ctx->settings.mode == AnalysisMode::ClosedLoop) {
+        const QString closed = m_closedLoopPage->readoutText();
+        if (!closed.isEmpty())
+            lines << closed;
     }
-    QString line = (pvTag ? tagLabel(*pvTag) : QString::number(pv.tagId)) + QStringLiteral(" (")
-                   + fmtPercent(ab.first) + QStringLiteral(" / ") + fmtPercent(ab.second)
-                   + QStringLiteral(")");
-    if (!model.isEmpty())
-        line += QStringLiteral(": ") + model.join(QStringLiteral(", "));
-    lines << line;
 
-    for (int i = 1; i < m_results.size(); ++i) {
-        const StepResult &r = m_results.at(i);
-        const Tag *tag = tagById(r.tagId);
-        if (!shownTag(tag))
+    for (int i = 1; i < m_ctx->results.size(); ++i) {
+        const StepResult &r = m_ctx->results.at(i);
+        const Tag *tag = m_ctx->tagById(r.tagId);
+        if (!m_ctx->shownTag(tag))
             continue;
         const QString name = tagLabel(*tag);
         if (!r.valid) {
@@ -1711,11 +1080,11 @@ QString AnalysisPanel::readoutText() const
 
 void AnalysisPanel::refresh()
 {
-    if (!m_recorder)
+    if (!m_ctx->recorder)
         return;
 
-    const qsizetype size = m_recorder->size();
-    const double last = size > 0 ? m_recorder->timeAt(size - 1) : 0.0;
+    const qsizetype size = m_ctx->recorder->size();
+    const double last = size > 0 ? m_ctx->recorder->timeAt(size - 1) : 0.0;
     const bool reset = size < m_lastSize || (size > 0 && m_lastSize > 0 && last < m_lastTime);
     const bool grew = size > m_lastSize || (size > 0 && last > m_lastTime);
     if (reset) {
@@ -1725,16 +1094,16 @@ void AnalysisPanel::refresh()
     if (!grew)
         return;
 
-    const PlotCursors *cur = m_plot ? m_plot->cursors() : nullptr;
+    const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
     if (!cur || !cur->hasC1() || !cur->hasC2()) {
         rememberDataState();
         return;
     }
-    const double limit = std::max(cur->c1(), cur->c2()) + m_settings.smoothingS / 2.0;
+    const double limit = std::max(cur->c1(), cur->c2()) + m_ctx->settings.smoothingS / 2.0;
     // Once the recording is full, old rows are evicted; results that used them must update.
-    const bool lostData = m_recorder->evictedCount() != m_lastEvicted
-                          && std::min(cur->c1(), cur->c2()) - m_settings.referenceWindowS
-                                 - m_settings.smoothingS / 2.0 < m_recorder->timeAt(0);
+    const bool lostData = m_ctx->recorder->evictedCount() != m_lastEvicted
+                          && std::min(cur->c1(), cur->c2()) - m_ctx->settings.referenceWindowS
+                                 - m_ctx->settings.smoothingS / 2.0 < m_ctx->recorder->timeAt(0);
     if (m_lastSize == 0 || m_lastTime < limit || lostData)
         recompute();
     else
@@ -1749,238 +1118,11 @@ void AnalysisPanel::resetData()
 // ---------------------------------------------------------------------------------------------
 // Tooltips
 
-QString AnalysisPanel::explainResult(Quantity quantity, const StepResult *r) const
-{
-    const QString pu = pvUnit();
-    const QString cu = coUnit();
-    const bool mean = m_settings.reference == ReferenceMode::WindowMean;
-    const QString w = g4(m_settings.referenceWindowS);
-    QString name;
-    QString meaning;
-    QStringList lines;
-
-    switch (quantity) {
-    case Quantity::Y0:
-    case Quantity::Y100: {
-        const bool first = quantity == Quantity::Y0;
-        const QString c = first ? QStringLiteral("C1") : QStringLiteral("C2");
-        const QString y = first ? QStringLiteral("y0") : QStringLiteral("y100");
-        name = first ? tr("y0, level before the step") : tr("y100, level after the step");
-        if (mean) {
-            meaning = tr("mean of the PV over the %1 s before %2 (%3 % of the step).")
-                          .arg(w, c, first ? QStringLiteral("0") : QStringLiteral("100"));
-            lines << tr("%1 = mean of PV over [%2 - W, %2]").arg(y, c);
-        } else {
-            meaning = tr("value of the PV at cursor %1 (%2 % of the step).")
-                          .arg(c, first ? QStringLiteral("0") : QStringLiteral("100"));
-            lines << y + QStringLiteral(" = PV(%1)").arg(c);
-        }
-        if (r) {
-            const double t = first ? r->t1 : r->t2;
-            const double v = first ? r->y0 : r->y100;
-            if (mean) {
-                lines << tr("%1 = mean of PV over [%2 - %3, %2] = %4")
-                                 .arg(y, fmtSeconds(t), w, withUnit(g4(v), pu));
-            } else {
-                lines << y + QStringLiteral(" = PV(%1) = %2").arg(fmtSeconds(t), withUnit(g4(v), pu));
-            }
-        }
-        break;
-    }
-    case Quantity::DeltaPv:
-        name = kDelta + tr("PV, change of the PV");
-        meaning = tr("how much the PV moved between the cursors.");
-        lines << kDelta + QStringLiteral("PV = y100 - y0");
-        if (r) {
-            lines << kDelta + QStringLiteral("PV = %1 - %2 = %3")
-                                  .arg(g4p(r->y100), g4p(r->y0), withUnit(g4(r->deltaPv), pu));
-        }
-        break;
-    case Quantity::DeltaCo: {
-        name = kDelta + tr("CO, change of the controller output");
-        const Tag *co = tagById(m_settings.deltaCoTagId);
-        if (co) {
-            meaning = tr("how much the controller output %1 changed between the cursors.").arg(co->name);
-            lines << kDelta + QStringLiteral("CO = CO(C2) - CO(C1)");
-            if (r && r->deltaCo) {
-                std::optional<double> a;
-                std::optional<double> b;
-                if (m_recorder) {
-                    a = referenceLevel(*m_recorder, co->id, r->t1, m_settings.reference,
-                                       m_settings.referenceWindowS);
-                    b = referenceLevel(*m_recorder, co->id, r->t2, m_settings.reference,
-                                       m_settings.referenceWindowS);
-                }
-                if (a && b) {
-                    lines << kDelta + QStringLiteral("CO = %1 - %2 = %3")
-                                          .arg(g4p(*b), g4p(*a), withUnit(g4(*r->deltaCo), cu));
-                } else {
-                    lines << kDelta + QStringLiteral("CO = %1").arg(withUnit(g4(*r->deltaCo), cu));
-                }
-            }
-        } else {
-            meaning = tr("change of the controller output, typed in step 1.");
-            lines << kDelta + tr("CO = typed in step 1");
-            if (r && r->deltaCo)
-                lines << kDelta + QStringLiteral("CO = %1").arg(g4(*r->deltaCo));
-        }
-        break;
-    }
-    case Quantity::K:
-        name = tr("K, process gain");
-        meaning = tr("change of the PV per unit of controller output, once settled.");
-        lines << QStringLiteral("K = ") + kDelta + QStringLiteral("PV / ") + kDelta + QStringLiteral("CO");
-        if (r && r->gain && r->deltaCo) {
-            lines << QStringLiteral("K = %1 / %2 = %3")
-                         .arg(g4p(r->deltaPv), g4p(*r->deltaCo), withUnit(g4(*r->gain), kUnit()));
-        }
-        break;
-    case Quantity::KPct:
-        name = tr("K (%/%), process gain in percent of range");
-        meaning = tr("K for signals expressed in percent of their ranges.");
-        lines << tr("K (%/%) = K %1 CO span / PV span").arg(kTimes);
-        if (r && r->gain && pvSpan() && coSpan()) {
-            lines << QStringLiteral("K (%/%) = %1 %2 %3 / %4 = %5 %/%")
-                         .arg(g4p(*r->gain), kTimes, g4p(*coSpan()), g4p(*pvSpan()),
-                              g4(*r->gain * *coSpan() / *pvSpan()));
-        }
-        break;
-    case Quantity::L:
-        return explainModelTime(true, r);
-    case Quantity::T:
-        return explainModelTime(false, r);
-    case Quantity::LOverT:
-        name = tr("L/T, controllability ratio");
-        meaning = tr("controllability ratio: below 0.3 easy, above 1 dead-time dominated.");
-        lines << QStringLiteral("L/T = L / T");
-        if (r && r->deadTime && r->timeConstant) {
-            lines << QStringLiteral("L/T = %1 / %2 = %3")
-                         .arg(g4p(*r->deadTime), g4p(*r->timeConstant),
-                              g4(*r->deadTime / *r->timeConstant));
-        }
-        break;
-    case Quantity::Fit:
-        name = tr("Fit error");
-        meaning = tr("how far the model curve is from the recorded PV between the cursors: RMS of "
-                     "(PV - model), and as % of |%1PV|.").arg(kDelta);
-        lines << tr("fit % = 100 %1 RMS(PV - model) / |%2PV|").arg(kTimes, kDelta);
-        if (r && r->fitRms && r->fitRmsPercent) {
-            lines << QStringLiteral("fit % = 100 %1 %2 / |%3| = %4 %")
-                         .arg(kTimes, g4(*r->fitRms), g4(r->deltaPv), g4(*r->fitRmsPercent));
-            lines << tr("Under 3 % is Good, under 8 % Acceptable, otherwise Poor (here: %1).")
-                         .arg(fitWord(*r->fitRmsPercent));
-        } else {
-            lines << tr("Under 3 % is Good, under 8 % Acceptable, otherwise Poor.");
-        }
-        break;
-    }
-    return tip(name, meaning, lines);
-}
-
-QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
-{
-    const auto ab = modelPercents(m_settings);
-    const double fa = ab.first / 100.0;
-    const double fb = ab.second / 100.0;
-    const QString sa = QStringLiteral("t") + QString::number(ab.first, 'g', 4);
-    const QString sb = QStringLiteral("t") + QString::number(ab.second, 'g', 4);
-    const QString faS = g4(fa);
-    const QString fbS = g4(fb);
-    const bool ok = r && r->deadTime && r->timeConstant;
-    double L = 0.0;
-    double T = 0.0;
-    double ta = 0.0;
-    double tb = 0.0;
-    if (ok) {
-        L = *r->deadTime;
-        T = *r->timeConstant;
-        ta = L - T * std::log(1.0 - fa);                       // from the step time
-        tb = ta + T * (std::log(1.0 - fa) - std::log(1.0 - fb));
-    }
-    const QString A = ok ? g4(ta) : QString();
-    const QString B = ok ? g4(tb) : QString();
-    QStringList lines;
-    const ModelMethod m = m_settings.method;
-    // Smith and Sundaresan use rounded textbook constants (1.5, 0.67, ...): the computed value is
-    // from the exact two-point formula, so a hand calculation can differ in the 4th digit.
-    const QString approx = (m == ModelMethod::Sundaresan || m == ModelMethod::Smith)
-                               ? QStringLiteral("≈")
-                               : QStringLiteral("=");
-
-    QString name;
-    QString meaning;
-    if (forL) {
-        name = tr("L, dead time");
-        meaning = tr("delay between the step and the start of the PV response.");
-        switch (m) {
-        case ModelMethod::ZeroTo632:
-            lines << QStringLiteral("L = t0");
-            if (ok)
-                lines << QStringLiteral("L = %1 s").arg(A);
-            break;
-        case ModelMethod::Smith:
-            lines << QStringLiteral("L = %1 - T").arg(sb);
-            if (ok)
-                lines << QStringLiteral("L = %1 - %2 %3 %4 s").arg(B, g4p(T), approx, g4(L));
-            break;
-        case ModelMethod::Sundaresan:
-            lines << QStringLiteral("L = 1.3 %1 - 0.29 %2").arg(sa, sb);
-            if (ok) {
-                lines << QStringLiteral("L = 1.3 %1 %2 - 0.29 %1 %3 %4 %5 s")
-                             .arg(kTimes, A, B, approx, g4(L));
-            }
-            break;
-        case ModelMethod::Custom:
-            lines << QStringLiteral("L = %1 + T ln(1 - a)").arg(sa);
-            if (ok) {
-                lines << QStringLiteral("L = %1 + %2 %3 ln(1 - %4) = %5 s")
-                             .arg(A, g4p(T), kTimes, faS, g4(L));
-            }
-            break;
-        case ModelMethod::Tangent:
-            break; // tooltip text: open-loop page task
-        }
-    } else {
-        name = tr("T, time constant");
-        meaning = tr("time the PV needs to cover 63.2 % of its change after the dead time.");
-        switch (m) {
-        case ModelMethod::ZeroTo632:
-            lines << QStringLiteral("T = %1 - %2").arg(sb, sa);
-            if (ok)
-                lines << QStringLiteral("T = %1 - %2 = %3 s").arg(B, g4p(ta), g4(T));
-            break;
-        case ModelMethod::Smith:
-            lines << QStringLiteral("T = 1.5 (%1 - %2)").arg(sb, sa);
-            if (ok)
-                lines << QStringLiteral("T = 1.5 (%1 - %2) %3 %4 s").arg(B, g4p(ta), approx, g4(T));
-            break;
-        case ModelMethod::Sundaresan:
-            lines << QStringLiteral("T = 0.67 (%1 - %2)").arg(sb, sa);
-            if (ok)
-                lines << QStringLiteral("T = 0.67 (%1 - %2) %3 %4 s").arg(B, g4p(ta), approx, g4(T));
-            break;
-        case ModelMethod::Custom:
-            lines << QStringLiteral("T = (%1 - %2) / (ln(1 - a) - ln(1 - b))").arg(sb, sa);
-            if (ok) {
-                lines << QStringLiteral("T = (%1 - %2) / (ln(1 - %3) - ln(1 - %4)) = %5 s")
-                             .arg(B, g4p(ta), faS, fbS, g4(T));
-            }
-            break;
-        case ModelMethod::Tangent:
-            break; // tooltip text: open-loop page task
-        }
-    }
-    if (ok) {
-        lines << tr("Times are measured from the step time (t = %1 s).").arg(g4(r->stepTime));
-    }
-    return tip(name, meaning, lines);
-}
-
 QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const SetpointResult &sp,
                                        const QString &tagName) const
 {
-    const QString pu = pvUnit();
-    const Tag *tag = tagById(r.tagId);
+    const QString pu = m_ctx->pvUnit();
+    const Tag *tag = m_ctx->tagById(r.tagId);
     const QString unit = tag ? tag->unit : pu;
     const QString p = g4(sp.percent / 100.0);
     QString name;
@@ -2032,71 +1174,6 @@ QString AnalysisPanel::explainSetpoint(int column, const StepResult &r, const Se
             lines << QStringLiteral("t - C1 = %1 - %2 = %3 s")
                          .arg(g4p(sp.time), g4p(r.t1), g4(sp.time - r.t1));
         break;
-    }
-    return tip(name, meaning, lines);
-}
-
-QString AnalysisPanel::explainTuning(int column, ControllerKind kind, const TuningRow &row,
-                                     const StepResult &r) const
-{
-    // column: 0 = Kp, 1 = Ti, 2 = Td, 3 = Kp (%/%)
-    const TuningRule rule = m_settings.tuningRule;
-    const bool minutes = m_settings.timeInMinutes;
-    const double K = r.gain.value_or(kNaN);
-    const double L = r.deadTime.value_or(kNaN);
-    const double T = r.timeConstant.value_or(kNaN);
-    const double lam = effectiveLambda(L, m_settings.lambdaS);
-    const QString ruleText = ruleName(rule);
-    const QString kindName = toString(kind);
-    QString name;
-    QString meaning;
-    QStringList lines;
-    const QString pu = pvUnit();
-    const QString cu = coUnit();
-    const QString kpUnit = (!pu.isEmpty() && !cu.isEmpty()) ? cu + u'/' + pu : QString();
-
-    if (column == 3) {
-        name = QStringLiteral("Kp (%/%), ") + kindName;
-        meaning = tr("controller gain for signals expressed in percent of their ranges.");
-        lines << tr("Kp (%/%) = Kp %1 PV span / CO span").arg(kTimes);
-        if (row.kp && pvSpan() && coSpan()) {
-            lines << QStringLiteral("Kp (%/%) = %1 %2 %3 / %4 = %5 %/%")
-                         .arg(g4p(*row.kp), kTimes, g4p(*pvSpan()), g4p(*coSpan()),
-                              g4(*row.kp * *pvSpan() / *coSpan()));
-        }
-        return tip(name, meaning, lines);
-    }
-
-    const QString format = tuningFormula(rule, kind, column);
-    const QString symbol = column == 0 ? QStringLiteral("Kp") : column == 1 ? QStringLiteral("Ti")
-                                                                              : QStringLiteral("Td");
-    name = symbol + QStringLiteral(", ") + kindName + QStringLiteral(" (") + ruleText + u')';
-    meaning = column == 0   ? tr("proportional gain: controller output change per unit of PV error.")
-              : column == 1 ? tr("integral time: how long the integral action takes to repeat the "
-                                 "proportional action.")
-                            : tr("derivative time: how far ahead the derivative action looks.");
-    if (!format.isEmpty()) {
-        lines << symbol + QStringLiteral(" = ")
-                     + substitute(format, {QStringLiteral("K"), QStringLiteral("L"),
-                                           QStringLiteral("T"), QStringLiteral(u"λ"),
-                                           QStringLiteral("r")});
-        const std::optional<double> value = column == 0 ? row.kp : column == 1 ? row.ti : row.td;
-        if (value && std::isfinite(K)) {
-            const QString numeric =
-                substitute(format, {g4p(K), g4p(L), g4p(T), g4p(lam), g4p(L / T)});
-            QString result = column == 0 ? withUnit(g4(*value), kpUnit)
-                                         : g4(*value) + QStringLiteral(" s");
-            if (column != 0 && minutes)
-                result += QStringLiteral(" = ") + g4(*value / 60.0) + QStringLiteral(" min");
-            lines << symbol + QStringLiteral(" = ") + numeric + QStringLiteral(" = ") + result;
-        }
-        if (format.contains(QStringLiteral("%5")))
-            lines << QStringLiteral("r = L / T = %1 / %2 = %3").arg(g4p(L), g4p(T), g4(L / T));
-        if (format.contains(QStringLiteral("%4"))) {
-            lines << (m_settings.lambdaS > 0.0
-                          ? QStringLiteral("λ = %1 s").arg(g4(lam))
-                          : tr("λ = L = %1 s (Auto)").arg(g4(lam)));
-        }
     }
     return tip(name, meaning, lines);
 }

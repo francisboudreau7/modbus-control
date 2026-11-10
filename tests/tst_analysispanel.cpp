@@ -1,4 +1,5 @@
 #include "AnalysisPanel.h"
+#include "OpenLoopPage.h"
 #include "PlotCursors.h"
 #include "NumberSpinBox.h"
 #include "Recorder.h"
@@ -29,6 +30,8 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QShortcut>
+#include <QStackedWidget>
+#include <QToolButton>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -272,6 +275,9 @@ private slots:
     void zeroPercentAtC1();
     void numberInputAcceptsComma();
     void bitTagsAreNotOffered();
+    void modeSwitch();
+    void modeSwitchOverlays();
+    void spCombo();
 };
 
 void TstAnalysisPanel::constructs()
@@ -1655,7 +1661,7 @@ void TstAnalysisPanel::modelColorButton()
     QCOMPARE(model->pen().style(), Qt::DashLine);
 
     QColor offered;
-    fx.panel.m_pickColor = [&](const QColor &initial, QWidget *) {
+    fx.panel.m_openLoopPage->m_pickColor = [&](const QColor &initial, QWidget *) {
         offered = initial;
         return QColor(QStringLiteral("#FF8000"));
     };
@@ -1670,7 +1676,7 @@ void TstAnalysisPanel::modelColorButton()
     QVERIFY(button->styleSheet().contains(QStringLiteral("#ff8000")));
 
     // Cancelled dialog: nothing changes.
-    fx.panel.m_pickColor = [](const QColor &, QWidget *) { return QColor(); };
+    fx.panel.m_openLoopPage->m_pickColor = [](const QColor &, QWidget *) { return QColor(); };
     button->click();
     QCOMPARE(spy.count(), 1);
 
@@ -1795,6 +1801,173 @@ void TstAnalysisPanel::bitTagsAreNotOffered()
     changed[1].type = ValueType::Bool;
     fx2.panel.setTags(changed);
     QCOMPARE(fx2.panel.settings().pvTagId, TagId(0));
+}
+
+void TstAnalysisPanel::modeSwitch()
+{
+    Fx fx;
+    auto *modeSwitch = child<QWidget>(fx.panel, "modeSwitch");
+    auto *open = child<QToolButton>(fx.panel, "openLoopButton");
+    auto *closed = child<QToolButton>(fx.panel, "closedLoopButton");
+    auto *stack = child<QStackedWidget>(fx.panel, "modeStack");
+    QWidget *openPage = child<QWidget>(fx.panel, "openLoopPage");
+    QWidget *closedPage = child<QWidget>(fx.panel, "closedLoopPage");
+    QVERIFY(modeSwitch && open && closed && stack && openPage && closedPage);
+    QVERIFY(modeSwitch->isAncestorOf(open) && modeSwitch->isAncestorOf(closed));
+    QCOMPARE(open->text(), QStringLiteral("Open loop"));
+    QCOMPARE(closed->text(), QStringLiteral("Closed loop"));
+    QVERIFY(open->isCheckable() && closed->isCheckable());
+    QCOMPARE(stack->count(), 2);
+    QCOMPARE(stack->widget(0), openPage);
+    QCOMPARE(stack->widget(1), closedPage);
+    for (const char *name : {"modelGroup", "tuningGroup", "resultsTable", "checksList",
+                             "tuningTable", "methodCombo", "ruleCombo"})
+        QVERIFY2(openPage->isAncestorOf(child<QWidget>(fx.panel, name)), name);
+    auto *placeholder = child<QLabel>(fx.panel, "closedLoopPlaceholder");
+    QVERIFY(placeholder && closedPage->isAncestorOf(placeholder));
+    QCOMPARE(placeholder->text(), QStringLiteral("The closed-loop analysis is not available yet."));
+
+    // Default: Open loop.
+    QVERIFY(fx.panel.settings().mode == AnalysisMode::OpenLoop);
+    QVERIFY(open->isChecked() && !closed->isChecked());
+    QCOMPARE(stack->currentWidget(), openPage);
+
+    // The user switches: the closed page is shown, settingsChanged once, no state is lost.
+    const AnalysisSettings before = fx.panel.settings();
+    const qsizetype resultCount = fx.panel.results().size();
+    QTableWidget *results = table(fx.panel, "resultsTable");
+    const QString kText = cell(results, rowOf(results, QStringLiteral("K")), 1);
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    QSignalSpy recomputed(&fx.panel, &AnalysisPanel::resultsChanged);
+    closed->click();
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(recomputed.count(), 0); // only the page and the overlays change
+    QVERIFY(fx.panel.settings().mode == AnalysisMode::ClosedLoop);
+    QVERIFY(!open->isChecked() && closed->isChecked());
+    QCOMPARE(stack->currentWidget(), closedPage);
+    QCOMPARE(fx.panel.settings().pvTagId, before.pvTagId);
+    QCOMPARE(fx.panel.settings().percents, before.percents);
+    QCOMPARE(fx.panel.results().size(), resultCount);
+    QCOMPARE(cell(results, rowOf(results, QStringLiteral("K")), 1), kText);
+    closed->click(); // already selected: nothing
+    QCOMPARE(changed.count(), 1);
+
+    // The stack is as tall as the shown page, not the taller hidden one.
+    QVERIFY(stack->sizeHint().height() < openPage->sizeHint().height());
+    QVERIFY(stack->minimumSizeHint().height() < openPage->minimumSizeHint().height());
+
+    open->click();
+    QCOMPARE(changed.count(), 2);
+    QVERIFY(fx.panel.settings().mode == AnalysisMode::OpenLoop);
+    QCOMPARE(stack->currentWidget(), openPage);
+    QVERIFY(stack->sizeHint().height() >= openPage->sizeHint().height());
+
+    // setSettings selects the mode without emitting.
+    fx.apply([](AnalysisSettings &a) { a.mode = AnalysisMode::ClosedLoop; });
+    QCOMPARE(changed.count(), 2);
+    QVERIFY(closed->isChecked() && !open->isChecked());
+    QCOMPARE(stack->currentWidget(), closedPage);
+    QVERIFY(fx.panel.settings().mode == AnalysisMode::ClosedLoop);
+    fx.apply([](AnalysisSettings &a) { a.mode = AnalysisMode::OpenLoop; });
+    QCOMPARE(changed.count(), 2);
+    QCOMPARE(stack->currentWidget(), openPage);
+}
+
+void TstAnalysisPanel::modeSwitchOverlays()
+{
+    Fx fx;
+    auto *open = child<QToolButton>(fx.panel, "openLoopButton");
+    auto *closed = child<QToolButton>(fx.panel, "closedLoopButton");
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV model")));
+    QCOMPARE(symbolMarkerCount(fx.plot), 2);
+    const QString readout = fx.panel.readoutText();
+    QVERIFY(!readout.isEmpty());
+
+    // Closed loop: the open-loop model curve leaves the plot; the setpoint markers (setpoints
+    // page, shared by both modes) stay.
+    closed->click();
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+    QCOMPARE(symbolMarkerCount(fx.plot), 2);
+    QCOMPARE(fx.panel.readoutText(), readout); // open-loop results, as before
+    // Recomputes in Closed loop don't bring it back.
+    fx.setCursors(9.0, 41.0);
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+    fx.apply([](AnalysisSettings &a) { a.showModel = true; });
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+
+    // Back to Open loop: the curve returns.
+    open->click();
+    QwtPlotCurve *model = findCurve(fx.plot, QStringLiteral("PV model"));
+    QVERIFY(model);
+    QVERIFY(model->dataSize() >= 400);
+    QCOMPARE(symbolMarkerCount(fx.plot), 2);
+
+    // Loaded in Closed loop: no model curve; back in Open loop it is there again.
+    fx.apply([](AnalysisSettings &a) { a.mode = AnalysisMode::ClosedLoop; });
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+    fx.apply([](AnalysisSettings &a) { a.mode = AnalysisMode::OpenLoop; });
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV model")));
+}
+
+void TstAnalysisPanel::spCombo()
+{
+    QList<Tag> tags = standardTags();
+    Tag bit = makeTag(9, QStringLiteral("Pump"), QString(), QStringLiteral("#123456"));
+    bit.area = Area::Coil;
+    bit.type = ValueType::Bool;
+    tags.append(bit);
+    Fx fx(true, tags);
+    auto *sp = child<QComboBox>(fx.panel, "spCombo");
+    QVERIFY(sp);
+    QVERIFY(child<QGroupBox>(fx.panel, "signalsGroup")->isAncestorOf(sp));
+    // "Typed" + every non-bit tag except the PV.
+    QCOMPARE(sp->count(), 3);
+    QCOMPARE(sp->itemText(0), QStringLiteral("Typed"));
+    QCOMPARE(sp->itemData(0).toUInt(), 0u);
+    QCOMPARE(sp->itemText(1), QStringLiteral("CO [%]"));
+    QCOMPARE(sp->itemText(2), QStringLiteral("Other"));
+    QCOMPARE(sp->findData(kPv), -1);
+    QCOMPARE(sp->findData(9u), -1);
+    QCOMPARE(sp->currentIndex(), 0);
+    QCOMPARE(fx.panel.settings().spTagId, TagId(0));
+
+    // The user's choice is a setting.
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    selectData(sp, kOther);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(fx.panel.settings().spTagId, kOther);
+
+    // Kept across setTags while the tag exists.
+    fx.panel.setTags(tags);
+    QCOMPARE(fx.panel.settings().spTagId, kOther);
+    QCOMPARE(sp->currentData().toUInt(), kOther);
+    // Removed: back to Typed.
+    QList<Tag> fewer = tags;
+    fewer.removeAt(2); // Other
+    fx.panel.setTags(fewer);
+    QCOMPARE(fx.panel.settings().spTagId, TagId(0));
+    QCOMPARE(sp->currentIndex(), 0);
+    QCOMPARE(sp->count(), 2);
+    fx.panel.setTags(tags);
+
+    // Round trip through settings (no signal); unknown, bit and PV tags mean Typed.
+    const qsizetype emitted = changed.count();
+    fx.apply([](AnalysisSettings &a) { a.spTagId = kCo; });
+    QCOMPARE(changed.count(), emitted);
+    QCOMPARE(fx.panel.settings().spTagId, kCo);
+    QCOMPARE(sp->currentData().toUInt(), kCo);
+    for (TagId bad : {TagId(99), TagId(9), kPv}) {
+        fx.apply([bad](AnalysisSettings &a) { a.spTagId = bad; });
+        QCOMPARE(fx.panel.settings().spTagId, TagId(0));
+        QCOMPARE(sp->currentIndex(), 0);
+    }
+
+    // Choosing the SP tag as PV clears the SP (as for the CO).
+    fx.apply([](AnalysisSettings &a) { a.spTagId = kOther; });
+    selectData(child<QComboBox>(fx.panel, "pvCombo"), kOther);
+    QCOMPARE(fx.panel.settings().spTagId, TagId(0));
+    QCOMPARE(sp->findData(kOther), -1);
+    QVERIFY(sp->findData(kPv) >= 0);
 }
 
 QTEST_MAIN(TstAnalysisPanel)
