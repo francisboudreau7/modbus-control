@@ -123,6 +123,8 @@ private slots:
     void analyzedAndAnalysisRoundTrip();
     void analysisDefaultsWhenMissing();
     void analysisAlwaysWritten();
+    void analysisDefaultsAreSmith();
+    void analysisMethodRuleWithAndWithoutKeys();
     void analysisBoundariesAccepted();
     void analysisRejected_data();
     void analysisRejected();
@@ -797,7 +799,8 @@ void TstProjectIO::analysisAlwaysWritten()
                             "timeUnit"})
         QVERIFY2(analysis.contains(QString::fromLatin1(key)), key);
     QCOMPARE(analysis.value(QStringLiteral("reference")).toString(), QStringLiteral("cursor"));
-    QCOMPARE(analysis.value(QStringLiteral("percents")).toArray().size(), qsizetype(2));
+    QCOMPARE(analysis.value(QStringLiteral("percents")).toArray().size(), qsizetype(3));
+    QCOMPARE(analysis.value(QStringLiteral("method")).toString(), QStringLiteral("smith"));
     QCOMPARE(analysis.value(QStringLiteral("modelPercents")).toArray().size(), qsizetype(2));
 
     Project withTag;
@@ -808,6 +811,73 @@ void TstProjectIO::analysisAlwaysWritten()
                                 .value(QStringLiteral("tags")).toArray();
     const QJsonObject tag = tags.at(0).toObject();
     QVERIFY(!tag.contains(QStringLiteral("analyzed")));
+}
+
+void TstProjectIO::analysisDefaultsAreSmith()
+{
+    const AnalysisSettings d;
+    QVERIFY(d.method == ModelMethod::Smith);
+    QVERIFY(d.percents == (QList<double>{0.0, 28.3, 63.2}));
+
+    // Round trip of the defaults.
+    Project p;
+    p.analysis = d;
+    QString error;
+    const auto loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QVERIFY(loaded->analysis.method == ModelMethod::Smith);
+    QCOMPARE(loaded->analysis, d);
+
+    // The example projects.
+    QDir dir(QCoreApplication::applicationDirPath());
+    while (!dir.exists(QStringLiteral("examples/demo.mbproj"))) {
+        QVERIFY2(dir.cdUp(), "could not locate examples/demo.mbproj above the test executable");
+    }
+    for (const char *name : {"demo", "loop101"}) {
+        const auto ex = loadProject(dir.filePath(QStringLiteral("examples/%1.mbproj")
+                                                     .arg(QLatin1String(name))), &error);
+        QVERIFY2(ex.has_value(), qPrintable(error));
+        QVERIFY2(ex->analysis.method == ModelMethod::Smith, name);
+        QVERIFY2(ex->analysis.percents == (QList<double>{0.0, 28.3, 63.2}), name);
+    }
+    // cm50 has no analysis block: the defaults.
+    const auto cm50 = loadProject(dir.filePath(QStringLiteral("examples/cm50.mbproj")), &error);
+    QVERIFY2(cm50.has_value(), qPrintable(error));
+    QVERIFY(cm50->analysis.method == ModelMethod::Smith);
+    QVERIFY(cm50->analysis.percents == d.percents);
+}
+
+void TstProjectIO::analysisMethodRuleWithAndWithoutKeys()
+{
+    QString error;
+    // "analysis" without "method": the old rule (0 / 63.2 -> ZeroTo632, otherwise Custom).
+    const auto old = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"tags":[],
+        "analysis":{"percents":[0,63.2]}
+    })"), &error);
+    QVERIFY2(old.has_value(), qPrintable(error));
+    QVERIFY(old->analysis.method == ModelMethod::ZeroTo632);
+    QVERIFY(old->analysis.percents == (QList<double>{0.0, 63.2}));
+    const auto custom = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"tags":[],
+        "analysis":{"modelPercents":[10,70]}
+    })"), &error);
+    QVERIFY2(custom.has_value(), qPrintable(error));
+    QVERIFY(custom->analysis.method == ModelMethod::Custom);
+    // With "method" it is used as given.
+    const auto zero = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"tags":[],
+        "analysis":{"method":"0-63.2"}
+    })"), &error);
+    QVERIFY2(zero.has_value(), qPrintable(error));
+    QVERIFY(zero->analysis.method == ModelMethod::ZeroTo632);
+    // No "analysis" object: the new defaults.
+    const auto none = projectFromJson(json(R"({
+        "format":"modbus-control-project","version":1,"tags":[]
+    })"), &error);
+    QVERIFY2(none.has_value(), qPrintable(error));
+    QVERIFY(none->analysis.method == ModelMethod::Smith);
+    QCOMPARE(none->analysis, AnalysisSettings{});
 }
 
 void TstProjectIO::analysisBoundariesAccepted()
@@ -1139,7 +1209,9 @@ void TstProjectIO::v126MigratesWithoutAnalysisObject()
     QVERIFY2(project.has_value(), qPrintable(error));
     QCOMPARE(project->analysis.pvTagId, TagId(3));
     QVERIFY(project->analysis.setpointTagIds == (QList<TagId>{3}));
-    QVERIFY(project->analysis.method == ModelMethod::ZeroTo632);
+    // v1.3.5: no "analysis" object at all gets the new defaults.
+    QVERIFY(project->analysis.method == ModelMethod::Smith);
+    QVERIFY(project->analysis.percents == (QList<double>{0.0, 28.3, 63.2}));
 }
 
 void TstProjectIO::v126ExplicitKeysWinOverAnalyzed()
@@ -1309,6 +1381,9 @@ void TstProjectIO::v12KeysDefaultWhenMissing()
     AnalysisSettings expected; // the analyzed tag becomes the PV (v1.2.6 migration)
     expected.pvTagId = 1;
     expected.setpointTagIds = {1};
+    // The file has an "analysis" object without "method": the old rule gives ZeroTo632.
+    expected.method = ModelMethod::ZeroTo632;
+    expected.percents = {0.0, 63.2};
     QCOMPARE(project->analysis, expected);
 }
 

@@ -128,6 +128,8 @@ struct Fx {
             s.setpointTagIds = {kPv};
             s.deltaCoTagId = kCo;
             s.showModel = true; // off by default since v1.3.3
+            s.method = ModelMethod::ZeroTo632; // the default is Smith since v1.3.5
+            s.percents = {0.0, 63.2};
             panel.setSettings(s);
             plot.cursors()->setC1(9.0);
             plot.cursors()->setC2(40.0);
@@ -230,6 +232,8 @@ class TstAnalysisPanel : public QObject
     Q_OBJECT
 private slots:
     void constructs();
+    void freshPanelShowsSmithDefaults();
+    void deadTimeFromFirstMoveCheck();
     void pvCoSelection();
     void staleTagsMeanNone();
     void methodCombo();
@@ -279,6 +283,57 @@ void TstAnalysisPanel::constructs()
     QVERIFY(!child<QPushButton>(panel, "copyResultsButton")->isEnabled());
     QVERIFY(!child<QPushButton>(panel, "exportButton")->isEnabled());
     QVERIFY(!child<QPushButton>(panel, "findStepButton")->isEnabled());
+}
+
+void TstAnalysisPanel::freshPanelShowsSmithDefaults()
+{
+    AnalysisPanel panel;
+    QVERIFY(panel.settings().method == ModelMethod::Smith);
+    QVERIFY(panel.settings().percents == (QList<double>{0.0, 28.3, 63.2}));
+    auto *method = child<QComboBox>(panel, "methodCombo");
+    QVERIFY(method->currentData().toInt() == static_cast<int>(ModelMethod::Smith));
+    QCOMPARE(child<QDoubleSpinBox>(panel, "fromSpin")->value(), 28.3);
+    QCOMPARE(child<QDoubleSpinBox>(panel, "toSpin")->value(), 63.2);
+    auto *list = child<QListWidget>(panel, "percentList");
+    QCOMPARE(list->count(), 3);
+    QCOMPARE(list->item(0)->data(Qt::UserRole).toDouble(), 0.0);
+    QCOMPARE(list->item(1)->data(Qt::UserRole).toDouble(), 28.3);
+    QCOMPARE(list->item(2)->data(Qt::UserRole).toDouble(), 63.2);
+
+    // setSettings with the defaults (File > New) shows the same.
+    panel.setSettings(AnalysisSettings{});
+    QCOMPARE(child<QDoubleSpinBox>(panel, "fromSpin")->value(), 28.3);
+    QCOMPARE(child<QListWidget>(panel, "percentList")->count(), 3);
+}
+
+void TstAnalysisPanel::deadTimeFromFirstMoveCheck()
+{
+    const QString text = QStringLiteral(
+        "L is taken at the first movement of the PV, so lags such as transmitter damping are "
+        "counted in T and L is short. Ziegler-Nichols and Cohen-Coon then give a Kp that is too "
+        "high: choose the Smith method, or IMC / lambda or SIMC.");
+    Fx fx; // ZeroTo632, Ziegler-Nichols by default
+    auto *method = child<QComboBox>(fx.panel, "methodCombo");
+    auto *rule = child<QComboBox>(fx.panel, "ruleCombo");
+    QVERIFY(fx.panel.settings().tuningRule == TuningRule::ZieglerNichols);
+    QVERIFY(fx.panel.results().first().valid);
+    QVERIFY2(checkTexts(fx.panel).contains(text), qPrintable(checkTexts(fx.panel).join('|')));
+
+    // Switching to Smith removes it, back to 0 % / 63.2 % restores it.
+    method->setCurrentIndex(method->findData(static_cast<int>(ModelMethod::Smith)));
+    QVERIFY(!checkTexts(fx.panel).contains(text));
+    method->setCurrentIndex(method->findData(static_cast<int>(ModelMethod::ZeroTo632)));
+    QVERIFY(checkTexts(fx.panel).contains(text));
+
+    // Cohen-Coon keeps it; IMC / lambda and SIMC remove it.
+    rule->setCurrentIndex(rule->findData(static_cast<int>(TuningRule::CohenCoon)));
+    QVERIFY(checkTexts(fx.panel).contains(text));
+    rule->setCurrentIndex(rule->findData(static_cast<int>(TuningRule::ImcLambda)));
+    QVERIFY(!checkTexts(fx.panel).contains(text));
+    rule->setCurrentIndex(rule->findData(static_cast<int>(TuningRule::Simc)));
+    QVERIFY(!checkTexts(fx.panel).contains(text));
+    rule->setCurrentIndex(rule->findData(static_cast<int>(TuningRule::ZieglerNichols)));
+    QVERIFY(checkTexts(fx.panel).contains(text));
 }
 
 void TstAnalysisPanel::pvCoSelection()
@@ -493,6 +548,8 @@ void TstAnalysisPanel::checksList()
     // Everything fine: no checks, list hidden.
     {
         Fx fx;
+        // Smith: with 0 % / 63.2 % and Ziegler-Nichols the first-movement check is shown.
+        fx.apply([](AnalysisSettings &a) { a.method = ModelMethod::Smith; });
         fx.panel.show();
         auto *list = child<QListWidget>(fx.panel, "checksList");
         QVERIFY2(list->count() == 0, qPrintable(checkTexts(fx.panel).join('|')));
@@ -1562,6 +1619,8 @@ void TstAnalysisPanel::manyRecomputes()
     s.pvTagId = kPv;
     s.setpointTagIds = {kPv};
     s.deltaCoTagId = kCo;
+    s.method = ModelMethod::ZeroTo632; // the default is Smith since v1.3.5
+    s.percents = {0.0, 63.2};
     panel->setSettings(s);
     plot.cursors()->setC2(40.0);
     for (int i = 0; i < 50; ++i)

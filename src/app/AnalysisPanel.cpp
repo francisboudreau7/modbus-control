@@ -1330,7 +1330,7 @@ void AnalysisPanel::rebuildChecks()
     if (m_recorder && !m_results.isEmpty() && m_results.first().valid) {
         const auto ab = modelPercents(m_settings);
         const QIcon icon = style()->standardIcon(QStyle::SP_MessageBoxWarning);
-        QList<StepCheck> checks = checkStep(*m_recorder, m_results.first());
+        QList<StepCheck> checks = checkStep(*m_recorder, m_results.first(), m_settings);
         // Find step reported that the PV never settled before the end of the range: say so even
         // when the slope test at C2 does not fire (noisy or flat end).
         if (m_findNotSettled && !checks.contains(StepCheck::NotSettled)) {

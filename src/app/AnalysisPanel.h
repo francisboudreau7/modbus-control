@@ -62,7 +62,12 @@ class TrendPlot;
 ///   the next cursor change that Find step did not make, and by a PV / CO / settings change.
 /// - Group "3. Model" ("modelGroup"):
 ///   * "methodCombo": the four ModelMethod values (toString), "fromSpin"/"toSpin" (0..99.99,
-///     enabled for Custom only; an edit that breaks a < b is reverted).
+///     enabled for Custom only; an edit that breaks a < b is reverted). A fresh panel (and
+///     File > New) shows the AnalysisSettings defaults (v1.3.5): Smith, 28.3 % / 63.2 % in the
+///     spins, setpoint percents 0, 28.3 and 63.2.
+///   * "checksList" also shows StepCheck::DeadTimeFromFirstMove (checkStep() with the settings)
+///     when the lower model point is 0 % and the rule is Ziegler-Nichols or Cohen-Coon; it
+///     follows the method and rule combos.
 ///   * "resultsTable" (QTableWidget, 2 columns "Quantity", "Value", no row header): rows y0, y100,
 ///     ΔPV, ΔCO, K, K (%/%) (only when both ranges are set), L, T, L/T, Fit error. Values with 4
 ///     significant digits and units: y0/y100/ΔPV in the PV unit, ΔCO in the CO unit (typed: none),
