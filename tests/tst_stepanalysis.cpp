@@ -118,6 +118,35 @@ double ramp(double t)
     return t < 10.0 ? 10.0 : 10.0 + (t - 10.0);
 }
 
+/// Recording (PV only, tag 1) every `dt` s over [0, endS]; used by the tangent tests.
+Recorder buildPv(double endS, double dt, const std::function<double(double)> &pv)
+{
+    Recorder rec;
+    const int n = int(std::lround(endS / dt));
+    for (int i = 0; i <= n; ++i) {
+        const double t = i * dt;
+        rec.append(batch(t, {good(kPv, pv(t))}));
+    }
+    return rec;
+}
+
+/// Step at t = 10 s with a dead time `delay` and a response `shape(u)` in [0, 1] (u counted
+/// from the end of the dead time), from y0 = 10 over 20 units; `sign` -1 falls.
+double stepped(double t, double delay, const std::function<double(double)> &shape, int sign = 1)
+{
+    const double u = t - 10.0 - delay;
+    const double rise = u > 0.0 ? 20.0 * shape(u) : 0.0;
+    return sign > 0 ? 10.0 + rise : 30.0 - rise;
+}
+
+AnalysisSettings tangentSettings()
+{
+    AnalysisSettings s;
+    s.method = ModelMethod::Tangent;
+    s.manualDeltaCo = 10.0;
+    return s;
+}
+
 } // namespace
 
 class Test : public QObject
@@ -1215,6 +1244,204 @@ private slots:
         // Without the check the list equals the two-argument overload.
         s.method = ModelMethod::Smith;
         QVERIFY(checkStep(rec, r, s) == checkStep(rec, r));
+    }
+
+    // ---- tangent method (v1.4.0) ---------------------------------------------------------
+    void tangent_firstOrderLag()
+    {
+        // Pure first-order lag: steepest at the start, so the tangent is the classic one with
+        // L = dead time and T = time constant. C1 at the step: the step time is 10 s.
+        const double dt = 0.01;
+        const auto shape = [](double u) { return 1.0 - std::exp(-u / kT); };
+        const Recorder rec = buildPv(70.0, dt, [&](double t) { return stepped(t, kL, shape); });
+        for (const bool t632 : {false, true}) {
+            AnalysisSettings s = tangentSettings();
+            s.tangentT632 = t632;
+            const StepResult r = analyzeStep(rec, kPv, 10.0, 70.0, s);
+            QVERIFY2(r.valid, qPrintable(r.error));
+            QVERIFY(r.deadTime && r.timeConstant && r.tangent);
+            QVERIFY2(near(*r.deadTime, kL, 2 * dt), qPrintable(QString::number(*r.deadTime)));
+            QVERIFY2(near(*r.timeConstant, kT, t632 ? 0.02 : 5 * dt),
+                     qPrintable(QString::number(*r.timeConstant)));
+            QVERIFY(near(r.tangent->slope, 20.0 / kT, 0.05));
+            QVERIFY(near(r.tangent->time, 10.0 + kL, 0.1));
+            QVERIFY(r.fitRms && r.fitRmsPercent);
+            QVERIFY2(*r.fitRmsPercent < 1.0, qPrintable(QString::number(*r.fitRmsPercent)));
+            QVERIFY(std::isfinite(fopdtModelValue(r, 20.0)));
+            QVERIFY(r.gain && near(*r.gain, r.deltaPv / 10.0, 1e-12));
+            // The tangent passes through (time, value) with that slope: it reaches y0 at
+            // stepTime + L.
+            QVERIFY(near(r.tangent->time + (r.y0 - r.tangent->value) / r.tangent->slope,
+                         r.stepTime + *r.deadTime, 1e-9));
+        }
+    }
+
+    void tangent_secondOrderPlusDeadTime()
+    {
+        const double t1c = 3.0, t2c = 1.5, delay = 1.0, dt = 0.01;
+        const auto shape = [&](double u) {
+            return 1.0 - (t1c * std::exp(-u / t1c) - t2c * std::exp(-u / t2c)) / (t1c - t2c);
+        };
+        // Classical construction, found independently on a fine grid (unit step).
+        double bestSlope = 0.0, bestU = 0.0;
+        for (double u = 0.0; u < 30.0; u += 1e-4) {
+            const double slope = (shape(u + 1e-5) - shape(u - 1e-5)) / 2e-5;
+            if (slope > bestSlope) {
+                bestSlope = slope;
+                bestU = u;
+            }
+        }
+        const double lClassic = bestU - shape(bestU) / bestSlope; // after the dead time
+        const double tClassic = 1.0 / bestSlope;
+        QVERIFY(lClassic > 0.5);
+
+        const Recorder rec = buildPv(90.0, dt, [&](double t) { return stepped(t, delay, shape); });
+        const StepResult r = analyzeStep(rec, kPv, 10.0, 90.0, tangentSettings());
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.deadTime && r.timeConstant && r.tangent);
+        QVERIFY2(*r.deadTime > delay + 0.5, qPrintable(QString::number(*r.deadTime)));
+        QVERIFY2(near(*r.deadTime, delay + lClassic, 0.05),
+                 qPrintable(QString::number(*r.deadTime)));
+        QVERIFY2(near(*r.timeConstant, tClassic, 0.05),
+                 qPrintable(QString::number(*r.timeConstant)));
+        QVERIFY(near(r.tangent->time, 10.0 + delay + bestU, 0.1));
+        QVERIFY(near(r.tangent->slope, 20.0 * bestSlope, 0.02));
+
+        // The 63.2 % variant: T from the 63.2 % crossing, with the same L.
+        AnalysisSettings s = tangentSettings();
+        s.tangentT632 = true;
+        const StepResult r2 = analyzeStep(rec, kPv, 10.0, 90.0, s);
+        QVERIFY(r2.deadTime && r2.timeConstant);
+        QVERIFY(near(*r2.deadTime, *r.deadTime, 1e-12));
+        double u632 = 0.0;
+        while (shape(u632) < 0.632)
+            u632 += 1e-4;
+        QVERIFY2(near(*r2.timeConstant, delay + u632 - *r.deadTime, 0.03),
+                 qPrintable(QString::number(*r2.timeConstant)));
+    }
+
+    void tangent_fallingStep()
+    {
+        const double dt = 0.01;
+        const auto shape = [](double u) { return 1.0 - std::exp(-u / kT); };
+        const Recorder rec = buildPv(70.0, dt,
+                                     [&](double t) { return stepped(t, kL, shape, -1); });
+        const StepResult r = analyzeStep(rec, kPv, 10.0, 70.0, tangentSettings());
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.deltaPv < 0.0);
+        QVERIFY(r.deadTime && r.timeConstant && r.tangent);
+        QVERIFY(near(*r.deadTime, kL, 2 * dt));
+        QVERIFY(near(*r.timeConstant, kT, 5 * dt));
+        QVERIFY(r.tangent->slope < 0.0);
+        QVERIFY(near(r.tangent->slope, -20.0 / kT, 0.05));
+    }
+
+    void tangent_flatAndWrongDirection()
+    {
+        const Recorder flat = buildPv(40.0, 0.1, [](double) { return 12.0; });
+        const StepResult r = analyzeStep(flat, kPv, 10.0, 40.0, tangentSettings());
+        QVERIFY(!r.valid);
+        QVERIFY(!r.deadTime && !r.timeConstant && !r.tangent);
+
+        // Valid references, but the PV falls until C2 and only the last sample is higher: the
+        // only rising slope is in the final window; no usable model arises from a falling PV.
+        const Recorder odd = buildPv(40.0, 0.1, [](double t) {
+            return t >= 40.0 ? 14.0 : (t < 10.0 ? 10.0 : 10.0 - 0.1 * (t - 10.0));
+        });
+        const StepResult o = analyzeStep(odd, kPv, 10.0, 40.0, tangentSettings());
+        QVERIFY(o.valid);
+        QVERIFY(o.deltaPv > 0.0);
+        if (o.tangent) {
+            QVERIFY(o.tangent->slope > 0.0);
+        }
+        QVERIFY(!o.deadTime || !o.timeConstant || *o.timeConstant > 0.0);
+    }
+
+    void tangent_smoothingChangesLittle()
+    {
+        const double dt = 0.01;
+        const auto shape = [](double u) { return 1.0 - std::exp(-u / kT); };
+        const Recorder rec = buildPv(70.0, dt, [&](double t) { return stepped(t, kL, shape); });
+        AnalysisSettings s = tangentSettings();
+        const StepResult a = analyzeStep(rec, kPv, 10.0, 70.0, s);
+        s.smoothingS = 0.5;
+        const StepResult b = analyzeStep(rec, kPv, 10.0, 70.0, s);
+        QVERIFY(a.deadTime && a.timeConstant && b.deadTime && b.timeConstant);
+        QVERIFY2(near(*a.deadTime, *b.deadTime, 0.3),
+                 qPrintable(QString::number(*a.deadTime) + " " + QString::number(*b.deadTime)));
+        QVERIFY2(near(*a.timeConstant, *b.timeConstant, 0.15 * kT), // wider window flattens the slope
+                 qPrintable(QString::number(*a.timeConstant) + " "
+                            + QString::number(*b.timeConstant)));
+    }
+
+    void tangent_setpointListUnchanged()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        s.percents = {0.0, 28.3, 63.2};
+        const StepResult smith = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        s.method = ModelMethod::Tangent;
+        const StepResult tan = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(tan.deadTime && tan.timeConstant);
+        QCOMPARE(tan.setpoints.size(), smith.setpoints.size());
+        for (qsizetype i = 0; i < tan.setpoints.size(); ++i) {
+            QCOMPARE(tan.setpoints[i].found, smith.setpoints[i].found);
+            QCOMPARE(tan.setpoints[i].time, smith.setpoints[i].time);
+        }
+        QVERIFY(!smith.tangent);
+        QVERIFY(tan.tangent);
+        // The model percents of Tangent are (0, 100).
+        const auto pc = modelPercents(s);
+        QCOMPARE(pc.first, 0.0);
+        QCOMPARE(pc.second, 100.0);
+        QVERIFY(!methodPercents(ModelMethod::Tangent));
+    }
+
+    void check_tangentNoisy()
+    {
+        const Recorder noisy = makeProcess(60.0, 1, 1.0, 99); // sigma 1 on a 20 step = 5 %
+        const Recorder clean = makeProcess(60.0);
+        const auto checks = [&](const Recorder &rec, ModelMethod m, double smoothing) {
+            AnalysisSettings s;
+            s.method = m;
+            s.smoothingS = smoothing;
+            s.deltaCoTagId = kCo;
+            s.tuningRule = TuningRule::ZieglerNichols;
+            const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
+            return checkStep(rec, r, s);
+        };
+        QVERIFY(checks(noisy, ModelMethod::Tangent, 0.0).contains(StepCheck::TangentNoisy));
+        QVERIFY(!checks(noisy, ModelMethod::Tangent, 1.0).contains(StepCheck::TangentNoisy));
+        QVERIFY(!checks(noisy, ModelMethod::Smith, 0.0).contains(StepCheck::TangentNoisy));
+        QVERIFY(!checks(clean, ModelMethod::Tangent, 0.0).contains(StepCheck::TangentNoisy));
+        // The two-argument overload never reports it.
+        AnalysisSettings s;
+        s.method = ModelMethod::Tangent;
+        s.deltaCoTagId = kCo;
+        StepResult r = analyzeStep(noisy, kPv, 9.0, 60.0, s);
+        QVERIFY(!checkStep(noisy, r).contains(StepCheck::TangentNoisy));
+
+        // Order: before FitPoor.
+        r.fitRmsPercent = 50.0;
+        const QList<StepCheck> got = checkStep(noisy, r, s);
+        const qsizetype noisyPos = got.indexOf(StepCheck::TangentNoisy);
+        const qsizetype fit = got.indexOf(StepCheck::FitPoor);
+        QVERIFY(noisyPos >= 0 && fit >= 0 && noisyPos < fit);
+    }
+
+    void check_deadTimeFromFirstMoveNeverForTangent()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.method = ModelMethod::Tangent;
+        s.deltaCoTagId = kCo;
+        for (const TuningRule rule : {TuningRule::ZieglerNichols, TuningRule::CohenCoon}) {
+            s.tuningRule = rule;
+            const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
+            QVERIFY(r.deadTime && *r.deadTime > 0.0 && r.timeConstant);
+            QVERIFY(!checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        }
     }
 
     void fitQuality_thresholds()
