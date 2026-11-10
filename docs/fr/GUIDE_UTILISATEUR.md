@@ -1036,7 +1036,7 @@ partie de l'unité est omise lorsqu'elle est vide).
 ## Analyse (réponse à l'échelon)
 
 Le panneau Analysis mesure une réponse à l'échelon sur le graphique Trend, entre les deux curseurs C1
-et C2. Il trouve les temps auxquels la réponse atteint les repères (0 % et 63.2 % par défaut). À
+et C2. Il trouve les temps auxquels la réponse atteint les repères (0 %, 28.3 % et 63.2 % par défaut). À
 partir de ces temps, il calcule un modèle du premier ordre avec temps mort : le gain K, le temps mort
 L et la constante de temps T. Il calcule aussi, à partir de ces valeurs, des réglages PID. Il est
 conçu pour les essais en échelon, par exemple pour obtenir les valeurs du réglage en boucle ouverte
@@ -1125,8 +1125,8 @@ l'échelon t_step, qui est le temps de l'échelon de la sortie du régulateur.
 
 | Méthode | Points (a / b) | T (constante de temps) | L (temps mort) |
 |---|---|---|---|
-| 0 % / 63.2 % (two points), par défaut | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
-| Smith | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
+| 0 % / 63.2 % (two points) | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
+| Smith, par défaut | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
 | Sundaresan-Krishnaswamy | 35.3 % / 85.3 % | T = 0.67 (t85.3 − t35.3) | L = 1.3 t35.3 − 0.29 t85.3 |
 | Custom | **From %** (a) et **To %** (b) | voir ci-dessous | voir ci-dessous |
 
@@ -1138,6 +1138,20 @@ Pour **Custom** :
 **From %** et **To %** ne sont utilisés que pour Custom. Ils doivent respecter a < b, et les deux
 doivent être inférieurs à 100. Les deux points n'ont pas à figurer dans la liste Setpoints : le
 panneau en cherche les temps de toute façon.
+
+**Quelle méthode ?** La méthode par défaut est Smith. Avec un point inférieur à 0 %, L est le moment où
+la PV quitte sa valeur de départ pour la première fois. Un petit retard après le vrai temps mort,
+comme l'amortissement du transmetteur ou la course de la vanne, courbe le début de la courbe sans
+retarder son premier mouvement. Il se retrouve dans T, et L sort trop court. Le premier mouvement est
+aussi cherché dans le bruit de mesure : L change donc selon l'endroit où C1 est placé. Les règles qui
+divisent par L (Ziegler-Nichols, Cohen-Coon) donnent alors un Kp qui peut dépasser la limite de
+stabilité de la boucle. Smith utilise deux points sur la partie montante de la courbe : il n'est pas
+touché. Ziegler-Nichols a été conçu autour du temps mort de la tangente, qui comprend ces retards.
+
+Utilisez 0 % / 63.2 % quand la réponse est propre, avec peu de bruit, et que le procédé est un vrai
+premier ordre avec temps mort, sans autre retard. Quand la méthode a un point inférieur à 0 %
+(0 % / 63.2 %, ou Custom qui commence à 0 %) et que la règle est Ziegler-Nichols ou Cohen-Coon, le
+panneau ajoute une vérification (voir **Checks** plus bas).
 
 **Results** (le tableau de ce groupe) :
 
@@ -1178,6 +1192,7 @@ message et ce qu'il faut faire :
 | « The step is small compared with the noise: the results are uncertain. » | Utilisez un échelon plus grand, ou réglez **Reference** à **Mean before cursor** pour un signal bruité. |
 | « L is negative: C1 is after the start of the response. Move C1 before the step. » | Déplacez C1 plus tôt, avant l'échelon. Ou utilisez **Find step**. |
 | « L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be aggressive; prefer IMC / lambda or SIMC. » | Choisissez **IMC / lambda** ou **SIMC** dans le groupe Tuning. |
+| « L est pris au premier mouvement de la PV : les retards comme l'amortissement du transmetteur sont alors comptés dans T, et L est trop court. Ziegler-Nichols et Cohen-Coon donnent alors un Kp trop élevé : choisissez la méthode de Smith, ou IMC / lambda ou SIMC. » | Affiché quand le point inférieur du modèle est à 0 % et que la règle est Ziegler-Nichols ou Cohen-Coon. Choisissez la méthode **Smith**, ou choisissez **IMC / lambda** ou **SIMC**. Voir Quelle méthode ? plus haut. |
 | « The model does not fit the response well (fit error > 8 %). » | Vérifiez que les curseurs encadrent l'échelon et que la courbe du modèle suit la PV. La réponse n'est peut-être pas du premier ordre : K, L et T sont alors approximatifs. |
 
 ### 4. Réglage
@@ -1244,8 +1259,8 @@ Ces options se trouvent dans le panneau **Setpoints**, un onglet à côté d'**A
   réponse : le temps du repère 0 % sort donc trop tôt d'au plus S/2, et L est trop petit. Avec le
   lissage activé, utilisez un modèle avec **From %** supérieur à 0 (par exemple 10), ou gardez S
   petit par rapport à L.
-- **Setpoints (%)** : les pourcentages de l'échelon dont les temps sont trouvés. Par défaut : 0 % et
-  63.2 %. Saisissez une valeur de 0 à 100 (deux décimales ; la case commence à 28.3, la valeur dont la
+- **Setpoints (%)** : les pourcentages de l'échelon dont les temps sont trouvés. Par défaut : 0 %,
+  28.3 % et 63.2 %. Saisissez une valeur de 0 à 100 (deux décimales ; la case commence à 28.3, la valeur dont la
   méthode de Smith a besoin) et cliquez sur **Add**. Sélectionnez une entrée et cliquez sur
   **Remove**. La liste reste triée, sans doublons, et contient au plus 20 valeurs.
 - **Show time and value on plot labels** : ajoute deux lignes à chaque étiquette de repère sur le
@@ -1378,7 +1393,7 @@ dans un objet `analysis` : `pvTag` et `setpointTags` (la PV et les étiquettes d
 affichés), `deltaCoTag` et `deltaCo`, `method` (`"0-63.2"`, `"smith"`, `"sundaresan"` ou `"custom"`),
 `modelPercents`, `percents`, `reference` (`"cursor"` ou `"mean"`), `referenceWindowS`, `smoothingS`,
 `pvRange`, `coRange`, `showModel`, `modelColor` (`"#RRGGBB"`, `"#202020"` par défaut), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`,
-`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un objet
+`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un projet enregistré avec une `method` la conserve. Un ancien projet dont l'objet `analysis` n'a pas de `method` garde `"0-63.2"` ; un nouveau projet commence avec `"smith"`. Un objet
 `yAxes` de premier niveau contient les plages fixées des axes Y de la tendance : `left` et `right` valent chacun `"auto"` ou une paire `[min, max]` avec min inférieur à max (par exemple `"left": [0, 100]`). Une clé absente vaut `"auto"`. Un tableau
 `hiddenColumns` de premier niveau énumère les colonnes du tableau des étiquettes masquées dans ce
 projet (par exemple `"raw"`, `"gain"`, `"quickA"`). Toutes ces clés sont facultatives : un fichier

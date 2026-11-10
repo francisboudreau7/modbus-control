@@ -982,7 +982,7 @@ header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted wh
 ## Analysis (step response)
 
 The Analysis panel measures a step response on the Trend plot, between the two cursors C1 and C2.
-It finds the times at which the response reaches the setpoints (0 % and 63.2 % by default). From
+It finds the times at which the response reaches the setpoints (0 %, 28.3 % and 63.2 % by default). From
 these times it computes a first-order model with dead time: the gain K, the dead time L and the time
 constant T. It also computes PID settings from them. It is meant for step tests, for example to get
 the values for Ziegler-Nichols open-loop tuning.
@@ -1064,8 +1064,8 @@ t_step, which is the time of the controller output's step.
 
 | Method | Points (a / b) | T (time constant) | L (dead time) |
 |---|---|---|---|
-| 0 % / 63.2 % (two points), the default | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
-| Smith | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
+| 0 % / 63.2 % (two points) | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
+| Smith, the default | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
 | Sundaresan-Krishnaswamy | 35.3 % / 85.3 % | T = 0.67 (t85.3 − t35.3) | L = 1.3 t35.3 − 0.29 t85.3 |
 | Custom | **From %** (a) and **To %** (b) | see below | see below |
 
@@ -1076,6 +1076,20 @@ For **Custom**:
 
 **From %** and **To %** are used only for Custom. They must satisfy a < b, and both must be below 100.
 The two points do not have to be in the Setpoints list: the panel searches for their times anyway.
+
+**Which method?** The default is Smith. With a lower point of 0 %, L is the moment the PV first
+leaves its starting value. A small lag after the true dead time, such as transmitter damping or the
+valve stroke, bends the start of the curve but does not delay its first movement. It ends up in T,
+and L comes out too short. The first movement is also found in the measurement noise, so L changes
+with where C1 is placed. Rules that divide by L (Ziegler-Nichols, Cohen-Coon) then give a Kp that can
+be higher than the stability limit of the loop. Smith uses two points on the rising part of the
+curve, so it is not affected. Ziegler-Nichols was designed around the dead time of the tangent line,
+which includes those lags.
+
+Use 0 % / 63.2 % when the response is clean and has little noise, and the process is a true
+first-order one with a dead time and nothing else. When the method has a 0 % lower point (0 % / 63.2 %, or Custom
+starting at 0 %) and the rule is Ziegler-Nichols or Cohen-Coon, the panel adds a check (see Checks
+below).
 
 **Results** (the table in this group):
 
@@ -1115,6 +1129,7 @@ list is hidden when there are no checks. Each message and what to do:
 | "The step is small compared with the noise: the results are uncertain." | Use a bigger step, or set **Reference** to **Mean before cursor** for a noisy signal. |
 | "L is negative: C1 is after the start of the response. Move C1 before the step." | Move C1 earlier, to before the step. Or use **Find step**. |
 | "L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be aggressive; prefer IMC / lambda or SIMC." | Choose **IMC / lambda** or **SIMC** in the Tuning group. |
+| "L is taken at the first movement of the PV, so lags such as transmitter damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon then give a Kp that is too high: choose the Smith method, or IMC / lambda or SIMC." | Shown when the model's lower point is 0 % and the rule is Ziegler-Nichols or Cohen-Coon. Choose the **Smith** method, or choose **IMC / lambda** or **SIMC**. See Which method? above. |
 | "The model does not fit the response well (fit error > 8 %)." | Check that the cursors frame the step and that the model curve follows the PV. The response may not be first order, so K, L and T are rough. |
 
 ### 4. Tuning
@@ -1175,8 +1190,8 @@ Setpoints).
   Smoothing has a bias. A centred average starts to rise up to S/2 before the real response, so the
   0 % time comes out early by up to S/2, and L comes out too small. With smoothing on, use a model
   **From %** above 0 (for example 10), or keep S small compared with L.
-- **Setpoints (%)**: the percentages of the step whose times are found. The default is 0 % and 63.2 %.
-  Type a value from 0 to 100 (two decimals; the box starts at 28.3, the value Smith's method needs)
+- **Setpoints (%)**: the percentages of the step whose times are found. The default is 0 %, 28.3 % and
+  63.2 %. Type a value from 0 to 100 (two decimals; the box starts at 28.3, the value Smith's method needs)
   and click **Add**. Select an entry and click **Remove**. The list stays sorted, has no duplicates and
   holds at most 20 values.
 - **Show time and value on plot labels**: adds two lines to each setpoint label on the plot: the time
@@ -1297,7 +1312,7 @@ only when the limit is set). The Analysis settings are in an `analysis` object: 
 (`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
 (`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
 `modelColor` (`"#RRGGBB"`, default `"#202020"`), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
-and `timeUnit` (`"s"` or `"min"`). A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
+and `timeUnit` (`"s"` or `"min"`). A project saved with a `method` keeps it. An older project whose `analysis` object has no `method` keeps `"0-63.2"`; a new project starts with `"smith"`. A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|

@@ -136,8 +136,8 @@ C2. Ils sont dessinés comme des marqueurs sur la courbe.
 3. Ouvrez l'onglet **Setpoints** (à côté d'Analysis).
    - Dans **Show setpoints on**, la PV est déjà cochée. Cochez d'autres courbes si vous voulez aussi
      leurs repères.
-   - **Setpoints (%)** donne la liste des pourcentages, `0 %` et `63.2 %` par défaut. Pour en
-     ajouter un, tapez-le (par exemple `28.3`) et cliquez sur **Add**.
+   - **Setpoints (%)** donne la liste des pourcentages, `0 %`, `28.3 %` et `63.2 %` par défaut. Pour en
+     ajouter un, tapez-le (par exemple `50`) et cliquez sur **Add**.
 4. Sur la tendance, chaque repère apparaît comme un marqueur sur la courbe, avec l'étiquette
    `63.2 %` et des lignes de repère pointillées vers l'axe du temps et l'axe des valeurs. Le tableau
    des repères, en dessous, donne pour chacun la valeur cible, le temps et le temps écoulé depuis

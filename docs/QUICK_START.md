@@ -127,8 +127,8 @@ curve.
 3. Open the **Setpoints** tab (next to Analysis).
    - In **Show setpoints on**, the PV is already ticked. Tick other curves if you want their
      setpoints too.
-   - **Setpoints (%)** lists the percentages, `0 %` and `63.2 %` by default. To add one, type it
-     (for example `28.3`) and click **Add**.
+   - **Setpoints (%)** lists the percentages, `0 %`, `28.3 %` and `63.2 %` by default. To add one, type it
+     (for example `50`) and click **Add**.
 4. On the trend, each setpoint appears as a marker on the curve, labelled `63.2 %`, with dashed
    guide lines to the time axis and the value axis. The **setpoint table** below gives each
    setpoint's target value and time, and its time after C1.

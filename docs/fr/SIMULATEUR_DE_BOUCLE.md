@@ -350,10 +350,19 @@ dans le Guide de l'utilisateur.
 - **K** (environ 2.2 %/%) : ΔPV/ΔCO = (72 − 50) / (60 − 50). Il correspond au tableau des niveaux
   stabilisés.
 - **L** : le temps mort de 2 s, plus les retards de la course de FCV-101 (un déplacement de 10 % prend
-  0.5 s) et de l'amortissement de LT-101 (2 s). Cela fait environ 4 à 5 s. Le projet scrute toutes les
-  100 ms : Trend le mesure bien à ×1.
-- **T** : environ 32 s. La théorie donne 2 × A × h / Qhv = 28 s à 50 % et 34 s à 72 %, et l'échelon
-  couvre les deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
+  0.5 s) et de l'amortissement de LT-101 (2 s). Avec la méthode par défaut, Smith, L vaut environ 4 s.
+  Le projet scrute toutes les 100 ms : Trend le mesure bien à ×1.
+- **T** : environ 32 à 33 s avec Smith. La théorie donne 2 × A × h / Qhv = 28 s à 50 % et 34 s à 72 %,
+  et l'échelon couvre les deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
+
+**Essayez l'autre méthode.** Dans le groupe **Model**, choisissez **0 % / 63.2 % (deux points)**. L devient
+beaucoup plus court (entre environ 0.3 et 1.2 s) et il change quand vous déplacez C1 : 1.2 s avec C1 10 s
+avant l'échelon, 0.25 s avec C1 0.5 s avant. T vaut environ 35 s. Avec la règle Ziegler-Nichols, une
+vérification s'affiche dans la liste. Avec un point inférieur à 0 %, L est le moment où la PV quitte sa
+valeur de départ pour la première fois. Les petits retards après le temps mort (l'amortissement de
+LT-101, la course de la vanne) courbent le début de la courbe sans retarder ce premier mouvement : ils
+passent dans T, et L sort trop court. Smith utilise deux points sur la partie montante de la courbe et
+n'est pas touché.
 
 **Pourquoi un plus grand échelon donne-t-il un T plus grand ?** Le débit de sortie suit √h : le réservoir
 est plus lent à haut niveau. Un échelon de 50 à 70 % donne un T plus grand que de 50 à 60 %, et un K plus
@@ -383,15 +392,22 @@ règles de réglage. Faites d'abord l'[essai à l'échelon](#exercice--essai-à-
 pour que K, L et T soient dans le panneau Analysis.
 
 **1. Lire le réglage.** Dans le panneau **Analysis**, le groupe Tuning transforme K, L et T en réglages.
-Avec les nombres de l'essai à l'échelon (K environ 2.2 %/%, L environ 4 à 5 s, T environ 28 à 34 s),
-vous obtenez à peu près les valeurs ci-dessous. Les vôtres seront un peu différentes. La PV et la OUT de
-cette boucle sont toutes deux en %, de sorte que le Kp du tableau (en % par %) peut être tapé tel quel.
+Avec les nombres de l'essai à l'échelon avec la méthode de Smith (K 2.2 %/%, L environ 4 s, T environ
+32 s), vous obtenez à peu près les valeurs ci-dessous, avec le dépassement (en pourcentage de l'échelon
+de 10 %) et le temps de stabilisation mesurés pour SP de 50 à 60 %. Les vôtres seront un peu
+différentes. La PV et la OUT de cette boucle sont toutes deux en %, de sorte que le Kp du tableau
+(en % par %) peut être tapé tel quel.
 
-| Règle | Régulateur | Kp (environ) | Ti (environ) |
-|---|---|---|---|
-| IMC / lambda, λ = Auto (= L) | PI | 1.6 | 31 s |
-| SIMC, λ = Auto (= L) | PI | 1.6 | 31 s |
-| Ziegler-Nichols | PI | 2.8 | 15 s |
+| Règle | Régulateur | Kp (environ) | Ti (environ) | Dépassement | Stabilisation en |
+|---|---|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | 1.9 | 32 s | environ 5 % | environ 21 s |
+| SIMC, λ = Auto (= L) | PI | 1.9 | 32 s | environ 6 % | environ 22 s |
+| Ziegler-Nichols | PI | 3.4 | 13 s | environ 60 % | environ 42 s |
+| Cohen-Coon | PI | 3.4 | 10.5 s | environ 73 % | environ 52 s |
+
+Ne prenez pas ces valeurs d'un modèle 0 % / 63.2 %. Son L est trop court, et Ziegler-Nichols donne
+alors un Kp de 12 ou plus. La limite de cette boucle avec P seulement est d'environ Kp 8.7 : la boucle
+ne se stabilise pas, et OUT oscille entre 0 et 100 %.
 
 **2. Démarrer en Auto.** Réglez OUT à 50 % et attendez l'état stable (PV et SP valent 50 %). Sur la face
 avant, tapez Kp et Ti (Td reste à 0, Action à Reverse), puis cliquez sur **MAN**. Le bouton devient
@@ -409,10 +425,12 @@ de SP après environ 30 s. OUT saute d'abord de Kp × 10 % = 10 %, à 60 %, puis
 
 **4. Comparer les règles.** Ramenez SP à 50 %, essayez chaque paire de valeurs à tour de rôle et écrivez
 de nouveau 60 dans SP. Observez le dépassement (de combien PV dépasse 60 %) et le temps de stabilisation
-(le temps jusqu'à ce que PV reste à ±0.5 % de 60 %). En général, le PI de Ziegler-Nichols est le plus
-agressif : son Kp est plus grand et son Ti plus court, de sorte que PV dépasse et peut osciller avant de
-se stabiliser, tandis qu'IMC et SIMC avec λ = L donnent une réponse plus douce. Un λ plus grand est plus
-lent et plus doux. Les curseurs et le panneau Analysis peuvent mesurer les temps pour vous.
+(le temps jusqu'à ce que PV reste à ±0.5 % de 60 %). Le PI de Ziegler-Nichols est le plus agressif :
+son Kp est plus grand et son Ti plus court. PV dépasse de plus de la moitié de l'échelon (elle culmine
+près de 66 %) et oscille avant de se stabiliser. Ziegler-Nichols vise une atténuation au quart
+d'amplitude et le rejet des perturbations, pas des changements de consigne nets. IMC et SIMC avec
+λ = L dépassent de quelques pour cent. Un λ plus grand est plus lent et plus doux. Les curseurs et le
+panneau Analysis peuvent mesurer les temps pour vous.
 
 **5. Perturbation de charge.** La boucle en Auto et PV stable à SP (60 %), déplacez le curseur **HV-102**
 de 50 à 60 %. La sortie est plus grande, donc PV baisse d'abord. Le régulateur ouvre la vanne, et l'action
