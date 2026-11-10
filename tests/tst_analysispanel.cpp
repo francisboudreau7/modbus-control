@@ -80,12 +80,18 @@ QList<Tag> standardTags()
 
 /// FOPDT: CO steps 20 -> 30 at coStep; PV = 50 + 10 * (1 - exp(-(t - 11.5) / 4)) after 11.5
 /// (so with coStep = 10: K = 1, L = 1.5, T = 4). "Other" follows the PV (2 * pv - 40).
-void appendRows(Recorder &r, int fromIndex, int toIndex, double coStep = 10.0)
+/// pvNoise: +-noise alternating on the PV before the step (deterministic); coRamp: CO rises by
+/// coRamp per s from 5 s after the step (a loop that moves by itself).
+void appendRows(Recorder &r, int fromIndex, int toIndex, double coStep = 10.0, double pvNoise = 0.0,
+                double coRamp = 0.0)
 {
     for (int i = fromIndex; i <= toIndex; ++i) {
         const double t = i * 0.1;
-        const double co = t >= coStep ? 30.0 : 20.0;
-        const double pv = t < 11.5 ? 50.0 : 50.0 + 10.0 * (1.0 - std::exp(-(t - 11.5) / 4.0));
+        const double co = (t >= coStep ? 30.0 : 20.0)
+                          + (t >= coStep + 5.0 ? coRamp * (t - coStep - 5.0) : 0.0);
+        double pv = t < 11.5 ? 50.0 : 50.0 + 10.0 * (1.0 - std::exp(-(t - 11.5) / 4.0));
+        if (t < 9.0)
+            pv += (i % 2 == 0 ? pvNoise : -pvNoise);
         SampleBatch b;
         b.t = t;
         b.samples = {good(kCo, co), good(kPv, pv), good(kOther, 2.0 * pv - 40.0)};
@@ -116,9 +122,10 @@ struct Fx {
     TrendPlot plot;
     AnalysisPanel panel;
 
-    explicit Fx(bool configure = true, const QList<Tag> &tags = standardTags(), double coStep = 10.0)
+    explicit Fx(bool configure = true, const QList<Tag> &tags = standardTags(), double coStep = 10.0,
+                double pvNoise = 0.0, double coRamp = 0.0)
     {
-        appendRows(rec, 0, 600, coStep);
+        appendRows(rec, 0, 600, coStep, pvNoise, coRamp);
         plot.setRecorder(&rec);
         plot.setTags(tags);
         plot.refresh();
@@ -278,6 +285,14 @@ private slots:
     void modeSwitch();
     void modeSwitchOverlays();
     void spCombo();
+    void controllerGroup();
+    void tuningInChosenForm();
+    void tuningFormTooltipsAndNote();
+    void tangentMethod();
+    void tangentNoisyCheck();
+    void compareMethods();
+    void compareNormalisedAndSelected();
+    void coMovedByItselfCheck();
 };
 
 void TstAnalysisPanel::constructs()
@@ -434,7 +449,7 @@ void TstAnalysisPanel::methodCombo()
     auto *method = child<QComboBox>(fx.panel, "methodCombo");
     auto *from = child<QDoubleSpinBox>(fx.panel, "fromSpin");
     auto *to = child<QDoubleSpinBox>(fx.panel, "toSpin");
-    QCOMPARE(method->count(), 4);
+    QCOMPARE(method->count(), 5);
     QCOMPARE(method->itemText(1), toString(ModelMethod::Smith));
     QVERIFY(!from->isEnabled());
     QVERIFY(!to->isEnabled());
@@ -457,7 +472,7 @@ void TstAnalysisPanel::methodCombo()
     QCOMPARE(to->value(), 85.3);
     QVERIFY(std::abs(*fx.panel.results().at(0).timeConstant - 4.0) < 0.4);
 
-    method->setCurrentIndex(3);
+    method->setCurrentIndex(4);
     QVERIFY(from->isEnabled());
     QVERIFY(to->isEnabled());
     QVERIFY(fx.panel.settings().method == ModelMethod::Custom);
@@ -795,7 +810,7 @@ void TstAnalysisPanel::tooltipsResults()
              qPrintable(sL));
 
     // Custom: the generic two-point formula.
-    child<QComboBox>(fx.panel, "methodCombo")->setCurrentIndex(3);
+    child<QComboBox>(fx.panel, "methodCombo")->setCurrentIndex(4);
     const QString cT = t->item(rowOf(t, QStringLiteral("T")), 1)->toolTip();
     QVERIFY(cT.contains(QStringLiteral("(ln(1 - a) - ln(1 - b))")));
     QVERIFY(t->item(rowOf(t, QStringLiteral("L")), 1)->toolTip().contains(QStringLiteral("T ln(1 - a)")));
@@ -1423,7 +1438,7 @@ void TstAnalysisPanel::modelPercentRevert()
     auto *method = child<QComboBox>(fx.panel, "methodCombo");
     auto *from = child<QDoubleSpinBox>(fx.panel, "fromSpin");
     auto *to = child<QDoubleSpinBox>(fx.panel, "toSpin");
-    method->setCurrentIndex(3);
+    method->setCurrentIndex(4);
     QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
     from->setValue(70.0); // would make a >= b
     QCOMPARE(from->value(), 0.0);
@@ -1968,6 +1983,551 @@ void TstAnalysisPanel::spCombo()
     QCOMPARE(fx.panel.settings().spTagId, TagId(0));
     QCOMPARE(sp->findData(kOther), -1);
     QVERIFY(sp->findData(kPv) >= 0);
+}
+
+void TstAnalysisPanel::controllerGroup()
+{
+    Fx fx;
+    auto *group = child<QGroupBox>(fx.panel, "controllerGroup");
+    auto *form = child<QComboBox>(fx.panel, "formCombo");
+    auto *gain = child<QComboBox>(fx.panel, "gainUnitCombo");
+    auto *integral = child<QComboBox>(fx.panel, "integralUnitCombo");
+    QVERIFY(group && form && gain && integral);
+    QCOMPARE(group->title(), QStringLiteral("Controller"));
+    QVERIFY(group->isAncestorOf(form) && group->isAncestorOf(gain) && group->isAncestorOf(integral));
+    QCOMPARE(form->count(), 3);
+    QCOMPARE(gain->count(), 2);
+    QCOMPARE(integral->count(), 2);
+    QCOMPARE(form->itemText(0), toString(PidForm::Ideal));
+    QCOMPARE(form->itemText(1), toString(PidForm::Series));
+    QCOMPARE(form->itemText(2), toString(PidForm::Parallel));
+    QCOMPARE(gain->itemText(0), QStringLiteral("Kp"));
+    QCOMPARE(gain->itemText(1), QStringLiteral("PB (%)"));
+    QCOMPARE(integral->itemText(0), toString(IntegralUnit::Time));
+    QCOMPARE(integral->itemText(1), toString(IntegralUnit::RepeatsPerMinute));
+    QVERIFY(!form->toolTip().isEmpty() && !gain->toolTip().isEmpty() && !integral->toolTip().isEmpty());
+    QVERIFY(fx.panel.settings().controller == ControllerSettings{});
+    QVERIFY(integral->isEnabled());
+
+    // Between "2. Cursors" and the mode switch.
+    auto *cursors = child<QGroupBox>(fx.panel, "cursorsGroup");
+    auto *modeSwitch = child<QWidget>(fx.panel, "modeSwitch");
+    QLayout *layout = group->parentWidget()->layout();
+    QVERIFY(layout->indexOf(cursors) >= 0);
+    QCOMPARE(layout->indexOf(group), layout->indexOf(cursors) + 1);
+    QCOMPARE(layout->indexOf(modeSwitch), layout->indexOf(group) + 1);
+
+    // User edits: one settingsChanged each, results recomputed.
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    QSignalSpy results(&fx.panel, &AnalysisPanel::resultsChanged);
+    form->setCurrentIndex(1);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(results.count() >= 1);
+    QVERIFY(fx.panel.settings().controller.form == PidForm::Series);
+    QVERIFY(integral->isEnabled());
+    form->setCurrentIndex(2);
+    QCOMPARE(changed.count(), 2);
+    QVERIFY(fx.panel.settings().controller.form == PidForm::Parallel);
+    QVERIFY(!integral->isEnabled()); // Parallel always shows Ki
+    form->setCurrentIndex(0);
+    gain->setCurrentIndex(1);
+    integral->setCurrentIndex(1);
+    QCOMPARE(changed.count(), 5);
+    const ControllerSettings c = fx.panel.settings().controller;
+    QVERIFY(c.form == PidForm::Ideal && c.gain == GainUnit::ProportionalBand
+            && c.integral == IntegralUnit::RepeatsPerMinute);
+
+    // setSettings updates the combos without a signal; File > New resets them.
+    fx.apply([](AnalysisSettings &a) {
+        a.controller = ControllerSettings{PidForm::Parallel, GainUnit::Gain, IntegralUnit::Time};
+    });
+    QCOMPARE(changed.count(), 5);
+    QCOMPARE(form->currentIndex(), 2);
+    QCOMPARE(gain->currentIndex(), 0);
+    QCOMPARE(integral->currentIndex(), 0);
+    QVERIFY(!integral->isEnabled());
+    fx.panel.setSettings(AnalysisSettings{});
+    QCOMPARE(form->currentIndex(), 0);
+    QVERIFY(integral->isEnabled());
+    QVERIFY(fx.panel.settings().controller == ControllerSettings{});
+}
+
+void TstAnalysisPanel::tuningInChosenForm()
+{
+    Fx fx; // 0 % / 63.2 %, Ziegler-Nichols: PID = 1.2 T / (K L), Ti = 2 L, Td = L / 2 (r = 0)
+    QTableWidget *tt = table(fx.panel, "tuningTable");
+    const StepResult r = fx.panel.results().at(0);
+    QVERIFY(r.gain && r.deadTime && r.timeConstant);
+    const double K = *r.gain;
+    const double L = *r.deadTime;
+    const double T = *r.timeConstant;
+    QVERIFY(std::abs(K - 1.0) < 0.05 && std::abs(L - 1.5) < 0.3 && std::abs(T - 4.0) < 0.3);
+    const double kpP = T / (K * L);
+    const double kpPid = 1.2 * T / (K * L);
+    QCOMPARE(tt->rowCount(), 3);
+    QCOMPARE(tt->verticalHeaderItem(2)->text(), QStringLiteral("PID"));
+
+    // Ideal (default): headers and values as before.
+    QCOMPARE(tt->columnCount(), 3);
+    QCOMPARE(tt->horizontalHeaderItem(0)->text(), QStringLiteral("Kp"));
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), QStringLiteral("Ti (s)"));
+    QCOMPARE(tt->horizontalHeaderItem(2)->text(), QStringLiteral("Td (s)"));
+    QCOMPARE(cell(tt, 2, 0), g4(kpPid));
+    QCOMPARE(cell(tt, 2, 1), g4(2.0 * L));
+    QCOMPARE(cell(tt, 2, 2), g4(0.5 * L));
+
+    // Series: r = 1 - 4 Td / Ti = 0, so Kc' = Kp / 2, Ti' = Td' = Ti / 2 = L. P row unchanged.
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(1);
+    QCOMPARE(tt->columnCount(), 3);
+    QCOMPARE(tt->horizontalHeaderItem(0)->text(), QStringLiteral("Kc'"));
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), QStringLiteral("Ti' (s)"));
+    QCOMPARE(tt->horizontalHeaderItem(2)->text(), QStringLiteral("Td' (s)"));
+    QCOMPARE(cell(tt, 0, 0), g4(kpP));
+    QCOMPARE(cell(tt, 0, 1), QStringLiteral(u"—"));
+    QCOMPARE(cell(tt, 2, 0), g4(kpPid / 2.0));
+    QCOMPARE(cell(tt, 2, 1), g4(L));
+    QCOMPARE(cell(tt, 2, 2), g4(L));
+
+    // Parallel: Ki = Kp / Ti = Kp / (2 L), Kd = Kp Td = Kp L / 2; the integral combo has no effect.
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(2);
+    QCOMPARE(tt->horizontalHeaderItem(0)->text(), QStringLiteral("Kp"));
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), QStringLiteral("Ki (1/s)"));
+    QCOMPARE(tt->horizontalHeaderItem(2)->text(), QStringLiteral("Kd (s)"));
+    QCOMPARE(cell(tt, 2, 0), g4(kpPid));
+    QCOMPARE(cell(tt, 2, 1), g4(kpPid / (2.0 * L)));
+    QCOMPARE(cell(tt, 2, 2), g4(kpPid * L / 2.0));
+    child<QCheckBox>(fx.panel, "minutesCheck")->setChecked(true);
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), QStringLiteral("Ki (1/min)"));
+    QCOMPARE(tt->horizontalHeaderItem(2)->text(), QStringLiteral("Kd (min)"));
+    QCOMPARE(cell(tt, 2, 1), g4(kpPid / (2.0 * L / 60.0)));
+    QCOMPARE(cell(tt, 2, 2), g4(kpPid * L / 2.0 / 60.0));
+    child<QCheckBox>(fx.panel, "minutesCheck")->setChecked(false);
+
+    // Repeats per minute (Ideal and Series): 60 / Ti.
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(0);
+    child<QComboBox>(fx.panel, "integralUnitCombo")->setCurrentIndex(1);
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), toString(IntegralUnit::RepeatsPerMinute));
+    QCOMPARE(cell(tt, 2, 1), g4(60.0 / (2.0 * L)));
+    QCOMPARE(cell(tt, 1, 1), g4(60.0 / (L / 0.3))); // PI: Ti = L / 0.3
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(1);
+    QCOMPARE(cell(tt, 2, 1), g4(60.0 / L)); // Ti' = L
+    child<QComboBox>(fx.panel, "integralUnitCombo")->setCurrentIndex(0);
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(0);
+
+    // PB without the ranges: the reason across the row; no value cells.
+    child<QComboBox>(fx.panel, "gainUnitCombo")->setCurrentIndex(1);
+    QCOMPARE(tt->rowCount(), 3);
+    for (int row = 0; row < 3; ++row) {
+        QCOMPARE(cell(tt, row, 0), QStringLiteral("The proportional band needs the PV and CO ranges."));
+        QCOMPARE(tt->columnSpan(row, 0), tt->columnCount());
+    }
+    QCOMPARE(tt->horizontalHeaderItem(0)->text(), QStringLiteral("PB (%)"));
+
+    // With ranges (PV 0..200, CO 0..100): Kp% = Kp * 200 / 100, PB = 100 / Kp%; no Kp (%/%) column.
+    fx.apply([](AnalysisSettings &a) {
+        a.pvRangeMin = 0.0;
+        a.pvRangeMax = 200.0;
+    });
+    QCOMPARE(tt->columnCount(), 3);
+    QCOMPARE(tt->horizontalHeaderItem(0)->text(), QStringLiteral("PB (%)"));
+    QCOMPARE(cell(tt, 2, 0), g4(100.0 / (kpPid * 2.0)));
+    QCOMPARE(cell(tt, 0, 0), g4(100.0 / (kpP * 2.0)));
+    QCOMPARE(cell(tt, 2, 1), g4(2.0 * L)); // Ti and Td are not scaled
+    // PB with Parallel: Ki = Kp% / Ti.
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(2);
+    QCOMPARE(cell(tt, 2, 1), g4(kpPid * 2.0 / (2.0 * L)));
+    QCOMPARE(cell(tt, 2, 2), g4(kpPid * 2.0 * L / 2.0));
+    // Series + PB: Kc' = Kp / 2.
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(1);
+    QCOMPARE(cell(tt, 2, 0), g4(100.0 / (kpPid / 2.0 * 2.0)));
+
+    // Back to the gain: the Kp (%/%) column returns only for Ideal.
+    child<QComboBox>(fx.panel, "gainUnitCombo")->setCurrentIndex(0);
+    QCOMPARE(tt->columnCount(), 3); // Series
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(2);
+    QCOMPARE(tt->columnCount(), 3); // Parallel
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(0);
+    QCOMPARE(tt->columnCount(), 4);
+    QCOMPARE(tt->horizontalHeaderItem(1)->text(), QStringLiteral("Kp (%/%)"));
+    QCOMPARE(cell(tt, 2, 1), g4(kpPid * 200.0 / 100.0));
+}
+
+void TstAnalysisPanel::tuningFormTooltipsAndNote()
+{
+    Fx fx;
+    QTableWidget *tt = table(fx.panel, "tuningTable");
+    auto *note = child<QLabel>(fx.panel, "tuningNote");
+    const StepResult r = fx.panel.results().at(0);
+    const double L = *r.deadTime;
+    QVERIFY(!note->text().contains(QStringLiteral("Converted from the ideal form.")));
+    const QString idealTip = tt->item(2, 0)->toolTip();
+
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(1);
+    QVERIFY(note->text().contains(QStringLiteral("Ideal (ISA) form: u = Kp")));
+    QVERIFY(note->text().contains(QStringLiteral("Converted from the ideal form.")));
+    const QString gainTip = tt->item(2, 0)->toolTip();
+    // The rule's formula first, then the conversion with the numbers.
+    QVERIFY2(gainTip.contains(QStringLiteral("Kp = 1.2")), qPrintable(gainTip));
+    QVERIFY2(gainTip.indexOf(QStringLiteral("Kp = 1.2")) < gainTip.indexOf(QStringLiteral("Kc'")),
+             qPrintable(gainTip));
+    QVERIFY2(gainTip.contains(QStringLiteral(u"Kc' = Kp (1 + √r) / 2 with r = 1 - 4 Td / Ti = 0")),
+             qPrintable(gainTip));
+    const QString tiTip = tt->item(2, 1)->toolTip();
+    QVERIFY2(tiTip.contains(QStringLiteral(u"Ti' = Ti (1 + √r) / 2")), qPrintable(tiTip));
+    QVERIFY2(tiTip.contains(QStringLiteral("= %1 s").arg(g4(L))), qPrintable(tiTip));
+    const QString tdTip = tt->item(2, 2)->toolTip();
+    QVERIFY2(tdTip.contains(QStringLiteral(u"Td' = Ti (1 - √r) / 2")), qPrintable(tdTip));
+
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(2);
+    QVERIFY(note->text().contains(QStringLiteral("Converted from the ideal form.")));
+    const QString kiTip = tt->item(2, 1)->toolTip();
+    QVERIFY2(kiTip.contains(QStringLiteral("Ki = Kp / Ti")), qPrintable(kiTip));
+    QVERIFY2(kiTip.contains(QStringLiteral("1/s")), qPrintable(kiTip));
+    QVERIFY2(tt->item(2, 2)->toolTip().contains(QStringLiteral("Kd = Kp Td")),
+             qPrintable(tt->item(2, 2)->toolTip()));
+
+    child<QComboBox>(fx.panel, "formCombo")->setCurrentIndex(0);
+    child<QComboBox>(fx.panel, "integralUnitCombo")->setCurrentIndex(1);
+    QVERIFY2(tt->item(2, 1)->toolTip().contains(QStringLiteral("Repeats/min = 60 / Ti")),
+             qPrintable(tt->item(2, 1)->toolTip()));
+    child<QComboBox>(fx.panel, "integralUnitCombo")->setCurrentIndex(0);
+    QCOMPARE(tt->item(2, 0)->toolTip(), idealTip); // Ideal + Kp: nothing is added
+
+    fx.apply([](AnalysisSettings &a) {
+        a.pvRangeMin = 0.0;
+        a.pvRangeMax = 200.0;
+        a.controller.gain = GainUnit::ProportionalBand;
+    });
+    const QString pbTip = tt->item(2, 0)->toolTip();
+    QVERIFY2(pbTip.contains(QStringLiteral(u"PB = 100 / (Kp × PV span / CO span)")), qPrintable(pbTip));
+    QVERIFY2(pbTip.contains(QStringLiteral(u"PB = 100 / (")), qPrintable(pbTip));
+    QVERIFY2(pbTip.contains(QStringLiteral(" 200 / 100")), qPrintable(pbTip));
+}
+
+void TstAnalysisPanel::tangentMethod()
+{
+    Fx fx;
+    auto *method = child<QComboBox>(fx.panel, "methodCombo");
+    auto *from = child<QDoubleSpinBox>(fx.panel, "fromSpin");
+    auto *to = child<QDoubleSpinBox>(fx.panel, "toSpin");
+    auto *t632 = child<QCheckBox>(fx.panel, "tangentT632Check");
+    QVERIFY(t632);
+    QCOMPARE(method->count(), 5);
+    QCOMPARE(method->itemData(3).toInt(), static_cast<int>(ModelMethod::Tangent));
+    QCOMPARE(method->itemData(4).toInt(), static_cast<int>(ModelMethod::Custom));
+    QVERIFY(!t632->isVisibleTo(&fx.panel));
+    const QStringList labels0 = markerLabels(fx.plot);
+    QVERIFY(!labels0.contains(QString()));
+
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    method->setCurrentIndex(3);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(fx.panel.settings().method == ModelMethod::Tangent);
+    QVERIFY(!from->isEnabled() && !to->isEnabled());
+    QVERIFY(t632->isVisibleTo(&fx.panel));
+    const StepResult r = fx.panel.results().at(0);
+    QVERIFY(r.valid && r.tangent && r.deadTime && r.timeConstant);
+    // The steepest point of the FOPDT response is its start: slope = dPV / T = 2.5 per s.
+    QVERIFY(std::abs(*r.timeConstant - 4.0) < 0.5);
+    QVERIFY(std::abs(*r.deadTime - 1.5) < 0.5);
+
+    // Tooltips of L and T.
+    QTableWidget *t = table(fx.panel, "resultsTable");
+    const QString lTip = t->item(rowOf(t, QStringLiteral("L")), 1)->toolTip();
+    QVERIFY2(lTip.contains(QStringLiteral("L = time the tangent reaches y0 - step time")), qPrintable(lTip));
+    QVERIFY2(lTip.contains(QStringLiteral("= %1 s").arg(g4(*r.deadTime))), qPrintable(lTip));
+    QVERIFY2(lTip.contains(g4(r.tangent->slope)), qPrintable(lTip));
+    const QString tTip = t->item(rowOf(t, QStringLiteral("T")), 1)->toolTip();
+    QVERIFY2(tTip.contains(QStringLiteral(u"T = ΔPV / slope")), qPrintable(tTip));
+    QVERIFY2(tTip.contains(QStringLiteral("= %1 s").arg(g4(*r.timeConstant))), qPrintable(tTip));
+
+    // Overlay: the tangent from its crossing of y0 to its crossing of y100, and a marker.
+    QwtPlotCurve *line = findCurve(fx.plot, QStringLiteral("PV tangent"));
+    QVERIFY(line);
+    QCOMPARE(line->dataSize(), size_t(2));
+    QVERIFY(line->pen().style() == Qt::DashLine);
+    QVERIFY(!line->testItemAttribute(QwtPlotItem::Legend));
+    QCOMPARE(line->pen().color(), QColor(fx.panel.settings().modelColor));
+    QVERIFY(std::abs(line->sample(0).y() - r.y0) < 1e-9);
+    QVERIFY(std::abs(line->sample(1).y() - r.y100) < 1e-9);
+    QVERIFY(line->sample(0).x() < line->sample(1).x());
+    QVERIFY(std::abs(line->sample(0).x() - 11.5) < 0.5);
+    const double slope = (line->sample(1).y() - line->sample(0).y()) / (line->sample(1).x() - line->sample(0).x());
+    QVERIFY(std::abs(slope - r.tangent->slope) < 1e-6);
+    QVERIFY(markerLabels(fx.plot).contains(QString())); // the tangent point has no label
+    // It is there even without the model curve.
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV model")));
+    fx.apply([](AnalysisSettings &a) { a.showModel = false; });
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV tangent")));
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model")));
+    QVERIFY(markerLabels(fx.plot).contains(QString()));
+
+    // T from the 63.2 % point.
+    QSignalSpy changed2(&fx.panel, &AnalysisPanel::settingsChanged);
+    t632->setChecked(true);
+    QCOMPARE(changed2.count(), 1);
+    QVERIFY(fx.panel.settings().tangentT632);
+    const StepResult r632 = fx.panel.results().at(0);
+    QVERIFY(r632.timeConstant);
+    QVERIFY(std::abs(*r632.timeConstant - 4.0) < 0.5);
+    const QString tTip2 = t->item(rowOf(t, QStringLiteral("T")), 1)->toolTip();
+    QVERIFY2(tTip2.contains(QStringLiteral("T = t63.2 - step time - L")), qPrintable(tTip2));
+    t632->setChecked(false);
+    QVERIFY(!fx.panel.settings().tangentT632);
+
+    // Removed when the method changes ...
+    method->setCurrentIndex(1);
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV tangent")));
+    QVERIFY(!markerLabels(fx.plot).contains(QString()));
+    QVERIFY(!t632->isVisibleTo(&fx.panel));
+    // ... and with the mode (back again when the mode returns).
+    method->setCurrentIndex(3);
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV tangent")));
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV tangent")));
+    child<QToolButton>(fx.panel, "openLoopButton")->click();
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV tangent")));
+
+    // Not drawn when the PV is not plotted.
+    QList<Tag> tags = standardTags();
+    tags[1].plotted = false;
+    fx.panel.setTags(tags);
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV tangent")));
+}
+
+void TstAnalysisPanel::tangentNoisyCheck()
+{
+    const QString text = QStringLiteral(
+        "The tangent is taken on noisy data, so its slope is uncertain. Set a smoothing S, or "
+        "choose the Smith method.");
+    Fx fx(true, standardTags(), 10.0, 0.4); // PV noise of +-0.4 before the step: 4 % of the step
+    QVERIFY(!checkTexts(fx.panel).contains(text)); // 0 % / 63.2 %
+    fx.apply([](AnalysisSettings &a) { a.method = ModelMethod::Tangent; });
+    QVERIFY2(fx.panel.results().at(0).valid, "tangent result");
+    QVERIFY2(checkTexts(fx.panel).contains(text), qPrintable(checkTexts(fx.panel).join('|')));
+    Fx clean;
+    clean.apply([](AnalysisSettings &a) { a.method = ModelMethod::Tangent; });
+    QVERIFY(!checkTexts(clean.panel).contains(text));
+}
+
+void TstAnalysisPanel::compareMethods()
+{
+    Fx fx; // ZeroTo632 selected, showModel on
+    auto *table_ = table(fx.panel, "compareTable");
+    QVERIFY(table_);
+    auto *c0632 = child<QCheckBox>(fx.panel, "compare0632Check");
+    auto *smith = child<QCheckBox>(fx.panel, "compareSmithCheck");
+    auto *sund = child<QCheckBox>(fx.panel, "compareSundaresanCheck");
+    auto *tang = child<QCheckBox>(fx.panel, "compareTangentCheck");
+    QVERIFY(c0632 && smith && sund && tang);
+    QVERIFY(table_->isHidden()); // nothing compared
+    QVERIFY(!c0632->isVisibleTo(&fx.panel)); // the selected method's own box
+    QVERIFY(smith->isVisibleTo(&fx.panel) && sund->isVisibleTo(&fx.panel) && tang->isVisibleTo(&fx.panel));
+    QVERIFY(fx.panel.settings().compareMethods.isEmpty());
+    const QString mainTitle = QStringLiteral("PV model");
+    QVERIFY(findCurve(fx.plot, mainTitle));
+
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    smith->setChecked(true);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(fx.panel.settings().compareMethods == (QList<ModelMethod>{ModelMethod::Smith}));
+    QVERIFY(!table_->isHidden());
+    QCOMPARE(table_->columnCount(), 4);
+    QCOMPARE(table_->horizontalHeaderItem(0)->text(), QStringLiteral("Method"));
+    QCOMPARE(table_->horizontalHeaderItem(1)->text(), QStringLiteral("L (s)"));
+    QCOMPARE(table_->horizontalHeaderItem(2)->text(), QStringLiteral("T (s)"));
+    QCOMPARE(table_->horizontalHeaderItem(3)->text(), QStringLiteral("Fit error"));
+    QCOMPARE(table_->rowCount(), 2);
+    QVERIFY(cell(table_, 0, 0).contains(QStringLiteral("(used for tuning)")));
+    QVERIFY(cell(table_, 0, 0).contains(analysis::methodName(ModelMethod::ZeroTo632)));
+    QCOMPARE(cell(table_, 1, 0), analysis::methodName(ModelMethod::Smith));
+    const StepResult main = fx.panel.results().at(0);
+    QCOMPARE(cell(table_, 0, 1), g4(*main.deadTime));
+    QCOMPARE(cell(table_, 0, 2), g4(*main.timeConstant));
+    AnalysisSettings other = fx.panel.settings();
+    other.method = ModelMethod::Smith;
+    const StepResult smithResult = analyzeStep(fx.rec, kPv, 9.0, 40.0, other);
+    QVERIFY(smithResult.deadTime && smithResult.timeConstant && smithResult.fitRmsPercent);
+    QCOMPARE(cell(table_, 1, 1), g4(*smithResult.deadTime));
+    QCOMPARE(cell(table_, 1, 2), g4(*smithResult.timeConstant));
+    QVERIFY(cell(table_, 1, 3).startsWith(QString::number(*smithResult.fitRmsPercent, 'g', 3)));
+    QVERIFY(cell(table_, 1, 3).contains(QStringLiteral(" %")));
+    QVERIFY2(table_->item(1, 1)->toolTip().contains(QStringLiteral("L = t63.2 - T")),
+             qPrintable(table_->item(1, 1)->toolTip()));
+    QVERIFY2(table_->item(1, 2)->toolTip().contains(QStringLiteral("T = 1.5 (t63.2 - t28.3)")),
+             qPrintable(table_->item(1, 2)->toolTip()));
+    QVERIFY(table_->item(1, 3)->toolTip().contains(QStringLiteral("Fit error")));
+    // The tuning still follows the selected method.
+    QVERIFY(fx.panel.settings().method == ModelMethod::ZeroTo632);
+    QVERIFY(fx.panel.results().at(0).deadTime == main.deadTime);
+
+    const QString smithTitle = QStringLiteral("PV model (%1)").arg(analysis::methodName(ModelMethod::Smith));
+    QwtPlotCurve *smithCurve = findCurve(fx.plot, smithTitle);
+    QVERIFY(smithCurve);
+    QVERIFY(!smithCurve->testItemAttribute(QwtPlotItem::Legend));
+    QVERIFY(smithCurve->pen().style() == Qt::DashDotLine);
+    QCOMPARE(smithCurve->pen().color(), QColor(fx.panel.settings().modelColor));
+    QVERIFY(findCurve(fx.plot, mainTitle)->pen().style() == Qt::DashLine);
+
+    // More methods: the fixed order and a distinct dash pattern each.
+    tang->setChecked(true);
+    sund->setChecked(true);
+    QVERIFY(fx.panel.settings().compareMethods
+            == (QList<ModelMethod>{ModelMethod::Smith, ModelMethod::Sundaresan, ModelMethod::Tangent}));
+    QCOMPARE(table_->rowCount(), 4);
+    QCOMPARE(cell(table_, 2, 0), analysis::methodName(ModelMethod::Sundaresan));
+    QCOMPARE(cell(table_, 3, 0), analysis::methodName(ModelMethod::Tangent));
+    QList<Qt::PenStyle> styles;
+    for (ModelMethod m : {ModelMethod::Smith, ModelMethod::Sundaresan, ModelMethod::Tangent}) {
+        QwtPlotCurve *c = findCurve(fx.plot, QStringLiteral("PV model (%1)").arg(analysis::methodName(m)));
+        QVERIFY2(c, "compared curve");
+        styles << c->pen().style();
+    }
+    QVERIFY(styles[0] != styles[1] && styles[1] != styles[2] && styles[0] != styles[2]);
+    QVERIFY(!styles.contains(Qt::DashLine));
+    QVERIFY(!styles.contains(Qt::SolidLine));
+
+    // The curves are drawn while compared even without the main model curve.
+    fx.apply([](AnalysisSettings &a) { a.showModel = false; });
+    QVERIFY(!findCurve(fx.plot, mainTitle));
+    QVERIFY(findCurve(fx.plot, smithTitle));
+    QCOMPARE(table_->rowCount(), 4);
+
+    // Copy results includes the table.
+    QGuiApplication::clipboard()->setText(QString());
+    child<QPushButton>(fx.panel, "copyResultsButton")->click();
+    const QString text = QGuiApplication::clipboard()->text();
+    QVERIFY2(text.contains(QStringLiteral("Method\tL (s)\tT (s)\tFit error")), qPrintable(text));
+    QVERIFY(text.contains(QStringLiteral("(used for tuning)")));
+    QVERIFY(text.indexOf(QStringLiteral("Quantity")) < text.indexOf(QStringLiteral("Method\t")));
+    QVERIFY(text.indexOf(QStringLiteral("Method\t")) < text.indexOf(QStringLiteral("Controller")));
+
+    // Mode: the curves leave the plot in Closed loop mode and return.
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    QVERIFY(!findCurve(fx.plot, smithTitle));
+    child<QToolButton>(fx.panel, "openLoopButton")->click();
+    QVERIFY(findCurve(fx.plot, smithTitle));
+
+    // Unchecking removes them; nothing compared: the table is hidden and not copied.
+    smith->setChecked(false);
+    QVERIFY(!findCurve(fx.plot, smithTitle));
+    QCOMPARE(table_->rowCount(), 3);
+    sund->setChecked(false);
+    tang->setChecked(false);
+    QVERIFY(fx.panel.settings().compareMethods.isEmpty());
+    QVERIFY(table_->isHidden());
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model (%1)").arg(analysis::methodName(ModelMethod::Tangent))));
+    QGuiApplication::clipboard()->setText(QString());
+    child<QPushButton>(fx.panel, "copyResultsButton")->click();
+    QVERIFY(!QGuiApplication::clipboard()->text().contains(QStringLiteral("(used for tuning)")));
+
+    // Without a valid result the compared rows show dashes.
+    smith->setChecked(true);
+    fx.plot.cursors()->clear();
+    QVERIFY(!table_->isHidden());
+    QCOMPARE(cell(table_, 1, 1), QStringLiteral(u"—"));
+    QCOMPARE(cell(table_, 1, 3), QStringLiteral(u"—"));
+}
+
+void TstAnalysisPanel::compareNormalisedAndSelected()
+{
+    Fx fx;
+    auto *table_ = table(fx.panel, "compareTable");
+    // A loaded list is put in order, without Custom and duplicates.
+    fx.apply([](AnalysisSettings &a) {
+        a.compareMethods = {ModelMethod::Tangent, ModelMethod::Custom, ModelMethod::Smith,
+                            ModelMethod::Smith};
+    });
+    QVERIFY(fx.panel.settings().compareMethods
+            == (QList<ModelMethod>{ModelMethod::Smith, ModelMethod::Tangent}));
+    QVERIFY(child<QCheckBox>(fx.panel, "compareSmithCheck")->isChecked());
+    QVERIFY(child<QCheckBox>(fx.panel, "compareTangentCheck")->isChecked());
+    QVERIFY(!child<QCheckBox>(fx.panel, "compareSundaresanCheck")->isChecked());
+    QCOMPARE(table_->rowCount(), 3);
+
+    // The selected method is not compared with itself, and its own box is hidden.
+    auto *method = child<QComboBox>(fx.panel, "methodCombo");
+    method->setCurrentIndex(method->findData(static_cast<int>(ModelMethod::Smith)));
+    QVERIFY(!child<QCheckBox>(fx.panel, "compareSmithCheck")->isVisibleTo(&fx.panel));
+    QVERIFY(child<QCheckBox>(fx.panel, "compare0632Check")->isVisibleTo(&fx.panel));
+    QCOMPARE(table_->rowCount(), 2);
+    QVERIFY(cell(table_, 0, 0).contains(QStringLiteral("(used for tuning)")));
+    QVERIFY(cell(table_, 0, 0).contains(analysis::methodName(ModelMethod::Smith)));
+    QCOMPARE(cell(table_, 1, 0), analysis::methodName(ModelMethod::Tangent));
+    QVERIFY(!findCurve(fx.plot, QStringLiteral("PV model (%1)").arg(analysis::methodName(ModelMethod::Smith))));
+    QVERIFY(findCurve(fx.plot, QStringLiteral("PV model (%1)").arg(analysis::methodName(ModelMethod::Tangent))));
+
+    // Custom selected: all four may be compared.
+    method->setCurrentIndex(method->findData(static_cast<int>(ModelMethod::Custom)));
+    QVERIFY(child<QCheckBox>(fx.panel, "compareSmithCheck")->isVisibleTo(&fx.panel));
+    QCOMPARE(table_->rowCount(), 3);
+    QVERIFY(fx.panel.settings().compareMethods
+            == (QList<ModelMethod>{ModelMethod::Smith, ModelMethod::Tangent}));
+}
+
+void TstAnalysisPanel::coMovedByItselfCheck()
+{
+    const QString text = QStringLiteral(
+        "The controller output changes after the step: the loop looks closed. Put the controller "
+        "in manual for an open-loop test, or use the Closed loop area.");
+    {
+        Fx clean; // CO steps once and stays
+        QVERIFY(clean.panel.results().at(0).valid);
+        QVERIFY2(!anyContains(checkTexts(clean.panel), QStringLiteral("loop looks closed")),
+                 qPrintable(checkTexts(clean.panel).join('|')));
+    }
+    // CO ramps after the step (0.2 per s from 5 s after it; dCO = 15): a drift over the window.
+    Fx ramp(true, standardTags(), 10.0, 0.0, 0.2);
+    const StepResult r = ramp.panel.results().at(0);
+    QVERIFY(r.valid && r.deltaCo);
+    QVERIFY2(checkTexts(ramp.panel).contains(text), qPrintable(checkTexts(ramp.panel).join('|')));
+    // It is the last item.
+    QCOMPARE(checkTexts(ramp.panel).last(), text);
+
+    // No CO tag chosen (typed dCO): the check can't run.
+    ramp.apply([](AnalysisSettings &a) {
+        a.deltaCoTagId = 0;
+        a.manualDeltaCo = 10.0;
+    });
+    QVERIFY(!anyContains(checkTexts(ramp.panel), QStringLiteral("loop looks closed")));
+    ramp.apply([](AnalysisSettings &a) { a.deltaCoTagId = kCo; });
+    QVERIFY(checkTexts(ramp.panel).contains(text));
+    // Cursors that end before the ramp: no drift in the window.
+    ramp.setCursors(9.0, 14.0);
+    QVERIFY(!anyContains(checkTexts(ramp.panel), QStringLiteral("loop looks closed")));
+
+    // A jump of the CO between two samples after the step (a second step).
+    Recorder rec;
+    TrendPlot plot;
+    AnalysisPanel panel;
+    for (int i = 0; i <= 600; ++i) {
+        const double t = i * 0.1;
+        const double co = t >= 25.0 ? 33.0 : (t >= 10.0 ? 30.0 : 20.0); // a second step at 25 s
+        const double pv = t < 11.5 ? 50.0 : 50.0 + 10.0 * (1.0 - std::exp(-(t - 11.5) / 4.0));
+        SampleBatch b;
+        b.t = t;
+        b.samples = {good(kCo, co), good(kPv, pv), good(kOther, pv)};
+        rec.append(b);
+    }
+    const QList<Tag> tags = standardTags();
+    plot.setRecorder(&rec);
+    plot.setTags(tags);
+    plot.refresh();
+    panel.setRecorder(&rec);
+    panel.setPlot(&plot);
+    panel.setTags(tags);
+    AnalysisSettings s;
+    s.pvTagId = kPv;
+    s.setpointTagIds = {kPv};
+    s.deltaCoTagId = kCo;
+    s.method = ModelMethod::ZeroTo632;
+    panel.setSettings(s);
+    plot.cursors()->setC1(9.0);
+    plot.cursors()->setC2(40.0);
+    QVERIFY(panel.results().at(0).valid && panel.results().at(0).deltaCo);
+    // dCO = 13, the second step is 3 = 23 % of it: more than 10 %.
+    QVERIFY2(anyContains(checkTexts(panel), QStringLiteral("loop looks closed")),
+             qPrintable(checkTexts(panel).join('|')));
 }
 
 QTEST_MAIN(TstAnalysisPanel)

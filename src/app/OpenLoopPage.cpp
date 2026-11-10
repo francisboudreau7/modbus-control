@@ -1,12 +1,15 @@
 #include "OpenLoopPage.h"
 
 #include "PlotCursors.h"
+#include "RichText.h"
 #include "Recorder.h"
 #include "TrendPlot.h"
 
 #include <qwt_plot.h>
 #include <qwt_plot_curve.h>
 #include <qwt_plot_item.h>
+#include <qwt_plot_marker.h>
+#include <qwt_symbol.h>
 #include <qwt_text.h>
 
 #include <QAbstractItemView>
@@ -16,6 +19,7 @@
 #include <QDoubleSpinBox>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
@@ -126,7 +130,7 @@ void OpenLoopPage::buildUi()
     m_methodCombo = new QComboBox(modelGroup);
     m_methodCombo->setObjectName(QStringLiteral("methodCombo"));
     for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
-                          ModelMethod::Custom})
+                          ModelMethod::Tangent, ModelMethod::Custom})
         m_methodCombo->addItem(methodName(m), static_cast<int>(m));
     m_methodCombo->setToolTip(
         tr("How L (dead time) and T (time constant) are found from two points of the response."));
@@ -134,6 +138,10 @@ void OpenLoopPage::buildUi()
     m_fromSpin->setSuffix(QStringLiteral(" %"));
     m_toSpin = makeSpin("toSpin", 0.0, 99.99, 2, 63.2, modelGroup);
     m_toSpin->setSuffix(QStringLiteral(" %"));
+    m_tangentT632Check = new QCheckBox(tr("T from the 63.2 % point"), modelGroup);
+    m_tangentT632Check->setObjectName(QStringLiteral("tangentT632Check"));
+    m_tangentT632Check->setToolTip(
+        tr("T = t63.2 - step time - L, instead of the time the tangent needs to go from y0 to y100."));
     m_resultsTable = new QTableWidget(0, 2, modelGroup);
     m_resultsTable->setObjectName(QStringLiteral("resultsTable"));
     m_resultsTable->setHorizontalHeaderLabels({tr("Quantity"), tr("Value")});
@@ -158,7 +166,47 @@ void OpenLoopPage::buildUi()
     mg->addWidget(m_fromSpin, 1, 1);
     mg->addWidget(new QLabel(tr("To %"), modelGroup), 1, 2);
     mg->addWidget(m_toSpin, 1, 3);
-    mg->addWidget(m_resultsTable, 2, 0, 1, 4);
+    mg->addWidget(m_tangentT632Check, 2, 0, 1, 4);
+    mg->addWidget(m_resultsTable, 3, 0, 1, 4);
+
+    // Compare with: other methods' L, T and fit (and curves) next to the selected one.
+    m_compareRow = new QWidget(modelGroup);
+    m_compareRow->setObjectName(QStringLiteral("compareRow"));
+    auto *cr = new QHBoxLayout(m_compareRow);
+    cr->setContentsMargins(0, 0, 0, 0);
+    cr->addWidget(new QLabel(tr("Compare with:"), m_compareRow));
+    struct CompareBox {
+        ModelMethod method;
+        const char *name;
+        QString label;
+    };
+    const QList<CompareBox> boxes = {
+        {ModelMethod::ZeroTo632, "compare0632Check", tr("0 % / 63.2 %")},
+        {ModelMethod::Smith, "compareSmithCheck", tr("Smith")},
+        {ModelMethod::Sundaresan, "compareSundaresanCheck", tr("Sundaresan")},
+        {ModelMethod::Tangent, "compareTangentCheck", tr("Tangent")},
+    };
+    for (const CompareBox &b : boxes) {
+        auto *box = new QCheckBox(b.label, m_compareRow);
+        box->setObjectName(QLatin1String(b.name));
+        box->setToolTip(tr("Also show the L, T and model curve of %1.").arg(methodName(b.method)));
+        cr->addWidget(box);
+        m_compareChecks.insert(b.method, box);
+        connect(box, &QCheckBox::toggled, this, [this] { onCompareToggled(); });
+    }
+    cr->addStretch(1);
+    mg->addWidget(m_compareRow, 4, 0, 1, 4);
+    m_compareTable = new QTableWidget(0, 4, modelGroup);
+    m_compareTable->setObjectName(QStringLiteral("compareTable"));
+    m_compareTable->setHorizontalHeaderLabels(
+        {tr("Method"), QStringLiteral("L (s)"), QStringLiteral("T (s)"), tr("Fit error")});
+    m_compareTable->verticalHeader()->setVisible(false);
+    m_compareTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_compareTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_compareTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setupTable(m_compareTable);
+    m_compareTable->hide();
+    mg->addWidget(m_compareTable, 5, 0, 1, 4);
     m_modelColorButton = new QPushButton(modelGroup);
     m_modelColorButton->setObjectName(QStringLiteral("modelColorButton"));
     m_modelColorButton->setToolTip(tr("Colour of the model curve"));
@@ -166,14 +214,20 @@ void OpenLoopPage::buildUi()
     m_pickColor = [](const QColor &initial, QWidget *parent) {
         return QColorDialog::getColor(initial, parent, tr("Colour of the model curve"));
     };
-    mg->addWidget(m_showModelCheck, 3, 0, 1, 3);
-    mg->addWidget(m_modelColorButton, 3, 3, Qt::AlignRight);
-    mg->addWidget(m_checksList, 4, 0, 1, 4);
+    mg->addWidget(m_showModelCheck, 6, 0, 1, 3);
+    mg->addWidget(m_modelColorButton, 6, 3, Qt::AlignRight);
+    mg->addWidget(m_checksList, 7, 0, 1, 4);
     col->addWidget(modelGroup);
     connect(m_methodCombo, &QComboBox::currentIndexChanged, this, [this] { onMethodChanged(); });
     connect(m_fromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
     connect(m_toSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
     connect(m_modelColorButton, &QPushButton::clicked, this, [this] { onPickModelColor(); });
+    connect(m_tangentT632Check, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_ctx->settings.tangentT632 = on;
+        m_userEdited();
+    });
     connect(m_showModelCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (m_updating)
             return;
@@ -266,6 +320,10 @@ void OpenLoopPage::updateEnabled()
     const bool custom = s.method == ModelMethod::Custom;
     m_fromSpin->setEnabled(custom);
     m_toSpin->setEnabled(custom);
+    m_tangentT632Check->setVisible(s.method == ModelMethod::Tangent);
+    // The selected method is always shown first in compareTable: no box for it.
+    for (auto it = m_compareChecks.cbegin(); it != m_compareChecks.cend(); ++it)
+        it.value()->setVisible(it.key() != s.method);
     const bool lam = s.tuningRule == TuningRule::ImcLambda || s.tuningRule == TuningRule::Simc;
     m_lambdaSpin->setEnabled(lam);
 }
@@ -281,6 +339,12 @@ void OpenLoopPage::syncFromSettings()
         const QSignalBlocker b13(m_ruleCombo);
         const QSignalBlocker b14(m_lambdaSpin);
         const QSignalBlocker b15(m_minutesCheck);
+        const QSignalBlocker b16(m_tangentT632Check);
+        m_tangentT632Check->setChecked(s.tangentT632);
+        for (auto it = m_compareChecks.cbegin(); it != m_compareChecks.cend(); ++it) {
+            const QSignalBlocker blocker(it.value());
+            it.value()->setChecked(s.compareMethods.contains(it.key()));
+        }
         m_showModelCheck->setChecked(s.showModel);
         updateModelColorButton();
         m_methodCombo->setCurrentIndex(std::max(0, m_methodCombo->findData(static_cast<int>(s.method))));
@@ -349,8 +413,83 @@ void OpenLoopPage::onPickModelColor()
 // ---------------------------------------------------------------------------------------------
 // Recompute
 
+QList<ModelMethod> OpenLoopPage::comparedMethods() const
+{
+    QList<ModelMethod> out;
+    for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
+                          ModelMethod::Tangent}) {
+        if (m != m_ctx->settings.method && m_ctx->settings.compareMethods.contains(m))
+            out.append(m);
+    }
+    return out;
+}
+
+void OpenLoopPage::onCompareToggled()
+{
+    if (m_updating)
+        return;
+    QList<ModelMethod> list; // fixed order, no Custom, no duplicates
+    for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
+                          ModelMethod::Tangent}) {
+        if (m_compareChecks.value(m)->isChecked())
+            list.append(m);
+    }
+    m_ctx->settings.compareMethods = list;
+    m_userEdited();
+}
+
+void OpenLoopPage::rebuildCompare()
+{
+    m_compareResults.clear();
+    m_compareTable->setRowCount(0);
+    const QList<ModelMethod> methods = comparedMethods();
+    if (methods.isEmpty()) {
+        m_compareTable->hide();
+        return;
+    }
+    const AnalysisSettings &settings = m_ctx->settings;
+    const PlotCursors *cur = m_ctx->cursors();
+    const bool can = m_ctx->recorder && cur && cur->hasC1() && cur->hasC2() && settings.pvTagId != 0;
+    for (ModelMethod m : methods) {
+        StepResult r;
+        if (can) {
+            AnalysisSettings other = settings;
+            other.method = m;
+            r = analyzeStep(*m_ctx->recorder, settings.pvTagId, cur->c1(), cur->c2(), other);
+        }
+        m_compareResults.append({m, r});
+    }
+
+    const StepResult *selected = (!m_ctx->results.isEmpty() && m_ctx->results.first().valid)
+                                     ? &m_ctx->results.first()
+                                     : nullptr;
+    const QString pu = m_ctx->pvUnit();
+    auto addRow = [&](ModelMethod m, const StepResult *r, bool used) {
+        const int row = m_compareTable->rowCount();
+        m_compareTable->insertRow(row);
+        const QString name = used ? tr("%1 (used for tuning)").arg(methodName(m)) : methodName(m);
+        m_compareTable->setItem(row, 0, makeItem(name, false, rich::escaped(methodName(m))));
+        const QString lText = r && r->deadTime ? g4(*r->deadTime) : kDash;
+        const QString tText = r && r->timeConstant ? g4(*r->timeConstant) : kDash;
+        QString fitText = kDash;
+        if (r && r->fitRmsPercent) {
+            fitText = QString::number(*r->fitRmsPercent, 'g', 3) + QStringLiteral(" % ")
+                      + kDash.at(0) + u' ' + fitWord(*r->fitRmsPercent);
+        }
+        m_compareTable->setItem(row, 1, makeItem(lText, true, explainModelTime(true, r, m)));
+        m_compareTable->setItem(row, 2, makeItem(tText, true, explainModelTime(false, r, m)));
+        m_compareTable->setItem(row, 3, makeItem(fitText, true, explainResult(Quantity::Fit, r)));
+    };
+    addRow(settings.method, selected, true);
+    for (const auto &entry : std::as_const(m_compareResults))
+        addRow(entry.first, entry.second.valid ? &entry.second : nullptr, false);
+    fitTableHeight(m_compareTable);
+    m_compareTable->show();
+}
+
 void OpenLoopPage::recompute()
 {
+    rebuildCompare();
     rebuildResultsTable();
     rebuildChecks();
     rebuildTuningTable();
@@ -455,6 +594,17 @@ void OpenLoopPage::rebuildChecks()
         }
         const int textWidth = std::max(120, m_checksList->viewport()->width() - 40);
         int total = 4;
+        const auto addItem = [&](const QString &text) {
+            auto *item = new QListWidgetItem(icon, text, m_checksList);
+            item->setFlags(Qt::ItemIsEnabled);
+            item->setToolTip(text);
+            const int h = m_checksList->fontMetrics()
+                              .boundingRect(0, 0, textWidth, 2000, Qt::TextWordWrap, text)
+                              .height()
+                          + 8;
+            item->setSizeHint(QSize(0, std::max(h, 24)));
+            total += std::max(h, 24);
+        };
         for (StepCheck c : checks) {
             QString text;
             switch (c) {
@@ -500,34 +650,62 @@ void OpenLoopPage::rebuildChecks()
                 text = tr("The model does not fit the response well (fit error > 8 %).");
                 break;
             }
-            auto *item = new QListWidgetItem(icon, text, m_checksList);
-            item->setFlags(Qt::ItemIsEnabled);
-            item->setToolTip(text);
-            const int h = m_checksList->fontMetrics()
-                              .boundingRect(0, 0, textWidth, 2000, Qt::TextWordWrap, text)
-                              .height()
-                          + 8;
-            item->setSizeHint(QSize(0, std::max(h, 24)));
-            total += std::max(h, 24);
+            addItem(text);
+        }
+        if (coMovedAfterStep(results.first())) {
+            addItem(tr("The controller output changes after the step: the loop looks closed. Put "
+                       "the controller in manual for an open-loop test, or use the Closed loop "
+                       "area."));
         }
         m_checksList->setFixedHeight(total);
     }
     m_checksList->setVisible(m_checksList->count() > 0);
 }
 
+bool OpenLoopPage::coMovedAfterStep(const StepResult &r) const
+{
+    const AnalysisSettings &s = m_ctx->settings;
+    const Recorder *rec = m_ctx->recorder;
+    if (!rec || !m_ctx->tagById(s.deltaCoTagId) || !r.valid || !r.deltaCo || *r.deltaCo == 0.0)
+        return false;
+    const double threshold = 0.1 * std::abs(*r.deltaCo);
+    const double start = r.stepTime + (r.deadTime ? std::max(*r.deadTime, 0.0) : 1.0);
+    if (!(start < r.t2))
+        return false;
+    const auto range = rec->rowRange(start, r.t2);
+    double first = kNaN;
+    double prev = kNaN;
+    bool have = false;
+    for (qsizetype i = range.first; i < range.second; ++i) {
+        const double v = rec->valueAt(i, s.deltaCoTagId);
+        if (std::isnan(v))
+            continue;
+        if (!have)
+            first = v;
+        else if (std::abs(v - prev) > threshold)
+            return true; // a jump between consecutive samples
+        prev = v;
+        have = true;
+    }
+    return have && std::abs(prev - first) > threshold; // or a drift over the window
+}
+
 void OpenLoopPage::rebuildTuningTable()
 {
     const AnalysisSettings &settings = m_ctx->settings;
     const QList<StepResult> &results = m_ctx->results;
+    const ControllerSettings &controller = settings.controller;
     m_tuningTable->clearSpans();
     m_tuningTable->setRowCount(0);
-    const bool pct = m_ctx->percentGainsShown();
     const bool minutes = settings.timeInMinutes;
-    const QString tUnit = minutes ? QStringLiteral("min") : QStringLiteral("s");
-    QStringList headers{QStringLiteral("Kp")};
+    // The Kp (%/%) column only goes with the ideal form shown as a gain (PB is already the percent form).
+    const bool pct = m_ctx->percentGainsShown() && controller.form == PidForm::Ideal
+                     && controller.gain == GainUnit::Gain;
+    const PidColumnLabels labels = pidColumnLabels(controller, minutes);
+    QStringList headers{labels.gain};
     if (pct)
         headers << QStringLiteral("Kp (%/%)");
-    headers << QStringLiteral("Ti (%1)").arg(tUnit) << QStringLiteral("Td (%1)").arg(tUnit);
+    headers << labels.integral << labels.derivative;
     m_tuningTable->setColumnCount(int(headers.size()));
     m_tuningTable->setHorizontalHeaderLabels(headers);
 
@@ -538,7 +716,7 @@ void OpenLoopPage::rebuildTuningTable()
                     settings.lambdaS);
     }
     QStringList rowLabels;
-    const double div = minutes ? 60.0 : 1.0;
+    const PidSpans spans = m_ctx->pidSpans();
     for (int i = 0; i < rows.size(); ++i) {
         const TuningRow &tr_ = rows.at(i);
         rowLabels << toString(tr_.kind);
@@ -554,22 +732,36 @@ void OpenLoopPage::rebuildTuningTable()
             m_tuningTable->setSpan(i, 0, 1, m_tuningTable->columnCount());
             continue;
         }
+        const IdealPid ideal{tr_.kp.value_or(0.0), tr_.ti, tr_.td};
+        const FormValues fv = toForm(ideal, controller, spans, minutes);
+        if (!fv.available) {
+            // This form has no equivalent of the row (or needs ranges): say why across the row.
+            const QString toolTip = tip(toString(tr_.kind), fv.reason, {});
+            m_tuningTable->setItem(i, 0, makeItem(fv.reason, false, toolTip));
+            m_tuningTable->setSpan(i, 0, 1, m_tuningTable->columnCount());
+            continue;
+        }
         int c = 0;
-        auto put = [&](const QString &text, int column) {
-            const QString toolTip = explainTuning(column, tr_.kind, tr_, *r);
+        // part: 0 = gain, 1 = integral, 2 = derivative (conversion lines); column: explainTuning().
+        auto put = [&](const QString &text, int column, int part) {
+            QString toolTip = explainTuning(column, tr_.kind, tr_, *r);
+            if (part >= 0)
+                toolTip = appendLines(toolTip, pidConversionLines(part, ideal, controller, spans, minutes));
             m_tuningTable->setItem(i, c++, makeItem(text, true, toolTip));
         };
-        put(g4(tr_.kp), 0);
+        put(tr_.kp ? g4(fv.gain) : kDash, 0, 0);
         if (pct)
-            put(tr_.kp ? g4(*tr_.kp * *m_ctx->pvSpan() / *m_ctx->coSpan()) : kDash, 3);
-        put(tr_.ti ? g4(*tr_.ti / div) : kDash, 1);
-        put(tr_.td ? g4(*tr_.td / div) : kDash, 2);
+            put(tr_.kp ? g4(*tr_.kp * *m_ctx->pvSpan() / *m_ctx->coSpan()) : kDash, 3, -1);
+        put(g4(fv.integral), 1, 1);
+        put(g4(fv.derivative), 2, 2);
     }
     m_tuningTable->setVerticalHeaderLabels(rowLabels);
     fitTableHeight(m_tuningTable);
 
     QString note = tr("Ideal (ISA) form: u = Kp (e + 1/Ti ∫e dt + Td de/dt). Ti and Td in %1.")
                        .arg(minutes ? tr("min") : tr("s"));
+    if (controller.form != PidForm::Ideal)
+        note += u' ' + tr("Converted from the ideal form.");
     if (r && r->gain && *r->gain < 0.0)
         note += u' ' + tr("K is negative: the controller must be direct acting (Kp is shown negative).");
     m_tuningNote->setText(note);
@@ -588,17 +780,61 @@ void OpenLoopPage::setOverlaysShown(bool shown)
 
 void OpenLoopPage::clearOverlays()
 {
-    for (QwtPlotCurve *c : std::as_const(m_modelCurves)) {
-        c->detach();
-        delete c;
+    for (QwtPlotItem *item : std::as_const(m_overlayItems)) {
+        item->detach();
+        delete item;
     }
-    m_modelCurves.clear();
+    m_overlayItems.clear();
 }
 
 void OpenLoopPage::forgetOverlays()
 {
-    m_modelCurves.clear();
+    m_overlayItems.clear();
 }
+
+namespace {
+
+/// The model curve of `r` (from t1 to t2, ~400 points, with a point at the end of the dead time).
+QwtPlotCurve *makeModelCurve(const StepResult &r, const QString &title)
+{
+    QVector<QPointF> pts;
+    pts.reserve(kModelPoints + 2);
+    for (int k = 0; k < kModelPoints; ++k) {
+        const double t = r.t1 + (r.t2 - r.t1) * k / (kModelPoints - 1);
+        pts.append(QPointF(t, fopdtModelValue(r, t)));
+    }
+    const double tb = r.stepTime + *r.deadTime;
+    if (tb > r.t1 && tb < r.t2) {
+        const auto it = std::lower_bound(pts.begin(), pts.end(), tb,
+                                         [](const QPointF &p, double t) { return p.x() < t; });
+        pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
+    }
+    auto *curve = new QwtPlotCurve(title);
+    curve->setSamples(pts);
+    return curve;
+}
+
+/// Pen of the compared method's curve: its own dash pattern, so the curves tell apart.
+void setCompareDash(QPen &pen, ModelMethod method)
+{
+    switch (method) {
+    case ModelMethod::ZeroTo632:
+        pen.setStyle(Qt::DotLine);
+        break;
+    case ModelMethod::Smith:
+        pen.setStyle(Qt::DashDotLine);
+        break;
+    case ModelMethod::Sundaresan:
+        pen.setStyle(Qt::DashDotDotLine);
+        break;
+    case ModelMethod::Tangent:
+    case ModelMethod::Custom:
+        pen.setDashPattern({6.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0});
+        break;
+    }
+}
+
+} // namespace
 
 void OpenLoopPage::rebuildOverlays()
 {
@@ -612,46 +848,67 @@ void OpenLoopPage::rebuildOverlays()
     QwtPlot *plot = m_ctx->plot->plot();
     const StepResult &r = results.first();
     const Tag *tag = m_ctx->tagById(r.tagId);
-    if (!r.valid || !tag)
+    if (!r.valid || !tag || !tag->plotted)
         return;
     const int axis = tag->axis == YAxis::Right ? QwtPlot::yRight : QwtPlot::yLeft;
 
-    if (tag->plotted && settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
-        QVector<QPointF> pts;
-        pts.reserve(kModelPoints + 2);
-        for (int k = 0; k < kModelPoints; ++k) {
-            const double t = r.t1 + (r.t2 - r.t1) * k / (kModelPoints - 1);
-            pts.append(QPointF(t, fopdtModelValue(r, t)));
+    // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
+    double penWidth = 1.5;
+    const QString pvTitle = tag->unit.isEmpty() ? tag->name
+                                                : QStringLiteral("%1 [%2]").arg(tag->name, tag->unit);
+    const QwtPlotItemList curves = plot->itemList(QwtPlotItem::Rtti_PlotCurve);
+    for (QwtPlotItem *item : curves) {
+        if (item->title().text() == pvTitle) {
+            penWidth = static_cast<QwtPlotCurve *>(item)->pen().widthF();
+            break;
         }
-        const double tb = r.stepTime + *r.deadTime;
-        if (tb > r.t1 && tb < r.t2) {
-            const auto it = std::lower_bound(pts.begin(), pts.end(), tb,
-                                             [](const QPointF &p, double t) { return p.x() < t; });
-            pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
-        }
-        auto *curve = new QwtPlotCurve(tr("%1 model").arg(tag->name));
-        curve->setSamples(pts);
-        // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
-        double penWidth = 1.5;
-        const QString pvTitle = tag->unit.isEmpty()
-                                    ? tag->name
-                                    : QStringLiteral("%1 [%2]").arg(tag->name, tag->unit);
-        const QwtPlotItemList curves = plot->itemList(QwtPlotItem::Rtti_PlotCurve);
-        for (QwtPlotItem *item : curves) {
-            if (item->title().text() == pvTitle) {
-                penWidth = static_cast<QwtPlotCurve *>(item)->pen().widthF();
-                break;
-            }
-        }
-        QColor modelColor(settings.modelColor);
-        if (!modelColor.isValid())
-            modelColor = QColor(0x20, 0x20, 0x20);
+    }
+    QColor modelColor(settings.modelColor);
+    if (!modelColor.isValid())
+        modelColor = QColor(0x20, 0x20, 0x20);
+
+    const auto attach = [&](QwtPlotItem *item, double z) {
+        item->setItemAttribute(QwtPlotItem::Legend, false);
+        item->setYAxis(axis);
+        item->setZ(z);
+        item->attach(plot);
+        m_overlayItems.append(item);
+    };
+
+    if (settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
+        QwtPlotCurve *curve = makeModelCurve(r, tr("%1 model").arg(tag->name));
         curve->setPen(QPen(modelColor, penWidth + 1.0, Qt::DashLine));
-        curve->setItemAttribute(QwtPlotItem::Legend, false);
-        curve->setYAxis(axis);
-        curve->setZ(12.0);
-        curve->attach(plot);
-        m_modelCurves.append(curve);
+        attach(curve, 12.0);
+    }
+
+    // The compared methods' model curves: always while compared, each with its own dash pattern.
+    for (const auto &entry : std::as_const(m_compareResults)) {
+        const StepResult &c = entry.second;
+        if (!c.valid || !c.deadTime || !c.timeConstant || !(c.t2 > c.t1))
+            continue;
+        QwtPlotCurve *curve =
+            makeModelCurve(c, tr("%1 model (%2)").arg(tag->name, methodName(entry.first)));
+        QPen pen(modelColor, penWidth + 1.0);
+        setCompareDash(pen, entry.first);
+        curve->setPen(pen);
+        attach(curve, 11.5);
+    }
+
+    // The tangent construction of the Tangent method: the line from y0 to y100 and its point.
+    if (settings.method == ModelMethod::Tangent && r.tangent && r.tangent->slope != 0.0
+        && std::isfinite(r.tangent->slope)) {
+        const StepResult::TangentLine &t = *r.tangent;
+        const double x0 = t.time + (r.y0 - t.value) / t.slope;
+        const double x100 = t.time + (r.y100 - t.value) / t.slope;
+        auto *line = new QwtPlotCurve(tr("%1 tangent").arg(tag->name));
+        line->setSamples(QVector<QPointF>{QPointF(x0, r.y0), QPointF(x100, r.y100)});
+        line->setPen(QPen(modelColor, penWidth, Qt::DashLine));
+        attach(line, 12.0);
+        auto *point = new QwtPlotMarker;
+        point->setValue(t.time, t.value);
+        point->setSymbol(new QwtSymbol(QwtSymbol::Ellipse, QBrush(modelColor), QPen(Qt::white, 1),
+                                       QSize(7, 7)));
+        attach(point, 12.5);
     }
 }
 
@@ -673,7 +930,10 @@ QString OpenLoopPage::copyText() const
                                                                : QString());
         tuningWithKinds += kind + u'\t' + lines.at(i) + QStringLiteral("\r\n");
     }
-    return tableToTsv(m_resultsTable->model(), {}) + QStringLiteral("\r\n") + tuningWithKinds;
+    QString text = tableToTsv(m_resultsTable->model(), {}) + QStringLiteral("\r\n");
+    if (!m_compareTable->isHidden())
+        text += tableToTsv(m_compareTable->model(), {}) + QStringLiteral("\r\n");
+    return text + tuningWithKinds;
 }
 
 QString OpenLoopPage::readoutText() const
@@ -807,9 +1067,9 @@ QString OpenLoopPage::explainResult(Quantity quantity, const StepResult *r) cons
         break;
     }
     case Quantity::L:
-        return explainModelTime(true, r);
+        return explainModelTime(true, r, settings.method);
     case Quantity::T:
-        return explainModelTime(false, r);
+        return explainModelTime(false, r, settings.method);
     case Quantity::LOverT:
         name = tr("L/T, controllability ratio");
         meaning = tr("controllability ratio: below 0.3 easy, above 1 dead-time dominated.");
@@ -838,9 +1098,11 @@ QString OpenLoopPage::explainResult(Quantity quantity, const StepResult *r) cons
     return tip(name, meaning, lines);
 }
 
-QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r) const
+QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r, ModelMethod method) const
 {
-    const auto ab = modelPercents(m_ctx->settings);
+    AnalysisSettings settings = m_ctx->settings;
+    settings.method = method;
+    const auto ab = modelPercents(settings);
     const double fa = ab.first / 100.0;
     const double fb = ab.second / 100.0;
     const QString sa = QStringLiteral("t") + QString::number(ab.first, 'g', 4);
@@ -861,7 +1123,7 @@ QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r) const
     const QString A = ok ? g4(ta) : QString();
     const QString B = ok ? g4(tb) : QString();
     QStringList lines;
-    const ModelMethod m = m_ctx->settings.method;
+    const ModelMethod m = method;
     // Smith and Sundaresan use rounded textbook constants (1.5, 0.67, ...): the computed value is
     // from the exact two-point formula, so a hand calculation can differ in the 4th digit.
     const QString approx = (m == ModelMethod::Sundaresan || m == ModelMethod::Smith)
@@ -899,7 +1161,16 @@ QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r) const
             }
             break;
         case ModelMethod::Tangent:
-            break; // tooltip text: open-loop page task
+            lines << tr("L = time the tangent reaches y0 - step time");
+            if (ok && r->tangent && r->tangent->slope != 0.0) {
+                const StepResult::TangentLine &tl = *r->tangent;
+                const double x0 = tl.time + (r->y0 - tl.value) / tl.slope;
+                lines << tr("The tangent touches the response at t = %1 s, where the PV is %2, with "
+                            "slope %3 per s.")
+                             .arg(g4(tl.time), g4(tl.value), g4(tl.slope));
+                lines << QStringLiteral("L = %1 - %2 = %3 s").arg(g4p(x0), g4p(r->stepTime), g4(L));
+            }
+            break;
         }
     } else {
         name = tr("T, time constant");
@@ -928,7 +1199,20 @@ QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r) const
             }
             break;
         case ModelMethod::Tangent:
-            break; // tooltip text: open-loop page task
+            if (m_ctx->settings.tangentT632) {
+                lines << tr("T = t63.2 - step time - L");
+                if (ok) {
+                    lines << QStringLiteral("T = %1 - %2 - %3 = %4 s")
+                                 .arg(g4p(r->stepTime + L + T), g4p(r->stepTime), g4p(L), g4(T));
+                }
+            } else {
+                lines << QStringLiteral("T = ") + kDelta + QStringLiteral("PV / slope");
+                if (ok && r->tangent) {
+                    lines << QStringLiteral("T = %1 / %2 = %3 s")
+                                 .arg(g4p(r->deltaPv), g4p(r->tangent->slope), g4(T));
+                }
+            }
+            break;
         }
     }
     if (ok) {
