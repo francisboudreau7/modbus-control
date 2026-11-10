@@ -48,7 +48,13 @@ struct Context;
 ///
 /// Children (object names, for tests), top to bottom, in a QScrollArea:
 /// - Buttons "Copy results" ("copyResultsButton") and "Export results (CSV)..." ("exportButton",
-///   emits exportResultsRequested()); both enabled while the PV result is valid.
+///   emits exportResultsRequested()). Open loop mode: both enabled while the PV (open-loop) result
+///   is valid. Closed loop mode (v1.4.0): "Copy results" is enabled while the closed-loop page's
+///   copyText() is not empty and copies that text (not the open-loop tables) followed by
+///   setpointTable; "Export results (CSV)..." is disabled with the tooltip "The CSV export covers
+///   the open-loop results. Use Copy results for the closed-loop numbers." (no tooltip in Open
+///   loop mode). The CSV export covers the open-loop results only; the main window's Export >
+///   Analysis results follows results() and is not changed by the mode.
 /// - Group "1. Signals" ("signalsGroup"):
 ///   * "pvCombo": "Choose..." (data 0) + every tag ("name [unit]", data TagId). Choosing a PV sets
 ///     AnalysisSettings::pvTagId and adds it to setpointTagIds (the "Show setpoints on" list).
@@ -85,8 +91,30 @@ struct Context;
 ///   page and the overlays on the plot.
 /// - QStackedWidget "modeStack", as tall as the shown page (the hidden page's height is ignored):
 ///   page 0 "openLoopPage" (OpenLoopPage.h) holds groups 3 and 4 below; page 1 "closedLoopPage"
-///   (ClosedLoopPage.h) is filled by a later task; for now it shows the label
-///   "closedLoopPlaceholder" "The closed-loop analysis is not available yet.".
+///   (ClosedLoopPage.h) holds the closed-loop groups, described next.
+/// - Closed loop page (v1.4.0, groups 3-5, all settings in AnalysisSettings::closedLoop):
+///   * "3. Test" ("closedTestGroup"): "testCombo" (Setpoint step / Disturbance), "spBeforeSpin" /
+///     "spAfterSpin" (typed setpoints, hidden when an SP tag is chosen; Disturbance shows only
+///     "spAfterSpin", labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %), "closedHintLabel".
+///   * "4. Performance" ("performanceGroup"): "performanceTable" (Quantity, Measured and, with the
+///     prediction shown, Predicted; every value cell has a didactic tooltip) and
+///     "closedChecksList". Overlays on the plot while Closed loop mode is shown and both cursors
+///     are set: settling band, overshoot / maximum deviation marker, predicted PV and output curves.
+///   * "5. Prediction" ("predictionGroup"): "showPredictionCheck", "predictionModelLabel" ("Model: K =
+///     ..., L = ... s, T = ... s (<source>)" or "No model yet: ..."), "modelKSpin" / "modelLSpin" /
+///     "modelTSpin" (typing sets the model with source "typed"), "useOpenLoopModelButton" ("Use the
+///     open-loop model", enabled while the open-loop result is valid), "predictionFormLabel",
+///     "predGainSpin" / "predIntegralSpin" / "predDerivativeSpin" (in the Controller group's form,
+///     tooltips with the conversion), "takeTuningCombo" + "takeTuningButton", "loadStepSpin"
+///     (Disturbance only; ClosedLoopSettings::loadStep).
+///   * The prediction model is saved with the project (ClosedLoopSettings::modelSet / modelK /
+///     modelLS / modelTS / modelSource). While none is set, every recompute that sees a valid
+///     open-loop model takes it (no settingsChanged()); once set, only the button or typing changes
+///     it (they emit settingsChanged()), so it survives moving the cursors to the closed-loop test.
+///     Choosing another PV does not clear it.
+///   * readoutText() in Closed loop mode: the closed-loop page's readout (and nothing from the
+///     open-loop page) whenever it is not empty, even when the open-loop result is invalid, then
+///     the other setpoint tags' lines; Open loop mode unchanged.
 /// - Group "3. Model" ("modelGroup", on the open-loop page):
 ///   * "methodCombo": the five ModelMethod values in the order 0 % / 63.2 %, Smith, Sundaresan,
 ///     Tangent, Custom, "fromSpin"/"toSpin" (0..99.99, enabled for Custom only; an edit that breaks
@@ -171,7 +199,7 @@ struct Context;
 ///   %, Target, Measured, Time (s), t − C1 (s)) with one row per (checked tag, percent).
 ///   All tables get installCopyShortcut() (Ctrl+C) and extended selection. "Copy results" copies
 ///   resultsTable, tuningTable and setpointTable as tableToTsv(), separated by empty lines (in
-///   Closed loop mode the closed-loop page's part, when not empty, comes before setpointTable).
+///   Closed loop mode the closed-loop page's table replaces the open-loop ones).
 ///
 /// Didactic tooltips: every value cell of resultsTable, tuningTable and setpointTable has a
 /// rich-text tooltip (built by explainValue-style private helpers in one place) with (1) the name
@@ -247,8 +275,8 @@ public:
     /// "Lag [degC] (0 % / 63.2 %): K = 2 degC/%, L = 2.35 s, T = 2.01 s, fit 0.6 % (Good)" plus one
     /// line per other shown setpoint tag with its setpoint times. It has no "C1 = ..., C2 = ..."
     /// line: AppController composes CursorPanel::readoutText() followed by this text.
-    /// v1.4.0: the same in both modes; in Closed loop mode the closed-loop page's line (none yet)
-    /// follows the PV line.
+    /// v1.4.0: in Closed loop mode the closed-loop page's readout replaces the PV line whenever it
+    /// is not empty (also when the open-loop result is invalid).
     QString readoutText() const;
 
 public slots:
@@ -281,6 +309,7 @@ private:
     void rebuildSetpointTable();
     void rebuildOverlays();
     void clearOverlays();
+    void updateResultButtons();
     void updateCursorLabel();
     void updateHint();
     void updateFindButton();

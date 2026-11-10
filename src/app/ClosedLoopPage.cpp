@@ -193,23 +193,45 @@ void ClosedLoopPage::buildUi()
     m_takeButton->setObjectName(QStringLiteral("takeTuningButton"));
     m_takeButton->setToolTip(tr("Copy this tuning into the controller settings above."));
     m_loadStepLabel = new QLabel(tr("Load step (CO units)"), predGroup);
-    m_loadStepSpin = makeSpin("loadStepSpin", -1e9, 1e9, 4, m_loadStep, predGroup);
+    m_loadStepSpin = makeSpin("loadStepSpin", -1e9, 1e9, 4, 5.0, predGroup);
     m_loadStepSpin->setToolTip(
         tr("Size of the load change at the process input, in controller-output units."));
+    m_modelKLabel = new QLabel(tr("K"), predGroup);
+    m_modelLLabel = new QLabel(tr("L (s)"), predGroup);
+    m_modelTLabel = new QLabel(tr("T (s)"), predGroup);
+    m_modelKSpin = makeSpin("modelKSpin", -1e9, 1e9, 5, 1.0, predGroup);
+    m_modelLSpin = makeSpin("modelLSpin", 0.0, 1e9, 4, 0.0, predGroup);
+    m_modelTSpin = makeSpin("modelTSpin", 0.001, 1e9, 4, 1.0, predGroup);
+    m_modelKSpin->setToolTip(tr("Process gain K: change of the PV per unit of controller output. "
+                                "Type a model from another tool, or use the open-loop model."));
+    m_modelLSpin->setToolTip(tr("Dead time L in seconds (0 or more)."));
+    m_modelTSpin->setToolTip(tr("Time constant T in seconds (more than 0)."));
+    m_useModelButton = new QPushButton(tr("Use the open-loop model"), predGroup);
+    m_useModelButton->setObjectName(QStringLiteral("useOpenLoopModelButton"));
+    m_useModelButton->setToolTip(
+        tr("Copy K, L and T from the open-loop result of the current cursors into the model "
+           "used for the prediction."));
     dg->addWidget(m_showPredictionCheck, 0, 0, 1, 3);
     dg->addWidget(m_modelLabel, 1, 0, 1, 3);
-    dg->addWidget(m_formLabel, 2, 0, 1, 3);
-    dg->addWidget(m_gainLabel, 3, 0);
-    dg->addWidget(m_gainSpin, 3, 1, 1, 2);
-    dg->addWidget(m_integralLabel, 4, 0);
-    dg->addWidget(m_integralSpin, 4, 1, 1, 2);
-    dg->addWidget(m_derivativeLabel, 5, 0);
-    dg->addWidget(m_derivativeSpin, 5, 1, 1, 2);
-    dg->addWidget(new QLabel(tr("Take tuning"), predGroup), 6, 0);
-    dg->addWidget(m_takeCombo, 6, 1);
-    dg->addWidget(m_takeButton, 6, 2);
-    dg->addWidget(m_loadStepLabel, 7, 0);
-    dg->addWidget(m_loadStepSpin, 7, 1, 1, 2);
+    dg->addWidget(m_modelKLabel, 2, 0);
+    dg->addWidget(m_modelKSpin, 2, 1, 1, 2);
+    dg->addWidget(m_modelLLabel, 3, 0);
+    dg->addWidget(m_modelLSpin, 3, 1, 1, 2);
+    dg->addWidget(m_modelTLabel, 4, 0);
+    dg->addWidget(m_modelTSpin, 4, 1, 1, 2);
+    dg->addWidget(m_useModelButton, 5, 0, 1, 3);
+    dg->addWidget(m_formLabel, 6, 0, 1, 3);
+    dg->addWidget(m_gainLabel, 7, 0);
+    dg->addWidget(m_gainSpin, 7, 1, 1, 2);
+    dg->addWidget(m_integralLabel, 8, 0);
+    dg->addWidget(m_integralSpin, 8, 1, 1, 2);
+    dg->addWidget(m_derivativeLabel, 9, 0);
+    dg->addWidget(m_derivativeSpin, 9, 1, 1, 2);
+    dg->addWidget(new QLabel(tr("Take tuning"), predGroup), 10, 0);
+    dg->addWidget(m_takeCombo, 10, 1);
+    dg->addWidget(m_takeButton, 10, 2);
+    dg->addWidget(m_loadStepLabel, 11, 0);
+    dg->addWidget(m_loadStepSpin, 11, 1, 1, 2);
     col->addWidget(predGroup);
     connect(m_showPredictionCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (m_updating)
@@ -224,9 +246,12 @@ void ClosedLoopPage::buildUi()
     connect(m_loadStepSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         if (m_updating)
             return;
-        m_loadStep = v;
-        onLoadStepChanged();
+        m_ctx->settings.closedLoop.loadStep = v;
+        m_userEdited();
     });
+    for (QDoubleSpinBox *spin : {m_modelKSpin, m_modelLSpin, m_modelTSpin})
+        connect(spin, &QDoubleSpinBox::valueChanged, this, [this] { onModelSpinEdited(); });
+    connect(m_useModelButton, &QPushButton::clicked, this, [this] { onUseOpenLoopModel(); });
 }
 
 void ClosedLoopPage::resizeEvent(QResizeEvent *event)
@@ -249,6 +274,14 @@ void ClosedLoopPage::syncFromSettings()
         const QSignalBlocker b3(m_spAfterSpin);
         const QSignalBlocker b4(m_bandCombo);
         const QSignalBlocker b5(m_showPredictionCheck);
+        const QSignalBlocker b6(m_modelKSpin);
+        const QSignalBlocker b7(m_modelLSpin);
+        const QSignalBlocker b8(m_modelTSpin);
+        const QSignalBlocker b9(m_loadStepSpin);
+        m_modelKSpin->setValue(cl.modelK);
+        m_modelLSpin->setValue(cl.modelLS);
+        m_modelTSpin->setValue(cl.modelTS);
+        m_loadStepSpin->setValue(cl.loadStep);
         m_testCombo->setCurrentIndex(
             std::max(0, m_testCombo->findData(static_cast<int>(cl.test))));
         m_spBeforeSpin->setValue(cl.typedSpBefore);
@@ -293,27 +326,12 @@ void ClosedLoopPage::updateTestControls()
 void ClosedLoopPage::updatePredictionLabels()
 {
     const ControllerSettings &c = m_ctx->settings.controller;
-    const QString tu = m_ctx->settings.timeInMinutes ? tr("min") : tr("s");
-    QString gain;
-    if (c.gain == GainUnit::ProportionalBand)
-        gain = tr("PB (%)");
-    else
-        gain = c.form == PidForm::Series ? tr("Kc'") : QStringLiteral("Kp");
-    QString integral;
-    QString derivative;
-    if (c.form == PidForm::Parallel) {
-        integral = tr("Ki (1/%1)").arg(tu);
-        derivative = tr("Kd (%1)").arg(tu);
-    } else {
-        const bool series = c.form == PidForm::Series;
-        integral = c.integral == IntegralUnit::RepeatsPerMinute
-                       ? tr("Repeats/min")
-                       : (series ? tr("Ti' (%1)") : tr("Ti (%1)")).arg(tu);
-        derivative = (series ? tr("Td' (%1)") : tr("Td (%1)")).arg(tu);
-    }
-    m_gainLabel->setText(gain);
-    m_integralLabel->setText(integral);
-    m_derivativeLabel->setText(derivative);
+    const bool minutes = m_ctx->settings.timeInMinutes;
+    const PidColumnLabels labels = pidColumnLabels(c, minutes);
+    m_gainLabel->setText(labels.gain);
+    m_integralLabel->setText(labels.integral);
+    m_derivativeLabel->setText(labels.derivative);
+    m_modelKSpin->setSuffix(m_ctx->kUnit().isEmpty() ? QString() : u' ' + m_ctx->kUnit());
 }
 
 void ClosedLoopPage::syncPredictionSpins()
@@ -325,15 +343,26 @@ void ClosedLoopPage::syncPredictionSpins()
         pid.ti = cl.predictionTiS;
     if (cl.predictionTdS > 0.0)
         pid.td = cl.predictionTdS;
-    const FormValues fv = toForm(pid, m_ctx->settings.controller,
-                                 PidSpans{m_ctx->pvSpan(), m_ctx->coSpan()},
-                                 m_ctx->settings.timeInMinutes);
+    const ControllerSettings &controller = m_ctx->settings.controller;
+    const PidSpans spans = m_ctx->pidSpans();
+    const bool minutes = m_ctx->settings.timeInMinutes;
+    const FormValues fv = toForm(pid, controller, spans, minutes);
     m_formLabel->setText(fv.available ? QString() : fv.reason);
     m_formLabel->setVisible(!fv.available);
     for (QDoubleSpinBox *s : {m_gainSpin, m_integralSpin, m_derivativeSpin})
         s->setEnabled(fv.available);
     if (!fv.available)
         return;
+    const PidColumnLabels labels = pidColumnLabels(controller, minutes);
+    m_gainSpin->setToolTip(appendLines(
+        tip(labels.gain, tr("controller gain of the predicted response."), {}),
+        pidConversionLines(0, pid, controller, spans, minutes)));
+    m_integralSpin->setToolTip(appendLines(
+        tip(labels.integral, tr("integral action of the predicted response (Off = none)."), {}),
+        pidConversionLines(1, pid, controller, spans, minutes)));
+    m_derivativeSpin->setToolTip(appendLines(
+        tip(labels.derivative, tr("derivative action of the predicted response (Off = none)."), {}),
+        pidConversionLines(2, pid, controller, spans, minutes)));
     const bool was = m_updating;
     m_updating = true;
     {
@@ -358,8 +387,7 @@ void ClosedLoopPage::onPredictionSpinEdited()
     if (m_derivativeSpin->value() > 0.0)
         v.derivative = m_derivativeSpin->value();
     const std::optional<IdealPid> ideal =
-        fromForm(v, m_ctx->settings.controller, PidSpans{m_ctx->pvSpan(), m_ctx->coSpan()},
-                 m_ctx->settings.timeInMinutes);
+        fromForm(v, m_ctx->settings.controller, m_ctx->pidSpans(), m_ctx->settings.timeInMinutes);
     if (!ideal) { // e.g. a gain of 0 or a band without ranges: show the stored values again
         syncPredictionSpins();
         return;
@@ -388,40 +416,86 @@ void ClosedLoopPage::onTakeTuning()
     m_userEdited();
 }
 
-void ClosedLoopPage::onLoadStepChanged()
+void ClosedLoopPage::onModelSpinEdited()
 {
-    // Not a project setting: the panel's hook would only mark the project as changed. Recompute
-    // the page and redraw its overlays here.
-    recompute();
-    if (m_ctx->plot && m_overlaysShown) {
-        rebuildOverlays();
-        m_ctx->plot->plot()->replot();
+    if (m_updating)
+        return;
+    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    cl.modelK = m_modelKSpin->value();
+    cl.modelLS = m_modelLSpin->value();
+    cl.modelTS = m_modelTSpin->value();
+    cl.modelSet = true;
+    cl.modelSource = tr("typed");
+    m_userEdited();
+}
+
+void ClosedLoopPage::onUseOpenLoopModel()
+{
+    QString source;
+    const std::optional<ProcessModel> model = currentOpenLoopModel(&source);
+    if (!model)
+        return;
+    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    cl.modelK = model->k;
+    cl.modelLS = model->l;
+    cl.modelTS = model->t;
+    cl.modelSet = true;
+    cl.modelSource = source;
+    m_userEdited();
+}
+
+std::optional<ProcessModel> ClosedLoopPage::currentOpenLoopModel(QString *source) const
+{
+    if (m_ctx->results.isEmpty())
+        return std::nullopt;
+    const StepResult &r = m_ctx->results.first();
+    if (!r.valid || !r.gain || !r.deadTime || !r.timeConstant)
+        return std::nullopt;
+    const double k = *r.gain;
+    if (!std::isfinite(k) || k == 0.0 || !std::isfinite(*r.deadTime) || *r.deadTime < 0.0
+        || !std::isfinite(*r.timeConstant) || !(*r.timeConstant > 0.0))
+        return std::nullopt;
+    if (source) {
+        *source = tr("%1, C1 = %2 s").arg(methodName(m_ctx->settings.method), g4(r.t1));
     }
+    return ProcessModel{k, *r.deadTime, *r.timeConstant};
 }
 
 void ClosedLoopPage::refreshModel()
 {
-    // The open-loop results follow the cursors, which are on the closed-loop test while this page
-    // is used: keep the last valid model of this PV so the prediction survives moving the cursors.
-    if (m_model && m_modelPv != m_ctx->settings.pvTagId)
-        m_model.reset();
-    if (m_ctx->results.isEmpty())
-        return;
-    const StepResult &r = m_ctx->results.first();
-    if (!r.valid || !r.gain || !r.deadTime || !r.timeConstant)
-        return;
-    const double k = *r.gain;
-    if (!std::isfinite(k) || k == 0.0 || !std::isfinite(*r.deadTime) || *r.deadTime < 0.0
-        || !std::isfinite(*r.timeConstant) || !(*r.timeConstant > 0.0))
-        return;
-    m_model = ProcessModel{k, *r.deadTime, *r.timeConstant};
-    m_modelPv = m_ctx->settings.pvTagId;
-    m_modelMethod = m_ctx->settings.method;
+    // The model belongs to the project: only taken while none is set (no user-edit hook: the
+    // project is not marked as modified, but the model is saved with the next save).
+    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    if (!cl.modelSet) {
+        QString source;
+        if (const std::optional<ProcessModel> model = currentOpenLoopModel(&source)) {
+            cl.modelK = model->k;
+            cl.modelLS = model->l;
+            cl.modelTS = model->t;
+            cl.modelSet = true;
+            cl.modelSource = source;
+        }
+    }
+    const bool was = m_updating;
+    m_updating = true;
+    {
+        const QSignalBlocker b1(m_modelKSpin);
+        const QSignalBlocker b2(m_modelLSpin);
+        const QSignalBlocker b3(m_modelTSpin);
+        m_modelKSpin->setValue(cl.modelK);
+        m_modelLSpin->setValue(cl.modelLS);
+        m_modelTSpin->setValue(cl.modelTS);
+    }
+    m_updating = was;
 }
 
 std::optional<ProcessModel> ClosedLoopPage::openLoopModel() const
 {
-    return m_model;
+    const ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    if (!cl.modelSet || !std::isfinite(cl.modelK) || cl.modelK == 0.0 || !std::isfinite(cl.modelLS)
+        || cl.modelLS < 0.0 || !std::isfinite(cl.modelTS) || !(cl.modelTS > 0.0))
+        return std::nullopt;
+    return ProcessModel{cl.modelK, cl.modelLS, cl.modelTS};
 }
 
 QList<TuningRow> ClosedLoopPage::tuningRows() const
@@ -479,11 +553,12 @@ void ClosedLoopPage::updateModelUi()
         m_modelLabel->setText(
             tr("Model: K = %1, L = %2 s, T = %3 s (%4)")
                 .arg(withUnit(g4(model->k), m_ctx->kUnit()), g4(model->l), g4(model->t),
-                     methodName(m_modelMethod)));
+                     m_ctx->settings.closedLoop.modelSource));
     } else {
-        m_modelLabel->setText(
-            tr("No model yet: do the open-loop step test first (Open loop area)."));
+        m_modelLabel->setText(tr("No model yet: do the open-loop step test first (Open loop "
+                                 "area), or type one."));
     }
+    m_useModelButton->setEnabled(currentOpenLoopModel().has_value());
     rebuildTakeTuningCombo();
 }
 
@@ -550,7 +625,7 @@ void ClosedLoopPage::updatePrediction()
     setup.pv0 = m_result.pvAtStart;
     setup.co0 = co0;
     setup.spStep = step ? m_result.spAfter - m_result.spBefore : 0.0;
-    setup.loadStep = step ? 0.0 : m_loadStep;
+    setup.loadStep = step ? 0.0 : cl.loadStep;
     setup.coMin = s.coRangeMin;
     setup.coMax = s.coRangeMax;
     setup.dtS = std::max(0.1, duration / kMaxPredictionSteps);

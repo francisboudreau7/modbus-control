@@ -2015,6 +2015,12 @@ void TstProjectIO::v140RoundTrip()
     a.closedLoop.predictionKp = -2.5;
     a.closedLoop.predictionTiS = 33.5;
     a.closedLoop.predictionTdS = 4.25;
+    a.closedLoop.modelSet = true;
+    a.closedLoop.modelK = -0.75;
+    a.closedLoop.modelLS = 2.5;
+    a.closedLoop.modelTS = 18.25;
+    a.closedLoop.modelSource = QStringLiteral("typed °C");
+    a.closedLoop.loadStep = -4.5;
     a.controller.form = PidForm::Series;
     a.controller.gain = GainUnit::ProportionalBand;
     a.controller.integral = IntegralUnit::RepeatsPerMinute;
@@ -2069,6 +2075,22 @@ void TstProjectIO::v140DefaultsWhenMissing()
     for (const char *key : {"mode", "spTag", "closedLoop", "controller", "compareMethods", "tangentT632"})
         QVERIFY2(written.contains(QLatin1String(key)), key);
     QVERIFY(written.value("closedLoop").toObject().value("prediction").isObject());
+    const QJsonObject writtenClosed = written.value("closedLoop").toObject();
+    QVERIFY(writtenClosed.value("model").isObject());
+    for (const char *key : {"set", "k", "l", "t", "source"})
+        QVERIFY2(writtenClosed.value("model").toObject().contains(QLatin1String(key)), key);
+    QVERIFY(writtenClosed.value("loadStep").isDouble());
+    // A model object with some keys keeps the defaults of the others; an empty one keeps all.
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"closedLoop":{"model":{}}}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.closedLoop == defaults.closedLoop);
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"closedLoop":{"model":{"set":true,"k":2},"loadStep":3}}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.closedLoop.modelSet);
+    QCOMPARE(loaded->analysis.closedLoop.modelK, 2.0);
+    QCOMPARE(loaded->analysis.closedLoop.modelLS, defaults.closedLoop.modelLS);
+    QCOMPARE(loaded->analysis.closedLoop.modelTS, defaults.closedLoop.modelTS);
+    QCOMPARE(loaded->analysis.closedLoop.loadStep, 3.0);
 }
 
 void TstProjectIO::v140Rejected_data()
@@ -2097,6 +2119,16 @@ void TstProjectIO::v140Rejected_data()
     row("tiNegative", R"({"closedLoop":{"prediction":{"ti":-1}}})", "\"analysis.closedLoop.prediction.ti\" must be a finite number, 0 or more");
     row("tdNegative", R"({"closedLoop":{"prediction":{"td":-0.5}}})", "\"analysis.closedLoop.prediction.td\" must be a finite number, 0 or more");
     row("tiType", R"({"closedLoop":{"prediction":{"ti":"x"}}})", "\"analysis.closedLoop.prediction.ti\" must be a number");
+    row("modelType", R"({"closedLoop":{"model":5}})", "\"analysis.closedLoop.model\" must be an object");
+    row("modelSetType", R"({"closedLoop":{"model":{"set":"yes"}}})", "\"analysis.closedLoop.model.set\" must be true or false");
+    row("modelKType", R"({"closedLoop":{"model":{"k":"1"}}})", "\"analysis.closedLoop.model.k\" must be a number");
+    row("modelKZero", R"({"closedLoop":{"model":{"k":0}}})", "\"analysis.closedLoop.model.k\" must be a finite number other than 0");
+    row("modelLNegative", R"({"closedLoop":{"model":{"l":-1}}})", "\"analysis.closedLoop.model.l\" must be a finite number, 0 or more");
+    row("modelLType", R"({"closedLoop":{"model":{"l":true}}})", "\"analysis.closedLoop.model.l\" must be a number");
+    row("modelTZero", R"({"closedLoop":{"model":{"t":0}}})", "\"analysis.closedLoop.model.t\" must be a finite number above 0");
+    row("modelTNegative", R"({"closedLoop":{"model":{"t":-3}}})", "\"analysis.closedLoop.model.t\" must be a finite number above 0");
+    row("modelSourceType", R"({"closedLoop":{"model":{"source":4}}})", "\"analysis.closedLoop.model.source\" must be a string");
+    row("loadStepType", R"({"closedLoop":{"loadStep":"5"}})", "\"analysis.closedLoop.loadStep\" must be a number");
     row("controllerType", R"({"controller":"ideal"})", "\"analysis.controller\" must be an object");
     row("formUnknown", R"({"controller":{"form":"isa"}})", "\"analysis.controller.form\" has unknown value \"isa\" (expected \"ideal\", \"series\" or \"parallel\")");
     row("formType", R"({"controller":{"form":2}})", "\"analysis.controller.form\" must be a string");

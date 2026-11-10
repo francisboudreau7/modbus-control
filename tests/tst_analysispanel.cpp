@@ -1838,9 +1838,9 @@ void TstAnalysisPanel::modeSwitch()
     for (const char *name : {"modelGroup", "tuningGroup", "resultsTable", "checksList",
                              "tuningTable", "methodCombo", "ruleCombo"})
         QVERIFY2(openPage->isAncestorOf(child<QWidget>(fx.panel, name)), name);
-    auto *placeholder = child<QLabel>(fx.panel, "closedLoopPlaceholder");
-    QVERIFY(placeholder && closedPage->isAncestorOf(placeholder));
-    QCOMPARE(placeholder->text(), QStringLiteral("The closed-loop analysis is not available yet."));
+    for (const char *name : {"closedTestGroup", "performanceGroup", "predictionGroup"})
+        QVERIFY2(closedPage->isAncestorOf(child<QWidget>(fx.panel, name)), name);
+    QVERIFY(!child<QLabel>(fx.panel, "closedLoopPlaceholder"));
 
     // Default: Open loop.
     QVERIFY(fx.panel.settings().mode == AnalysisMode::OpenLoop);
@@ -1867,9 +1867,9 @@ void TstAnalysisPanel::modeSwitch()
     closed->click(); // already selected: nothing
     QCOMPARE(changed.count(), 1);
 
-    // The stack is as tall as the shown page, not the taller hidden one.
-    QVERIFY(stack->sizeHint().height() < openPage->sizeHint().height());
-    QVERIFY(stack->minimumSizeHint().height() < openPage->minimumSizeHint().height());
+    // The stack is as tall as the shown page; the hidden page's height is ignored.
+    QVERIFY(stack->sizeHint().height() <= closedPage->sizeHint().height());
+    QVERIFY(stack->minimumSizeHint().height() <= closedPage->minimumSizeHint().height());
 
     open->click();
     QCOMPARE(changed.count(), 2);

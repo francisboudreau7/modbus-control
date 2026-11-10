@@ -648,6 +648,7 @@ void AnalysisPanel::updateModeSwitch()
                          || m_closedLoopPage->overlaysShown() == open;
     m_openLoopPage->setOverlaysShown(open);
     m_closedLoopPage->setOverlaysShown(!open);
+    updateResultButtons();
     if (changed && m_ctx->plot)
         m_ctx->plot->plot()->replot();
 }
@@ -916,18 +917,28 @@ void AnalysisPanel::recompute()
     }
     rememberDataState();
 
-    const bool valid = !m_ctx->results.isEmpty() && m_ctx->results.first().valid;
-    m_copyResultsButton->setEnabled(valid);
-    m_exportButton->setEnabled(valid);
-
     updateCursorLabel();
     updateFindButton();
     m_openLoopPage->recompute();
     m_closedLoopPage->recompute();
+    updateResultButtons();
     rebuildSetpointTable();
     rebuildOverlays();
     updateHint();
     emit resultsChanged();
+}
+
+void AnalysisPanel::updateResultButtons()
+{
+    const bool openValid = !m_ctx->results.isEmpty() && m_ctx->results.first().valid;
+    const bool closedMode = m_ctx->settings.mode == AnalysisMode::ClosedLoop;
+    m_copyResultsButton->setEnabled(closedMode ? !m_closedLoopPage->copyText().isEmpty()
+                                               : openValid);
+    m_exportButton->setEnabled(openValid && !closedMode);
+    m_exportButton->setToolTip(
+        closedMode ? tr("The CSV export covers the open-loop results. Use Copy results for the "
+                        "closed-loop numbers.")
+                   : QString());
 }
 
 void AnalysisPanel::updateCursorLabel()
@@ -1086,12 +1097,16 @@ void AnalysisPanel::rebuildOverlays()
 
 void AnalysisPanel::copyResults()
 {
-    // Open-loop tables (as before), the closed-loop part in Closed loop mode, the setpoint table.
-    QString text = m_openLoopPage->copyText() + QStringLiteral("\r\n");
+    // Open loop mode: the open-loop tables and the setpoint table. Closed loop mode: the
+    // closed-loop table (and nothing from the open-loop page) and the setpoint table.
+    QString text;
     if (m_ctx->settings.mode == AnalysisMode::ClosedLoop) {
         const QString closed = m_closedLoopPage->copyText();
-        if (!closed.isEmpty())
-            text += closed + QStringLiteral("\r\n");
+        if (closed.isEmpty())
+            return;
+        text = closed + QStringLiteral("\r\n");
+    } else {
+        text = m_openLoopPage->copyText() + QStringLiteral("\r\n");
     }
     text += tableToTsv(m_setpointTable->model(), {});
     QGuiApplication::clipboard()->setText(text);
@@ -1100,16 +1115,19 @@ void AnalysisPanel::copyResults()
 QString AnalysisPanel::readoutText() const
 {
     const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
-    if (!cur || !cur->hasC1() || !cur->hasC2() || m_ctx->results.isEmpty() || !m_ctx->results.first().valid)
+    if (!cur || !cur->hasC1() || !cur->hasC2())
         return {};
-
     // No "C1 = ..., C2 = ..." line: the cursor readout composed before this text has it.
     QStringList lines;
-    lines << m_openLoopPage->readoutText();
-    if (m_ctx->settings.mode == AnalysisMode::ClosedLoop) {
-        const QString closed = m_closedLoopPage->readoutText();
-        if (!closed.isEmpty())
-            lines << closed;
+    const QString closed = m_ctx->settings.mode == AnalysisMode::ClosedLoop
+                               ? m_closedLoopPage->readoutText()
+                               : QString();
+    if (!closed.isEmpty()) {
+        lines << closed; // nothing from the open-loop page, even when its result is invalid
+    } else {
+        if (m_ctx->results.isEmpty() || !m_ctx->results.first().valid)
+            return {};
+        lines << m_openLoopPage->readoutText();
     }
 
     for (int i = 1; i < m_ctx->results.size(); ++i) {

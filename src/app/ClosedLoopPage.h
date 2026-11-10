@@ -33,10 +33,20 @@ namespace mb {
 ///   labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %), "closedHintLabel".
 /// - "performanceGroup": "performanceTable" (Quantity, Measured and, with the prediction shown,
 ///   Predicted; every value cell has a didactic tooltip) and "closedChecksList".
-/// - "predictionGroup": "showPredictionCheck", "predictionModelLabel", "predictionFormLabel",
-///   "predGainSpin" / "predIntegralSpin" / "predDerivativeSpin" (the ideal settings shown in the
-///   controller form of AnalysisSettings::controller), "takeTuningCombo" + "takeTuningButton",
-///   "loadStepSpin" (Disturbance only; not saved in the project).
+/// - "predictionGroup": "showPredictionCheck", "predictionModelLabel", "modelKSpin" / "modelLSpin" /
+///   "modelTSpin" (K, L (s), T (s) of the model; typing sets ClosedLoopSettings::modelSet and
+///   modelSource "typed"; T has a minimum of 0.001 and L of 0), "useOpenLoopModelButton" ("Use the
+///   open-loop model"; enabled while the open-loop result is valid with K, L >= 0, T > 0),
+///   "predictionFormLabel", "predGainSpin" / "predIntegralSpin" / "predDerivativeSpin" (the ideal
+///   settings shown in the controller form of AnalysisSettings::controller, labels and tooltips
+///   with the conversion as in the open-loop tuning table), "takeTuningCombo" + "takeTuningButton",
+///   "loadStepSpin" (Disturbance only; ClosedLoopSettings::loadStep, saved in the project).
+/// The model belongs to the project (ClosedLoopSettings::modelSet / modelK / modelLS / modelTS /
+/// modelSource), not to the page: while modelSet is false, every recompute that sees a valid
+/// open-loop model (K != 0 finite, L >= 0, T > 0) takes it (source "<method>, C1 = <t1> s") without
+/// the user-edit hook; once set, moving the cursors never changes it, only the button or typing
+/// does (both call the hook). An invalid model (T <= 0, L < 0, K == 0, not finite) behaves as "no
+/// model": the label shows "No model yet..." and there is no prediction.
 /// Overlays (while shown and both cursors are set): the settling band, the overshoot / maximum
 /// deviation marker and, with the prediction shown, the predicted PV and output curves.
 ///
@@ -108,8 +118,12 @@ private:
     void updateHint();
     void onPredictionSpinEdited();
     void onTakeTuning();
-    void onLoadStepChanged();
+    void onModelSpinEdited();
+    void onUseOpenLoopModel();
     void refreshModel();
+    /// The valid open-loop model of the current results (K, L, T) and its source text.
+    std::optional<ProcessModel> currentOpenLoopModel(QString *source = nullptr) const;
+    /// The saved model when modelSet and valid, else nullopt.
     std::optional<ProcessModel> openLoopModel() const;
     QList<TuningRow> tuningRows() const;
     QString valueText(Quantity q, const ClosedLoopResult &r) const;
@@ -142,14 +156,17 @@ private:
     QPushButton *m_takeButton = nullptr;
     QLabel *m_loadStepLabel = nullptr;
     QDoubleSpinBox *m_loadStepSpin = nullptr;
+    QLabel *m_modelKLabel = nullptr;
+    QLabel *m_modelLLabel = nullptr;
+    QLabel *m_modelTLabel = nullptr;
+    QDoubleSpinBox *m_modelKSpin = nullptr;
+    QDoubleSpinBox *m_modelLSpin = nullptr;
+    QDoubleSpinBox *m_modelTSpin = nullptr;
+    QPushButton *m_useModelButton = nullptr;
 
     ClosedLoopResult m_result;
     bool m_analysed = false; ///< a result was computed (PV, recorder and both cursors present)
     Prediction m_pred;
-    std::optional<ProcessModel> m_model; ///< last valid open-loop model of m_modelPv
-    TagId m_modelPv = 0;
-    ModelMethod m_modelMethod = ModelMethod::Smith;
-    double m_loadStep = 5.0; ///< CO units; not saved in the project
 
     QList<QwtPlotItem *> m_items;
     bool m_overlaysShown = false;
