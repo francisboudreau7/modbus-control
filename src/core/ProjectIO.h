@@ -27,8 +27,8 @@ inline constexpr int kProjectFormatVersion = 1;
 ///               "byteOrder": "ABCD"|"CDAB"|"BADC"|"DCBA", "gain": 1.0, "offset": 0.0,
 ///               "unit": "", "color": "#RRGGBB", "plotted": true, "writable": false,
 ///               "axis": "left"|"right", "quickA": 0, "quickB": 1000 }, ... ],
-///   "analysis": { "percents": [0, 63.2], "reference": "cursor"|"mean", "referenceWindowS": 1,
-///                 "smoothingS": 0, "modelPercents": [0, 63.2], "method": "0-63.2",
+///   "analysis": { "percents": [0, 28.3, 63.2], "reference": "cursor"|"mean", "referenceWindowS": 1,
+///                 "smoothingS": 0, "modelPercents": [0, 63.2], "method": "smith",
 ///                 "pvTag": 1, "setpointTags": [1], "deltaCoTag": 0, "deltaCo": 0,
 ///                 "detailedLabels": false, "showModel": false, "guideLines": true,
 ///                 "pvRange": null, "coRange": [0, 100], "tuningRule": "zn", "lambdaS": 0,
@@ -55,7 +55,8 @@ inline constexpr int kProjectFormatVersion = 1;
 /// timeoutMs 100..60000, pollPeriodMs 100..60000, tag id >= 1, address 0..65535. A 32-bit
 /// tag must also fit: address + 2 <= 65536, so address 65535 is only valid for 16-bit types.
 ///
-/// "analyzed" (default false) and "analysis" (default AnalysisSettings{}) were added in v1.1;
+/// "analyzed" (default false) and "analysis" (default AnalysisSettings{}: since v1.3.5 method
+/// Smith and percents [0, 28.3, 63.2]; before, 0 / 63.2 %) were added in v1.1;
 /// both are optional and additive, so the version stays 1. Every "analysis" key is
 /// optional. Ranges: percents = array of 0..20 numbers each in [0, 100]; reference "cursor"
 /// (CursorValue) or "mean" (WindowMean); referenceWindowS in (0, 3600]; smoothingS in
@@ -82,7 +83,8 @@ inline constexpr int kProjectFormatVersion = 1;
 /// then reads as not set (and is written as null for unset or equal ends); "coRange" keeps the
 /// values and the UI treats a zero span as not set. "tuningRule" ("zn"|"cohen-coon"|"imc"|"simc"),
 /// "lambdaS" (finite, >= 0), "timeUnit" ("s"|"min"); all written. Older files: without "method"
-/// -> ZeroTo632 when modelPercents is [0, 63.2] (or missing), else Custom; without "pvTag" -> the
+/// -> ZeroTo632 when modelPercents is [0, 63.2] (or missing), else Custom (this holds only when the
+/// file has an "analysis" object; without one the AnalysisSettings{} defaults apply, Smith); without "pvTag" -> the
 /// id of the first tag with "analyzed": true whose id is not "deltaCoTag" (the first analysed
 /// tag if all are the CO; 0 if none); without "setpointTags" -> the ids of
 /// every tag with "analyzed": true. "showModel" missing -> false (v1.3.3; it was true). The per-tag

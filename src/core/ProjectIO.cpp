@@ -498,9 +498,12 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
     }
 
     // Without "method" (files before v1.2.6): 0 / 63.2 % is the two-point method, else Custom.
-    out.method = std::fabs(out.modelPercentA) < 1e-9 && std::fabs(out.modelPercentB - 63.2) < 1e-9
-                     ? ModelMethod::ZeroTo632
-                     : ModelMethod::Custom;
+    // Without an "analysis" object at all the new defaults (Smith) stay.
+    if (!value.isUndefined()) {
+        out.method = std::fabs(out.modelPercentA) < 1e-9 && std::fabs(out.modelPercentB - 63.2) < 1e-9
+                         ? ModelMethod::ZeroTo632
+                         : ModelMethod::Custom;
+    }
     const QJsonValue method = obj.value(QStringLiteral("method"));
     if (!method.isUndefined()) {
         const QString text = method.toString();

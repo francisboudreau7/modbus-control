@@ -389,6 +389,8 @@ private slots:
     {
         const Recorder rec = makeProcess(60.0);
         AnalysisSettings s;
+        s.method = ModelMethod::ZeroTo632;
+        s.percents = {0.0, 63.2};
         s.deltaCoTagId = kCo;
         const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
         QVERIFY2(r.valid, qPrintable(r.error));
@@ -478,6 +480,8 @@ private slots:
     {
         const Recorder rec = makeProcess(60.0, 1, 0.1, 99);
         AnalysisSettings s;
+        s.method = ModelMethod::ZeroTo632;
+        s.percents = {0.0, 63.2};
         s.reference = ReferenceMode::WindowMean;
         s.smoothingS = 0.5;
         s.deltaCoTagId = kCo;
@@ -532,6 +536,8 @@ private slots:
     {
         const Recorder rec = makeProcess(60.0, -1);
         AnalysisSettings s;
+        s.method = ModelMethod::ZeroTo632;
+        s.percents = {0.0, 63.2};
         s.deltaCoTagId = kCo;
         const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, s);
         QVERIFY2(r.valid, qPrintable(r.error));
@@ -1135,6 +1141,80 @@ private slots:
         const QList<StepCheck> expected{StepCheck::NoDeltaCo, StepCheck::NotSettled,
                                         StepCheck::NegativeDeadTime, StepCheck::FitPoor};
         QVERIFY(checkStep(rec, r) == expected);
+    }
+
+    void check_deadTimeFromFirstMove()
+    {
+        const Recorder rec = makeProcess(60.0);
+        AnalysisSettings s;
+        s.deltaCoTagId = kCo;
+        const auto has = [&](const AnalysisSettings &st) {
+            const StepResult r = analyzeStep(rec, kPv, 9.0, 60.0, st);
+            if (!r.valid || !r.deadTime || !r.timeConstant)
+                return false;
+            return checkStep(rec, r, st).contains(StepCheck::DeadTimeFromFirstMove);
+        };
+
+        // Present: lower point 0 % with a rule that divides by L.
+        s.method = ModelMethod::ZeroTo632;
+        s.tuningRule = TuningRule::ZieglerNichols;
+        QVERIFY(has(s));
+        s.tuningRule = TuningRule::CohenCoon;
+        QVERIFY(has(s));
+        s.method = ModelMethod::Custom;
+        s.modelPercentA = 0.0;
+        s.modelPercentB = 63.2;
+        s.tuningRule = TuningRule::ZieglerNichols;
+        QVERIFY(has(s));
+
+        // Absent.
+        s.method = ModelMethod::Smith;
+        QVERIFY(!has(s));
+        s.method = ModelMethod::Sundaresan;
+        QVERIFY(!has(s));
+        s.method = ModelMethod::Custom;
+        s.modelPercentA = 10.0;
+        QVERIFY(!has(s));
+        s.method = ModelMethod::ZeroTo632;
+        s.tuningRule = TuningRule::ImcLambda;
+        QVERIFY(!has(s));
+        s.tuningRule = TuningRule::Simc;
+        QVERIFY(!has(s));
+
+        // Without a model, or with a non-positive dead time, the check does not apply.
+        s.tuningRule = TuningRule::ZieglerNichols;
+        const StepResult base = analyzeStep(rec, kPv, 9.0, 60.0, s);
+        QVERIFY(base.valid && base.deadTime && base.timeConstant);
+        StepResult r = base;
+        QVERIFY(checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        r.deadTime.reset();
+        r.timeConstant.reset();
+        QVERIFY(!checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        r = base;
+        r.deadTime = 0.0;
+        QVERIFY(!checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        r.deadTime = -0.5;
+        QVERIFY(!checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        r = base;
+        r.timeConstant = 0.0;
+        QVERIFY(!checkStep(rec, r, s).contains(StepCheck::DeadTimeFromFirstMove));
+        // An invalid result gives an empty list.
+        QVERIFY(checkStep(rec, StepResult{}, s).isEmpty());
+
+        // Enum order: after DeadTimeDominant, before FitPoor.
+        r = base;
+        r.timeConstant = 1.0;
+        r.deadTime = 2.0; // dominant
+        r.fitRmsPercent = 50.0;
+        const QList<StepCheck> got = checkStep(rec, r, s);
+        const qsizetype dom = got.indexOf(StepCheck::DeadTimeDominant);
+        const qsizetype first = got.indexOf(StepCheck::DeadTimeFromFirstMove);
+        const qsizetype fit = got.indexOf(StepCheck::FitPoor);
+        QVERIFY(dom >= 0 && first >= 0 && fit >= 0);
+        QVERIFY(dom < first && first < fit);
+        // Without the check the list equals the two-argument overload.
+        s.method = ModelMethod::Smith;
+        QVERIFY(checkStep(rec, r, s) == checkStep(rec, r));
     }
 
     void fitQuality_thresholds()

@@ -609,11 +609,24 @@ QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result)
     return out;
 }
 
-// Stub until the check task: no DeadTimeFromFirstMove yet.
 QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result,
-                           const AnalysisSettings &)
+                           const AnalysisSettings &settings)
 {
-    return checkStep(recorder, result);
+    QList<StepCheck> out = checkStep(recorder, result);
+    if (!result.valid) {
+        return out;
+    }
+    const bool ruleDividesByL = settings.tuningRule == TuningRule::ZieglerNichols
+                                || settings.tuningRule == TuningRule::CohenCoon;
+    const bool lowerIsZero = std::abs(modelPercents(settings).first) < 1e-9;
+    if (ruleDividesByL && lowerIsZero && result.deadTime && *result.deadTime > 0.0
+        && result.timeConstant && *result.timeConstant > 0.0) {
+        qsizetype pos = 0;
+        while (pos < out.size() && out.at(pos) < StepCheck::DeadTimeFromFirstMove)
+            ++pos;
+        out.insert(pos, StepCheck::DeadTimeFromFirstMove); // keep enum order
+    }
+    return out;
 }
 
 } // namespace mb
