@@ -103,6 +103,18 @@ inline constexpr int kProjectFormatVersion = 1;
 /// when true; any other JSON type is rejected with "\"locked\" must be a boolean"): the teacher lock
 /// of the tag configuration (Options > Lock tag configuration).
 ///
+/// Added in v1.4.0 (optional, additive; all written, a missing key = the default): inside
+/// "analysis": "mode" ("open"|"closed"), "spTag" (integer >= 0, 0 = typed setpoint; an id that
+/// does not exist is kept, like "deltaCoTag"), "method" also accepts "tangent",
+/// "compareMethods" (array of "0-63.2"|"smith"|"sundaresan"|"tangent"; "custom", unknown names and
+/// duplicates are rejected), "tangentT632" (boolean),
+/// "closedLoop": { "test": "setpoint"|"disturbance", "spBefore": number, "spAfter": number,
+///   "band": number in (0, 50], "prediction": { "show": bool, "kp": number, "ti": number >= 0,
+///   "td": number >= 0 } },
+/// "controller": { "form": "ideal"|"series"|"parallel", "gain": "kp"|"pb",
+///   "integral": "time"|"repeats" }. Errors name the key, e.g. "\"analysis.closedLoop.band\" must
+/// be a number between 0 and 50".
+///
 /// Added in v1.2.3 (optional, additive): per tag "encodingVerified" (boolean, default true; written
 /// only when false) and "confirmed16Bit" (boolean, default false; written only when true). Any
 /// other JSON type is rejected.

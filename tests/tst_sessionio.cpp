@@ -101,6 +101,7 @@ class Test : public QObject
 private slots:
     void roundTrip();
     void coilTagRoundTrip();
+    void analysisV140RoundTrip();
     void emptyRecorder();
     void invalidStartTime();
     void columnForUnknownTag();
@@ -136,6 +137,36 @@ void Test::roundTrip()
     QCOMPARE(rec2.startTime().offsetFromUtc(), -4 * 3600);
     QVERIFY(std::isnan(rec2.valueAt(0, 3))); // late tag: earlier rows are NaN
     QCOMPARE(rec2.valueAt(3, 3), 100.0);
+}
+
+void Test::analysisV140RoundTrip()
+{
+    Project proj = sampleProject();
+    AnalysisSettings &a = proj.analysis;
+    a.mode = AnalysisMode::ClosedLoop;
+    a.spTagId = 3;
+    a.closedLoop.test = ClosedLoopTest::Disturbance;
+    a.closedLoop.typedSpBefore = 12.5;
+    a.closedLoop.typedSpAfter = 37.5;
+    a.closedLoop.settlingBandPct = 5.0;
+    a.closedLoop.showPrediction = true;
+    a.closedLoop.predictionKp = -1.86;
+    a.closedLoop.predictionTiS = 32.5;
+    a.closedLoop.predictionTdS = 2.0;
+    a.controller = {PidForm::Parallel, GainUnit::ProportionalBand, IntegralUnit::RepeatsPerMinute};
+    a.method = ModelMethod::Tangent;
+    a.compareMethods = {ModelMethod::Sundaresan, ModelMethod::Tangent};
+    a.tangentT632 = true;
+
+    const QByteArray json = sessionToJson(proj, sampleRecorder(), SessionCursors{});
+    Project proj2;
+    Recorder rec2(10);
+    SessionCursors cur2;
+    QString err;
+    QVERIFY2(sessionFromJson(json, proj2, rec2, cur2, &err), qPrintable(err));
+    QCOMPARE(proj2, proj);
+    QVERIFY(proj2.analysis.mode == AnalysisMode::ClosedLoop);
+    QVERIFY(proj2.analysis.compareMethods == a.compareMethods);
 }
 
 void Test::coilTagRoundTrip()
