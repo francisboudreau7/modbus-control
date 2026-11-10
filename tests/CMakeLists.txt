@@ -44,6 +44,7 @@ target_compile_definitions(tst_language PRIVATE MC_TRANSLATIONS_DIR="${PROJECT_S
 mc_add_qtest(tst_pollbits LIBS mbcore $<$<BOOL:${WIN32}>:ws2_32>)
 mc_add_qtest(tst_docslinks LIBS mbui)
 mc_add_qtest(tst_loopmodel LIBS mbloop)
+mc_add_qtest(tst_looptuning LIBS mbloop mbcore)
 mc_add_qtest(tst_loopserver LIBS mbloop)
 mc_add_qtest(tst_scenario LIBS mbloop)
 mc_add_qtest(tst_loopwindow LIBS mbloopui mbcore)
