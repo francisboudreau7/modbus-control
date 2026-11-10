@@ -17,8 +17,10 @@
 #include <qwt_text.h>
 
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QGuiApplication>
 #include <QGroupBox>
 #include <QLabel>
 #include <QListWidget>
@@ -273,6 +275,12 @@ private slots:
     void copyAndReadout();
     void tooltips();
     void settingsRoundTrip();
+    void modelSurvivesCursorMove();
+    void useOpenLoopModelButton();
+    void automaticTakeIsSilent();
+    void typedModel();
+    void loadStepIsSaved();
+    void panelButtonsAndReadout();
 };
 
 void TstClosedLoopPage::pageIsShown()
@@ -503,7 +511,8 @@ void TstClosedLoopPage::predictionWithoutModel()
     auto *check = child<QCheckBox>(fx.panel, "showPredictionCheck");
     auto *label = child<QLabel>(fx.panel, "predictionModelLabel");
     QCOMPARE(label->text(),
-             QStringLiteral("No model yet: do the open-loop step test first (Open loop area)."));
+             QStringLiteral("No model yet: do the open-loop step test first (Open loop area), or "
+                            "type one."));
     QCOMPARE(fx.table()->columnCount(), 2);
 
     QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
@@ -578,7 +587,7 @@ void TstClosedLoopPage::predictionWithModel()
     QCOMPARE(fx.table()->columnCount(), 2);
     QVERIFY(curvesWithStyle(fx.plot, Qt::DashLine).isEmpty());
 
-    // Disturbance: the load step spin changes the prediction (and is not a project setting).
+    // Disturbance: the load step spin changes the prediction (and is a project setting).
     fx.apply([](AnalysisSettings &s) {
         s.closedLoop.test = ClosedLoopTest::Disturbance;
         s.closedLoop.showPrediction = true;
@@ -589,7 +598,8 @@ void TstClosedLoopPage::predictionWithModel()
     load->setValue(5.0);
     const QString small = cell(fx.table(), rowOf(fx.table(), "Max deviation"), 2);
     load->setValue(15.0);
-    QCOMPARE(changed.count(), 0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(fx.panel.settings().closedLoop.loadStep, 15.0);
     // The disturbance prediction needs the measured result: the closed-loop data here is a
     // setpoint step, which is a valid result only with SetpointMoved; the cell may be a dash.
     QVERIFY(!small.isNull());
@@ -951,6 +961,12 @@ void TstClosedLoopPage::settingsRoundTrip()
     s.closedLoop.predictionKp = 1.5;
     s.closedLoop.predictionTiS = 12.0;
     s.closedLoop.predictionTdS = 1.0;
+    s.closedLoop.modelSet = true;
+    s.closedLoop.modelK = -2.5;
+    s.closedLoop.modelLS = 3.0;
+    s.closedLoop.modelTS = 45.0;
+    s.closedLoop.modelSource = QStringLiteral("from a handout");
+    s.closedLoop.loadStep = -8.0;
     QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
     fx.panel.setSettings(s);
     QCOMPARE(changed.count(), 0); // loading is not a user edit
@@ -963,7 +979,224 @@ void TstClosedLoopPage::settingsRoundTrip()
     QCOMPARE(child<QDoubleSpinBox>(fx.panel, "predGainSpin")->value(), 1.5);
     QCOMPARE(child<QDoubleSpinBox>(fx.panel, "predIntegralSpin")->value(), 12.0);
     QCOMPARE(child<QDoubleSpinBox>(fx.panel, "predDerivativeSpin")->value(), 1.0);
+    QCOMPARE(child<QDoubleSpinBox>(fx.panel, "modelKSpin")->value(), -2.5);
+    QCOMPARE(child<QDoubleSpinBox>(fx.panel, "modelLSpin")->value(), 3.0);
+    QCOMPARE(child<QDoubleSpinBox>(fx.panel, "modelTSpin")->value(), 45.0);
+    QCOMPARE(child<QDoubleSpinBox>(fx.panel, "loadStepSpin")->value(), -8.0);
+    QVERIFY(child<QLabel>(fx.panel, "predictionModelLabel")->text().contains(
+        QStringLiteral("(from a handout)")));
     QVERIFY(fx.panel.settings().closedLoop == s.closedLoop);
+}
+
+void TstClosedLoopPage::modelSurvivesCursorMove()
+{
+    // The core scenario: an open-loop step, the cursors on it, then the closed-loop test.
+    Fx fx(Options{.openLoopFirst = true});
+    const StepResult open = fx.panel.results().first();
+    QVERIFY(open.valid && open.gain && open.deadTime && open.timeConstant);
+    const ClosedLoopSettings taken = fx.panel.settings().closedLoop;
+    QVERIFY(taken.modelSet);
+    QVERIFY(qFuzzyCompare(taken.modelK, *open.gain));
+    QVERIFY(qFuzzyCompare(taken.modelLS, *open.deadTime));
+    QVERIFY(qFuzzyCompare(taken.modelTS, *open.timeConstant));
+    fx.apply([](AnalysisSettings &s) { s.closedLoop.showPrediction = true; });
+
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    auto *label = child<QLabel>(fx.panel, "predictionModelLabel");
+    const QString text = label->text();
+    QVERIFY2(text.startsWith(QStringLiteral("Model: K = ")), qPrintable(text));
+    QVERIFY(text.contains(QStringLiteral("L = %1 s").arg(g4(*open.deadTime))));
+    QVERIFY(text.contains(QStringLiteral("T = %1 s").arg(g4(*open.timeConstant))));
+    QVERIFY2(text.contains(QStringLiteral("C1 = 9 s)")), qPrintable(text));
+
+    // Move the cursors to the closed-loop part: the model and the Predicted column stay.
+    fx.setCursors(fx.t0 + 9.0, fx.t0 + 70.0);
+    QCOMPARE(label->text(), text);
+    const ClosedLoopSettings after = fx.panel.settings().closedLoop;
+    QVERIFY(after.modelSet && after.modelK == taken.modelK && after.modelLS == taken.modelLS
+            && after.modelTS == taken.modelTS && after.modelSource == taken.modelSource);
+    QTableWidget *t = fx.table();
+    QCOMPARE(t->columnCount(), 3);
+    QCOMPARE(t->horizontalHeaderItem(2)->text(), QStringLiteral("Predicted"));
+    QVERIFY(cell(t, rowOf(t, "IAE"), 2) != QStringLiteral("—"));
+    QCOMPARE(curvesWithStyle(fx.plot, Qt::DashLine).size(), 2);
+
+    // Another PV does not clear it either (the model belongs to the project).
+    fx.apply([](AnalysisSettings &s) { s.pvTagId = kSp; });
+    QVERIFY(fx.panel.settings().closedLoop.modelSet);
+    QCOMPARE(fx.panel.settings().closedLoop.modelK, taken.modelK);
+}
+
+void TstClosedLoopPage::useOpenLoopModelButton()
+{
+    auto useButton = [](Fx &f) { return child<QPushButton>(f.panel, "useOpenLoopModelButton"); };
+    {
+        Fx none(Options{.noCo = true}); // no K: no valid open-loop model
+        QVERIFY(useButton(none));
+        QVERIFY(!useButton(none)->isEnabled());
+    }
+    Fx fx(Options{.openLoopFirst = true});
+    const StepResult open = fx.panel.results().first();
+    QVERIFY(open.valid && open.gain && open.deadTime && open.timeConstant);
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    // A typed model replaces the automatic one...
+    child<QDoubleSpinBox>(fx.panel, "modelKSpin")->setValue(3.0);
+    QCOMPARE(fx.panel.settings().closedLoop.modelSource, QStringLiteral("typed"));
+    QVERIFY(qFuzzyCompare(fx.panel.settings().closedLoop.modelK, 3.0));
+    // ...and the button brings the open-loop one back (the cursors are still on the open-loop step).
+    QPushButton *button = useButton(fx);
+    QVERIFY(button->isEnabled());
+    QCOMPARE(button->text(), QStringLiteral("Use the open-loop model"));
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    button->click();
+    QCOMPARE(changed.count(), 1);
+    const ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(cl.modelSet);
+    QVERIFY(qFuzzyCompare(cl.modelK, *open.gain));
+    QVERIFY(qFuzzyCompare(cl.modelLS, *open.deadTime));
+    QVERIFY(qFuzzyCompare(cl.modelTS, *open.timeConstant));
+    QVERIFY2(cl.modelSource.endsWith(QStringLiteral(", C1 = 9 s")), qPrintable(cl.modelSource));
+    QVERIFY(cl.modelSource != QStringLiteral("typed"));
+
+    // No valid open-loop model at the cursors: the button is off.
+    fx.apply([](AnalysisSettings &s) { s.deltaCoTagId = 0; });
+    QVERIFY(!button->isEnabled());
+}
+
+void TstClosedLoopPage::automaticTakeIsSilent()
+{
+    Fx fx(Options{.openLoopFirst = true});
+    const StepResult open = fx.panel.results().first();
+    QVERIFY(open.valid && open.gain);
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    // Loading a project without a model: the next recompute takes the open-loop one, silently.
+    fx.apply([](AnalysisSettings &s) {
+        s.closedLoop.modelSet = false;
+        s.closedLoop.modelK = 7.0;
+    });
+    QCOMPARE(changed.count(), 0);
+    const ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(cl.modelSet);
+    QVERIFY(qFuzzyCompare(cl.modelK, *open.gain));
+    QVERIFY(!cl.modelSource.isEmpty());
+
+    // Once set, other open-loop numbers (another window) do not replace it.
+    fx.setCursors(9.0, 25.0);
+    QCOMPARE(fx.panel.settings().closedLoop.modelSource, cl.modelSource);
+    QCOMPARE(changed.count(), 0);
+
+    // Without any valid open-loop model, nothing is taken.
+    Fx none(Options{.noCo = true});
+    QVERIFY(!none.panel.settings().closedLoop.modelSet);
+}
+
+void TstClosedLoopPage::typedModel()
+{
+    Fx fx(Options{.noCo = true}); // no automatic model
+    auto *k = child<QDoubleSpinBox>(fx.panel, "modelKSpin");
+    auto *l = child<QDoubleSpinBox>(fx.panel, "modelLSpin");
+    auto *t = child<QDoubleSpinBox>(fx.panel, "modelTSpin");
+    auto *label = child<QLabel>(fx.panel, "predictionModelLabel");
+    QVERIFY(k && l && t);
+    QVERIFY(!fx.panel.settings().closedLoop.modelSet);
+    QVERIFY(label->text().startsWith(QStringLiteral("No model yet")));
+    QCOMPARE(l->minimum(), 0.0);
+    QCOMPARE(t->minimum(), 0.001);
+
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    k->setValue(2.0);
+    QCOMPARE(changed.count(), 1);
+    ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(cl.modelSet);
+    QCOMPARE(cl.modelK, 2.0);
+    QCOMPARE(cl.modelSource, QStringLiteral("typed"));
+    l->setValue(1.5);
+    t->setValue(12.0);
+    QCOMPARE(changed.count(), 3);
+    cl = fx.panel.settings().closedLoop;
+    QCOMPARE(cl.modelLS, 1.5);
+    QCOMPARE(cl.modelTS, 12.0);
+    QCOMPARE(label->text(), QStringLiteral("Model: K = 2, L = 1.5 s, T = 12 s (typed)"));
+
+    // The spins refuse a T that is not above 0 and an L below 0 (the model stays valid).
+    t->setValue(-4.0);
+    QCOMPARE(t->value(), 0.001);
+    QCOMPARE(fx.panel.settings().closedLoop.modelTS, 0.001);
+    l->setValue(-1.0);
+    QCOMPARE(l->value(), 0.0);
+    QVERIFY(label->text().startsWith(QStringLiteral("Model: K = 2")));
+
+    // K = 0 is no model: back to the "No model yet" text and no prediction.
+    fx.apply([](AnalysisSettings &s) { s.closedLoop.showPrediction = true; });
+    QVERIFY(cell(fx.table(), rowOf(fx.table(), "IAE"), 2) != QStringLiteral("—"));
+    k->setValue(0.0);
+    QVERIFY(label->text().startsWith(QStringLiteral("No model yet")));
+    QCOMPARE(cell(fx.table(), rowOf(fx.table(), "IAE"), 2), QStringLiteral("—"));
+    QVERIFY(curvesWithStyle(fx.plot, Qt::DashLine).isEmpty());
+    // An invalid model from a loaded project behaves the same.
+    fx.apply([](AnalysisSettings &s) {
+        s.closedLoop.modelK = 1.0;
+        s.closedLoop.modelTS = 0.0;
+    });
+    QVERIFY(label->text().startsWith(QStringLiteral("No model yet")));
+    QVERIFY(curvesWithStyle(fx.plot, Qt::DashLine).isEmpty());
+}
+
+void TstClosedLoopPage::loadStepIsSaved()
+{
+    Fx fx(Options{.disturbance = true});
+    auto *load = child<QDoubleSpinBox>(fx.panel, "loadStepSpin");
+    QCOMPARE(load->value(), ClosedLoopSettings{}.loadStep);
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    load->setValue(12.5);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(fx.panel.settings().closedLoop.loadStep, 12.5);
+    // Loaded from a project.
+    fx.apply([](AnalysisSettings &s) { s.closedLoop.loadStep = -3.0; });
+    QCOMPARE(load->value(), -3.0);
+    QCOMPARE(changed.count(), 1);
+}
+
+void TstClosedLoopPage::panelButtonsAndReadout()
+{
+    Fx fx(Options{.openLoopFirst = true});
+    auto *copy = child<QPushButton>(fx.panel, "copyResultsButton");
+    auto *exportButton = child<QPushButton>(fx.panel, "exportButton");
+    // Open loop mode: as before.
+    QVERIFY(copy->isEnabled() && exportButton->isEnabled());
+    QVERIFY(exportButton->toolTip().isEmpty());
+    QVERIFY(fx.panel.readoutText().contains(QStringLiteral("K = ")));
+
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    fx.setCursors(fx.t0 + 9.0, fx.t0 + 70.0);
+    QVERIFY(fx.page()->copyText().startsWith(QStringLiteral("Quantity\tMeasured")));
+    QVERIFY(copy->isEnabled());
+    QVERIFY(!exportButton->isEnabled());
+    QCOMPARE(exportButton->toolTip(),
+             QStringLiteral("The CSV export covers the open-loop results. Use Copy results for "
+                            "the closed-loop numbers."));
+    // The closed-loop readout, and nothing from the open-loop page.
+    QCOMPARE(fx.panel.readoutText().section(QLatin1Char('\n'), 0, 0),
+             fx.page()->readoutText().section(QLatin1Char('\n'), 0, 0));
+    QVERIFY(fx.panel.readoutText().startsWith(QStringLiteral("SP step 50")));
+    QVERIFY(!fx.panel.readoutText().contains(QStringLiteral("K = ")));
+
+    copy->click();
+    const QString clip = QGuiApplication::clipboard()->text();
+    QVERIFY(clip.startsWith(QStringLiteral("Quantity\tMeasured")));
+    QVERIFY(!clip.contains(QStringLiteral("Fit error")));
+
+    // No closed-loop result (no data between the cursors): nothing to copy or export.
+    fx.setCursors(500.0, 600.0);
+    QVERIFY(!copy->isEnabled());
+    QVERIFY(!exportButton->isEnabled());
+    QVERIFY(fx.panel.readoutText().isEmpty());
+
+    // Back to Open loop: the normal rules and the normal tooltip.
+    fx.setCursors(9.0, 40.0);
+    child<QToolButton>(fx.panel, "openLoopButton")->click();
+    QVERIFY(copy->isEnabled() && exportButton->isEnabled());
+    QVERIFY(exportButton->toolTip().isEmpty());
 }
 
 QTEST_MAIN(TstClosedLoopPage)

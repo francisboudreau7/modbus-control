@@ -153,6 +153,12 @@ void Test::analysisV140RoundTrip()
     a.closedLoop.predictionKp = -1.86;
     a.closedLoop.predictionTiS = 32.5;
     a.closedLoop.predictionTdS = 2.0;
+    a.closedLoop.modelSet = true;
+    a.closedLoop.modelK = -1.25;
+    a.closedLoop.modelLS = 1.5;
+    a.closedLoop.modelTS = 40.0;
+    a.closedLoop.modelSource = QStringLiteral("Smith, C1 = 60 s");
+    a.closedLoop.loadStep = -7.5;
     a.controller = {PidForm::Parallel, GainUnit::ProportionalBand, IntegralUnit::RepeatsPerMinute};
     a.method = ModelMethod::Tangent;
     a.compareMethods = {ModelMethod::Sundaresan, ModelMethod::Tangent};
@@ -166,6 +172,9 @@ void Test::analysisV140RoundTrip()
     QVERIFY2(sessionFromJson(json, proj2, rec2, cur2, &err), qPrintable(err));
     QCOMPARE(proj2, proj);
     QVERIFY(proj2.analysis.mode == AnalysisMode::ClosedLoop);
+    QVERIFY(proj2.analysis.closedLoop.modelSet);
+    QCOMPARE(proj2.analysis.closedLoop.modelSource, QStringLiteral("Smith, C1 = 60 s"));
+    QCOMPARE(proj2.analysis.closedLoop.loadStep, -7.5);
     QVERIFY(proj2.analysis.compareMethods == a.compareMethods);
 }
 

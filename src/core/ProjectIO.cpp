@@ -504,6 +504,38 @@ bool readAnalysisV140(const QJsonObject &obj, AnalysisSettings &out, QString *er
                 return false;
             }
         }
+
+        QJsonObject model;
+        if (!readSubObject(closed, QStringLiteral("model"), QStringLiteral("analysis.closedLoop.model"),
+                           model, present, error)) {
+            return false;
+        }
+        if (present) {
+            const QString mp = QStringLiteral("analysis.closedLoop.model.");
+            if (!readBool(model, QStringLiteral("set"), mp, c.modelSet, error)
+                || !readFiniteNumber(model, QStringLiteral("k"), mp, c.modelK, error)
+                || !readString(model, QStringLiteral("source"), mp, c.modelSource, error)) {
+                return false;
+            }
+            if (c.modelK == 0.0) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.model.k\" must be a finite number other than 0"));
+                return false;
+            }
+            if (!readDouble(model, QStringLiteral("l"), mp, c.modelLS, error))
+                return false;
+            if (!(std::isfinite(c.modelLS) && c.modelLS >= 0.0)) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.model.l\" must be a finite number, 0 or more"));
+                return false;
+            }
+            if (!readDouble(model, QStringLiteral("t"), mp, c.modelTS, error))
+                return false;
+            if (!(std::isfinite(c.modelTS) && c.modelTS > 0.0)) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.model.t\" must be a finite number above 0"));
+                return false;
+            }
+        }
+        if (!readFiniteNumber(closed, QStringLiteral("loadStep"), cp, c.loadStep, error))
+            return false;
     }
 
     QJsonObject controller;
@@ -1026,6 +1058,14 @@ QByteArray projectToJson(const Project &project)
              {QStringLiteral("ti"), a.closedLoop.predictionTiS},
              {QStringLiteral("td"), a.closedLoop.predictionTdS},
          }},
+        {QStringLiteral("model"), QJsonObject{
+             {QStringLiteral("set"), a.closedLoop.modelSet},
+             {QStringLiteral("k"), a.closedLoop.modelK},
+             {QStringLiteral("l"), a.closedLoop.modelLS},
+             {QStringLiteral("t"), a.closedLoop.modelTS},
+             {QStringLiteral("source"), a.closedLoop.modelSource},
+         }},
+        {QStringLiteral("loadStep"), a.closedLoop.loadStep},
     };
     const QJsonObject controller{
         {QStringLiteral("form"), formName},
