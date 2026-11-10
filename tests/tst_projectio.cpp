@@ -2091,6 +2091,19 @@ void TstProjectIO::v140DefaultsWhenMissing()
     QCOMPARE(loaded->analysis.closedLoop.modelLS, defaults.closedLoop.modelLS);
     QCOMPARE(loaded->analysis.closedLoop.modelTS, defaults.closedLoop.modelTS);
     QCOMPARE(loaded->analysis.closedLoop.loadStep, 3.0);
+    // K = 0 loads (the UI treats it as no model), with set true or false, and round-trips.
+    for (const char *set : {"true", "false"}) {
+        const QByteArray text = QByteArray(R"({"format":"modbus-control-project","version":1,"analysis":{"closedLoop":{"model":{"set":)")
+                                + set + R"(,"k":0,"l":1,"t":5}}}})";
+        QString error;
+        loaded = projectFromJson(text, &error);
+        QVERIFY2(loaded.has_value(), qPrintable(error));
+        QCOMPARE(loaded->analysis.closedLoop.modelK, 0.0);
+        QCOMPARE(loaded->analysis.closedLoop.modelSet, QByteArray(set) == "true");
+        const auto again = projectFromJson(projectToJson(*loaded), &error);
+        QVERIFY2(again.has_value(), qPrintable(error));
+        QVERIFY(again->analysis == loaded->analysis);
+    }
 }
 
 void TstProjectIO::v140Rejected_data()
@@ -2122,7 +2135,7 @@ void TstProjectIO::v140Rejected_data()
     row("modelType", R"({"closedLoop":{"model":5}})", "\"analysis.closedLoop.model\" must be an object");
     row("modelSetType", R"({"closedLoop":{"model":{"set":"yes"}}})", "\"analysis.closedLoop.model.set\" must be true or false");
     row("modelKType", R"({"closedLoop":{"model":{"k":"1"}}})", "\"analysis.closedLoop.model.k\" must be a number");
-    row("modelKZero", R"({"closedLoop":{"model":{"k":0}}})", "\"analysis.closedLoop.model.k\" must be a finite number other than 0");
+    row("modelKNull", R"({"closedLoop":{"model":{"k":null}}})", "\"analysis.closedLoop.model.k\" must be a number");
     row("modelLNegative", R"({"closedLoop":{"model":{"l":-1}}})", "\"analysis.closedLoop.model.l\" must be a finite number, 0 or more");
     row("modelLType", R"({"closedLoop":{"model":{"l":true}}})", "\"analysis.closedLoop.model.l\" must be a number");
     row("modelTZero", R"({"closedLoop":{"model":{"t":0}}})", "\"analysis.closedLoop.model.t\" must be a finite number above 0");

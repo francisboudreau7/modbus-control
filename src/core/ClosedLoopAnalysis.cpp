@@ -66,10 +66,10 @@ struct Peak {
 };
 
 /// The first two peaks of f (a local maximum above `band`).
-/// Noise robustness (zigzag with hysteresis `band`): a maximum is confirmed only after f has
-/// fallen by at least `band` below it, and the next maximum is searched only after f has risen by
-/// at least `band` above the valley that followed. A confirmed peak counts when its value is
-/// above `band`. A plateau (equal samples) is one peak, located at its first sample.
+/// Noise robustness (zigzag with hysteresis `band`, here the threshold h = max(b, 3 sigma)): a
+/// maximum is confirmed only after f has fallen by at least `band` below it, and the next maximum
+/// is searched only after f has risen by at least `band` above the valley that followed. A
+/// confirmed peak counts when its value is above `band`. A plateau (equal samples) is one peak, located at its first sample.
 QList<Peak> findPeaks(const QList<Pt> &q, const QList<double> &f, double band)
 {
     QList<Peak> peaks;
@@ -108,7 +108,7 @@ QList<Peak> findPeaks(const QList<Pt> &q, const QList<double> &f, double band)
 
 ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
                      const ClosedLoopSettings &settings, double coRangeMin, double coRangeMax,
-                     bool startAtFirst)
+                     bool startAtFirst, double bandOverride)
 {
     ClosedLoopResult r;
     r.test = settings.test;
@@ -203,9 +203,9 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
 
     // Overshoot, rise time.
     const double dir = d > 0.0 ? 1.0 : -1.0;
+    double overT = start; // absolute time of the overshoot peak (valid when overshoot > 0)
     if (stepTest) {
         double over = 0.0;
-        double overT = start;
         for (const Pt &p : q) {
             const double o = (p.pv - r.spAfter) * dir;
             if (o > over) {
@@ -232,7 +232,52 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
     }
     pct = std::min(pct, 50.0);
     const double scale = stepTest ? std::abs(d) : std::abs(*r.maxDeviation);
-    const double band = pct / 100.0 * scale;
+    double band = pct / 100.0 * scale;
+    if (std::isfinite(bandOverride) && bandOverride > 0.0) {
+        band = bandOverride;
+    }
+    r.band = band;
+
+    // Noise: standard deviation of the PV about its least-squares line over the last 10 % of
+    // [startTime, t2] (at least 5 samples).
+    double sigma = 0.0;
+    {
+        const double from = t2 - 0.1 * (t2 - start);
+        QList<const Pt *> tail;
+        for (const Pt &p : q) {
+            if (p.t >= from) {
+                tail.append(&p);
+            }
+        }
+        if (tail.size() >= 5) {
+            const double m = double(tail.size());
+            double st = 0.0;
+            double sv = 0.0;
+            for (const Pt *p : tail) {
+                st += p->t;
+                sv += p->pv;
+            }
+            const double mt = st / m;
+            const double mv = sv / m;
+            double stt = 0.0;
+            double stv = 0.0;
+            for (const Pt *p : tail) {
+                stt += (p->t - mt) * (p->t - mt);
+                stv += (p->t - mt) * (p->pv - mv);
+            }
+            const double slope = stt > 0.0 ? stv / stt : 0.0;
+            double ss = 0.0;
+            for (const Pt *p : tail) {
+                const double res = (p->pv - mv) - slope * (p->t - mt);
+                ss += res * res;
+            }
+            sigma = std::sqrt(ss / (m - 2.0));
+        }
+    }
+    r.noiseSigma = sigma;
+    if (3.0 * sigma > band) {
+        r.checks.append(ClosedLoopCheck::NoiseAboveBand);
+    }
 
     // Settling time: the first sample after the last sample (after startTime) outside the band.
     if (q.size() < 2) {
@@ -261,8 +306,12 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
         for (const Pt &p : q) {
             f.append(p.e() * sgn);
         }
-        const QList<Peak> peaks = findPeaks(q, f, band);
-        if (peaks.size() >= 2 && peaks[0].f != 0.0) {
+        const QList<Peak> peaks = findPeaks(q, f, std::max(band, 3.0 * sigma));
+        // The first peak must be the overshoot peak (SetpointStep) or the max-deviation peak.
+        const double firstT = stepTest ? overT : start + *r.maxDeviationTime;
+        const bool firstOk = !peaks.isEmpty() && peaks[0].t == firstT
+                             && (!stepTest || (r.overshoot && *r.overshoot > 0.0));
+        if (firstOk && peaks.size() >= 2 && peaks[0].f != 0.0) {
             r.decayRatio = peaks[1].f / peaks[0].f;
             r.period = peaks[1].t - peaks[0].t;
         }
@@ -357,9 +406,9 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
 
 ClosedLoopResult analyzeClosedLoopSeries(const ClosedLoopSeries &series, double t1, double t2,
                                          const ClosedLoopSettings &settings, double coRangeMin,
-                                         double coRangeMax, double /*bandOverride: fix task*/)
+                                         double coRangeMax, double bandOverride)
 {
-    return run(series, t1, t2, settings, coRangeMin, coRangeMax, false);
+    return run(series, t1, t2, settings, coRangeMin, coRangeMax, false, bandOverride);
 }
 
 ClosedLoopResult analyzeClosedLoop(const Recorder &recorder, TagId pvTag, TagId spTag, TagId coTag,
@@ -402,7 +451,7 @@ ClosedLoopResult analyzeClosedLoop(const Recorder &recorder, TagId pvTag, TagId 
             s.co.append(recorder.valueAt(row, coTag));
         }
     }
-    return run(s, t1, t2, settings, coRangeMin, coRangeMax, typed && stepTest);
+    return run(s, t1, t2, settings, coRangeMin, coRangeMax, typed && stepTest, kNaN);
 }
 
 } // namespace mb
