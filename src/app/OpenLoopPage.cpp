@@ -618,6 +618,11 @@ void OpenLoopPage::rebuildChecks()
                 }
                 break;
             case StepCheck::NoModel:
+                if (settings.method == ModelMethod::Tangent) {
+                    text = tr("L and T can't be computed with the tangent: the response has no clear "
+                              "rising slope between the cursors.");
+                    break;
+                }
                 text = tr("L and T can't be computed: the PV does not reach both model points "
                           "(%1 % and %2 %) between the cursors.")
                            .arg(fmtPlain(ab.first), fmtPlain(ab.second));
@@ -955,9 +960,11 @@ QString OpenLoopPage::readoutText() const
         model << tr("fit %1 % (%2)")
                      .arg(QString::number(*pv.fitRmsPercent, 'g', 3), fitWord(*pv.fitRmsPercent));
     }
+    const QString how = m_ctx->settings.method == ModelMethod::Tangent
+                            ? methodName(ModelMethod::Tangent)
+                            : fmtPercent(ab.first) + QStringLiteral(" / ") + fmtPercent(ab.second);
     QString line = (pvTag ? tagLabel(*pvTag) : QString::number(pv.tagId)) + QStringLiteral(" (")
-                   + fmtPercent(ab.first) + QStringLiteral(" / ") + fmtPercent(ab.second)
-                   + QStringLiteral(")");
+                   + how + QStringLiteral(")");
     if (!model.isEmpty())
         line += QStringLiteral(": ") + model.join(QStringLiteral(", "));
     return line;

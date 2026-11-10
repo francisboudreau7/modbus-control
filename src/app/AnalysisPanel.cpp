@@ -146,6 +146,15 @@ AnalysisPanel::AnalysisPanel(QWidget *parent)
 
 AnalysisPanel::~AnalysisPanel()
 {
+    // A spin with typed text commits it when it loses focus while the panel is destroyed, after the
+    // context is gone: the pages' controls must not call back any more.
+    for (QWidget *page : {static_cast<QWidget *>(m_openLoopPage), static_cast<QWidget *>(m_closedLoopPage)}) {
+        if (!page)
+            continue;
+        const QList<QWidget *> controls = page->findChildren<QWidget *>();
+        for (QWidget *w : controls)
+            QObject::disconnect(w, nullptr, page, nullptr);
+    }
     clearOverlays();
 }
 
@@ -657,8 +666,15 @@ void AnalysisPanel::onModeClicked(AnalysisMode mode)
 {
     if (m_updating || mode == m_ctx->settings.mode)
         return;
+    const bool toClosed = mode == AnalysisMode::ClosedLoop;
     m_ctx->settings.mode = mode;
+    // The step test is finished: the closed-loop page takes its model (only while none is set).
+    const bool took = toClosed && m_closedLoopPage->takeOpenLoopModelIfUnset();
+    if (took)
+        m_closedLoopPage->recompute(); // the model labels, spins and prediction (no panel recompute)
     updateModeSwitch();
+    updateHint();
+    updateFindButton();
     emit settingsChanged();
 }
 
@@ -953,10 +969,17 @@ void AnalysisPanel::updateHint()
 {
     QString text;
     const PlotCursors *cur = m_ctx->plot ? m_ctx->plot->cursors() : nullptr;
+    const bool closed = m_ctx->settings.mode == AnalysisMode::ClosedLoop;
+    const bool both = cur && cur->hasC1() && cur->hasC2();
     if (m_ctx->settings.pvTagId == 0) {
         text = tr("Choose the process value (PV) in step 1.");
-    } else if (!(cur && cur->hasC1() && cur->hasC2())) {
-        text = tr("Place C1 just before the step and C2 after the PV has settled, or click Find step.");
+    } else if (!both) {
+        text = closed ? tr("Place C1 at the setpoint change (or just before the disturbance) and C2 "
+                           "after the PV has settled.")
+                      : tr("Place C1 just before the step and C2 after the PV has settled, or click "
+                           "Find step.");
+    } else if (closed) {
+        text = m_closedLoopPage->resultError();
     } else if (!m_ctx->results.isEmpty() && !m_ctx->results.first().valid) {
         text = m_ctx->results.first().error;
     }
@@ -968,6 +991,12 @@ void AnalysisPanel::updateHint()
 void AnalysisPanel::updateFindButton()
 {
     QString why;
+    if (m_ctx->settings.mode == AnalysisMode::ClosedLoop) {
+        m_findStepButton->setEnabled(false);
+        m_findStepButton->setToolTip(tr("Find step looks for an open-loop step of the output; place "
+                                        "the cursors by hand for a closed-loop test."));
+        return;
+    }
     if (m_ctx->settings.pvTagId == 0)
         why = tr("Choose the process value (PV) in step 1.");
     else if (m_ctx->settings.deltaCoTagId == 0)

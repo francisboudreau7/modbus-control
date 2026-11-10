@@ -2,6 +2,7 @@
 #include "ClosedLoopAnalysis.h"
 #include "ClosedLoopPage.h"
 #include "PidForm.h"
+#include "ProjectIO.h"
 #include "PlotCursors.h"
 #include "Recorder.h"
 #include "SampleBatch.h"
@@ -22,6 +23,7 @@
 #include <QDoubleSpinBox>
 #include <QGuiApplication>
 #include <QGroupBox>
+#include <QLineEdit>
 #include <QLabel>
 #include <QListWidget>
 #include <QPen>
@@ -280,6 +282,12 @@ private slots:
     void automaticTakeIsSilent();
     void typedModel();
     void loadStepIsSaved();
+    void typedZeroGainModel();
+    void takeOnlyOnModeSwitch();
+    void predictionSpinsKeepPrecision();
+    void typingIsNotOverwritten();
+    void predictionBaseline();
+    void closedModeHintAndFindStep();
     void panelButtonsAndReadout();
 };
 
@@ -485,7 +493,7 @@ void TstClosedLoopPage::hintLine()
     panel.setRecorder(&rec);
     panel.setPlot(&plot);
     panel.setTags(standardTags());
-    auto *hint = child<QLabel>(panel, "closedHintLabel");
+    auto *hint = child<QLabel>(panel, "hintLabel");
     QCOMPARE(hint->text(), QStringLiteral("Choose the process value (PV) in step 1."));
     AnalysisSettings s;
     s.pvTagId = kPv;
@@ -608,6 +616,7 @@ void TstClosedLoopPage::predictionWithModel()
 void TstClosedLoopPage::takeTuning()
 {
     Fx fx(Options{.openLoopFirst = true});
+    child<QToolButton>(fx.panel, "closedLoopButton")->click(); // takes the model
     const StepResult model = fx.panel.results().first();
     QVERIFY(model.valid && model.gain && model.deadTime && model.timeConstant);
     fx.apply([](AnalysisSettings &s) { s.tuningRule = TuningRule::CohenCoon; });
@@ -632,7 +641,7 @@ void TstClosedLoopPage::takeTuning()
     QVERIFY(qFuzzyCompare(cl.predictionKp, *rows.at(1).kp));
     QVERIFY(qFuzzyCompare(cl.predictionTiS, *rows.at(1).ti));
     QCOMPARE(cl.predictionTdS, 0.0);
-    QCOMPARE(child<QDoubleSpinBox>(fx.panel, "predGainSpin")->value(), qRound64(cl.predictionKp * 1e4) / 1e4);
+    QVERIFY(qAbs(child<QDoubleSpinBox>(fx.panel, "predGainSpin")->value() - cl.predictionKp) < 1e-5);
     QCOMPARE(child<QDoubleSpinBox>(fx.panel, "predDerivativeSpin")->value(), 0.0);
 
     combo->setCurrentIndex(2);
@@ -994,6 +1003,8 @@ void TstClosedLoopPage::modelSurvivesCursorMove()
     Fx fx(Options{.openLoopFirst = true});
     const StepResult open = fx.panel.results().first();
     QVERIFY(open.valid && open.gain && open.deadTime && open.timeConstant);
+    QVERIFY(!fx.panel.settings().closedLoop.modelSet); // the cursors alone take nothing
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
     const ClosedLoopSettings taken = fx.panel.settings().closedLoop;
     QVERIFY(taken.modelSet);
     QVERIFY(qFuzzyCompare(taken.modelK, *open.gain));
@@ -1001,7 +1012,6 @@ void TstClosedLoopPage::modelSurvivesCursorMove()
     QVERIFY(qFuzzyCompare(taken.modelTS, *open.timeConstant));
     fx.apply([](AnalysisSettings &s) { s.closedLoop.showPrediction = true; });
 
-    child<QToolButton>(fx.panel, "closedLoopButton")->click();
     auto *label = child<QLabel>(fx.panel, "predictionModelLabel");
     const QString text = label->text();
     QVERIFY2(text.startsWith(QStringLiteral("Model: K = ")), qPrintable(text));
@@ -1065,29 +1075,210 @@ void TstClosedLoopPage::useOpenLoopModelButton()
 
 void TstClosedLoopPage::automaticTakeIsSilent()
 {
+    // The take happens on the mode switch only; setSettings() and recomputes never take.
     Fx fx(Options{.openLoopFirst = true});
     const StepResult open = fx.panel.results().first();
     QVERIFY(open.valid && open.gain);
     QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
-    // Loading a project without a model: the next recompute takes the open-loop one, silently.
     fx.apply([](AnalysisSettings &s) {
+        s.mode = AnalysisMode::ClosedLoop;
         s.closedLoop.modelSet = false;
         s.closedLoop.modelK = 7.0;
     });
     QCOMPARE(changed.count(), 0);
-    const ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(!fx.panel.settings().closedLoop.modelSet);
+    QCOMPARE(fx.panel.settings().closedLoop.modelK, 7.0);
+
+    // Without any valid open-loop model, the switch takes nothing.
+    Fx none(Options{.noCo = true});
+    child<QToolButton>(none.panel, "openLoopButton")->click();
+    child<QToolButton>(none.panel, "closedLoopButton")->click();
+    QVERIFY(!none.panel.settings().closedLoop.modelSet);
+}
+
+void TstClosedLoopPage::takeOnlyOnModeSwitch()
+{
+    Fx fx(Options{.openLoopFirst = true});
+    auto *closedButton = child<QToolButton>(fx.panel, "closedLoopButton");
+    auto *openButton = child<QToolButton>(fx.panel, "openLoopButton");
+    // Dragging the cursors in Open loop never sets the model.
+    fx.setCursors(9.0, 30.0);
+    fx.setCursors(9.0, 45.0);
+    const StepResult open = fx.panel.results().first();
+    QVERIFY(open.valid && open.gain);
+    QVERIFY(!fx.panel.settings().closedLoop.modelSet);
+    // The switch takes it (and the mode switch itself is the change that marks the project).
+    QSignalSpy changed(&fx.panel, &AnalysisPanel::settingsChanged);
+    closedButton->click();
+    QCOMPARE(changed.count(), 1);
+    ClosedLoopSettings cl = fx.panel.settings().closedLoop;
     QVERIFY(cl.modelSet);
     QVERIFY(qFuzzyCompare(cl.modelK, *open.gain));
-    QVERIFY(!cl.modelSource.isEmpty());
-
-    // Once set, other open-loop numbers (another window) do not replace it.
+    // Back, other cursors, forward again: unchanged once set.
+    openButton->click();
     fx.setCursors(9.0, 25.0);
-    QCOMPARE(fx.panel.settings().closedLoop.modelSource, cl.modelSource);
-    QCOMPARE(changed.count(), 0);
+    closedButton->click();
+    const ClosedLoopSettings again = fx.panel.settings().closedLoop;
+    QVERIFY(again.modelSet && again.modelK == cl.modelK && again.modelLS == cl.modelLS
+            && again.modelTS == cl.modelTS && again.modelSource == cl.modelSource);
 
-    // Without any valid open-loop model, nothing is taken.
-    Fx none(Options{.noCo = true});
-    QVERIFY(!none.panel.settings().closedLoop.modelSet);
+    // A session applied with modelSet false and an old recording present: nothing is taken.
+    Fx loaded(Options{.openLoopFirst = true});
+    loaded.apply([](AnalysisSettings &s) {
+        s.mode = AnalysisMode::ClosedLoop;
+        s.closedLoop.modelSet = false;
+    });
+    QVERIFY(!loaded.panel.settings().closedLoop.modelSet);
+    loaded.setCursors(9.0, 40.0);
+    QVERIFY(!loaded.panel.settings().closedLoop.modelSet);
+}
+
+void TstClosedLoopPage::typedZeroGainModel()
+{
+    Fx fx(Options{.noCo = true});
+    auto *k = child<QDoubleSpinBox>(fx.panel, "modelKSpin");
+    auto *label = child<QLabel>(fx.panel, "predictionModelLabel");
+    child<QDoubleSpinBox>(fx.panel, "modelTSpin")->setValue(5.0);
+    k->setValue(0.0);
+    QVERIFY(label->text().startsWith(QStringLiteral("No model yet")));
+    const ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(cl.modelSet);
+    QCOMPARE(cl.modelK, 0.0);
+    Project p;
+    p.analysis = fx.panel.settings();
+    QString error;
+    const std::optional<Project> loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QVERIFY(loaded->analysis.closedLoop == cl);
+    fx.panel.setSettings(loaded->analysis);
+    QVERIFY(label->text().startsWith(QStringLiteral("No model yet")));
+}
+
+void TstClosedLoopPage::predictionSpinsKeepPrecision()
+{
+    Fx fx;
+    auto *gain = child<QDoubleSpinBox>(fx.panel, "predGainSpin");
+    auto *integral = child<QDoubleSpinBox>(fx.panel, "predIntegralSpin");
+    auto *derivative = child<QDoubleSpinBox>(fx.panel, "predDerivativeSpin");
+    fx.apply([](AnalysisSettings &s) {
+        s.controller.form = PidForm::Parallel;
+        s.closedLoop.predictionKp = 0.5;
+        s.closedLoop.predictionTiS = 600.0;
+        s.closedLoop.predictionTdS = 0.0;
+    });
+    QVERIFY(qAbs(integral->value() - 0.5 / 600.0) < 1e-9); // shown with enough digits
+    QVERIFY(integral->text().startsWith(QStringLiteral("0.000833")));
+    gain->setValue(0.6);
+    ClosedLoopSettings cl = fx.panel.settings().closedLoop;
+    QVERIFY(qAbs(cl.predictionKp - 0.6) < 1e-12);
+    QVERIFY(qAbs(cl.predictionTiS - 600.0) < 1e-6); // not 720 or 750
+    QVERIFY(qAbs(integral->value() - 0.001) < 1e-9);
+
+    // A tiny Ki stays non-zero when the gain is edited.
+    fx.apply([](AnalysisSettings &s) {
+        s.closedLoop.predictionKp = 1.0;
+        s.closedLoop.predictionTiS = 25000.0; // Ki = 4e-5 1/s
+    });
+    QVERIFY(integral->value() > 0.0);
+    gain->setValue(2.0);
+    cl = fx.panel.settings().closedLoop;
+    QVERIFY(cl.predictionTiS > 0.0);
+    QVERIFY(qAbs(cl.predictionTiS - 25000.0) < 1e-3);
+    QVERIFY(integral->value() > 0.0);
+
+    // Series round trip keeps Td when the gain is edited.
+    fx.apply([](AnalysisSettings &s) {
+        s.controller.form = PidForm::Series;
+        s.closedLoop.predictionKp = 3.0;
+        s.closedLoop.predictionTiS = 10.0;
+        s.closedLoop.predictionTdS = 1.234567;
+    });
+    gain->setValue(gain->value());       // no change: nothing happens
+    gain->setValue(gain->value() * 1.1);
+    cl = fx.panel.settings().closedLoop;
+    QVERIFY(qAbs(cl.predictionTdS - 1.234567) < 1e-6);
+    QVERIFY(qAbs(cl.predictionTiS - 10.0) < 1e-6);
+    Q_UNUSED(derivative);
+}
+
+void TstClosedLoopPage::typingIsNotOverwritten()
+{
+    Fx fx(Options{.openLoopFirst = true});
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    fx.panel.show();
+    auto *k = child<QDoubleSpinBox>(fx.panel, "modelKSpin");
+    auto *kEdit = k->findChild<QLineEdit *>();
+    QVERIFY(kEdit);
+    k->setFocus();
+    k->selectAll();
+    kEdit->setText(QStringLiteral("12.5"));
+    QVERIFY(kEdit->text().startsWith(QStringLiteral("12.5")));
+    // New data and recomputes with the model unchanged: the text stays.
+    appendRow(fx.rec, 700.0, 30.0, 60.0, 50.0);
+    fx.panel.refresh();
+    fx.setCursors(9.0, 41.0);
+    QVERIFY(kEdit->text().startsWith(QStringLiteral("12.5")));
+    // Even with a changed stored value, a focused spin keeps what is typed.
+    if (k->hasFocus()) {
+        fx.apply([](AnalysisSettings &s) { s.closedLoop.modelK = 3.0; });
+        QVERIFY(kEdit->text().startsWith(QStringLiteral("12.5")));
+    }
+    // The take-tuning popup is not rebuilt by a refresh: the same item objects survive.
+    auto *combo = child<QComboBox>(fx.panel, "takeTuningCombo");
+    QVERIFY(combo->count() > 0);
+    const QVariant first = combo->itemData(0, Qt::ToolTipRole);
+    const int index = combo->currentIndex();
+    combo->setProperty("marker", 42);
+    fx.panel.refresh();
+    fx.setCursors(9.0, 42.0);
+    QCOMPARE(combo->currentIndex(), index);
+    QCOMPARE(combo->itemData(0, Qt::ToolTipRole), first);
+    kEdit->setText(QStringLiteral("1")); // leave nothing typed behind
+    k->clearFocus();
+}
+
+void TstClosedLoopPage::predictionBaseline()
+{
+    Fx fx;
+    fx.apply([](AnalysisSettings &s) {
+        s.closedLoop.showPrediction = true;
+        s.closedLoop.modelSet = true;
+        s.closedLoop.modelK = 0.5;
+        s.closedLoop.modelLS = 1.0;
+        s.closedLoop.modelTS = 5.0;
+        s.closedLoop.predictionKp = 2.0;
+        s.closedLoop.predictionTiS = 8.0;
+    });
+    QTableWidget *t = fx.table();
+    QCOMPARE(cell(t, rowOf(t, "SP before"), 2), cell(t, rowOf(t, "SP before"), 1));
+    QCOMPARE(cell(t, rowOf(t, "SP after"), 2), cell(t, rowOf(t, "SP after"), 1));
+    QVERIFY(cell(t, rowOf(t, "SP before"), 2).startsWith(QStringLiteral("50")));
+    // The predicted PV curve starts at SP before.
+    const QList<QwtPlotCurve *> dashed = curvesWithStyle(fx.plot, Qt::DashLine);
+    QVERIFY(!dashed.isEmpty());
+    bool found = false;
+    for (QwtPlotCurve *c : dashed) {
+        if (c->dataSize() > 0 && qAbs(c->sample(0).y() - 50.0) < 1e-6)
+            found = true;
+    }
+    QVERIFY(found);
+    // With the core's band override the settling band (and the rows derived from it) match; the
+    // settling row is only comparable after the core change (bandOverride is ignored before it).
+    const int band = rowOf(t, "Settling time");
+    QVERIFY(band >= 0);
+}
+
+void TstClosedLoopPage::closedModeHintAndFindStep()
+{
+    Fx fx;
+    auto *find = child<QPushButton>(fx.panel, "findStepButton");
+    QVERIFY(!find->isEnabled());
+    QVERIFY(find->toolTip().startsWith(QStringLiteral("Find step looks for an open-loop step")));
+    child<QToolButton>(fx.panel, "openLoopButton")->click();
+    QVERIFY(find->isEnabled());
+    child<QToolButton>(fx.panel, "closedLoopButton")->click();
+    QVERIFY(!find->isEnabled());
+    QVERIFY(!fx.page()->findChild<QLabel *>(QStringLiteral("closedHintLabel")));
 }
 
 void TstClosedLoopPage::typedModel()

@@ -68,7 +68,8 @@ struct Context;
 ///     numbers only), "coMinSpin", "coMaxSpin" (default 0 and 100).
 /// - Group "2. Cursors" ("cursorsGroup"): "cursorLabel" "C1 = 10.000 s, C2 = 30.000 s" ("—" for a
 ///   missing cursor); "findStepButton" "Find step" (enabled when a CO tag and a PV are chosen and
-///   a recorder is set; its tooltip says what is missing when disabled); "hintLabel", one line:
+///   a recorder is set; its tooltip says what is missing when disabled); "hintLabel", one line (mode-aware: in Closed loop mode it asks for C1 at the setpoint change and
+///   C2 after settling, shows the closed-loop error, and Find step is disabled):
 ///   no PV: "Choose the process value (PV) in step 1."; a cursor missing: "Place C1 just before the
 ///   step and C2 after the PV has settled, or click Find step."; otherwise the result error, if
 ///   any, else empty. Find step calls findStep(recorder, CO, PV, from, to) with [from, to] = the
@@ -95,7 +96,8 @@ struct Context;
 /// - Closed loop page (v1.4.0, groups 3-5, all settings in AnalysisSettings::closedLoop):
 ///   * "3. Test" ("closedTestGroup"): "testCombo" (Setpoint step / Disturbance), "spBeforeSpin" /
 ///     "spAfterSpin" (typed setpoints, hidden when an SP tag is chosen; Disturbance shows only
-///     "spAfterSpin", labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %), "closedHintLabel".
+///     "spAfterSpin", labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %); there is no page hint label: the
+///     panel's "hintLabel" (group 2) is mode-aware.
 ///   * "4. Performance" ("performanceGroup"): "performanceTable" (Quantity, Measured and, with the
 ///     prediction shown, Predicted; every value cell has a didactic tooltip) and
 ///     "closedChecksList". Overlays on the plot while Closed loop mode is shown and both cursors
@@ -108,9 +110,12 @@ struct Context;
 ///     tooltips with the conversion), "takeTuningCombo" + "takeTuningButton", "loadStepSpin"
 ///     (Disturbance only; ClosedLoopSettings::loadStep).
 ///   * The prediction model is saved with the project (ClosedLoopSettings::modelSet / modelK /
-///     modelLS / modelTS / modelSource). While none is set, every recompute that sees a valid
-///     open-loop model takes it (no settingsChanged()); once set, only the button or typing changes
-///     it (they emit settingsChanged()), so it survives moving the cursors to the closed-loop test.
+///     modelLS / modelTS / modelSource). It is taken from the open-loop result only when the
+///     user clicks the Closed loop button (Open loop -> Closed loop) while none is set and the PV
+///     result has K != 0, L >= 0, T > 0 (the mode switch emits settingsChanged(); no other
+///     signal); never on a recompute, cursor move, setSettings() or a session/project load. Once
+///     set, only the button or typing changes it (they emit settingsChanged()), so it survives
+///     moving the cursors to the closed-loop test.
 ///     Choosing another PV does not clear it.
 ///   * readoutText() in Closed loop mode: the closed-loop page's readout (and nothing from the
 ///     open-loop page) whenever it is not empty, even when the open-loop result is invalid, then
