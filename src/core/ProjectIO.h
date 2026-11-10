@@ -110,7 +110,7 @@ inline constexpr int kProjectFormatVersion = 1;
 /// duplicates are rejected), "tangentT632" (boolean),
 /// "closedLoop": { "test": "setpoint"|"disturbance", "spBefore": number, "spAfter": number,
 ///   "band": number in (0, 50], "prediction": { "show": bool, "kp": number, "ti": number >= 0,
-///   "td": number >= 0 }, "model": { "set": bool, "k": finite nonzero number, "l": number >= 0,
+///   "td": number >= 0 }, "model": { "set": bool, "k": finite number (0 is accepted: the UI treats it as no model), "l": number >= 0,
 ///   "t": number > 0, "source": string }, "loadStep": finite number },
 /// "controller": { "form": "ideal"|"series"|"parallel", "gain": "kp"|"pb",
 ///   "integral": "time"|"repeats" }. Errors name the key, e.g. "\"analysis.closedLoop.band\" must

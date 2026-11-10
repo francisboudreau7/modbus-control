@@ -517,10 +517,6 @@ bool readAnalysisV140(const QJsonObject &obj, AnalysisSettings &out, QString *er
                 || !readString(model, QStringLiteral("source"), mp, c.modelSource, error)) {
                 return false;
             }
-            if (c.modelK == 0.0) {
-                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.model.k\" must be a finite number other than 0"));
-                return false;
-            }
             if (!readDouble(model, QStringLiteral("l"), mp, c.modelLS, error))
                 return false;
             if (!(std::isfinite(c.modelLS) && c.modelLS >= 0.0)) {

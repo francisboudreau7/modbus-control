@@ -120,6 +120,17 @@ double integrate(const std::function<double(double)> &f, double T)
     return sum;
 }
 
+/// Adds uniform noise in [-amp, +amp] to the PV samples from index `from` on (fixed-seed LCG).
+void addNoise(ClosedLoopSeries &s, double amp, qsizetype from, quint32 seed = 777u)
+{
+    for (qsizetype i = 0; i < s.pv.size(); ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        if (i >= from) {
+            s.pv[i] += (double(seed >> 8) / double(1u << 24) - 0.5) * 2.0 * amp;
+        }
+    }
+}
+
 SampleBatch batch(double t, QList<TagSample> samples)
 {
     SampleBatch b;
@@ -416,6 +427,117 @@ private slots:
         QVERIFY(r.decayRatio.has_value());
         QVERIFY(near(*r.decayRatio, std::pow(std::exp(-kPi * zeta / k), 2.0), 0.05));
         QVERIFY(near(*r.period, 2.0 * kPi / (wn * k), 0.1));
+    }
+
+    // ---- noise-aware peaks, band override, noise estimate (v1.4.0 review fixes) ----
+
+    void overdampedNoiseAboveBand()
+    {
+        // 10 % step (SP 0 -> 10, band 2 % = 0.2), no overshoot; noise +-0.3 once the PV is at SP:
+        // the noise is not oscillation, so no decay ratio / period, and the result says so.
+        const auto make = [](double amp) {
+            auto s = stepSeries(0.0, 10.0, [](double x) { return x <= 0.0 ? 0.0 : 1.0 - std::exp(-x / 1.5); });
+            addNoise(s, amp, kStepIdx + 1000); // from 10 s after the step (PV settled)
+            return s;
+        };
+        ClosedLoopSettings st;
+        st.settlingBandPct = 2.0;
+        auto r = analyzeClosedLoopSeries(make(0.3), 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(near(r.band, 0.2, 1e-12));
+        QVERIFY(near(r.noiseSigma, 0.3 / std::sqrt(3.0), 0.03));
+        QVERIFY(hasCheck(r, ClosedLoopCheck::NoiseAboveBand));
+        QVERIFY(!r.decayRatio.has_value());
+        QVERIFY(!r.period.has_value());
+        // Noise +-0.03: sigma 0.017, 3 sigma 0.052 < 0.2: no check, no peaks either.
+        r = analyzeClosedLoopSeries(make(0.03), 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(!hasCheck(r, ClosedLoopCheck::NoiseAboveBand));
+        QVERIFY(!r.decayRatio.has_value());
+        QVERIFY(!r.period.has_value());
+        QVERIFY(near(r.noiseSigma, 0.03 / std::sqrt(3.0), 0.005));
+    }
+
+    void underdampedWithLargeNoise()
+    {
+        // d = 10, zeta 0.15: first peak 6.2, second 2.4, decay ratio 0.386; noise +-0.3 (sigma
+        // 0.17, h = 3 sigma = 0.52 > b = 0.2). Each peak value can be raised by up to 0.3 by the
+        // noise, so the ratio moves within [0.369, 0.435]: tolerance 0.06 around the clean value.
+        const double zeta = 0.15;
+        const double wn = 2.0;
+        const double k = std::sqrt(1.0 - zeta * zeta);
+        const auto resp = [&](double x) { return y2(x, zeta, wn); };
+        const auto clean = stepSeries(0.0, 10.0, resp);
+        ClosedLoopSettings st;
+        const auto rc = analyzeClosedLoopSeries(clean, 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY(rc.decayRatio.has_value());
+        const double expected = std::exp(-2.0 * kPi * zeta / k);
+        QVERIFY(near(*rc.decayRatio, expected, 2e-3));
+        auto noisy = clean;
+        addNoise(noisy, 0.3, 0);
+        const auto r = analyzeClosedLoopSeries(noisy, 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.decayRatio.has_value());
+        QVERIFY(near(*r.decayRatio, *rc.decayRatio, 0.06));
+        QVERIFY(r.period.has_value());
+        QVERIFY(near(*r.period, *rc.period, 0.5));
+        // The first peak is the overshoot peak.
+        QVERIFY(r.peakTime.has_value() && rc.peakTime.has_value());
+        QVERIFY(near(*r.peakTime, *rc.peakTime, 0.3));
+        QVERIFY(near(*r.overshoot, *rc.overshoot, 0.35));
+    }
+
+    void disturbanceWithLargeNoise()
+    {
+        // Disturbance e(t) = 10 (1 - y2): the max deviation 10 is at t1, the next same-sign peak is
+        // 3.86 (decay ratio exp(-2 pi zeta / k)); noise +-0.3.
+        const double zeta = 0.15;
+        const double wn = 2.0;
+        const double k = std::sqrt(1.0 - zeta * zeta);
+        auto s = disturbanceSeries(50.0, [&](double x) { return x < 0.0 ? 0.0 : 10.0 * (1.0 - y2(x, zeta, wn)); });
+        addNoise(s, 0.3, 0);
+        ClosedLoopSettings st;
+        st.test = ClosedLoopTest::Disturbance;
+        const auto r = analyzeClosedLoopSeries(s, tStep(), tEnd(), st, 0.0, 100.0);
+        QVERIFY2(r.valid, qPrintable(r.error));
+        QVERIFY(r.maxDeviation.has_value() && near(*r.maxDeviation, 10.0, 0.4));
+        QVERIFY(r.decayRatio.has_value());
+        QVERIFY(near(*r.decayRatio, std::exp(-2.0 * kPi * zeta / k), 0.06));
+        QVERIFY(near(*r.period, 2.0 * kPi / (wn * k), 0.5));
+        // Without a second excursion (monotonic return) noise gives no peaks.
+        auto m = disturbanceSeries(50.0, [](double x) { return x < 0.0 ? 0.0 : 10.0 * std::exp(-x / 2.0); });
+        addNoise(m, 0.3, kStepIdx + 1000);
+        const auto rm = analyzeClosedLoopSeries(m, tStep(), tEnd(), st, 0.0, 100.0);
+        QVERIFY2(rm.valid, qPrintable(rm.error));
+        QVERIFY(!rm.decayRatio.has_value());
+        QVERIFY(!rm.period.has_value());
+    }
+
+    void bandOverrideAndNoiseSigma()
+    {
+        const auto s = stepSeries(10.0, 12.0, [](double x) { return y2(x, 0.3, 2.0); });
+        ClosedLoopSettings st; // band 2 % of 2 = 0.04
+        const auto base = analyzeClosedLoopSeries(s, 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY(near(base.band, 0.04, 1e-12));
+        const auto ov = analyzeClosedLoopSeries(s, 0.0, tEnd(), st, 0.0, 100.0, 0.5);
+        QVERIFY(near(ov.band, 0.5, 1e-12));
+        QVERIFY(ov.settlingTime.has_value() && base.settlingTime.has_value());
+        QVERIFY(near(*ov.settlingTime, bruteSettling(s, kStepIdx, 0.5), 1e-9));
+        QVERIFY(*ov.settlingTime < *base.settlingTime);
+        for (const double bad : {kNaN, 0.0, -1.0}) {
+            const auto r = analyzeClosedLoopSeries(s, 0.0, tEnd(), st, 0.0, 100.0, bad);
+            QVERIFY(near(r.band, 0.04, 1e-12));
+            QVERIFY(r.settlingTime.has_value() && near(*r.settlingTime, *base.settlingTime, 1e-12));
+        }
+        // Clean flat tail: sigma ~ 0. Uniform +-a noise on a flat tail: sigma ~ a / sqrt(3).
+        const auto flat = stepSeries(0.0, 10.0, [](double x) { return x <= 0.0 ? 0.0 : 1.0 - std::exp(-x / 0.5); });
+        const auto rf = analyzeClosedLoopSeries(flat, 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY(rf.noiseSigma < 1e-6);
+        QVERIFY(!hasCheck(rf, ClosedLoopCheck::NoiseAboveBand));
+        auto noisy = flat;
+        addNoise(noisy, 0.3, kStepIdx);
+        const auto rn = analyzeClosedLoopSeries(noisy, 0.0, tEnd(), st, 0.0, 100.0);
+        QVERIFY(near(rn.noiseSigma, 0.3 / std::sqrt(3.0), 0.03));
     }
 
     void degenerateSeries()
