@@ -18,6 +18,9 @@ add_library(mbcore STATIC
   WriteLog.h WriteLog.cpp
   NumberText.h NumberText.cpp
   Language.h Language.cpp
+  PidForm.h PidForm.cpp
+  ClosedLoopAnalysis.h ClosedLoopAnalysis.cpp
+  ClosedLoopSim.h ClosedLoopSim.cpp
 )
 target_include_directories(mbcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(mbcore PRIVATE MBCORE_VERSION="${PROJECT_VERSION}")

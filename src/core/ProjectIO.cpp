@@ -135,6 +135,8 @@ QString methodName(ModelMethod method)
         return QStringLiteral("smith");
     case ModelMethod::Sundaresan:
         return QStringLiteral("sundaresan");
+    case ModelMethod::Tangent:
+        return QStringLiteral("tangent"); // read and written by the 1.4.0 project keys task
     case ModelMethod::Custom:
         break;
     }

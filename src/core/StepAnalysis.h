@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ClosedLoopAnalysis.h"
+#include "PidForm.h"
 #include "Recorder.h"
 #include "Tag.h"
 #include "Tuning.h"
@@ -26,7 +28,12 @@ enum class ReferenceMode : quint8 {
 /// - Sundaresan: Sundaresan-Krishnaswamy, 35.3 % / 85.3 %: T = 0.67 (t85.3 - t35.3),
 ///   L = 1.3 t35.3 - 0.29 t85.3.
 /// - Custom: AnalysisSettings::modelPercentA / modelPercentB.
-enum class ModelMethod : quint8 { ZeroTo632, Smith, Sundaresan, Custom };
+/// - Tangent (v1.4.0): the classic reaction-curve construction (see analyzeStep()). Not a
+///   two-point method: methodPercents() gives nullopt and modelPercents() gives (0, 100).
+enum class ModelMethod : quint8 { ZeroTo632, Smith, Sundaresan, Custom, Tangent };
+
+/// v1.4.0: the area shown by the Analysis panel. Each keeps its own settings and results.
+enum class AnalysisMode : quint8 { OpenLoop, ClosedLoop };
 
 /// "0 % / 63.2 % (two points)", "Smith (28.3 % / 63.2 %)", "Sundaresan-Krishnaswamy (35.3 % /
 /// 85.3 %)", "Custom".
@@ -90,6 +97,22 @@ struct AnalysisSettings {
     double lambdaS = 0.0;
     bool timeInMinutes = false;
 
+    // v1.4.0 (project keys in ProjectIO.h; all optional in files).
+    /// Area shown by the panel; switching keeps every setting and result.
+    AnalysisMode mode = AnalysisMode::OpenLoop;
+    /// Setpoint tag (shared; used by the closed-loop area). 0 = typed setpoint
+    /// (ClosedLoopSettings::typedSpBefore / typedSpAfter).
+    TagId spTagId = 0;
+    ClosedLoopSettings closedLoop;
+    /// How PID settings are shown and typed (tuning table, prediction, report).
+    ControllerSettings controller;
+    /// Extra model methods whose curves and L, T, fit are shown for comparison (open loop); the
+    /// selected `method` is always used for the tuning. No duplicates, never Custom; order kept.
+    QList<ModelMethod> compareMethods;
+    /// Tangent method variant: T from the 63.2 % crossing (T = t63.2 - stepTime - L) instead of
+    /// the tangent's crossing of y100.
+    bool tangentT632 = false;
+
     friend bool operator==(const AnalysisSettings &, const AnalysisSettings &) = default;
 };
 
@@ -133,6 +156,15 @@ struct StepResult {
     std::optional<double> fitRms;
     /// fitRms / |deltaPv| * 100.
     std::optional<double> fitRmsPercent;
+    /// v1.4.0, method Tangent only: the tangent at the steepest point of the response (drawn on
+    /// the plot): it passes through (time, value) with `slope` in PV units per s.
+    struct TangentLine {
+        double time = kNaN;
+        double value = kNaN;
+        double slope = kNaN;
+        friend bool operator==(const TangentLine &, const TangentLine &) = default;
+    };
+    std::optional<TangentLine> tangent;
 };
 
 /// Centred moving average: out[i] = mean of the non-NaN values[j] with
@@ -184,6 +216,12 @@ std::optional<StepInput> analyzeStepInput(const Recorder &recorder, TagId coTag,
 ///   L = ta - T * (-ln(1 - a)) - stepTime; both nullopt when either crossing is missing,
 ///   a >= b, or T <= 0. K = deltaPv / deltaCo when deltaCo is present. fitRms and
 ///   fitRmsPercent as documented in StepResult.
+/// - Tangent (v1.4.0): on the smoothed series of [t1, t2] (smoothing S; the slope uses a least-
+///   squares line over a centred window of max(S, 5 sample intervals)), the point of steepest
+///   slope in the step's direction gives `tangent`. L = the time the tangent reaches y0, minus
+///   stepTime; T = (y100 - y0) / slope (the tangent's run from y0 to y100), or with tangentT632
+///   T = t63.2 - stepTime - L. Both nullopt when the slope is 0 or has the wrong sign, or T <= 0.
+///   The percent crossings for the setpoint list are unchanged.
 /// Model response at time t: y0 for t <= stepTime + L, else
 /// y0 + deltaPv * (1 - exp(-(t - stepTime - L) / T)). NaN when the result is invalid or has
 /// no deadTime/timeConstant. Uses neither K nor ΔCO.
@@ -234,9 +272,12 @@ enum class StepCheck : quint8 {
     NegativeDeadTime, ///< deadTime < 0 (C1 after the response started, or wrong step time)
     DeadTimeDominant, ///< deadTime / timeConstant > 1
     /// v1.3.5, only from the checkStep overload that takes the settings: the model's lower point
-    /// is 0 % (method ZeroTo632, or Custom with modelPercentA == 0), the tuning rule is
+    /// is 0 % (method ZeroTo632, or Custom with modelPercentA == 0; never Tangent), the tuning rule is
     /// ZieglerNichols or CohenCoon, and the result has a deadTime > 0 and a timeConstant > 0.
     DeadTimeFromFirstMove,
+    /// v1.4.0, settings overload only: method Tangent, smoothingS == 0, and the standard deviation
+    /// of the raw PV in [t1 - 0.1 (t2 - t1), t1] (at least 3 samples) > 2 % of |deltaPv|.
+    TangentNoisy,
     FitPoor,          ///< fitQuality() == Poor
 };
 

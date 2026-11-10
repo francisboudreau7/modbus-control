@@ -140,6 +140,8 @@ QString methodName(ModelMethod method)
                                            "Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
     case ModelMethod::Custom:
         return QCoreApplication::translate("mb::AnalysisPanel", "Custom");
+    case ModelMethod::Tangent:
+        return QCoreApplication::translate("mb::AnalysisPanel", "Tangent (steepest slope)");
     }
     return toString(method);
 }
@@ -1378,6 +1380,10 @@ void AnalysisPanel::rebuildChecks()
                           "then give a Kp that is too high: choose the Smith method, or IMC / "
                           "lambda or SIMC.");
                 break;
+            case StepCheck::TangentNoisy:
+                text = tr("The tangent is taken on noisy data, so its slope is uncertain. Set a "
+                          "smoothing S, or choose the Smith method.");
+                break;
             case StepCheck::FitPoor:
                 text = tr("The model does not fit the response well (fit error > 8 %).");
                 break;
@@ -1931,6 +1937,8 @@ QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
                              .arg(A, g4p(T), kTimes, faS, g4(L));
             }
             break;
+        case ModelMethod::Tangent:
+            break; // tooltip text: open-loop page task
         }
     } else {
         name = tr("T, time constant");
@@ -1958,6 +1966,8 @@ QString AnalysisPanel::explainModelTime(bool forL, const StepResult *r) const
                              .arg(B, g4p(ta), faS, fbS, g4(T));
             }
             break;
+        case ModelMethod::Tangent:
+            break; // tooltip text: open-loop page task
         }
     }
     if (ok) {

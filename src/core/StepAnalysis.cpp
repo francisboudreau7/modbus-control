@@ -410,6 +410,8 @@ QString toString(ModelMethod method)
         return QStringLiteral("Sundaresan-Krishnaswamy (35.3 % / 85.3 %)");
     case ModelMethod::Custom:
         return QCoreApplication::translate("mb::StepAnalysis", "Custom");
+    case ModelMethod::Tangent:
+        return QCoreApplication::translate("mb::StepAnalysis", "Tangent (steepest slope)");
     }
     return {};
 }
@@ -424,6 +426,7 @@ std::optional<std::pair<double, double>> methodPercents(ModelMethod method)
     case ModelMethod::Sundaresan:
         return std::pair{35.3, 85.3};
     case ModelMethod::Custom:
+    case ModelMethod::Tangent:
         break;
     }
     return std::nullopt;
@@ -433,6 +436,8 @@ std::pair<double, double> modelPercents(const AnalysisSettings &settings)
 {
     if (const auto p = methodPercents(settings.method))
         return *p;
+    if (settings.method == ModelMethod::Tangent)
+        return {0.0, 100.0};
     return {settings.modelPercentA, settings.modelPercentB};
 }
 
@@ -618,7 +623,8 @@ QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result,
     }
     const bool ruleDividesByL = settings.tuningRule == TuningRule::ZieglerNichols
                                 || settings.tuningRule == TuningRule::CohenCoon;
-    const bool lowerIsZero = std::abs(modelPercents(settings).first) < 1e-9;
+    const bool lowerIsZero = settings.method != ModelMethod::Tangent
+                             && std::abs(modelPercents(settings).first) < 1e-9;
     if (ruleDividesByL && lowerIsZero && result.deadTime && *result.deadTime > 0.0
         && result.timeConstant && *result.timeConstant > 0.0) {
         qsizetype pos = 0;
