@@ -462,6 +462,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>L/T &gt; 1&#xa0;: le temps mort domine. Ziegler-Nichols et Cohen-Coon seront agressifs&#xa0;; préférez IMC / lambda ou SIMC.</translation>
     </message>
     <message>
+        <source>L is taken at the first movement of the PV, so lags such as transmitter damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon then give a Kp that is too high: choose the Smith method, or IMC / lambda or SIMC.</source>
+        <translation>L est pris au premier mouvement de la PV&#xa0;: les retards comme l&apos;amortissement du transmetteur sont alors comptés dans T, et L est trop court. Ziegler-Nichols et Cohen-Coon donnent alors un Kp trop élevé&#xa0;: choisissez la méthode de Smith, ou IMC / lambda ou SIMC.</translation>
+    </message>
+    <message>
         <source>The model does not fit the response well (fit error &gt; 8 %).</source>
         <translation>Le modèle ne reproduit pas bien la réponse (erreur d&apos;ajustement &gt; 8 %).</translation>
     </message>
