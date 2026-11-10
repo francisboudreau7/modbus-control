@@ -8,6 +8,7 @@
 #include "ClosedLoopSim.h"
 
 #include <QList>
+#include <QStringList>
 #include <QWidget>
 
 #include <functional>
@@ -30,11 +31,12 @@ namespace mb {
 /// Page 1 of the panel's "modeStack", object name "closedLoopPage". Children:
 /// - "closedTestGroup": "testCombo" (Setpoint step / Disturbance), "spBeforeSpin" / "spAfterSpin"
 ///   (typed setpoints, hidden when an SP tag is chosen; Disturbance shows only "spAfterSpin",
-///   labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %), "closedHintLabel".
+///   labelled "Setpoint"), "bandCombo" (settling band 2 % / 5 %). The hint for missing PV / cursors is the panel's
+///   "hintLabel" (mode-aware).
 /// - "performanceGroup": "performanceTable" (Quantity, Measured and, with the prediction shown,
 ///   Predicted; every value cell has a didactic tooltip) and "closedChecksList".
 /// - "predictionGroup": "showPredictionCheck", "predictionModelLabel", "modelKSpin" / "modelLSpin" /
-///   "modelTSpin" (K, L (s), T (s) of the model; typing sets ClosedLoopSettings::modelSet and
+///   "modelTSpin" (K, L (s), T (s) of the model, 6 significant digits; typing sets ClosedLoopSettings::modelSet and
 ///   modelSource "typed"; T has a minimum of 0.001 and L of 0), "useOpenLoopModelButton" ("Use the
 ///   open-loop model"; enabled while the open-loop result is valid with K, L >= 0, T > 0),
 ///   "predictionFormLabel", "predGainSpin" / "predIntegralSpin" / "predDerivativeSpin" (the ideal
@@ -42,11 +44,13 @@ namespace mb {
 ///   with the conversion as in the open-loop tuning table), "takeTuningCombo" + "takeTuningButton",
 ///   "loadStepSpin" (Disturbance only; ClosedLoopSettings::loadStep, saved in the project).
 /// The model belongs to the project (ClosedLoopSettings::modelSet / modelK / modelLS / modelTS /
-/// modelSource), not to the page: while modelSet is false, every recompute that sees a valid
-/// open-loop model (K != 0 finite, L >= 0, T > 0) takes it (source "<method>, C1 = <t1> s") without
-/// the user-edit hook; once set, moving the cursors never changes it, only the button or typing
-/// does (both call the hook). An invalid model (T <= 0, L < 0, K == 0, not finite) behaves as "no
-/// model": the label shows "No model yet..." and there is no prediction.
+/// modelSource), not to the page: it is taken from the open-loop result only by the panel's switch
+/// from Open loop to Closed loop (takeOpenLoopModelIfUnset(), while modelSet is false and the
+/// result has K != 0, L >= 0, T > 0), never on a recompute, cursor move, data refresh or
+/// setSettings(); once set, only the button or typing changes it (both call the hook). An invalid
+/// model (T <= 0, L < 0, K == 0, not finite) behaves as "no model": the label shows "No model
+/// yet..." and there is no prediction. Controls the user is typing in (focus) are not overwritten
+/// by recomputes.
 /// Overlays (while shown and both cursors are set): the settling band, the overshoot / maximum
 /// deviation marker and, with the prediction shown, the predicted PV and output curves.
 ///
@@ -71,6 +75,13 @@ public:
 
     void syncFromSettings();
     void recompute();
+    /// The closed-loop result's error text (empty when valid or not analysed); for the panel's hint.
+    QString resultError() const { return (m_analysed && !m_result.valid) ? m_result.error : QString(); }
+    /// The automatic model take: copies the valid open-loop PV model (K != 0, L >= 0, T > 0) into
+    /// the settings while modelSet is false. Returns true when it took one. The panel calls it
+    /// only when the user switches from Open loop to Closed loop; no user-edit hook (the mode
+    /// switch marks the project modified).
+    bool takeOpenLoopModelIfUnset();
 
     void setOverlaysShown(bool shown);
     bool overlaysShown() const { return m_overlaysShown; }
@@ -115,8 +126,8 @@ private:
     void updatePrediction();
     void rebuildTable();
     void rebuildChecks();
-    void updateHint();
-    void onPredictionSpinEdited();
+    /// part: 0 gain, 1 integral, 2 derivative (the spin the user edited).
+    void onPredictionSpinEdited(int part);
     void onTakeTuning();
     void onModelSpinEdited();
     void onUseOpenLoopModel();
@@ -140,7 +151,6 @@ private:
     QLabel *m_spAfterLabel = nullptr;
     QDoubleSpinBox *m_spAfterSpin = nullptr;
     QComboBox *m_bandCombo = nullptr;
-    QLabel *m_hintLabel = nullptr;
     QTableWidget *m_table = nullptr;
     QListWidget *m_checksList = nullptr;
     QCheckBox *m_showPredictionCheck = nullptr;
@@ -167,6 +177,7 @@ private:
     ClosedLoopResult m_result;
     bool m_analysed = false; ///< a result was computed (PV, recorder and both cursors present)
     Prediction m_pred;
+    QStringList m_takeKey; ///< texts and tooltips of the take-tuning rows (rebuild only on change)
 
     QList<QwtPlotItem *> m_items;
     bool m_overlaysShown = false;

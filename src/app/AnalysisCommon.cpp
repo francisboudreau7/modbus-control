@@ -345,6 +345,19 @@ QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, d
     return spin;
 }
 
+QDoubleSpinBox *makePrecisionSpin(const char *name, double lo, double hi, double value,
+                                  QWidget *parent)
+{
+    auto *spin = new NumberSpinBox(parent);
+    spin->setObjectName(QLatin1String(name));
+    spin->setDecimals(12);
+    spin->setSignificantDigits(6);
+    spin->setRange(lo, hi);
+    spin->setValue(value);
+    spin->setKeyboardTracking(false);
+    return spin;
+}
+
 void fitTableHeight(QTableWidget *t)
 {
     int h = t->horizontalHeader()->sizeHint().height() + 2 * t->frameWidth() + 2;

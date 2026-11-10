@@ -4,6 +4,9 @@
 
 #include <QLocale>
 
+#include <algorithm>
+#include <cmath>
+
 namespace mb {
 
 namespace {
@@ -52,7 +55,30 @@ double NumberSpinBox::valueFromText(const QString &text) const
 
 QString NumberSpinBox::textFromValue(double value) const
 {
-    return locale().toString(value, 'f', decimals());
+    if (m_significantDigits <= 0 || !std::isfinite(value))
+        return locale().toString(value, 'f', decimals());
+    int dec = decimals();
+    if (value != 0.0) {
+        const int magnitude = int(std::floor(std::log10(std::abs(value))));
+        dec = std::clamp(m_significantDigits - 1 - magnitude, 0, decimals());
+    } else {
+        dec = 0;
+    }
+    QString text = locale().toString(value, 'f', dec);
+    const QChar point = locale().decimalPoint().isEmpty() ? u'.' : locale().decimalPoint().at(0);
+    if (dec > 0 && text.contains(point)) {
+        while (text.endsWith(u'0'))
+            text.chop(1);
+        if (text.endsWith(point))
+            text.chop(1);
+    }
+    return text;
+}
+
+void NumberSpinBox::setSignificantDigits(int digits)
+{
+    m_significantDigits = std::max(0, digits);
+    setValue(value()); // refresh the text
 }
 
 QValidator::State NumberValidator::validate(QString &input, int &) const

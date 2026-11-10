@@ -105,6 +105,10 @@ QString appendLines(const QString &tooltip, const QStringList &lines);
 QTableWidgetItem *makeItem(const QString &text, bool alignRight, const QString &toolTip = {});
 QDoubleSpinBox *makeSpin(const char *name, double lo, double hi, int decimals, double value,
                          QWidget *parent);
+/// makeSpin() that shows 6 significant digits (NumberSpinBox::setSignificantDigits) and accepts
+/// up to 12 decimals: for values that are typed, converted and shown again (no precision lost).
+QDoubleSpinBox *makePrecisionSpin(const char *name, double lo, double hi, double value,
+                                  QWidget *parent);
 void fitTableHeight(QTableWidget *t);
 /// Read-only, extended selection, Ctrl+C.
 void setupTable(QTableWidget *t);

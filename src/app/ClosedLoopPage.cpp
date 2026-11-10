@@ -21,6 +21,7 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
+#include <QApplication>
 #include <QListWidget>
 #include <QPen>
 #include <QPushButton>
@@ -48,6 +49,43 @@ constexpr int kMaxPredictionSteps = 20000;
 QString productUnit(const QString &unit, const QString &suffix)
 {
     return unit.isEmpty() ? QString() : unit + suffix;
+}
+
+/// setSuffix() resets the edited text, so only call it when the suffix changes.
+void setSuffixIfChanged(QDoubleSpinBox *spin, const QString &suffix)
+{
+    if (spin->suffix() != suffix)
+        spin->setSuffix(suffix);
+}
+
+/// Sets a spin's value unless that would not change it or the user is typing in it.
+void setSpinValue(QDoubleSpinBox *spin, double v)
+{
+    if (spin->hasFocus() || spin->isAncestorOf(QApplication::focusWidget()))
+        return;
+    if (std::abs(spin->value() - v) <= 1e-12 * std::max(1.0, std::abs(v)))
+        return;
+    spin->setValue(v);
+}
+
+/// The last non-NaN value of the tag in a row strictly before t; NaN when there is none.
+double lastValueBefore(const Recorder &recorder, TagId tag, double t)
+{
+    qsizetype lo = 0;
+    qsizetype hi = recorder.size(); // first row with time >= t
+    while (lo < hi) {
+        const qsizetype mid = lo + (hi - lo) / 2;
+        if (recorder.timeAt(mid) < t)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (qsizetype row = lo - 1; row >= 0; --row) {
+        const double v = recorder.valueAt(row, tag);
+        if (std::isfinite(v))
+            return v;
+    }
+    return std::numeric_limits<double>::quiet_NaN();
 }
 
 QString secondsText(const std::optional<double> &v)
@@ -101,9 +139,6 @@ void ClosedLoopPage::buildUi()
     m_bandCombo->setToolTip(
         tr("The PV is settled once it stays within this band around the final setpoint (a "
            "percentage of the setpoint step, or of the maximum deviation for a disturbance)."));
-    m_hintLabel = new QLabel(testGroup);
-    m_hintLabel->setObjectName(QStringLiteral("closedHintLabel"));
-    m_hintLabel->setWordWrap(true);
     tg->addWidget(new QLabel(tr("Test"), testGroup), 0, 0);
     tg->addWidget(m_testCombo, 0, 1);
     tg->addWidget(m_spBeforeLabel, 1, 0);
@@ -112,7 +147,6 @@ void ClosedLoopPage::buildUi()
     tg->addWidget(m_spAfterSpin, 2, 1);
     tg->addWidget(new QLabel(tr("Settling band"), testGroup), 3, 0);
     tg->addWidget(m_bandCombo, 3, 1);
-    tg->addWidget(m_hintLabel, 4, 0, 1, 2);
     col->addWidget(testGroup);
     connect(m_testCombo, &QComboBox::currentIndexChanged, this, [this] {
         if (m_updating)
@@ -181,10 +215,10 @@ void ClosedLoopPage::buildUi()
     m_gainLabel = new QLabel(predGroup);
     m_integralLabel = new QLabel(predGroup);
     m_derivativeLabel = new QLabel(predGroup);
-    m_gainSpin = makeSpin("predGainSpin", -1e9, 1e9, 4, 1.0, predGroup);
-    m_integralSpin = makeSpin("predIntegralSpin", 0.0, 1e9, 4, 0.0, predGroup);
+    m_gainSpin = makePrecisionSpin("predGainSpin", -1e9, 1e9, 1.0, predGroup);
+    m_integralSpin = makePrecisionSpin("predIntegralSpin", 0.0, 1e9, 0.0, predGroup);
     m_integralSpin->setSpecialValueText(tr("Off"));
-    m_derivativeSpin = makeSpin("predDerivativeSpin", 0.0, 1e9, 4, 0.0, predGroup);
+    m_derivativeSpin = makePrecisionSpin("predDerivativeSpin", 0.0, 1e9, 0.0, predGroup);
     m_derivativeSpin->setSpecialValueText(tr("Off"));
     m_takeCombo = new QComboBox(predGroup);
     m_takeCombo->setObjectName(QStringLiteral("takeTuningCombo"));
@@ -199,9 +233,9 @@ void ClosedLoopPage::buildUi()
     m_modelKLabel = new QLabel(tr("K"), predGroup);
     m_modelLLabel = new QLabel(tr("L (s)"), predGroup);
     m_modelTLabel = new QLabel(tr("T (s)"), predGroup);
-    m_modelKSpin = makeSpin("modelKSpin", -1e9, 1e9, 5, 1.0, predGroup);
-    m_modelLSpin = makeSpin("modelLSpin", 0.0, 1e9, 4, 0.0, predGroup);
-    m_modelTSpin = makeSpin("modelTSpin", 0.001, 1e9, 4, 1.0, predGroup);
+    m_modelKSpin = makePrecisionSpin("modelKSpin", -1e9, 1e9, 1.0, predGroup);
+    m_modelLSpin = makePrecisionSpin("modelLSpin", 0.0, 1e9, 0.0, predGroup);
+    m_modelTSpin = makePrecisionSpin("modelTSpin", 0.001, 1e9, 1.0, predGroup);
     m_modelKSpin->setToolTip(tr("Process gain K: change of the PV per unit of controller output. "
                                 "Type a model from another tool, or use the open-loop model."));
     m_modelLSpin->setToolTip(tr("Dead time L in seconds (0 or more)."));
@@ -239,9 +273,9 @@ void ClosedLoopPage::buildUi()
         m_ctx->settings.closedLoop.showPrediction = on;
         m_userEdited();
     });
-    for (QDoubleSpinBox *spin : {m_gainSpin, m_integralSpin, m_derivativeSpin}) {
-        connect(spin, &QDoubleSpinBox::valueChanged, this, [this] { onPredictionSpinEdited(); });
-    }
+    connect(m_gainSpin, &QDoubleSpinBox::valueChanged, this, [this] { onPredictionSpinEdited(0); });
+    connect(m_integralSpin, &QDoubleSpinBox::valueChanged, this, [this] { onPredictionSpinEdited(1); });
+    connect(m_derivativeSpin, &QDoubleSpinBox::valueChanged, this, [this] { onPredictionSpinEdited(2); });
     connect(m_takeButton, &QPushButton::clicked, this, [this] { onTakeTuning(); });
     connect(m_loadStepSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         if (m_updating)
@@ -278,14 +312,14 @@ void ClosedLoopPage::syncFromSettings()
         const QSignalBlocker b7(m_modelLSpin);
         const QSignalBlocker b8(m_modelTSpin);
         const QSignalBlocker b9(m_loadStepSpin);
-        m_modelKSpin->setValue(cl.modelK);
-        m_modelLSpin->setValue(cl.modelLS);
-        m_modelTSpin->setValue(cl.modelTS);
-        m_loadStepSpin->setValue(cl.loadStep);
+        setSpinValue(m_modelKSpin, cl.modelK);
+        setSpinValue(m_modelLSpin, cl.modelLS);
+        setSpinValue(m_modelTSpin, cl.modelTS);
+        setSpinValue(m_loadStepSpin, cl.loadStep);
         m_testCombo->setCurrentIndex(
             std::max(0, m_testCombo->findData(static_cast<int>(cl.test))));
-        m_spBeforeSpin->setValue(cl.typedSpBefore);
-        m_spAfterSpin->setValue(cl.typedSpAfter);
+        setSpinValue(m_spBeforeSpin, cl.typedSpBefore);
+        setSpinValue(m_spAfterSpin, cl.typedSpAfter);
         int band = m_bandCombo->findData(cl.settlingBandPct);
         if (band < 0) { // a value from a project file: keep it visible
             m_bandCombo->addItem(QStringLiteral("%1 %").arg(g4(cl.settlingBandPct)),
@@ -315,12 +349,12 @@ void ClosedLoopPage::updateTestControls()
     m_spAfterSpin->setToolTip(step ? tr("Setpoint after the step.")
                                    : tr("The constant setpoint during the disturbance test."));
     const QString suffix = m_ctx->pvUnit().isEmpty() ? QString() : u' ' + m_ctx->pvUnit();
-    m_spBeforeSpin->setSuffix(suffix);
-    m_spAfterSpin->setSuffix(suffix);
+    setSuffixIfChanged(m_spBeforeSpin, suffix);
+    setSuffixIfChanged(m_spAfterSpin, suffix);
     m_loadStepLabel->setVisible(!step);
     m_loadStepSpin->setVisible(!step);
     const QString cu = m_ctx->coUnit();
-    m_loadStepSpin->setSuffix(cu.isEmpty() ? QString() : u' ' + cu);
+    setSuffixIfChanged(m_loadStepSpin, cu.isEmpty() ? QString() : u' ' + cu);
 }
 
 void ClosedLoopPage::updatePredictionLabels()
@@ -331,7 +365,7 @@ void ClosedLoopPage::updatePredictionLabels()
     m_gainLabel->setText(labels.gain);
     m_integralLabel->setText(labels.integral);
     m_derivativeLabel->setText(labels.derivative);
-    m_modelKSpin->setSuffix(m_ctx->kUnit().isEmpty() ? QString() : u' ' + m_ctx->kUnit());
+    setSuffixIfChanged(m_modelKSpin, m_ctx->kUnit().isEmpty() ? QString() : u' ' + m_ctx->kUnit());
 }
 
 void ClosedLoopPage::syncPredictionSpins()
@@ -369,33 +403,55 @@ void ClosedLoopPage::syncPredictionSpins()
         const QSignalBlocker b1(m_gainSpin);
         const QSignalBlocker b2(m_integralSpin);
         const QSignalBlocker b3(m_derivativeSpin);
-        m_gainSpin->setValue(fv.gain.value_or(0.0));
-        m_integralSpin->setValue(fv.integral.value_or(0.0));
-        m_derivativeSpin->setValue(fv.derivative.value_or(0.0));
+        setSpinValue(m_gainSpin, fv.gain.value_or(0.0));
+        setSpinValue(m_integralSpin, fv.integral.value_or(0.0));
+        setSpinValue(m_derivativeSpin, fv.derivative.value_or(0.0));
     }
     m_updating = was;
 }
 
-void ClosedLoopPage::onPredictionSpinEdited()
+void ClosedLoopPage::onPredictionSpinEdited(int part)
 {
     if (m_updating)
         return;
-    FormValues v;
-    v.gain = m_gainSpin->value();
-    if (m_integralSpin->value() > 0.0)
-        v.integral = m_integralSpin->value();
-    if (m_derivativeSpin->value() > 0.0)
-        v.derivative = m_derivativeSpin->value();
-    const std::optional<IdealPid> ideal =
-        fromForm(v, m_ctx->settings.controller, m_ctx->pidSpans(), m_ctx->settings.timeInMinutes);
+    // The stored ideal values are the truth: convert them to the form at full precision, replace
+    // only the edited field, and convert back, so the other fields keep their exact values.
+    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    IdealPid stored;
+    stored.kp = cl.predictionKp;
+    if (cl.predictionTiS > 0.0)
+        stored.ti = cl.predictionTiS;
+    if (cl.predictionTdS > 0.0)
+        stored.td = cl.predictionTdS;
+    const ControllerSettings &controller = m_ctx->settings.controller;
+    const PidSpans spans = m_ctx->pidSpans();
+    const bool minutes = m_ctx->settings.timeInMinutes;
+    FormValues v = toForm(stored, controller, spans, minutes);
+    if (!v.available) {
+        syncPredictionSpins();
+        return;
+    }
+    auto positive = [](double x) { return x > 0.0 ? std::optional<double>(x) : std::nullopt; };
+    if (part == 0)
+        v.gain = m_gainSpin->value();
+    else if (part == 1)
+        v.integral = positive(m_integralSpin->value());
+    else
+        v.derivative = positive(m_derivativeSpin->value());
+    std::optional<IdealPid> ideal = fromForm(v, controller, spans, minutes);
     if (!ideal) { // e.g. a gain of 0 or a band without ranges: show the stored values again
         syncPredictionSpins();
         return;
     }
-    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    if (part == 0 && controller.form == PidForm::Parallel) {
+        // Ki and Kd are Kp / Ti and Kp Td: a new gain keeps the integral and derivative times.
+        ideal->ti = stored.ti;
+        ideal->td = stored.td;
+    }
     cl.predictionKp = ideal->kp;
     cl.predictionTiS = ideal->ti.value_or(0.0);
     cl.predictionTdS = ideal->td.value_or(0.0);
+    syncPredictionSpins();
     m_userEdited();
 }
 
@@ -461,30 +517,37 @@ std::optional<ProcessModel> ClosedLoopPage::currentOpenLoopModel(QString *source
     return ProcessModel{k, *r.deadTime, *r.timeConstant};
 }
 
+bool ClosedLoopPage::takeOpenLoopModelIfUnset()
+{
+    // Called by the panel when the user switches from Open loop to Closed loop (the step test is
+    // finished). No user-edit hook: the mode switch itself marks the project as modified.
+    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
+    if (cl.modelSet)
+        return false;
+    QString source;
+    const std::optional<ProcessModel> model = currentOpenLoopModel(&source);
+    if (!model)
+        return false;
+    cl.modelK = model->k;
+    cl.modelLS = model->l;
+    cl.modelTS = model->t;
+    cl.modelSet = true;
+    cl.modelSource = source;
+    return true;
+}
+
 void ClosedLoopPage::refreshModel()
 {
-    // The model belongs to the project: only taken while none is set (no user-edit hook: the
-    // project is not marked as modified, but the model is saved with the next save).
-    ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
-    if (!cl.modelSet) {
-        QString source;
-        if (const std::optional<ProcessModel> model = currentOpenLoopModel(&source)) {
-            cl.modelK = model->k;
-            cl.modelLS = model->l;
-            cl.modelTS = model->t;
-            cl.modelSet = true;
-            cl.modelSource = source;
-        }
-    }
+    const ClosedLoopSettings &cl = m_ctx->settings.closedLoop;
     const bool was = m_updating;
     m_updating = true;
     {
         const QSignalBlocker b1(m_modelKSpin);
         const QSignalBlocker b2(m_modelLSpin);
         const QSignalBlocker b3(m_modelTSpin);
-        m_modelKSpin->setValue(cl.modelK);
-        m_modelLSpin->setValue(cl.modelLS);
-        m_modelTSpin->setValue(cl.modelTS);
+        setSpinValue(m_modelKSpin, cl.modelK);
+        setSpinValue(m_modelLSpin, cl.modelLS);
+        setSpinValue(m_modelTSpin, cl.modelTS);
     }
     m_updating = was;
 }
@@ -509,37 +572,51 @@ QList<TuningRow> ClosedLoopPage::tuningRows() const
 void ClosedLoopPage::rebuildTakeTuningCombo()
 {
     const QList<TuningRow> rows = tuningRows();
-    const int keep = m_takeCombo->currentIndex();
-    const QSignalBlocker b(m_takeCombo);
-    m_takeCombo->clear();
-    auto *model = qobject_cast<QStandardItemModel *>(m_takeCombo->model());
-    for (int i = 0; i < rows.size(); ++i) {
-        const TuningRow &row = rows.at(i);
+    // Texts and tooltips of the rows; the combo is only rebuilt when they change, so an open
+    // popup survives the periodic refresh.
+    QStringList texts;
+    QStringList tips;
+    for (const TuningRow &row : rows) {
         QString text = toString(row.kind);
         if (!row.available)
             text += QStringLiteral(" (") + tr("not defined") + u')';
-        m_takeCombo->addItem(text, i);
+        texts << text;
+        QString tooltip;
         if (row.available && row.kp) {
             QStringList parts{QStringLiteral("Kp = ") + g4(*row.kp)};
             if (row.ti)
                 parts << QStringLiteral("Ti = ") + g4(*row.ti) + QStringLiteral(" s");
             if (row.td)
                 parts << QStringLiteral("Td = ") + g4(*row.td) + QStringLiteral(" s");
-            m_takeCombo->setItemData(i, parts.join(QStringLiteral(", ")), Qt::ToolTipRole);
+            tooltip = parts.join(QStringLiteral(", "));
         }
-        if (model && !row.available)
-            model->item(i)->setEnabled(false);
+        tips << tooltip;
     }
-    if (!rows.isEmpty()) {
-        int index = keep >= 0 ? keep : 1; // PI by default
-        if (index >= rows.size() || !rows.at(index).available) {
-            index = -1;
-            for (int i = 0; i < rows.size() && index < 0; ++i) {
-                if (rows.at(i).available)
-                    index = i;
-            }
+    const QStringList key = texts + tips;
+    if (key != m_takeKey) {
+        m_takeKey = key;
+        const int keep = m_takeCombo->currentIndex();
+        const QSignalBlocker b(m_takeCombo);
+        m_takeCombo->clear();
+        auto *model = qobject_cast<QStandardItemModel *>(m_takeCombo->model());
+        for (int i = 0; i < rows.size(); ++i) {
+            m_takeCombo->addItem(texts.at(i), i);
+            if (!tips.at(i).isEmpty())
+                m_takeCombo->setItemData(i, tips.at(i), Qt::ToolTipRole);
+            if (model && !rows.at(i).available)
+                model->item(i)->setEnabled(false);
         }
-        m_takeCombo->setCurrentIndex(index);
+        if (!rows.isEmpty()) {
+            int index = keep >= 0 ? keep : 1; // PI by default
+            if (index >= rows.size() || !rows.at(index).available) {
+                index = -1;
+                for (int i = 0; i < rows.size() && index < 0; ++i) {
+                    if (rows.at(i).available)
+                        index = i;
+                }
+            }
+            m_takeCombo->setCurrentIndex(index);
+        }
     }
     const bool any = m_takeCombo->currentIndex() >= 0;
     m_takeCombo->setEnabled(any);
@@ -591,7 +668,6 @@ void ClosedLoopPage::recompute()
     updatePrediction();
     rebuildTable();
     rebuildChecks();
-    updateHint();
 }
 
 void ClosedLoopPage::updatePrediction()
@@ -608,8 +684,13 @@ void ClosedLoopPage::updatePrediction()
     const bool step = cl.test == ClosedLoopTest::SetpointStep;
     const Tag *coTag = m_ctx->tagById(s.deltaCoTagId);
     double co0 = kNaN;
-    if (coTag && m_ctx->recorder)
-        co0 = m_ctx->recorder->sampleAt(coTag->id, m_result.startTime);
+    if (coTag && m_ctx->recorder) {
+        // The output just before the test starts (the loop is at rest there), not at startTime,
+        // where the controller has already reacted to a setpoint step.
+        co0 = lastValueBefore(*m_ctx->recorder, coTag->id, m_result.startTime);
+        if (!std::isfinite(co0))
+            co0 = m_ctx->recorder->sampleAt(coTag->id, m_result.startTime);
+    }
     const bool hasCo = std::isfinite(co0);
     if (!hasCo)
         co0 = (s.coRangeMin + s.coRangeMax) / 2.0;
@@ -622,7 +703,7 @@ void ClosedLoopPage::updatePrediction()
     if (cl.predictionTdS > 0.0)
         setup.pid.td = cl.predictionTdS;
     setup.test = cl.test;
-    setup.pv0 = m_result.pvAtStart;
+    setup.pv0 = step ? m_result.spBefore : m_result.spAfter; // the loop starts at its setpoint
     setup.co0 = co0;
     setup.spStep = step ? m_result.spAfter - m_result.spBefore : 0.0;
     setup.loadStep = step ? 0.0 : cl.loadStep;
@@ -637,7 +718,8 @@ void ClosedLoopPage::updatePrediction()
                             setup.coMin, setup.coMax, setup.durationS, setup.dtS, shift,
                             setup.model.k, setup.model.l, setup.model.t, setup.pid.kp,
                             setup.pid.ti.value_or(0.0), setup.pid.td.value_or(0.0),
-                            cl.settlingBandPct, hasCo ? 1.0 : 0.0, m_result.t2};
+                            cl.settlingBandPct, hasCo ? 1.0 : 0.0, m_result.t2,
+                            settlingBand(m_result)};
     if (m_pred.valid && m_pred.key == key)
         return;
 
@@ -653,8 +735,9 @@ void ClosedLoopPage::updatePrediction()
     ClosedLoopSeries analysed = series;
     if (!hasCo)
         analysed.co.clear();
+    // The predicted column uses the measured band, so both columns judge settling the same way.
     m_pred.result = analyzeClosedLoopSeries(analysed, series.t.first(), series.t.last(), cl,
-                                            s.coRangeMin, s.coRangeMax);
+                                            s.coRangeMin, s.coRangeMax, settlingBand(m_result));
     m_pred.valid = true;
 }
 
@@ -832,20 +915,6 @@ void ClosedLoopPage::rebuildChecks()
         m_checksList->setFixedHeight(total);
     }
     m_checksList->setVisible(m_checksList->count() > 0);
-}
-
-void ClosedLoopPage::updateHint()
-{
-    QString text;
-    if (m_ctx->settings.pvTagId == 0) {
-        text = tr("Choose the process value (PV) in step 1.");
-    } else if (!m_ctx->hasBothCursors()) {
-        text = tr("Place C1 at the setpoint change (or just before the disturbance) and C2 after "
-                  "the PV has settled.");
-    } else if (m_analysed && !m_result.valid) {
-        text = m_result.error;
-    }
-    m_hintLabel->setText(text);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1042,21 +1111,21 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
         meaning = tr("the setpoint just before the change (at C1).");
         lines << tr("SP before = SP at C1 (or the value typed in step 3)");
         if (r)
-            lines << QStringLiteral("SP before = ") + pvv(r->spBefore);
+            lines << tr("SP before = %1").arg(pvv(r->spBefore));
         break;
     case Quantity::SpAfter:
         name = tr("SP after, setpoint after the step");
         meaning = tr("the setpoint the PV has to reach (at C2).");
         lines << tr("SP after = SP at C2 (or the value typed in step 3)");
         if (r)
-            lines << QStringLiteral("SP after = ") + pvv(r->spAfter);
+            lines << tr("SP after = %1").arg(pvv(r->spAfter));
         break;
     case Quantity::Setpoint:
         name = tr("Setpoint");
         meaning = tr("the constant setpoint during the disturbance test.");
         lines << tr("Setpoint = SP at C1 (or the value typed in step 3)");
         if (r)
-            lines << QStringLiteral("Setpoint = ") + pvv(r->spAfter);
+            lines << tr("Setpoint = %1").arg(pvv(r->spAfter));
         break;
     case Quantity::Overshoot: {
         name = tr("Overshoot");
@@ -1069,9 +1138,10 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
             const double os = *r->overshoot;
             const double step_ = std::abs(r->spAfter - r->spBefore);
             const double peak = up ? r->spAfter + os : r->spAfter - os;
-            lines << (up ? QStringLiteral("overshoot = max(PV) - SP after = %1 - %2 = %3")
-                         : QStringLiteral("overshoot = SP after - min(PV) = %2 - %1 = %3"))
-                         .arg(g4p(peak), g4p(r->spAfter), pvv(os));
+            lines << (up ? tr("overshoot = max(PV) - SP after = %1 - %2 = %3")
+                               .arg(g4p(peak), g4p(r->spAfter), pvv(os))
+                         : tr("overshoot = SP after - min(PV) = %1 - %2 = %3")
+                               .arg(g4p(r->spAfter), g4p(peak), pvv(os)));
             lines << QStringLiteral("%1 / %2 %3 100 = %4 %")
                          .arg(g4(os), g4(step_), kTimes, g4(r->overshootPct.value_or(kNaN)));
         }
@@ -1080,9 +1150,9 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
     case Quantity::PeakTime:
         name = tr("Peak time");
         meaning = tr("time from the setpoint change to the overshoot peak.");
-        lines << QStringLiteral("peak time = t(peak) - t(SP change)");
+        lines << tr("peak time = t(peak) - t(SP change)");
         if (r && r->peakTime) {
-            lines << QStringLiteral("peak time = %1 - %2 = %3 s")
+            lines << tr("peak time = %1 - %2 = %3 s")
                          .arg(g4(r->startTime + *r->peakTime), g4(r->startTime), g4(*r->peakTime));
         } else if (r) {
             lines << tr("There is no overshoot, so there is no peak.");
@@ -1092,22 +1162,22 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
         name = tr("Rise time (10-90 %)");
         meaning = tr("time the PV needs to go from 10 % to 90 % of the step: how fast the "
                      "response is.");
-        lines << QStringLiteral("rise time = t(90 %) - t(10 %)");
+        lines << tr("rise time = t(90 %) - t(10 %)");
         if (r && r->riseTime) {
             const double d = r->spAfter - r->spBefore;
-            lines << QStringLiteral("10 % level = %1 + 0.1 %2 %3 = %4; 90 % level = %1 + 0.9 %2 %3 = %5")
+            lines << tr("10 % level = %1 + 0.1 %2 %3 = %4; 90 % level = %1 + 0.9 %2 %3 = %5")
                          .arg(g4p(r->spBefore), kTimes, g4p(d), g4(r->spBefore + 0.1 * d),
                               g4(r->spBefore + 0.9 * d));
-            lines << QStringLiteral("rise time = %1 s").arg(g4(*r->riseTime));
+            lines << tr("rise time = %1 s").arg(g4(*r->riseTime));
         }
         break;
     case Quantity::MaxDeviation:
         name = tr("Max deviation");
         meaning = tr("the largest distance between the setpoint and the PV after the "
                      "disturbance (negative: the PV fell below the setpoint).");
-        lines << QStringLiteral("max deviation = SP - PV at the largest |SP - PV|");
+        lines << tr("max deviation = SP - PV at the largest |SP - PV|");
         if (r && r->maxDeviation) {
-            lines << QStringLiteral("max deviation = %1 - %2 = %3")
+            lines << tr("max deviation = %1 - %2 = %3")
                          .arg(g4p(r->spAfter), g4p(r->spAfter - *r->maxDeviation),
                               pvv(*r->maxDeviation));
         }
@@ -1115,7 +1185,7 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
     case Quantity::MaxDeviationTime:
         name = tr("Time of max deviation");
         meaning = tr("time from the disturbance (C1) to the largest deviation.");
-        lines << QStringLiteral("t = t(max deviation) - t(C1)");
+        lines << tr("t = t(max deviation) - t(C1)");
         if (r && r->maxDeviationTime) {
             lines << QStringLiteral("t = %1 - %2 = %3 s")
                          .arg(g4(r->startTime + *r->maxDeviationTime), g4(r->startTime),
@@ -1133,7 +1203,7 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
             const double bnd = settlingBand(*r);
             const double base = step ? std::abs(r->spAfter - r->spBefore)
                                      : std::abs(r->maxDeviation.value_or(kNaN));
-            lines << QStringLiteral("band = %1 %2 %3 / 100 = %4")
+            lines << tr("band = %1 %2 %3 / 100 = %4")
                          .arg(bandPct, kTimes, g4(base), pvv(bnd));
             if (r->settlingTime) {
                 lines << tr("settling time = time the PV enters the band for good, measured from "
@@ -1149,7 +1219,7 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
         name = tr("Decay ratio");
         meaning = tr("size of the second peak of the error divided by the first: how fast the "
                      "oscillation dies out.");
-        lines << QStringLiteral("decay ratio = second peak / first peak");
+        lines << tr("decay ratio = second peak / first peak");
         lines << tr("A quarter-amplitude decay is 0.25; the smaller, the better damped.");
         if (r && r->decayRatio) {
             const std::optional<double> first = step ? r->overshoot
@@ -1157,10 +1227,10 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
                                                             ? std::optional<double>(std::abs(*r->maxDeviation))
                                                             : std::nullopt);
             if (first && *first > 0.0) {
-                lines << QStringLiteral("decay ratio = %1 / %2 = %3")
+                lines << tr("decay ratio = %1 / %2 = %3")
                              .arg(g4(*r->decayRatio * *first), g4(*first), g4(*r->decayRatio));
             } else {
-                lines << QStringLiteral("decay ratio = %1").arg(g4(*r->decayRatio));
+                lines << tr("decay ratio = %1").arg(g4(*r->decayRatio));
             }
         } else if (r) {
             lines << tr("Fewer than two peaks above the band: the response does not oscillate.");
@@ -1170,9 +1240,9 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
     case Quantity::Period:
         name = tr("Period");
         meaning = tr("time between the first and the second peak: the period of the oscillation.");
-        lines << QStringLiteral("period = t(second peak) - t(first peak)");
+        lines << tr("period = t(second peak) - t(first peak)");
         if (r && r->period)
-            lines << QStringLiteral("period = %1 s").arg(g4(*r->period));
+            lines << tr("period = %1 s").arg(g4(*r->period));
         else if (r)
             lines << tr("Fewer than two peaks above the band: the response does not oscillate.");
         break;
@@ -1182,7 +1252,7 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
                      "action should bring it to zero.");
         lines << tr("error = SP after - mean(PV over the last 10 % of the test)");
         if (r && std::isfinite(r->steadyStateError)) {
-            lines << QStringLiteral("error = %1 - %2 = %3")
+            lines << tr("error = %1 - %2 = %3")
                          .arg(g4p(r->spAfter), g4p(r->spAfter - r->steadyStateError),
                               pvv(r->steadyStateError));
         }
@@ -1230,9 +1300,9 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
         name = tr("Output travel");
         meaning = tr("total distance the controller output moved: less travel means less wear "
                      "on the valve.");
-        lines << QStringLiteral("travel = Σ |CO[i] - CO[i-1]|");
+        lines << tr("travel = Σ |CO[i] - CO[i-1]|");
         if (r && r->outTravel)
-            lines << QStringLiteral("travel = %1").arg(withUnit(g4(*r->outTravel), cu));
+            lines << tr("travel = %1").arg(withUnit(g4(*r->outTravel), cu));
         break;
     }
     if (predicted) {

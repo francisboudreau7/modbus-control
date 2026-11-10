@@ -18,6 +18,16 @@ public:
     double valueFromText(const QString &text) const override;
     QString textFromValue(double value) const override;
     void fixup(QString &input) const override;
+
+    /// Shows `digits` significant digits (fixed notation, trailing zeros dropped: 0.00004, 600,
+    /// 0.833333) instead of decimals() fixed decimals, so small and large values keep their
+    /// precision. 0 (the default) = fixed decimals. Typing is still limited by decimals(): set it
+    /// high enough (12) for the smallest value that matters.
+    void setSignificantDigits(int digits);
+    int significantDigits() const { return m_significantDigits; }
+
+private:
+    int m_significantDigits = 0;
 };
 
 /// Validator for number line edits: Acceptable when mb::parseNumber accepts the text (comma or
