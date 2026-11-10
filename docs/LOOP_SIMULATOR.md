@@ -325,11 +325,18 @@ for the panel.
 
 - **K** (about 2.2 %/%): ΔPV/ΔCO = (72 − 50) / (60 − 50). It matches the table of settled levels.
 - **L**: the dead time of 2 s, plus the delays of the FCV-101 stroke (a 10 % move takes 0.5 s) and of the
-  LT-101 damping (2 s). This is about 4 to 5 s. The project polls every 100 ms, so the Trend resolves it
-  well at ×1.
-- **T**: about 32 s. The theory says 2 × A × h / Qhv = 28 s at 50 % and 34 s at 72 %, and the step covers
-  both.
-  A model fitted on the 63.2 % point gives a value between them.
+  LT-101 damping (2 s). With the default method, Smith, L is about 4 s. The project polls every 100 ms,
+  so the Trend resolves it well at ×1.
+- **T**: about 32 to 33 s with Smith. The theory says 2 × A × h / Qhv = 28 s at 50 % and 34 s at 72 %,
+  and the step covers both. A model fitted on the 63.2 % point gives a value between them.
+
+**Try the other method.** In the **Model** group, choose **0 % / 63.2 % (two points)**. L becomes much
+shorter (between about 0.3 and 1.2 s) and it changes when you move C1: it is 1.2 s with C1 10 s before the
+step and 0.25 s with C1 0.5 s before it. T is about 35 s. With the Ziegler-Nichols rule, a check appears
+in the list. With a 0 % lower point, L is the moment the PV first leaves its starting value. The small
+lags after the dead time (the LT-101 damping, the valve stroke) bend the start of the curve but do not
+delay that first movement, so they go into T and L comes out too short. Smith uses two points on the
+rising part of the curve and is not affected.
 
 **Why does a bigger step give a larger T?** The outflow follows √h, so the tank is slower at high levels.
 Step from 50 to 70 % and T is larger than for 50 to 60 %, and K is larger too (2.4 against 2.2 %/%).
@@ -357,15 +364,21 @@ Do the [step test](#exercise-step-test-with-modbus-control) first, so that K, L 
 Analysis panel.
 
 **1. Read the tuning.** In the **Analysis** dock, the Tuning group turns K, L and T into settings. With
-the numbers of the step test (K about 2.2 %/%, L about 4 to 5 s, T about 28 to 34 s) you get roughly
-the values below. Yours will differ a little. The PV and the OUT of this loop are both in %, so the
-Kp of the table (in % per %) can be typed as it is.
+the numbers of the step test with the Smith method (K 2.2 %/%, L about 4 s, T about 32 s) you get
+roughly the values below, with the overshoot (as a percentage of the 10 % step) and the settling time
+measured for SP 50 to 60 %. Yours will differ a little. The PV and the OUT of this loop are both in %,
+so the Kp of the table (in % per %) can be typed as it is.
 
-| Rule | Controller | Kp (about) | Ti (about) |
-|---|---|---|---|
-| IMC / lambda, λ = Auto (= L) | PI | 1.6 | 31 s |
-| SIMC, λ = Auto (= L) | PI | 1.6 | 31 s |
-| Ziegler-Nichols | PI | 2.8 | 15 s |
+| Rule | Controller | Kp (about) | Ti (about) | Overshoot | Settles in |
+|---|---|---|---|---|---|
+| IMC / lambda, λ = Auto (= L) | PI | 1.9 | 32 s | about 5 % | about 21 s |
+| SIMC, λ = Auto (= L) | PI | 1.9 | 32 s | about 6 % | about 22 s |
+| Ziegler-Nichols | PI | 3.4 | 13 s | about 60 % | about 42 s |
+| Cohen-Coon | PI | 3.4 | 10.5 s | about 73 % | about 52 s |
+
+Do not take these values from a 0 % / 63.2 % model. Its L is too short, and Ziegler-Nichols then gives a
+Kp of 12 or more. The limit of this loop with P only is about Kp 8.7, so the loop does not settle: OUT
+swings between 0 and 100 %.
 
 **2. Start in Auto.** Set OUT to 50 % and wait for the steady state (PV and SP are both 50 %). On the
 faceplate, type Kp and Ti (Td stays 0, Action Reverse), then click **MAN**. It becomes **AUTO**, and
@@ -382,10 +395,11 @@ SP after about 30 s. OUT first jumps by Kp × 10 % = 10 %, to 60 %, then falls b
 
 **4. Compare the rules.** Return SP to 50 %, then try each pair of values in turn and write SP to 60 %
 again. Look at the overshoot (how far PV goes above 60 %) and at the settling time (the time until PV
-stays within ±0.5 % of 60 %). In general the Ziegler-Nichols PI is the most aggressive: its Kp is
-larger and its Ti shorter, so PV overshoots and may oscillate before it settles, while IMC and SIMC
-with λ = L give a smoother response. A larger λ is slower and gentler. The cursors and the
-Analysis panel can measure the times for you.
+stays within ±0.5 % of 60 %). The Ziegler-Nichols PI is the most aggressive: its Kp is larger and
+its Ti shorter. PV overshoots by more than half of the step (it peaks near 66 %) and oscillates
+before it settles. Ziegler-Nichols aims at a quarter-amplitude decay and at rejecting disturbances,
+not at clean setpoint changes. IMC and SIMC with λ = L overshoot by a few percent. A larger λ is slower
+and gentler. The cursors and the Analysis panel can measure the times for you.
 
 **5. Load disturbance.** With the loop in Auto and PV steady at SP (60 %), move the **HV-102**
 slider from 50 to 60 %. The outlet is larger, so PV falls at first. The controller opens the valve,
