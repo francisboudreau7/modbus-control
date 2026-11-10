@@ -180,6 +180,11 @@ private slots:
     void lockedRoundTrip();
     void modelColorRoundTripAndRejected();
     void lockedRejectsNonBoolean();
+    void v140RoundTrip();
+    void v140DefaultsWhenMissing();
+    void v140Rejected_data();
+    void v140Rejected();
+    void v140ExamplesLoad();
 };
 
 void TstProjectIO::roundTrip()
@@ -1993,6 +1998,146 @@ void TstProjectIO::bitAreaTypeMismatchRejected()
     QString error;
     QVERIFY(!projectFromJson(text, &error).has_value());
     QCOMPARE(error, message);
+}
+
+void TstProjectIO::v140RoundTrip()
+{
+    Project p = sampleProject();
+    AnalysisSettings &a = p.analysis;
+    a.mode = AnalysisMode::ClosedLoop;
+    a.spTagId = 42; // an id that does not exist is kept
+    a.method = ModelMethod::Tangent;
+    a.closedLoop.test = ClosedLoopTest::Disturbance;
+    a.closedLoop.typedSpBefore = -3.5;
+    a.closedLoop.typedSpAfter = 61.25;
+    a.closedLoop.settlingBandPct = 5.0;
+    a.closedLoop.showPrediction = true;
+    a.closedLoop.predictionKp = -2.5;
+    a.closedLoop.predictionTiS = 33.5;
+    a.closedLoop.predictionTdS = 4.25;
+    a.controller.form = PidForm::Series;
+    a.controller.gain = GainUnit::ProportionalBand;
+    a.controller.integral = IntegralUnit::RepeatsPerMinute;
+    a.compareMethods = {ModelMethod::Tangent, ModelMethod::ZeroTo632, ModelMethod::Sundaresan};
+    a.tangentT632 = true;
+
+    QString error;
+    auto loaded = projectFromJson(projectToJson(p), &error);
+    QVERIFY2(loaded.has_value(), qPrintable(error));
+    QVERIFY(loaded->analysis == a);
+
+    for (PidForm form : {PidForm::Ideal, PidForm::Series, PidForm::Parallel}) {
+        a.controller.form = form;
+        a.closedLoop.test = ClosedLoopTest::SetpointStep;
+        a.mode = AnalysisMode::OpenLoop;
+        a.compareMethods = {ModelMethod::Smith};
+        loaded = projectFromJson(projectToJson(p), &error);
+        QVERIFY2(loaded.has_value(), qPrintable(error));
+        QVERIFY(loaded->analysis == a);
+    }
+}
+
+void TstProjectIO::v140DefaultsWhenMissing()
+{
+    const AnalysisSettings defaults;
+    // A v1.3.5 file: an analysis object without any v1.4.0 key.
+    auto loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"method":"smith","lambdaS":3}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.mode == defaults.mode);
+    QCOMPARE(loaded->analysis.spTagId, defaults.spTagId);
+    QVERIFY(loaded->analysis.closedLoop == defaults.closedLoop);
+    QVERIFY(loaded->analysis.controller == defaults.controller);
+    QVERIFY(loaded->analysis.compareMethods.isEmpty());
+    QVERIFY(!loaded->analysis.tangentT632);
+    // Empty sub-objects keep the defaults too.
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"closedLoop":{},"controller":{}}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.closedLoop == defaults.closedLoop);
+    QVERIFY(loaded->analysis.controller == defaults.controller);
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"closedLoop":{"prediction":{}}}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.closedLoop == defaults.closedLoop);
+    // No analysis object at all.
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis == defaults);
+    // The method name "tangent" is read; the keys are always written.
+    loaded = projectFromJson(json(R"({"format":"modbus-control-project","version":1,"analysis":{"method":"tangent"}})"));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->analysis.method == ModelMethod::Tangent);
+    const QJsonObject written = QJsonDocument::fromJson(projectToJson(Project{})).object().value("analysis").toObject();
+    for (const char *key : {"mode", "spTag", "closedLoop", "controller", "compareMethods", "tangentT632"})
+        QVERIFY2(written.contains(QLatin1String(key)), key);
+    QVERIFY(written.value("closedLoop").toObject().value("prediction").isObject());
+}
+
+void TstProjectIO::v140Rejected_data()
+{
+    QTest::addColumn<QByteArray>("analysis");
+    QTest::addColumn<QString>("message");
+    auto row = [](const char *name, const char *analysis, const char *message) {
+        QTest::newRow(name) << QByteArray(analysis) << QString::fromUtf8(message);
+    };
+    row("modeType", R"({"mode":1})", "\"analysis.mode\" must be a string");
+    row("modeUnknown", R"({"mode":"both"})", "\"analysis.mode\" has unknown value \"both\" (expected \"open\" or \"closed\")");
+    row("spTagNegative", R"({"spTag":-1})", "\"analysis.spTag\" must be an integer from 0 to 2147483647");
+    row("spTagFraction", R"({"spTag":1.5})", "\"analysis.spTag\" must be an integer from 0 to 2147483647");
+    row("closedLoopType", R"({"closedLoop":3})", "\"analysis.closedLoop\" must be an object");
+    row("testType", R"({"closedLoop":{"test":true}})", "\"analysis.closedLoop.test\" must be a string");
+    row("testUnknown", R"({"closedLoop":{"test":"ramp"}})", "\"analysis.closedLoop.test\" has unknown value \"ramp\" (expected \"setpoint\" or \"disturbance\")");
+    row("spBeforeType", R"({"closedLoop":{"spBefore":"1"}})", "\"analysis.closedLoop.spBefore\" must be a number");
+    row("spAfterType", R"({"closedLoop":{"spAfter":null}})", "\"analysis.closedLoop.spAfter\" must be a number");
+    row("bandZero", R"({"closedLoop":{"band":0}})", "\"analysis.closedLoop.band\" must be a number between 0 and 50");
+    row("bandNegative", R"({"closedLoop":{"band":-2}})", "\"analysis.closedLoop.band\" must be a number between 0 and 50");
+    row("bandHigh", R"({"closedLoop":{"band":50.5}})", "\"analysis.closedLoop.band\" must be a number between 0 and 50");
+    row("bandType", R"({"closedLoop":{"band":"2"}})", "\"analysis.closedLoop.band\" must be a number");
+    row("predictionType", R"({"closedLoop":{"prediction":[]}})", "\"analysis.closedLoop.prediction\" must be an object");
+    row("showType", R"({"closedLoop":{"prediction":{"show":1}}})", "\"analysis.closedLoop.prediction.show\" must be true or false");
+    row("kpType", R"({"closedLoop":{"prediction":{"kp":"2"}}})", "\"analysis.closedLoop.prediction.kp\" must be a number");
+    row("tiNegative", R"({"closedLoop":{"prediction":{"ti":-1}}})", "\"analysis.closedLoop.prediction.ti\" must be a finite number, 0 or more");
+    row("tdNegative", R"({"closedLoop":{"prediction":{"td":-0.5}}})", "\"analysis.closedLoop.prediction.td\" must be a finite number, 0 or more");
+    row("tiType", R"({"closedLoop":{"prediction":{"ti":"x"}}})", "\"analysis.closedLoop.prediction.ti\" must be a number");
+    row("controllerType", R"({"controller":"ideal"})", "\"analysis.controller\" must be an object");
+    row("formUnknown", R"({"controller":{"form":"isa"}})", "\"analysis.controller.form\" has unknown value \"isa\" (expected \"ideal\", \"series\" or \"parallel\")");
+    row("formType", R"({"controller":{"form":2}})", "\"analysis.controller.form\" must be a string");
+    row("gainUnknown", R"({"controller":{"gain":"db"}})", "\"analysis.controller.gain\" has unknown value \"db\" (expected \"kp\" or \"pb\")");
+    row("integralUnknown", R"({"controller":{"integral":"ki"}})", "\"analysis.controller.integral\" has unknown value \"ki\" (expected \"time\" or \"repeats\")");
+    row("compareType", R"({"compareMethods":"smith"})", "\"analysis.compareMethods\" must be an array of method names");
+    row("compareEntryType", R"({"compareMethods":[1]})", "\"analysis.compareMethods\" must be an array of method names");
+    row("compareCustom", R"({"compareMethods":["custom"]})", "\"analysis.compareMethods\" has unknown value \"custom\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"tangent\")");
+    row("compareUnknown", R"({"compareMethods":["smith","zz"]})", "\"analysis.compareMethods\" has unknown value \"zz\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"tangent\")");
+    row("compareDuplicate", R"({"compareMethods":["smith","tangent","smith"]})", "\"analysis.compareMethods\" has the duplicate entry \"smith\"");
+    row("tangentT632Type", R"({"tangentT632":"yes"})", "\"analysis.tangentT632\" must be true or false");
+    row("methodUnknown", R"({"method":"zz"})", "\"analysis.method\" has unknown value \"zz\" (expected \"0-63.2\", \"smith\", \"sundaresan\", \"tangent\" or \"custom\")");
+}
+
+void TstProjectIO::v140Rejected()
+{
+    QFETCH(QByteArray, analysis);
+    QFETCH(QString, message);
+    const QByteArray text = R"({"format":"modbus-control-project","version":1,"analysis":)" + analysis + "}";
+    QString error;
+    QVERIFY(!projectFromJson(text, &error).has_value());
+    QCOMPARE(error, message);
+}
+
+void TstProjectIO::v140ExamplesLoad()
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    while (!dir.exists(QStringLiteral("examples/demo.mbproj"))) {
+        QVERIFY2(dir.cdUp(), "could not locate examples/demo.mbproj above the test executable");
+    }
+    for (const char *name : {"demo", "loop101"}) {
+        QString error;
+        const auto project = loadProject(dir.filePath(QStringLiteral("examples/%1.mbproj").arg(QLatin1String(name))), &error);
+        QVERIFY2(project.has_value(), qPrintable(error));
+        QVERIFY(project->analysis.mode == AnalysisMode::OpenLoop);
+        QVERIFY(project->analysis.closedLoop == ClosedLoopSettings{});
+        QVERIFY(project->analysis.compareMethods.isEmpty());
+        // Saved again, the file reads back identically.
+        const auto again = projectFromJson(projectToJson(*project));
+        QVERIFY(again.has_value() && again->analysis == project->analysis);
+    }
 }
 
 QTEST_GUILESS_MAIN(TstProjectIO)

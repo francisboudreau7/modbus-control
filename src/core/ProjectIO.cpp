@@ -136,7 +136,7 @@ QString methodName(ModelMethod method)
     case ModelMethod::Sundaresan:
         return QStringLiteral("sundaresan");
     case ModelMethod::Tangent:
-        return QStringLiteral("tangent"); // read and written by the 1.4.0 project keys task
+        return QStringLiteral("tangent");
     case ModelMethod::Custom:
         break;
     }
@@ -391,6 +391,210 @@ bool readTag(const QJsonValue &value, int index, Tag &tag, QString *error)
     return true;
 }
 
+// Optional object member `key` of `parent`; `present` says whether it exists. A non-object value is
+// an error naming `name` (e.g. "analysis.closedLoop").
+bool readSubObject(const QJsonObject &parent, const QString &key, const QString &name,
+                   QJsonObject &out, bool &present, QString *error)
+{
+    const QJsonValue value = parent.value(key);
+    present = !value.isUndefined();
+    if (!present)
+        return true;
+    if (!value.isObject()) {
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1\" must be an object").arg(name));
+        return false;
+    }
+    out = value.toObject();
+    return true;
+}
+
+// A finite number with an inclusive/exclusive range check done by the caller; this only reads it.
+bool readFiniteNumber(const QJsonObject &obj, const QString &key, const QString &prefix,
+                      double &out, QString *error)
+{
+    if (!readDouble(obj, key, prefix, out, error))
+        return false;
+    if (!std::isfinite(out)) {
+        setError(error, QCoreApplication::translate("mb::ProjectIO", "\"%1%2\" must be a number").arg(prefix, key));
+        return false;
+    }
+    return true;
+}
+
+// The v1.4.0 "analysis" keys (all optional): mode, spTag, closedLoop, controller, compareMethods,
+// tangentT632. Missing keys keep the defaults in `out`.
+bool readAnalysisV140(const QJsonObject &obj, AnalysisSettings &out, QString *error)
+{
+    const QString prefix = QStringLiteral("analysis.");
+
+    QString mode;
+    if (!readString(obj, QStringLiteral("mode"), prefix, mode, error))
+        return false;
+    if (obj.contains(QStringLiteral("mode"))) {
+        if (mode == QStringLiteral("open")) {
+            out.mode = AnalysisMode::OpenLoop;
+        } else if (mode == QStringLiteral("closed")) {
+            out.mode = AnalysisMode::ClosedLoop;
+        } else {
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.mode\" has unknown value \"%1\" (expected \"open\" or \"closed\")")
+                                .arg(mode));
+            return false;
+        }
+    }
+
+    // Like deltaCoTag, an id that does not exist is kept (the UI treats it as "typed setpoint").
+    qint64 spTag = static_cast<qint64>(out.spTagId);
+    if (!readInt(obj, QStringLiteral("spTag"), prefix, 0, kMaxTagId, spTag, error))
+        return false;
+    out.spTagId = static_cast<TagId>(spTag);
+
+    QJsonObject closed;
+    bool present = false;
+    if (!readSubObject(obj, QStringLiteral("closedLoop"), QStringLiteral("analysis.closedLoop"), closed, present, error))
+        return false;
+    if (present) {
+        const QString cp = QStringLiteral("analysis.closedLoop.");
+        ClosedLoopSettings &c = out.closedLoop;
+        QString test;
+        if (!readString(closed, QStringLiteral("test"), cp, test, error))
+            return false;
+        if (closed.contains(QStringLiteral("test"))) {
+            if (test == QStringLiteral("setpoint")) {
+                c.test = ClosedLoopTest::SetpointStep;
+            } else if (test == QStringLiteral("disturbance")) {
+                c.test = ClosedLoopTest::Disturbance;
+            } else {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.test\" has unknown value \"%1\" (expected \"setpoint\" or \"disturbance\")")
+                                    .arg(test));
+                return false;
+            }
+        }
+        if (!readFiniteNumber(closed, QStringLiteral("spBefore"), cp, c.typedSpBefore, error)
+            || !readFiniteNumber(closed, QStringLiteral("spAfter"), cp, c.typedSpAfter, error)) {
+            return false;
+        }
+        if (!readDouble(closed, QStringLiteral("band"), cp, c.settlingBandPct, error))
+            return false;
+        if (!(c.settlingBandPct > 0.0 && c.settlingBandPct <= 50.0)) {
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.band\" must be a number between 0 and 50"));
+            return false;
+        }
+
+        QJsonObject prediction;
+        if (!readSubObject(closed, QStringLiteral("prediction"), QStringLiteral("analysis.closedLoop.prediction"),
+                           prediction, present, error)) {
+            return false;
+        }
+        if (present) {
+            const QString pp = QStringLiteral("analysis.closedLoop.prediction.");
+            if (!readBool(prediction, QStringLiteral("show"), pp, c.showPrediction, error)
+                || !readFiniteNumber(prediction, QStringLiteral("kp"), pp, c.predictionKp, error)) {
+                return false;
+            }
+            if (!readDouble(prediction, QStringLiteral("ti"), pp, c.predictionTiS, error))
+                return false;
+            if (!(std::isfinite(c.predictionTiS) && c.predictionTiS >= 0.0)) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.prediction.ti\" must be a finite number, 0 or more"));
+                return false;
+            }
+            if (!readDouble(prediction, QStringLiteral("td"), pp, c.predictionTdS, error))
+                return false;
+            if (!(std::isfinite(c.predictionTdS) && c.predictionTdS >= 0.0)) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.closedLoop.prediction.td\" must be a finite number, 0 or more"));
+                return false;
+            }
+        }
+    }
+
+    QJsonObject controller;
+    if (!readSubObject(obj, QStringLiteral("controller"), QStringLiteral("analysis.controller"), controller, present, error))
+        return false;
+    if (present) {
+        const QString cp = QStringLiteral("analysis.controller.");
+        QString text;
+        if (!readString(controller, QStringLiteral("form"), cp, text, error))
+            return false;
+        if (controller.contains(QStringLiteral("form"))) {
+            if (text == QStringLiteral("ideal")) {
+                out.controller.form = PidForm::Ideal;
+            } else if (text == QStringLiteral("series")) {
+                out.controller.form = PidForm::Series;
+            } else if (text == QStringLiteral("parallel")) {
+                out.controller.form = PidForm::Parallel;
+            } else {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.controller.form\" has unknown value \"%1\" (expected \"ideal\", \"series\" or \"parallel\")")
+                                    .arg(text));
+                return false;
+            }
+        }
+        if (!readString(controller, QStringLiteral("gain"), cp, text, error))
+            return false;
+        if (controller.contains(QStringLiteral("gain"))) {
+            if (text == QStringLiteral("kp")) {
+                out.controller.gain = GainUnit::Gain;
+            } else if (text == QStringLiteral("pb")) {
+                out.controller.gain = GainUnit::ProportionalBand;
+            } else {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.controller.gain\" has unknown value \"%1\" (expected \"kp\" or \"pb\")")
+                                    .arg(text));
+                return false;
+            }
+        }
+        if (!readString(controller, QStringLiteral("integral"), cp, text, error))
+            return false;
+        if (controller.contains(QStringLiteral("integral"))) {
+            if (text == QStringLiteral("time")) {
+                out.controller.integral = IntegralUnit::Time;
+            } else if (text == QStringLiteral("repeats")) {
+                out.controller.integral = IntegralUnit::RepeatsPerMinute;
+            } else {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.controller.integral\" has unknown value \"%1\" (expected \"time\" or \"repeats\")")
+                                    .arg(text));
+                return false;
+            }
+        }
+    }
+
+    const QJsonValue compare = obj.value(QStringLiteral("compareMethods"));
+    if (!compare.isUndefined()) {
+        if (!compare.isArray()) {
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.compareMethods\" must be an array of method names"));
+            return false;
+        }
+        QList<ModelMethod> methods;
+        for (const QJsonValue &entry : compare.toArray()) {
+            if (!entry.isString()) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.compareMethods\" must be an array of method names"));
+                return false;
+            }
+            const QString text = entry.toString();
+            ModelMethod method = ModelMethod::Custom;
+            if (text == QStringLiteral("0-63.2")) {
+                method = ModelMethod::ZeroTo632;
+            } else if (text == QStringLiteral("smith")) {
+                method = ModelMethod::Smith;
+            } else if (text == QStringLiteral("sundaresan")) {
+                method = ModelMethod::Sundaresan;
+            } else if (text == QStringLiteral("tangent")) {
+                method = ModelMethod::Tangent;
+            } else {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.compareMethods\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"tangent\")")
+                                    .arg(text));
+                return false;
+            }
+            if (methods.contains(method)) {
+                setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.compareMethods\" has the duplicate entry \"%1\"")
+                                    .arg(text));
+                return false;
+            }
+            methods.append(method);
+        }
+        out.compareMethods = methods;
+    }
+
+    return readBool(obj, QStringLiteral("tangentT632"), prefix, out.tangentT632, error);
+}
+
 // Optional "analysis" object. Every key is optional; a missing key keeps the default in `out`.
 // The keys added in v1.2.6 (pvTag, setpointTags, method, ...) fall back to values migrated from
 // the per-tag "analyzed" flags (pvTag, setpointTags) or from modelPercents (method) when missing.
@@ -519,10 +723,12 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
             out.method = ModelMethod::Smith;
         } else if (text == QStringLiteral("sundaresan")) {
             out.method = ModelMethod::Sundaresan;
+        } else if (text == QStringLiteral("tangent")) {
+            out.method = ModelMethod::Tangent;
         } else if (text == QStringLiteral("custom")) {
             out.method = ModelMethod::Custom;
         } else {
-            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.method\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\" or \"custom\")")
+            setError(error, QCoreApplication::translate("mb::ProjectIO", "\"analysis.method\" has unknown value \"%1\" (expected \"0-63.2\", \"smith\", \"sundaresan\", \"tangent\" or \"custom\")")
                                 .arg(text));
             return false;
         }
@@ -642,7 +848,7 @@ bool readAnalysis(const QJsonObject &root, const QList<Tag> &tags, AnalysisSetti
             return false;
         }
     }
-    return true;
+    return readAnalysisV140(obj, out, error);
 }
 
 // Optional top-level "hiddenColumns": an array of strings. Missing = compact preset. Duplicates
@@ -802,7 +1008,40 @@ QByteArray projectToJson(const Project &project)
     const QJsonValue pvRange = (a.pvRangeMin && a.pvRangeMax && *a.pvRangeMin != *a.pvRangeMax)
                                    ? QJsonValue(QJsonArray{*a.pvRangeMin, *a.pvRangeMax})
                                    : QJsonValue(QJsonValue::Null);
+    QJsonArray compareMethods;
+    for (ModelMethod method : a.compareMethods)
+        compareMethods.append(methodName(method));
+    const QString formName = a.controller.form == PidForm::Series     ? QStringLiteral("series")
+                             : a.controller.form == PidForm::Parallel ? QStringLiteral("parallel")
+                                                                      : QStringLiteral("ideal");
+    const QJsonObject closedLoop{
+        {QStringLiteral("test"), a.closedLoop.test == ClosedLoopTest::Disturbance ? QStringLiteral("disturbance")
+                                                                                   : QStringLiteral("setpoint")},
+        {QStringLiteral("spBefore"), a.closedLoop.typedSpBefore},
+        {QStringLiteral("spAfter"), a.closedLoop.typedSpAfter},
+        {QStringLiteral("band"), a.closedLoop.settlingBandPct},
+        {QStringLiteral("prediction"), QJsonObject{
+             {QStringLiteral("show"), a.closedLoop.showPrediction},
+             {QStringLiteral("kp"), a.closedLoop.predictionKp},
+             {QStringLiteral("ti"), a.closedLoop.predictionTiS},
+             {QStringLiteral("td"), a.closedLoop.predictionTdS},
+         }},
+    };
+    const QJsonObject controller{
+        {QStringLiteral("form"), formName},
+        {QStringLiteral("gain"), a.controller.gain == GainUnit::ProportionalBand ? QStringLiteral("pb")
+                                                                                  : QStringLiteral("kp")},
+        {QStringLiteral("integral"), a.controller.integral == IntegralUnit::RepeatsPerMinute
+                                         ? QStringLiteral("repeats")
+                                         : QStringLiteral("time")},
+    };
     const QJsonObject analysis{
+        {QStringLiteral("mode"), a.mode == AnalysisMode::ClosedLoop ? QStringLiteral("closed") : QStringLiteral("open")},
+        {QStringLiteral("spTag"), static_cast<qint64>(a.spTagId)},
+        {QStringLiteral("closedLoop"), closedLoop},
+        {QStringLiteral("controller"), controller},
+        {QStringLiteral("compareMethods"), compareMethods},
+        {QStringLiteral("tangentT632"), a.tangentT632},
         {QStringLiteral("percents"), percents},
         {QStringLiteral("reference"),
          a.reference == ReferenceMode::WindowMean ? QStringLiteral("mean") : QStringLiteral("cursor")},
