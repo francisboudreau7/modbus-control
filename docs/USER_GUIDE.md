@@ -949,7 +949,7 @@ Export > Graph image... (Ctrl+E).
 - **Include cursor readout**: available when a cursor is set. Draws the Cursors panel text in a box.
   It is ticked by default.
 - **Include Analysis results**: available when the Analysis panel has a valid result. Draws the
-  analysis summary (K, L, T and the fit error; see [Analysis](#analysis-step-response)) in the same
+  analysis summary (K, L, T and the fit error, or the closed-loop numbers when the Closed loop area is shown; see [Analysis](#analysis-step-response)) in the same
   box, after the cursor text, separated by an empty line. It is ticked by default.
 - **Readout position**: where the box goes. **Below the graph** is the default: the image grows by
   the height of the box, so nothing covers the curves. The other choices are **Top left**, **Top
@@ -981,26 +981,44 @@ header is `timestamp,elapsed_s,<name> [<unit>],...` (the unit part is omitted wh
 
 ## Analysis (step response)
 
-The Analysis panel measures a step response on the Trend plot, between the two cursors C1 and C2.
-It finds the times at which the response reaches the setpoints (0 %, 28.3 % and 63.2 % by default). From
-these times it computes a first-order model with dead time: the gain K, the dead time L and the time
-constant T. It also computes PID settings from them. It is meant for step tests, for example to get
-the values for Ziegler-Nichols open-loop tuning.
+The Analysis panel measures a response on the Trend plot, between the two cursors C1 and C2. It has two
+areas, because tuning a loop is a cycle of three steps:
+
+1. **Identify.** With the controller in manual, step the controller output and measure the process: its
+   gain K, its dead time L and its time constant T. This is an *open-loop* test.
+2. **Tune.** Turn K, L and T into PID settings with a tuning rule.
+3. **Evaluate.** Put the controller in Auto with those settings, change the setpoint (or disturb the
+   process) and measure how the loop behaves: overshoot, settling time, error. This is a *closed-loop*
+   test. The panel can also predict this response from the model, so you can compare the prediction
+   with what the loop really did.
+
+The **Open loop** area covers steps 1 and 2. The **Closed loop** area covers step 3. Switch between
+them with the **Open loop** and **Closed loop** buttons, below the Controller group. The panel keeps all
+its settings and results when you switch, and the overlays on the Trend follow the area that is shown.
 
 Open the panel with **View > Analysis**. It is the **Analysis** dock on the right side, tabbed with
-**Cursors** and **Quick write**. Its controls are in four numbered groups, one for each step:
+**Cursors** and **Quick write**. Its controls are in numbered groups, one for each step. Three groups
+are shared by both areas and sit at the top:
 
-1. **Signals**: the process value, the controller output and the optional ranges.
+1. **Signals**: the process value, the controller output, the setpoint and the optional ranges.
 2. **Cursors**: where C1 and C2 are, and **Find step**.
-3. **Model**: the method, the results, the model curve and the checks.
-4. **Tuning**: the PID settings.
+3. **Controller**: the form of the PID settings (it has no number).
+
+Below them, the area you chose shows its own groups:
+
+- **Open loop**: 3. **Model** (the method, the results, the model curve and the checks) and
+  4. **Tuning** (the PID settings).
+- **Closed loop**: 3. **Test** (the kind of test), 4. **Performance** (the measured numbers and their
+  checks) and 5. **Prediction** (the response predicted from the model).
 
 The setpoint options and the setpoint table are in their own **Setpoints** tab, next to Analysis (see
 [Setpoints and options](#setpoints-and-options)). Hover over any value to see how it was calculated
 (see [Tooltips](#tooltips)).
 
-The overlays (setpoint markers, guide lines and the model curve) are drawn on the Trend plot, and the
-graph image export includes them.
+The overlays are drawn on the Trend plot, and the graph image export includes them. The setpoint
+markers and guide lines are shown in both areas. The model curve, the tangent and the compared model
+curves are shown in the Open loop area. The settling band, the overshoot marker and the predicted
+curves are shown in the Closed loop area.
 
 ### 1. Signals
 
@@ -1011,17 +1029,23 @@ graph image export includes them.
   Its change between the cursors is **ΔCO**. Choose the CO tag in the list. To type the step yourself,
   choose **Typed ΔCO** and enter the step, in the output's units, in the box next to it. A typed ΔCO
   has no unit in the results.
+- **Setpoint (SP)**: the setpoint of the control loop. Only the Closed loop area uses it. Choose the
+  SP tag in the list, or choose **Typed** to enter the setpoints in the Closed loop area. The PV is not
+  offered in this list.
 
 Without a ΔCO the panel cannot compute K. L and T are still computed.
 
 **Ranges for %/% gains** (optional). Type the **PV min** and **PV max** of the process value, and the
 **CO min** and **CO max** of the controller output (default 0 and 100). The panel then also shows the
-gains in percent of the ranges, **K (%/%)** and **Kp (%/%)**:
+gains in percent of the ranges, **K (%/%)** and **Kp (%/%)**, and it can show the gain as a
+proportional band (see [Controller](#controller)):
 
 - K (%/%) = K × CO span / PV span, where the span is max − min.
 - The PV range is used only when both PV boxes are filled in. An empty box means no range.
 - A span of 0 counts as no range. This includes a range whose min and max are equal: it is ignored,
   and a project saved with such a range still opens.
+
+Tags of type coil or discrete input are not offered in these lists.
 
 ### 2. Cursors
 
@@ -1054,9 +1078,49 @@ nothing is visible), so zoom or scroll to the step first. It then:
   you move a cursor yourself or change the PV or CO.
 
 If no step is found, the hint line says "No step found in the controller output in the visible
-range." Find step is a starting point. Check the cursors on the Trend afterwards.
+range." Find step is a starting point. Check the cursors on the Trend afterwards. Find step looks for
+a jump of the controller output, so it suits the Open loop area. For a closed-loop test, place the
+cursors yourself (see [4. Performance](#4-performance)).
 
-### 3. Model
+### Controller
+
+This group says which form your controller uses to write its PID settings. It has three lists:
+
+- **Form**: **Ideal (ISA)**, **Series (interacting)** or **Parallel**.
+- **Gain**: **Kp** or **PB (%)**, the proportional band.
+- **Integral**: **Time** (Ti in s or min) or **Repeats/min**. It is disabled for Parallel, which always
+  shows Ki.
+
+The panel always calculates in the ideal (ISA) form, u = Kp (e + 1/Ti ∫e dt + Td de/dt), with Ti and Td
+in seconds. This group only changes how the settings are shown (the tuning table in the Open loop
+area, and the controller settings of the prediction in the Closed loop area). Choose what your
+controller's faceplate shows, and you can type the values from the screen straight into it. With
+r = 1 − 4 Td / Ti:
+
+| Choice | Shown as | Conversion from the ideal form |
+|---|---|---|
+| Ideal (ISA) | Kp, Ti, Td | none |
+| Series (interacting) | Kc', Ti', Td' | Kc' = Kp (1 + √r) / 2, Ti' = Ti (1 + √r) / 2, Td' = Ti (1 − √r) / 2 |
+| Parallel | Kp, Ki, Kd | Ki = Kp / Ti, Kd = Kp · Td |
+| **PB (%)** | the gain as a proportional band | PB = 100 / Kp(%/%), where Kp(%/%) = Kp × PV span / CO span |
+| **Repeats/min** | the integral action as a rate | repeats per minute = 60 / Ti, with Ti in s |
+
+- Without integral action (or without derivative action), Series is the same as Ideal. Series has no
+  equivalent when Ti is less than 4 Td: the row then says "No series equivalent: Ti is less than 4 Td."
+- PB needs both ranges (see [1. Signals](#1-signals)). A negative PB means a direct-acting controller.
+- With Parallel, Ki and Kd are calculated with the gain in percent when you choose PB.
+
+Every value in the tuning table has a tooltip that shows the conversion with the numbers. The choices
+are saved in the project.
+
+### Open loop
+
+Use this area for a step test with the controller in manual: you step the controller output and the
+PV responds on its own. Put C1 just before the step and C2 after the PV has settled. The area finds
+K, L and T of a first-order model with dead time, and turns them into PID settings. For example, it
+gives the values for Ziegler-Nichols open-loop tuning.
+
+#### 3. Model
 
 **Method** chooses the two points of the response that give L and T. Let ta and tb be the times at
 which the PV reaches the two points a and b (as fractions). All times are measured from the step time
@@ -1067,6 +1131,7 @@ t_step, which is the time of the controller output's step.
 | 0 % / 63.2 % (two points) | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
 | Smith, the default | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
 | Sundaresan-Krishnaswamy | 35.3 % / 85.3 % | T = 0.67 (t85.3 − t35.3) | L = 1.3 t35.3 − 0.29 t85.3 |
+| Tangent (steepest slope) | the steepest point of the response | T = ΔPV / slope | L = the time the tangent crosses y0, minus t_step |
 | Custom | **From %** (a) and **To %** (b) | see below | see below |
 
 For **Custom**:
@@ -1076,6 +1141,22 @@ For **Custom**:
 
 **From %** and **To %** are used only for Custom. They must satisfy a < b, and both must be below 100.
 The two points do not have to be in the Setpoints list: the panel searches for their times anyway.
+
+**Tangent (steepest slope)** is the classic reaction-curve construction, the one the Ziegler-Nichols
+rules were designed for. The panel finds the point where the response rises fastest and draws the
+tangent to the curve there. L is the time at which the tangent crosses the starting level y0, counted
+from the step. T is the time the tangent needs to go from y0 to y100, which is ΔPV divided by the
+slope. The tangent is drawn on the Trend as a dashed line from y0 to y100, with a small marker where it
+touches the response. It is shown while the PV is plotted.
+
+- The slope is measured on the smoothed signal, as a least-squares line over a window of the
+  **Smoothing** width S (at least 5 samples). With the Tangent method, **From %** and **To %** show
+  0 % and 100 % and are disabled.
+- **T from the 63.2 % point** (shown only with the Tangent method) takes T from the time the PV needs to
+  reach 63.2 %: T = t63.2 − t_step − L. The slope of a noisy curve is uncertain, and this variant
+  does not use the slope for T. L stays the same.
+- On noisy data the steepest point is a noise spike, and the tangent is too steep. If there is no
+  smoothing and the noise before C1 is more than 2 % of ΔPV, a check says so (see Checks below).
 
 **Which method?** The default is Smith. With a lower point of 0 %, L is the moment the PV first
 leaves its starting value. A small lag after the true dead time, such as transmitter damping or the
@@ -1089,7 +1170,7 @@ which includes those lags.
 Use 0 % / 63.2 % when the response is clean and has little noise, and the process is a true
 first-order one with a dead time and nothing else. When the method has a 0 % lower point (0 % / 63.2 %, or Custom
 starting at 0 %) and the rule is Ziegler-Nichols or Cohen-Coon, the panel adds a check (see Checks
-below).
+below). Use Tangent to follow the textbook construction, with a clean response or some smoothing.
 
 **Results** (the table in this group):
 
@@ -1117,6 +1198,15 @@ time constant T. Compare it with the measured curve. If they lie on top of each 
 describes the process well. Its colour is black by default. Click the colour button next to the
 option to choose another colour. The option and the colour are saved in the project.
 
+**Compare with:** shows what the other methods would give for the same cursors, so you can see how
+much L and T depend on the method. Tick **0 % / 63.2 %**, **Smith**, **Sundaresan** or **Tangent**
+(the box of the selected method is hidden: it is never compared with itself). A **Compare** table
+appears under the results with one row for each method: **L (s)**, **T (s)** and **Fit error**. The
+selected method comes first, marked "(used for tuning)". Hover over a value to see how that method
+got it. Each compared method also draws its model curve on the Trend, with a different dash pattern
+(dotted, dash-dotted, and so on), the same colour as the model curve. Only the selected method drives
+the tuning. **Copy results** includes the table while it is shown.
+
 **Checks.** Below the results the panel lists the checks that apply, each with a warning icon. The
 list is hidden when there are no checks. Each message and what to do:
 
@@ -1130,9 +1220,11 @@ list is hidden when there are no checks. Each message and what to do:
 | "L is negative: C1 is after the start of the response. Move C1 before the step." | Move C1 earlier, to before the step. Or use **Find step**. |
 | "L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be aggressive; prefer IMC / lambda or SIMC." | Choose **IMC / lambda** or **SIMC** in the Tuning group. |
 | "L is taken at the first movement of the PV, so lags such as transmitter damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon then give a Kp that is too high: choose the Smith method, or IMC / lambda or SIMC." | Shown when the model's lower point is 0 % and the rule is Ziegler-Nichols or Cohen-Coon. Choose the **Smith** method, or choose **IMC / lambda** or **SIMC**. See Which method? above. |
+| "The tangent is taken on noisy data, so its slope is uncertain. Set a smoothing S, or choose the Smith method." | Shown with the Tangent method when there is no smoothing and the noise is more than 2 % of ΔPV. Set **Smoothing** in the Setpoints tab, tick **T from the 63.2 % point**, or choose the **Smith** method. |
 | "The model does not fit the response well (fit error > 8 %)." | Check that the cursors frame the step and that the model curve follows the PV. The response may not be first order, so K, L and T are rough. |
+| "The controller output changes after the step: the loop looks closed. Put the controller in manual for an open-loop test, or use the Closed loop area." | The CO tag moved by itself while the PV was responding (by more than 10 % of ΔCO), so the controller was acting. Repeat the test with the controller in manual, or switch to the **Closed loop** area to measure this response. |
 
-### 4. Tuning
+#### 4. Tuning
 
 The tuning calculator turns K, L and T into P, PI and PID settings. Choose a rule in **Rule**. The
 table shows one row for each controller type. With r = L / T, the rules are:
@@ -1155,18 +1247,131 @@ table shows one row for each controller type. With r = L / T, the rules are:
 - **λ** (lambda) is the closed-loop time constant of IMC / lambda and SIMC, in seconds. A larger λ
   gives a slower, gentler controller. Enter 0, which is shown as **Auto (= L)**, to use λ = L. The box
   is enabled only for IMC / lambda and SIMC.
-- The Ti and Td values are in seconds. Tick **Ti, Td in minutes** to show them in minutes. The
-  calculation is the same.
-- The controllers use the ideal (ISA) form, which the note under the table gives:
-  u = Kp (e + 1/Ti ∫e dt + Td de/dt).
+- The table above is in the ideal form. The table in the panel follows the **Controller** group: the
+  column headers and the values change with the form, the gain unit and the integral unit. For example
+  with Series the columns are Kc', Ti' and Td'. With Parallel they are Kp, Ki and Kd. With **PB (%)**
+  the gain column is the proportional band. With **Repeats/min** the integral column is 60 / Ti. The
+  **Kp (%/%)** column is shown only for the Ideal form with Kp, because PB is already a percentage.
+  A row that cannot be written in the chosen form shows the reason across the row, for example when
+  Series has no equivalent (Ti less than 4 Td) or when PB lacks a range. Hover over a value to see the
+  rule's formula first, then the conversion with the numbers.
+- The Ti and Td values are in seconds. Tick **Ti, Td in minutes** to show them in minutes (and Ki in
+  1/min, Kd in min). The calculation is the same.
+- The note under the table gives the form, for example for the ideal form:
+  u = Kp (e + 1/Ti ∫e dt + Td de/dt). For Series and Parallel it adds "Converted from the ideal form."
 - Kp is in the CO unit per PV unit. If K is negative (the PV falls when the output rises), Kp is
   negative too. The note then says "K is negative: the controller must be direct acting (Kp is shown
   negative)."
-- **Kp (%/%)** is shown only when both ranges are set.
 - The table is empty while K, L or T is missing, or while L is zero or negative. Fix the results above
   first. "not defined" means that the rule gives no setting for that controller.
 
-The rules are a starting point. Test the controller on the process before you rely on the values.
+The rules are a starting point. Test the controller on the process before you rely on the values. The
+Closed loop area helps you do this: see [5. Prediction](#5-prediction).
+
+### Closed loop
+
+Use this area to evaluate a loop that is in Auto. Record the response of the PV (and, if you can, of the
+controller output) to a setpoint change or to a disturbance, and put C1 at the start of it and C2 after
+the PV has settled. The area measures how good the control is. It does not need a model to do so.
+The model is only for the prediction.
+
+#### 3. Test
+
+- **Test**: **Setpoint step** (the setpoint changed and the PV follows it) or **Disturbance** (the
+  setpoint stays constant and the PV comes back after a load change, for example when a valve is
+  opened).
+- **SP before** and **SP after**: the setpoints, when the SP in step 1 is **Typed**. With **Setpoint
+  step**, the panel puts the step at C1: the SP is *SP before* at C1 and *SP after* from then on. With
+  **Disturbance** there is only one box, **Setpoint**. When an SP tag is chosen, these boxes are hidden
+  and the panel reads the setpoint from the tag. It takes the moment the SP crosses the middle of its
+  change as the time of the step.
+- **Settling band**: **2 %** or **5 %**. The PV counts as settled once it stays within this band
+  around the final setpoint. The band is a percentage of the setpoint step, or of the maximum
+  deviation for a disturbance. A narrower band gives a longer settling time.
+
+Place **C1** at the setpoint change (or just before the disturbance) and **C2** after the PV has
+settled. The hint line says what is missing. Choose the PV in step 1. Choose the CO there too if you
+want the rows about the output.
+
+#### 4. Performance
+
+The table has a **Quantity** column and a **Measured** column. With the prediction shown it also has a
+**Predicted** column. A value that cannot be found shows "—". Times are counted from the setpoint
+change (from C1 for a disturbance). With **e** = SP − PV, the rows are:
+
+| Row | Meaning |
+|---|---|
+| SP before, SP after | The setpoint before and after the step (Setpoint step). |
+| Setpoint | The constant setpoint (Disturbance). |
+| Overshoot | How far the PV goes past the new setpoint, in the PV unit and as a percentage of the step. Zero or "—" when it does not. |
+| Peak time | The time of that peak. |
+| Rise time (10-90 %) | The time the PV needs to go from 10 % to 90 % of the step: how fast the loop reacts. |
+| Max deviation | The largest distance between the setpoint and the PV after the disturbance (Disturbance). |
+| Time of max deviation | The time of that largest distance (Disturbance). |
+| Settling time (2 % band) | The time after which the PV stays inside the band. The band is 2 % (or 5 %) of the step, or of the maximum deviation. "—" when the PV is still outside the band at C2. |
+| Decay ratio | The size of the second peak of the error divided by the first: how fast the oscillation dies out. 0.25 is a quarter-amplitude decay. The smaller, the better damped. "—" when there are fewer than two peaks above the band. |
+| Period | The time between those two peaks: the period of the oscillation. |
+| Steady-state error | What is left between the setpoint and the PV at the end: SP minus the mean PV over the last 10 % of the test. A controller with integral action brings it to about 0. |
+| IAE | The integral of the absolute error, ∫\|e\| dt: the area between SP and PV. Smaller is better. Compare tunings on the same test. |
+| ISE | The integral of the squared error, ∫e² dt. Like IAE, but large errors count much more, so it punishes big overshoots. |
+| ITAE | The time-weighted absolute error, ∫t \|e\| dt. An error counts more the later it happens, so it favours a quick return to the setpoint. |
+| Output min, Output max | The lowest and the highest controller output during the test. Only with a CO tag. |
+| Output travel | The total distance the controller output moved. Less travel means less wear on the valve. Only with a CO tag. |
+
+There is no single best row. Overshoot and settling time say how the response looks. IAE, ISE and
+ITAE put the whole response in one number. Output travel and the output range say what it costs the
+actuator. Hover over any value to see its definition with this result's numbers.
+
+On the Trend (while the Closed loop area is shown) the panel draws the settling band and a marker at the
+overshoot (or at the maximum deviation).
+
+**Checks.** The list below the table shows the checks that apply:
+
+| Message | What to do |
+|---|---|
+| "The setpoint does not change between the cursors: choose Disturbance, or move the cursors around the setpoint change." | Move C1 before the setpoint change and C2 after it, or choose **Disturbance** if the setpoint stays constant. |
+| "The setpoint changes between the cursors: choose Setpoint step." | You chose Disturbance, but the SP tag moves. Choose **Setpoint step**, or move the cursors to a part where the setpoint is constant. |
+| "The PV is still outside the settling band at C2: move C2 later." | Move C2 later, until the PV is inside the band. Without this, there is no settling time. |
+| "The output reached its limit: the response shows the limits of the valve, not only the tuning." | The controller output touched its range limits (CO min and CO max in step 1). Use a smaller step, or do not use this response to judge the tuning. |
+| "Choose the controller output (CO) in step 1 to see the output rows." | Choose the CO tag to fill in Output min, Output max and Output travel. |
+
+#### 5. Prediction
+
+Before you run a test on the real loop, the panel can predict the response from the process model and
+the controller settings. After the test, you compare the prediction with what happened. The prediction
+simulates the model of the process (first order with dead time) with a PID controller in the ideal
+form. It starts from the PV and the controller output at the start of the test. The controller output is
+limited to the CO range. There is no noise, no valve stroke and no
+transmitter damping.
+
+- **Predict from the open-loop model**: tick it to show the prediction. The **Predicted** column
+  appears in the performance table, and the predicted PV and output are drawn as dashed curves on the
+  Trend.
+- **Model**: the line shows the K, L and T that the prediction uses and where they come from. The
+  model is saved with the project. It is filled in for you from the open-loop result, the first time
+  the Open loop area has a valid K, L and T. After that it stays as it is, so you can move the cursors
+  to the closed-loop test without losing it. To take another model:
+  - click **Use the open-loop model** to copy K, L and T from the open-loop result of the current
+    cursors (the button is enabled while that result is valid), or
+  - type **K**, **L (s)** and **T (s)** yourself, for example from a lab handout or another tool.
+    L must be 0 or more, and T more than 0.
+
+  Without a model the line says "No model yet: do the open-loop step test first (Open loop area), or
+  type one." and there is no prediction.
+- **Controller settings**: the gain, integral and derivative of the controller you want to predict,
+  in the form chosen in the **Controller** group (for example Kp, Ti and Td, or PB and Repeats/min).
+  **Off** means no integral (or derivative) action. Hover over a box to see the conversion to the
+  ideal form.
+- **Take tuning**: choose P, PI or PID in the list and click **Use** to copy the settings of the
+  Open loop area's tuning rule, computed from the model, into the boxes above. This predicts what the
+  rule would do before you try it. PI is the default choice.
+- **Load step (CO units)**: shown for **Disturbance** only. The size of the load change, seen as a
+  change at the process input, in controller-output units. A positive value acts like a higher output.
+  A load that takes something away from the process, such as a bigger outlet, is a negative load step.
+
+The **Predicted** column has the same rows as **Measured**. Comparing the two columns shows how well
+the model describes the loop. They differ when the process is not first order or not linear, or when
+there are lags that the model does not have. The difference is larger for aggressive tunings.
 
 ### Setpoints and options
 
@@ -1237,8 +1442,8 @@ The model points are searched in the same way, even when they are not in the Set
 
 ### Tooltips
 
-Every value in the results, tuning and setpoint tables has a tooltip. It explains the value in three
-parts:
+Every value in the results, tuning, performance and setpoint tables has a tooltip. It explains the value
+in three parts:
 
 1. the name of the value and what it means;
 2. the general formula;
@@ -1246,14 +1451,22 @@ parts:
 
 For example, the K tooltip reads: "K, process gain: change of the PV per unit of controller output,
 once settled. K = ΔPV / ΔCO, K = 12.5 / 10 = 1.25 °C/%." The tooltips for L and T show the formula of
-the chosen method with the crossing times. The tooltips of the tuning values show the rule's formula
-with K, L, T and λ filled in. Numbers in the tooltips have 4 significant digits.
+the chosen method with the crossing times (for Tangent, the construction of the tangent). The tooltips
+of the tuning values show the rule's formula with K, L, T and λ filled in, then the conversion to the
+controller's form. The tooltips of the performance table give the definition of each row with the
+numbers of the test, and those of the **Predicted** column say that the value comes from the simulation
+of the model. Numbers in the tooltips have 4 significant digits.
 
 ### Copy results and export
 
-- **Copy results** (the button at the top of the panel) copies the results table, the tuning table and
-  the setpoint table, with a blank line between them. The tuning rows start with the controller type
-  (P, PI or PID).
+- **Copy results** (the button at the top of the panel) copies the tables of the area that is shown,
+  with a blank line between them.
+  - **Open loop**: the results table, the **Compare** table (while it is shown), the tuning table and
+    the setpoint table. The tuning rows start with the controller type (P, PI or PID), and their
+    columns follow the **Controller** group.
+  - **Closed loop**: the performance table, with its header row (**Quantity**, **Measured** and, when
+    shown, **Predicted**), then the setpoint table. The button is enabled when there is a closed-loop
+    result.
 - **Ctrl+C** on a table copies the selected cells. With nothing selected, it copies the whole table,
   with its header row.
 
@@ -1268,19 +1481,34 @@ Documents.
   The second has one row per tag (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note`).
 - A missing value is an empty cell, so `fit_rms` and `fit_rms_percent` are empty when no model is
   valid. For an invalid result, `note` holds the error text.
+- The file holds the open-loop results only, whichever area is shown. While the **Closed loop** area is
+  shown, the button on the panel is disabled, and its tooltip says "The CSV export covers the open-loop
+  results. Use Copy results for the closed-loop numbers." Use **Copy results** for the closed-loop
+  table. **Export > Analysis results (CSV)...** does not depend on the area.
 
-**Export > Graph image...** exports the Trend with the setpoint markers and the model curve. With
-**Include Analysis results** ticked, the box (see [Graph image](#graph-image)) holds the analysis summary,
-after the cursor readout: the times of C1 and C2, the K, L, T and fit error of the PV, and the setpoint
-times of the other tags.
+**Export > Graph image...** exports the Trend with the setpoint markers and the overlays of the area
+that is shown. With **Include Analysis results** ticked, the box (see [Graph image](#graph-image))
+holds the analysis summary, after the cursor readout.
+
+- **Open loop**: the times of C1 and C2, the K, L, T and fit error of the PV, and the setpoint times of
+  the other tags.
+- **Closed loop**: a line with the measured numbers of the test instead of the K, L and T line, for
+  example "SP step 50 → 60 %: overshoot 0.5 % (5 % of the step), settling 21.0 s (2 % band), IAE
+  40.1" (or "max deviation ..." for a disturbance). With the prediction shown, a second line starts
+  with "Predicted:". Then come the setpoint times of the other tags.
 
 ### Saving
 
-The Analysis settings are saved in the project: the PV and CO choices, the ranges, the method, the
+The Analysis settings are saved in the project: the PV, CO and SP choices, the ranges, the area that is
+shown, the Controller group, the method (Tangent included) and its options, the methods compared, the
 setpoints, the reference, the model and tuning options, the plot labels, the model curve and the guide
-lines. The cursors are not saved in a project. A session keeps them (see [Sessions](#sessions)).
+lines. For the Closed loop area: the kind of test, the typed setpoints, the settling band, the
+prediction and its controller settings, the process model and the load step. The cursors are not saved
+in a project. A session keeps them (see [Sessions](#sessions)).
 
 ### Try it with the test server
+
+This test uses the **Open loop** area, which is the one shown when you start the panel.
 
 1. Start the test server in a console: `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
 2. Start the application, choose **File > Open example...** and open `demo.mbproj` from the examples folder, then click **Connect**.
@@ -1296,9 +1524,13 @@ lines. The cursors are not saved in a project. A session keeps them (see [Sessio
    cursors on the Trend.
 7. The **Lag** results show K ≈ 1, L ≈ 1 s and T ≈ 2 s. The fit error should be Good, the model curve
    should follow the measured curve, and the checks list should be empty.
+8. Tick **Smith**, **0 % / 63.2 %** and **Tangent** in **Compare with:** (the box of the method in use is
+   hidden) to see how L and T change with the method.
 
-For a more realistic process, with a dead time, noise and a tank that is not linear, use the
-[Loop simulator](LOOP_SIMULATOR.md) and the project `examples\loop101.mbproj`.
+The test server does not close a loop. To try the **Closed loop** area, with a setpoint step, the
+performance table and the prediction, use the [Loop simulator](LOOP_SIMULATOR.md) and the project
+`examples\loop101.mbproj`: it has a level controller with a dead time, noise and a tank that is not
+linear.
 
 ## Projects
 
@@ -1309,10 +1541,11 @@ In the file, each tag has an `axis` key (`"left"` or `"right"`) and optional `qu
 keys (the quick-write presets) and `writeMin` and `writeMax` keys (the write limits; a key is written
 only when the limit is set). The Analysis settings are in an `analysis` object: `pvTag` and
 `setpointTags` (the PV and the tags whose setpoints are shown), `deltaCoTag` and `deltaCo`, `method`
-(`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
+(`"0-63.2"`, `"smith"`, `"sundaresan"`, `"tangent"` or `"custom"`), `modelPercents`, `percents`, `reference`
 (`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
 `modelColor` (`"#RRGGBB"`, default `"#202020"`), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
-and `timeUnit` (`"s"` or `"min"`). A project saved with a `method` keeps it. An older project whose `analysis` object has no `method` keeps `"0-63.2"` (or `"custom"` when its `modelPercents` are not 0 and 63.2); a new project starts with `"smith"`. A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
+and `timeUnit` (`"s"` or `"min"`). The keys of the Closed loop area and of the Controller group are also in the `analysis` object, all optional:
+`mode` (`"open"` or `"closed"`, the area that is shown), `spTag` (the SP tag; 0 means a typed setpoint), `tangentT632` (true or false, the "T from the 63.2 % point" variant), `compareMethods` (an array of `"0-63.2"`, `"smith"`, `"sundaresan"` and `"tangent"`), `controller` (`form`: `"ideal"`, `"series"` or `"parallel"`; `gain`: `"kp"` or `"pb"`; `integral`: `"time"` or `"repeats"`) and `closedLoop`: `test` (`"setpoint"` or `"disturbance"`), `spBefore` and `spAfter` (the typed setpoints), `band` (the settling band in %, above 0 and up to 50), `prediction` (`show`, `kp`, `ti` and `td`, in the ideal form, in s), `model` (`set`, `k`, `l` in s, `t` in s and `source`, a text) and `loadStep`. A missing key keeps the default (the Open loop area, a typed setpoint, the ideal form). A project saved with a `method` keeps it. An older project whose `analysis` object has no `method` keeps `"0-63.2"` (or `"custom"` when its `modelPercents` are not 0 and 63.2); a new project starts with `"smith"`. A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|

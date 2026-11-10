@@ -26,9 +26,12 @@ En français : [Guide de démarrage rapide](docs/fr/GUIDE_DEMARRAGE_RAPIDE.md) �
 - Y-axis ranges: fix each Y axis from its right-click menu, the axis wheel or Shift + wheel, and save them
   in the project
 - Analysis panel for step tests: K, L and T of a first-order model with dead time, from the cursors,
-  with method presets (0 % / 63.2 %, Smith, Sundaresan-Krishnaswamy, custom), plain-language checks,
-  a tuning calculator (Ziegler-Nichols, Cohen-Coon, IMC / lambda, SIMC) and tooltips that show the
-  formulas with your numbers
+  with method presets (0 % / 63.2 %, Smith, Sundaresan-Krishnaswamy, tangent, custom), a comparison
+  of the methods, plain-language checks, a tuning calculator (Ziegler-Nichols, Cohen-Coon, IMC /
+  lambda, SIMC) in the form of your controller (ideal, series or parallel; gain or proportional band;
+  repeats per minute) and tooltips that show the formulas with your numbers
+- Closed-loop analysis of a loop in Auto: overshoot, settling time, decay ratio, IAE and other
+  measures of a setpoint step or a disturbance, and the response predicted from the model
 - Safe writes: confirmation, per-tag Min/Max limits, checks for 32-bit values, one-click Quick A/B
   presets; 32-bit values are always written with one FC16 request
 - Add tag dialog: reads the register and detects whether it holds a 16-bit value or a float32

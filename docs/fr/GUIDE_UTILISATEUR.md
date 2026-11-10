@@ -998,7 +998,7 @@ Export > Graph image... (Ctrl+E).
 - **Include cursor readout** : offerte lorsqu'un curseur est placé. Dessine le texte du panneau
   Cursors dans un encadré. Cochée par défaut.
 - **Include Analysis results** : offerte lorsque le panneau Analysis a un résultat valide. Dessine le
-  résumé de l'analyse (K, L, T et l'erreur d'ajustement ; voir [Analysis](#analyse-réponse-à-léchelon))
+  résumé de l'analyse (K, L, T et l'erreur d'ajustement, ou les nombres en boucle fermée quand la zone Closed loop est affichée ; voir [Analysis](#analyse-réponse-à-léchelon))
   dans le même encadré, après le texte des curseurs, séparé par une ligne vide. Cochée par défaut.
 - **Readout position** : l'emplacement de l'encadré. **Below the graph** est la valeur par défaut : l'image
   grandit de la hauteur de l'encadré, de sorte que rien ne couvre les courbes. Les autres choix sont
@@ -1035,28 +1035,47 @@ partie de l'unité est omise lorsqu'elle est vide).
 
 ## Analyse (réponse à l'échelon)
 
-Le panneau Analysis mesure une réponse à l'échelon sur le graphique Trend, entre les deux curseurs C1
-et C2. Il trouve les temps auxquels la réponse atteint les repères (0 %, 28.3 % et 63.2 % par défaut). À
-partir de ces temps, il calcule un modèle du premier ordre avec temps mort : le gain K, le temps mort
-L et la constante de temps T. Il calcule aussi, à partir de ces valeurs, des réglages PID. Il est
-conçu pour les essais en échelon, par exemple pour obtenir les valeurs du réglage en boucle ouverte
-de Ziegler-Nichols.
+Le panneau Analysis mesure une réponse sur le graphique Trend, entre les deux curseurs C1 et C2. Il a
+deux zones, parce que le réglage d'une boucle est un cycle en trois étapes :
+
+1. **Identifier.** Le régulateur étant en manuel, faites un échelon de la sortie du régulateur et
+   mesurez le procédé : son gain K, son temps mort L et sa constante de temps T. C'est un essai en
+   *boucle ouverte*.
+2. **Régler.** Transformez K, L et T en réglages PID avec une règle de réglage.
+3. **Évaluer.** Mettez le régulateur en Auto avec ces réglages, changez la consigne (ou perturbez le
+   procédé) et mesurez le comportement de la boucle : dépassement, temps de stabilisation, erreur.
+   C'est un essai en *boucle fermée*. Le panneau peut aussi prédire cette réponse à partir du modèle,
+   ce qui permet de comparer la prédiction avec ce que la boucle a vraiment fait.
+
+La zone **Open loop** (boucle ouverte) couvre les étapes 1 et 2. La zone **Closed loop** (boucle
+fermée) couvre l'étape 3. Passez de l'une à l'autre avec les boutons **Open loop** et **Closed loop**,
+sous le groupe Controller. Le panneau garde tous ses paramètres et tous ses résultats quand vous
+changez de zone, et les superpositions sur Trend suivent la zone affichée.
 
 Ouvrez le panneau avec **View > Analysis**. C'est le panneau **Analysis**, du côté droit, regroupé en
-onglets avec **Cursors** et **Quick write**. Ses commandes sont réparties en quatre groupes numérotés,
-un pour chaque étape :
+onglets avec **Cursors** et **Quick write**. Ses commandes sont réparties en groupes numérotés, un
+pour chaque étape. Trois groupes sont communs aux deux zones et se trouvent en haut :
 
-1. **Signals** : la variable de procédé, la sortie du régulateur et les plages facultatives.
+1. **Signals** : la variable de procédé, la sortie du régulateur, la consigne et les plages facultatives.
 2. **Cursors** : l'emplacement de C1 et de C2, et **Find step**.
-3. **Model** : la méthode, les résultats, la courbe du modèle et les vérifications.
-4. **Tuning** : les réglages PID.
+3. **Controller** : la forme des réglages PID (il n'a pas de numéro).
+
+En dessous, la zone choisie affiche ses propres groupes :
+
+- **Open loop** : 3. **Model** (la méthode, les résultats, la courbe du modèle et les vérifications) et
+  4. **Tuning** (les réglages PID).
+- **Closed loop** : 3. **Test** (le type d'essai), 4. **Performance** (les nombres mesurés et leurs
+  vérifications) et 5. **Prediction** (la réponse prédite à partir du modèle).
 
 Les options des repères et le tableau des repères se trouvent dans leur propre onglet **Setpoints**, à
 côté d'Analysis (voir [Repères et options](#repères-et-options)). Placez le curseur de la souris sur
 une valeur pour voir comment elle a été calculée (voir [Infobulles](#infobulles)).
 
-Les superpositions (marqueurs de repères, lignes de repère et courbe du modèle) sont dessinées sur le
-graphique Trend, et l'exportation de l'image du graphique les inclut.
+Les superpositions sont dessinées sur le graphique Trend, et l'exportation de l'image du graphique les
+inclut. Les marqueurs de repères et les lignes de repère sont affichés dans les deux zones. La courbe
+du modèle, la tangente et les courbes des modèles comparés sont affichées dans la zone Open loop. La
+bande de stabilisation, le marqueur de dépassement et les courbes prédites sont affichés dans la zone
+Closed loop.
 
 ### 1. Signaux
 
@@ -1067,19 +1086,25 @@ graphique Trend, et l'exportation de l'image du graphique les inclut.
   d'une vanne. Sa variation entre les curseurs est **ΔCO**. Choisissez l'étiquette de la CO dans la
   liste. Pour saisir vous-même l'échelon, choisissez **Typed ΔCO** et entrez l'échelon, dans les
   unités de la sortie, dans la case à côté. Un ΔCO saisi n'a pas d'unité dans les résultats.
+- **Setpoint (SP)** : la consigne de la boucle de régulation. Seule la zone Closed loop l'utilise.
+  Choisissez l'étiquette de la SP dans la liste, ou choisissez **Typed** pour saisir les consignes dans
+  la zone Closed loop. La PV n'est pas offerte dans cette liste.
 
 Sans ΔCO, le panneau ne peut pas calculer K. L et T sont tout de même calculés.
 
 **Plages pour les gains en %/%** (facultatif). Saisissez les valeurs **PV min** et **PV max** de la
 variable de procédé, ainsi que **CO min** et **CO max** de la sortie du régulateur (0 et 100 par
 défaut). Le panneau affiche alors aussi les gains en pourcentage des plages, **K (%/%)** et
-**Kp (%/%)** :
+**Kp (%/%)**, et il peut afficher le gain sous forme de bande proportionnelle (voir
+[Régulateur](#régulateur)) :
 
 - K (%/%) = K × étendue de la CO / étendue de la PV, où l'étendue est max − min.
 - La plage de la PV n'est utilisée que si les deux cases de la PV sont remplies. Une case vide signifie
   qu'il n'y a pas de plage.
 - Une étendue de 0 équivaut à l'absence de plage. Cela inclut une plage dont le min et le max sont
   égaux : elle est ignorée, et un projet enregistré avec une telle plage s'ouvre quand même.
+
+Les étiquettes de type bobine ou entrée discrète ne sont pas offertes dans ces listes.
 
 ### 2. Curseurs
 
@@ -1115,9 +1140,53 @@ d'abord. Il procède ensuite ainsi :
   apparaît. Elle disparaît quand vous déplacez vous-même un curseur ou que vous changez la PV ou la CO.
 
 Si aucun échelon n'est trouvé, la ligne d'aide affiche « No step found in the controller output in
-the visible range. » Find step est un point de départ. Vérifiez ensuite les curseurs sur Trend.
+the visible range. » Find step est un point de départ. Vérifiez ensuite les curseurs sur Trend. Find
+step cherche un saut de la sortie du régulateur : il convient donc à la zone Open loop. Pour un essai en
+boucle fermée, placez les curseurs vous-même (voir [4. Performance](#4-performance)).
 
-### 3. Modèle
+### Régulateur
+
+Ce groupe indique la forme que votre régulateur utilise pour écrire ses réglages PID. Il a trois
+listes :
+
+- **Form** : **Ideal (ISA)**, **Series (interacting)** ou **Parallel**.
+- **Gain** : **Kp** ou **PB (%)**, la bande proportionnelle.
+- **Integral** : **Time** (Ti en s ou en min) ou **Repeats/min** (répétitions par minute). Cette liste
+  est désactivée pour Parallel, qui affiche toujours Ki.
+
+Le panneau calcule toujours avec la forme idéale (ISA), u = Kp (e + 1/Ti ∫e dt + Td de/dt), avec Ti et
+Td en secondes. Ce groupe ne change que la façon dont les réglages sont affichés (le tableau de
+réglage de la zone Open loop, et les réglages du régulateur de la prédiction dans la zone Closed loop).
+Choisissez ce qu'affiche la face avant de votre régulateur : vous pourrez saisir dans celui-ci les
+valeurs de l'écran telles quelles. Avec r = 1 − 4 Td / Ti :
+
+| Choix | Affiché | Conversion à partir de la forme idéale |
+|---|---|---|
+| Ideal (ISA) | Kp, Ti, Td | aucune |
+| Series (interacting) | Kc', Ti', Td' | Kc' = Kp (1 + √r) / 2, Ti' = Ti (1 + √r) / 2, Td' = Ti (1 − √r) / 2 |
+| Parallel | Kp, Ki, Kd | Ki = Kp / Ti, Kd = Kp · Td |
+| **PB (%)** | le gain sous forme de bande proportionnelle | PB = 100 / Kp(%/%), où Kp(%/%) = Kp × étendue de la PV / étendue de la CO |
+| **Repeats/min** | l'action intégrale sous forme de taux | répétitions par minute = 60 / Ti, avec Ti en s |
+
+- Sans action intégrale (ou sans action dérivée), Series est identique à Ideal. Series n'a pas
+  d'équivalent quand Ti est inférieur à 4 Td : la ligne affiche alors « No series equivalent: Ti is less
+  than 4 Td. »
+- PB a besoin des deux plages (voir [1. Signaux](#1-signaux)). Une PB négative signifie un régulateur à
+  action directe.
+- Avec Parallel, Ki et Kd sont calculés avec le gain en pourcentage quand vous choisissez PB.
+
+Chaque valeur du tableau de réglage a une infobulle qui montre la conversion avec les nombres. Les
+choix sont enregistrés dans le projet.
+
+### Boucle ouverte
+
+Utilisez cette zone pour un essai à l'échelon avec le régulateur en manuel : vous faites un échelon de
+la sortie du régulateur, et la PV réagit seule. Placez C1 juste avant l'échelon et C2 après la
+stabilisation de la PV. La zone trouve K, L et T d'un modèle du premier ordre avec temps mort, et les
+transforme en réglages PID. Elle donne par exemple les valeurs du réglage en boucle ouverte de
+Ziegler-Nichols.
+
+#### 3. Modèle
 
 **Method** choisit les deux points de la réponse qui donnent L et T. Soit ta et tb les temps auxquels
 la PV atteint les deux points a et b (en fractions). Tous les temps sont mesurés à partir du temps de
@@ -1128,6 +1197,7 @@ l'échelon t_step, qui est le temps de l'échelon de la sortie du régulateur.
 | 0 % / 63.2 % (two points) | 0 % / 63.2 % | T = t63.2 − t0 | L = t0 |
 | Smith, par défaut | 28.3 % / 63.2 % | T = 1.5 (t63.2 − t28.3) | L = t63.2 − T |
 | Sundaresan-Krishnaswamy | 35.3 % / 85.3 % | T = 0.67 (t85.3 − t35.3) | L = 1.3 t35.3 − 0.29 t85.3 |
+| Tangent (steepest slope), la tangente | le point le plus raide de la réponse | T = ΔPV / pente | L = le temps où la tangente coupe y0, moins t_step |
 | Custom | **From %** (a) et **To %** (b) | voir ci-dessous | voir ci-dessous |
 
 Pour **Custom** :
@@ -1138,6 +1208,24 @@ Pour **Custom** :
 **From %** et **To %** ne sont utilisés que pour Custom. Ils doivent respecter a < b, et les deux
 doivent être inférieurs à 100. Les deux points n'ont pas à figurer dans la liste Setpoints : le
 panneau en cherche les temps de toute façon.
+
+**Tangent (steepest slope)**, la méthode de la tangente, est la construction classique de la courbe de
+réaction, celle pour laquelle les règles de Ziegler-Nichols ont été conçues. Le panneau trouve le point
+où la réponse monte le plus vite et trace la tangente à la courbe en ce point. L est le temps où la
+tangente coupe le niveau de départ y0, compté à partir de l'échelon. T est le temps dont la tangente
+a besoin pour aller de y0 à y100, soit ΔPV divisé par la pente. La tangente est tracée sur Trend sous
+la forme d'une ligne en tirets de y0 à y100, avec un petit marqueur là où elle touche la réponse. Elle
+est affichée tant que la PV est tracée.
+
+- La pente est mesurée sur le signal lissé, par une droite des moindres carrés sur une fenêtre de la
+  largeur de **Smoothing** S (au moins 5 échantillons). Avec la méthode Tangent, **From %** et
+  **To %** affichent 0 % et 100 % et sont désactivés.
+- **T from the 63.2 % point** (affiché seulement avec la méthode Tangent) prend T à partir du temps que
+  la PV met à atteindre 63.2 % : T = t63.2 − t_step − L. La pente d'une courbe bruitée est incertaine,
+  et cette variante n'utilise pas la pente pour T. L reste le même.
+- Avec des données bruitées, le point le plus raide est un pic de bruit, et la tangente est trop raide.
+  S'il n'y a pas de lissage et que le bruit avant C1 dépasse 2 % de ΔPV, une vérification le signale
+  (voir **Checks** plus bas).
 
 **Quelle méthode ?** La méthode par défaut est Smith. Quand le point inférieur du modèle est à 0 %, L est le moment où
 la PV quitte sa valeur de départ pour la première fois. Un petit retard après le vrai temps mort,
@@ -1151,7 +1239,8 @@ touché. Ziegler-Nichols a été conçu autour du temps mort de la tangente, qui
 Utilisez 0 % / 63.2 % quand la réponse est propre, avec peu de bruit, et que le procédé est un vrai
 premier ordre avec temps mort, sans autre retard. Quand le point inférieur du modèle est à 0 %
 (0 % / 63.2 %, ou Custom qui commence à 0 %) et que la règle est Ziegler-Nichols ou Cohen-Coon, le
-panneau ajoute une vérification (voir **Checks** plus bas).
+panneau ajoute une vérification (voir **Checks** plus bas). Utilisez Tangent pour suivre la
+construction du manuel, avec une réponse propre ou un peu de lissage.
 
 **Results** (le tableau de ce groupe) :
 
@@ -1179,6 +1268,16 @@ avec la constante de temps T. Comparez-la avec la courbe mesurée. Si les deux s
 décrit bien le procédé. Sa couleur est le noir par défaut. Cliquez sur le bouton de couleur à côté de
 l'option pour choisir une autre couleur. L'option et la couleur sont enregistrées dans le projet.
 
+**Compare with:** montre ce que les autres méthodes donneraient avec les mêmes curseurs, pour voir à
+quel point L et T dépendent de la méthode. Cochez **0 % / 63.2 %**, **Smith**, **Sundaresan** ou
+**Tangent** (la case de la méthode choisie est masquée : elle n'est jamais comparée à elle-même). Un
+tableau **Compare** apparaît sous les résultats, avec une ligne par méthode : **L (s)**, **T (s)** et
+**Fit error**. La méthode choisie vient en premier, marquée « (used for tuning) ». Placez le curseur
+de la souris sur une valeur pour voir comment cette méthode l'a obtenue. Chaque méthode comparée trace
+aussi sa courbe de modèle sur Trend, avec un style de tirets différent (pointillé, tirets-points, etc.),
+de la même couleur que la courbe du modèle. Seule la méthode choisie détermine le réglage. **Copy
+results** inclut le tableau tant qu'il est affiché.
+
 **Checks.** Sous les résultats, le panneau énumère les vérifications qui s'appliquent, chacune avec
 une icône d'avertissement. La liste est masquée quand il n'y a aucune vérification. Voici chaque
 message et ce qu'il faut faire :
@@ -1193,9 +1292,11 @@ message et ce qu'il faut faire :
 | « L is negative: C1 is after the start of the response. Move C1 before the step. » | Déplacez C1 plus tôt, avant l'échelon. Ou utilisez **Find step**. |
 | « L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be aggressive; prefer IMC / lambda or SIMC. » | Choisissez **IMC / lambda** ou **SIMC** dans le groupe Tuning. |
 | "L is taken at the first movement of the PV, so lags such as transmitter damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon then give a Kp that is too high: choose the Smith method, or IMC / lambda or SIMC." | Affiché quand le point inférieur du modèle est à 0 % et que la règle est Ziegler-Nichols ou Cohen-Coon. Choisissez la méthode **Smith**, ou choisissez **IMC / lambda** ou **SIMC**. Voir Quelle méthode ? plus haut. |
+| « The tangent is taken on noisy data, so its slope is uncertain. Set a smoothing S, or choose the Smith method. » | Affiché avec la méthode Tangent quand il n'y a pas de lissage et que le bruit dépasse 2 % de ΔPV. Réglez **Smoothing** dans l'onglet Setpoints, cochez **T from the 63.2 % point**, ou choisissez la méthode **Smith**. |
 | « The model does not fit the response well (fit error > 8 %). » | Vérifiez que les curseurs encadrent l'échelon et que la courbe du modèle suit la PV. La réponse n'est peut-être pas du premier ordre : K, L et T sont alors approximatifs. |
+| « The controller output changes after the step: the loop looks closed. Put the controller in manual for an open-loop test, or use the Closed loop area. » | L'étiquette de la CO a bougé d'elle-même pendant que la PV réagissait (de plus de 10 % de ΔCO) : le régulateur agissait. Refaites l'essai avec le régulateur en manuel, ou passez à la zone **Closed loop** pour mesurer cette réponse. |
 
-### 4. Réglage
+#### 4. Réglage
 
 Le calculateur de réglage transforme K, L et T en réglages P, PI et PID. Choisissez une règle dans
 **Rule**. Le tableau affiche une ligne pour chaque type de régulateur. Avec r = L / T, les règles
@@ -1219,20 +1320,139 @@ sont :
 - **λ** (lambda) est la constante de temps en boucle fermée de IMC / lambda et de SIMC, en secondes.
   Un λ plus grand donne un régulateur plus lent et plus doux. Entrez 0, qui s'affiche
   **Auto (= L)**, pour utiliser λ = L. La case n'est activée que pour IMC / lambda et SIMC.
+- Le tableau ci-dessus est dans la forme idéale. Le tableau du panneau suit le groupe **Controller** :
+  les en-têtes de colonnes et les valeurs changent avec la forme, l'unité du gain et l'unité de
+  l'intégrale. Par exemple, avec Series, les colonnes sont Kc', Ti' et Td'. Avec Parallel, ce sont Kp,
+  Ki et Kd. Avec **PB (%)**, la colonne du gain est la bande proportionnelle. Avec **Repeats/min**, la
+  colonne de l'intégrale est 60 / Ti. La colonne **Kp (%/%)** n'est affichée que pour la forme Ideal
+  avec Kp, parce que PB est déjà un pourcentage. Une ligne qui ne peut pas s'écrire dans la forme
+  choisie affiche la raison sur toute la ligne, par exemple quand Series n'a pas d'équivalent (Ti
+  inférieur à 4 Td) ou quand PB manque d'une plage. Placez le curseur de la souris sur une valeur pour
+  voir d'abord la formule de la règle, puis la conversion avec les nombres.
 - Les valeurs de Ti et de Td sont en secondes. Cochez **Ti, Td in minutes** pour les afficher en
-  minutes. Le calcul est le même.
-- Les régulateurs utilisent la forme idéale (ISA), que la note sous le tableau donne :
-  u = Kp (e + 1/Ti ∫e dt + Td de/dt).
+  minutes (et Ki en 1/min, Kd en min). Le calcul est le même.
+- La note sous le tableau donne la forme, par exemple pour la forme idéale :
+  u = Kp (e + 1/Ti ∫e dt + Td de/dt). Pour Series et Parallel, elle ajoute « Converted from the ideal
+  form. »
 - Kp est exprimé en unité de la CO par unité de la PV. Si K est négatif (la PV diminue quand la
   sortie augmente), Kp est négatif aussi. La note affiche alors « K is negative: the controller must
   be direct acting (Kp is shown negative). »
-- **Kp (%/%)** n'est affiché que lorsque les deux plages sont définies.
 - Le tableau est vide tant que K, L ou T est manquant, ou que L est nul ou négatif. Corrigez d'abord
   les résultats ci-dessus. « not defined » signifie que la règle ne donne aucun réglage pour ce
   régulateur.
 
 Les règles ne sont qu'un point de départ. Essayez le régulateur sur le procédé avant de vous fier aux
-valeurs.
+valeurs. La zone Closed loop vous aide à le faire : voir [5. Prédiction](#5-prédiction).
+
+### Boucle fermée
+
+Utilisez cette zone pour évaluer une boucle en Auto. Enregistrez la réponse de la PV (et, si possible, de
+la sortie du régulateur) à un changement de consigne ou à une perturbation, puis placez C1 au début
+de cette réponse et C2 après la stabilisation de la PV. La zone mesure la qualité de la régulation. Elle
+n'a pas besoin d'un modèle pour cela : le modèle ne sert qu'à la prédiction.
+
+#### 3. Essai
+
+- **Test** : **Setpoint step** (échelon de consigne : la consigne a changé et la PV la suit) ou
+  **Disturbance** (perturbation : la consigne reste constante et la PV revient après un changement de
+  charge, par exemple quand une vanne est ouverte).
+- **SP before** et **SP after** : les consignes, quand la SP de l'étape 1 est **Typed**. Avec **Setpoint
+  step**, le panneau place l'échelon à C1 : la consigne vaut *SP before* à C1 et *SP after* ensuite. Avec
+  **Disturbance**, il n'y a qu'une case, **Setpoint**. Quand une étiquette de SP est choisie, ces cases
+  sont masquées et le panneau lit la consigne dans l'étiquette. Il prend comme temps de l'échelon le
+  moment où la SP passe au milieu de son changement.
+- **Settling band** (bande de stabilisation) : **2 %** ou **5 %**. La PV est considérée comme stabilisée
+  quand elle reste dans cette bande autour de la consigne finale. La bande est un pourcentage de
+  l'échelon de consigne, ou de la déviation maximale pour une perturbation. Une bande plus étroite
+  donne un temps de stabilisation plus long.
+
+Placez **C1** au changement de consigne (ou juste avant la perturbation) et **C2** après la
+stabilisation de la PV. La ligne d'aide indique ce qui manque. Choisissez la PV à l'étape 1. Choisissez-y
+aussi la CO si vous voulez les lignes sur la sortie.
+
+#### 4. Performance
+
+Le tableau a une colonne **Quantity** et une colonne **Measured**. Quand la prédiction est affichée, il a
+aussi une colonne **Predicted**. Une valeur introuvable affiche « — ». Les temps sont comptés à partir
+du changement de consigne (à partir de C1 pour une perturbation). Avec **e** = SP − PV, les lignes sont :
+
+| Ligne | Signification |
+|---|---|
+| SP before, SP after | La consigne avant et après l'échelon (Setpoint step). |
+| Setpoint | La consigne constante (Disturbance). |
+| Overshoot | De combien la PV dépasse la nouvelle consigne (le dépassement), dans l'unité de la PV et en pourcentage de l'échelon. Zéro ou « — » quand elle ne dépasse pas. |
+| Peak time | Le temps de ce pic. |
+| Rise time (10-90 %) | Le temps que la PV met à aller de 10 % à 90 % de l'échelon (le temps de montée) : la rapidité de réaction de la boucle. |
+| Max deviation | La plus grande distance entre la consigne et la PV après la perturbation (Disturbance). |
+| Time of max deviation | Le temps de cette plus grande distance (Disturbance). |
+| Settling time (2 % band) | Le temps de stabilisation : le temps après lequel la PV reste dans la bande. La bande est de 2 % (ou 5 %) de l'échelon, ou de la déviation maximale. « — » quand la PV est encore hors de la bande à C2. |
+| Decay ratio | Le rapport d'amortissement : la taille du deuxième pic de l'erreur divisée par celle du premier. Il indique la vitesse à laquelle l'oscillation s'éteint. 0.25 est une atténuation au quart d'amplitude. Plus il est petit, mieux la boucle est amortie. « — » quand il y a moins de deux pics au-dessus de la bande. |
+| Period | Le temps entre ces deux pics : la période de l'oscillation. |
+| Steady-state error | L'erreur statique : ce qui reste entre la consigne et la PV à la fin, soit la SP moins la PV moyenne sur les derniers 10 % de l'essai. Un régulateur avec action intégrale la ramène à environ 0. |
+| IAE | L'intégrale de l'erreur absolue, ∫\|e\| dt : l'aire entre la SP et la PV. Plus petite, c'est mieux. Comparez des réglages sur le même essai. |
+| ISE | L'intégrale de l'erreur au carré, ∫e² dt. Comme IAE, mais les grandes erreurs comptent beaucoup plus : elle pénalise les gros dépassements. |
+| ITAE | L'erreur absolue pondérée par le temps, ∫t \|e\| dt. Une erreur compte plus quand elle arrive tard : elle favorise un retour rapide à la consigne. |
+| Output min, Output max | La plus basse et la plus haute sortie du régulateur pendant l'essai. Seulement avec une étiquette de CO. |
+| Output travel | La distance totale parcourue par la sortie du régulateur. Moins de course, c'est moins d'usure de la vanne. Seulement avec une étiquette de CO. |
+
+Aucune ligne n'est la meilleure à elle seule. Le dépassement et le temps de stabilisation décrivent
+l'allure de la réponse. IAE, ISE et ITAE résument toute la réponse en un nombre. La course et la plage
+de la sortie disent ce que cela coûte à l'actionneur. Placez le curseur de la souris sur une valeur
+pour voir sa définition avec les nombres de ce résultat.
+
+Sur Trend (tant que la zone Closed loop est affichée), le panneau dessine la bande de stabilisation et
+un marqueur au dépassement (ou à la déviation maximale).
+
+**Checks.** La liste sous le tableau montre les vérifications qui s'appliquent :
+
+| Message | Quoi faire |
+|---|---|
+| « The setpoint does not change between the cursors: choose Disturbance, or move the cursors around the setpoint change. » | Placez C1 avant le changement de consigne et C2 après, ou choisissez **Disturbance** si la consigne reste constante. |
+| « The setpoint changes between the cursors: choose Setpoint step. » | Vous avez choisi Disturbance, mais l'étiquette de la SP bouge. Choisissez **Setpoint step**, ou placez les curseurs sur une partie où la consigne est constante. |
+| « The PV is still outside the settling band at C2: move C2 later. » | Déplacez C2 plus tard, jusqu'à ce que la PV soit dans la bande. Sans cela, il n'y a pas de temps de stabilisation. |
+| « The output reached its limit: the response shows the limits of the valve, not only the tuning. » | La sortie du régulateur a touché les limites de sa plage (CO min et CO max à l'étape 1). Utilisez un échelon plus petit, ou ne vous servez pas de cette réponse pour juger le réglage. |
+| « Choose the controller output (CO) in step 1 to see the output rows. » | Choisissez l'étiquette de la CO pour remplir Output min, Output max et Output travel. |
+
+#### 5. Prédiction
+
+Avant de faire un essai sur la vraie boucle, le panneau peut prédire la réponse à partir du modèle du
+procédé et des réglages du régulateur. Après l'essai, vous comparez la prédiction avec ce qui s'est
+passé. La prédiction simule le modèle du procédé (premier ordre avec temps mort) avec un régulateur PID
+de forme idéale. Elle part de la PV et de la sortie du régulateur au début de l'essai. La sortie du
+régulateur est limitée à la plage de la CO. Il n'y a ni bruit, ni course de vanne, ni amortissement du
+transmetteur.
+
+- **Predict from the open-loop model** : cochez-la pour afficher la prédiction. La colonne
+  **Predicted** apparaît dans le tableau de performance, et la PV et la sortie prédites sont tracées en
+  tirets sur Trend.
+- **Model** : la ligne montre les K, L et T que la prédiction utilise, et d'où ils viennent. Le modèle
+  est enregistré dans le projet. Il est rempli pour vous à partir du résultat en boucle ouverte, la
+  première fois que la zone Open loop a des K, L et T valides. Ensuite, il ne change plus : vous
+  pouvez donc déplacer les curseurs vers l'essai en boucle fermée sans le perdre. Pour prendre un
+  autre modèle :
+  - cliquez sur **Use the open-loop model** pour copier K, L et T du résultat en boucle ouverte des
+    curseurs actuels (le bouton est activé tant que ce résultat est valide), ou
+  - saisissez vous-même **K**, **L (s)** et **T (s)**, par exemple à partir d'un énoncé de laboratoire
+    ou d'un autre outil. L doit être 0 ou plus, et T plus grand que 0.
+
+  Sans modèle, la ligne affiche « No model yet: do the open-loop step test first (Open loop area), or
+  type one. », et il n'y a pas de prédiction.
+- **Réglages du régulateur** : le gain, l'intégrale et la dérivée du régulateur à prédire, dans la
+  forme choisie dans le groupe **Controller** (par exemple Kp, Ti et Td, ou PB et Repeats/min). **Off**
+  signifie qu'il n'y a pas d'action intégrale (ou dérivée). Placez le curseur de la souris sur une
+  case pour voir la conversion vers la forme idéale.
+- **Take tuning** : choisissez P, PI ou PID dans la liste et cliquez sur **Use** pour copier dans les
+  cases ci-dessus les réglages de la règle de réglage de la zone Open loop, calculés à partir du
+  modèle. Cela prédit ce que la règle donnerait avant que vous l'essayiez. PI est le choix par défaut.
+- **Load step (CO units)** : affiché pour **Disturbance** seulement. La taille du changement de
+  charge, vu comme un changement à l'entrée du procédé, en unités de sortie du régulateur. Une valeur
+  positive agit comme une sortie plus élevée. Une charge qui retire quelque chose au procédé, comme
+  une vidange plus grande, est un échelon de charge négatif.
+
+La colonne **Predicted** a les mêmes lignes que **Measured**. La comparaison des deux colonnes montre à
+quel point le modèle décrit la boucle. Elles diffèrent quand le procédé n'est pas du premier ordre ou
+n'est pas linéaire, ou quand il y a des retards que le modèle n'a pas. La différence est plus grande
+pour des réglages agressifs.
 
 ### Repères et options
 
@@ -1308,8 +1528,8 @@ Setpoints.
 
 ### Infobulles
 
-Chaque valeur des tableaux de résultats, de réglage et de repères a une infobulle. Elle explique la
-valeur en trois parties :
+Chaque valeur des tableaux de résultats, de réglage, de performance et de repères a une infobulle. Elle
+explique la valeur en trois parties :
 
 1. le nom de la valeur et sa signification ;
 2. la formule générale ;
@@ -1317,15 +1537,23 @@ valeur en trois parties :
 
 Par exemple, l'infobulle de K se lit : « K, process gain: change of the PV per unit of controller
 output, once settled. K = ΔPV / ΔCO, K = 12.5 / 10 = 1.25 °C/%. » Les infobulles de L et de T
-montrent la formule de la méthode choisie avec les temps de franchissement. Les infobulles des
-valeurs de réglage montrent la formule de la règle avec K, L, T et λ remplacés par leurs valeurs. Les
+montrent la formule de la méthode choisie avec les temps de franchissement (pour Tangent, la
+construction de la tangente). Les infobulles des valeurs de réglage montrent la formule de la règle
+avec K, L, T et λ remplacés par leurs valeurs, puis la conversion vers la forme du régulateur. Les
+infobulles du tableau de performance donnent la définition de chaque ligne avec les nombres de l'essai,
+et celles de la colonne **Predicted** indiquent que la valeur vient de la simulation du modèle. Les
 nombres dans les infobulles ont 4 chiffres significatifs.
 
 ### Copier et exporter les résultats
 
-- **Copy results** (le bouton en haut du panneau) copie le tableau des résultats, le tableau de
-  réglage et le tableau des repères, avec une ligne vide entre eux. Les lignes de réglage commencent
-  par le type de régulateur (P, PI ou PID).
+- **Copy results** (le bouton en haut du panneau) copie les tableaux de la zone affichée, avec une ligne
+  vide entre eux.
+  - **Open loop** : le tableau des résultats, le tableau **Compare** (tant qu'il est affiché), le
+    tableau de réglage et le tableau des repères. Les lignes de réglage commencent par le type de
+    régulateur (P, PI ou PID), et leurs colonnes suivent le groupe **Controller**.
+  - **Closed loop** : le tableau de performance, avec sa ligne d'en-tête (**Quantity**, **Measured** et,
+    quand elle est affichée, **Predicted**), puis le tableau des repères. Le bouton est activé quand il
+    y a un résultat en boucle fermée.
 - **Ctrl+C** sur un tableau copie les cellules sélectionnées. Sans sélection, il copie tout le
   tableau, avec sa ligne d'en-tête.
 
@@ -1342,20 +1570,37 @@ d'exportation ou dans Documents.
   (`tag,c1_s,c2_s,y0,y100,delta_pv,delta_co,step_time_s,gain_k,dead_time_l_s,time_constant_t_s,fit_rms,fit_rms_percent,note`).
 - Une valeur manquante est une cellule vide : `fit_rms` et `fit_rms_percent` sont donc vides quand
   aucun modèle n'est valide. Pour un résultat invalide, `note` contient le texte de l'erreur.
+- Le fichier ne contient que les résultats en boucle ouverte, quelle que soit la zone affichée. Tant que
+  la zone **Closed loop** est affichée, le bouton du panneau est désactivé, et son infobulle indique
+  « The CSV export covers the open-loop results. Use Copy results for the closed-loop numbers. »
+  Utilisez **Copy results** pour le tableau en boucle fermée. **Export > Analysis results (CSV)...** ne
+  dépend pas de la zone.
 
-**Export > Graph image...** exporte Trend avec les marqueurs de repères et la courbe du modèle. Avec
-**Include Analysis results** coché, la boîte (voir [Image du graphique](#image-du-graphique)) contient le
-résumé de l'analyse, après le texte des curseurs : les temps de C1 et de C2, les K, L, T et l'erreur
-d'ajustement de la PV, et les temps de repère des autres étiquettes.
+**Export > Graph image...** exporte Trend avec les marqueurs de repères et les superpositions de la
+zone affichée. Avec **Include Analysis results** coché, la boîte (voir
+[Image du graphique](#image-du-graphique)) contient le résumé de l'analyse, après le texte des curseurs.
+
+- **Open loop** : les temps de C1 et de C2, les K, L, T et l'erreur d'ajustement de la PV, et les temps
+  de repère des autres étiquettes.
+- **Closed loop** : une ligne avec les nombres mesurés de l'essai à la place de la ligne K, L et T, par
+  exemple « SP step 50 → 60 %: overshoot 0.5 % (5 % of the step), settling 21.0 s (2 % band), IAE
+  40.1 » (ou « max deviation ... » pour une perturbation). Quand la prédiction est affichée, une
+  deuxième ligne commence par « Predicted: ». Viennent ensuite les temps de repère des autres
+  étiquettes.
 
 ### Sauvegarde
 
-Les paramètres d'Analysis sont enregistrés dans le projet : les choix de PV et de CO, les plages, la
-méthode, les repères, la référence, les options du modèle et du réglage, les étiquettes du graphique,
-la courbe du modèle et les lignes de repère. Les curseurs ne sont pas enregistrés dans un projet. Une
-session les conserve (voir [Sessions](#sessions)).
+Les paramètres d'Analysis sont enregistrés dans le projet : les choix de PV, de CO et de SP, les
+plages, la zone affichée, le groupe Controller, la méthode (Tangent compris) et ses options, les
+méthodes comparées, les repères, la référence, les options du modèle et du réglage, les étiquettes du
+graphique, la courbe du modèle et les lignes de repère. Pour la zone Closed loop : le type d'essai, les
+consignes saisies, la bande de stabilisation, la prédiction et ses réglages de régulateur, le modèle du
+procédé et l'échelon de charge. Les curseurs ne sont pas enregistrés dans un projet. Une session les
+conserve (voir [Sessions](#sessions)).
 
 ### Essai avec le serveur de test
+
+Cet essai utilise la zone **Open loop**, qui est celle affichée au démarrage du panneau.
 
 1. Démarrez le serveur de test dans une console : `build\msvc-debug\bin\modbus_test_server.exe --port 1502`.
 2. Démarrez l'application, choisissez **File > Open example...** et ouvrez `demo.mbproj` dans le dossier
@@ -1373,9 +1618,13 @@ session les conserve (voir [Sessions](#sessions)).
 7. Les résultats de **Lag** montrent K ≈ 1, L ≈ 1 s et T ≈ 2 s. L'erreur d'ajustement devrait être
    Good, la courbe du modèle devrait suivre la courbe mesurée, et la liste des vérifications devrait
    être vide.
+8. Cochez **Smith**, **0 % / 63.2 %** et **Tangent** dans **Compare with:** (la case de la méthode
+   utilisée est masquée) pour voir comment L et T changent avec la méthode.
 
-Pour un procédé plus réaliste, avec un temps mort, du bruit et un réservoir non linéaire, utilisez le
-[Simulateur de boucle](SIMULATEUR_DE_BOUCLE.md) et le projet `examples\loop101.mbproj`.
+Le serveur de test ne ferme pas de boucle. Pour essayer la zone **Closed loop**, avec un échelon de
+consigne, le tableau de performance et la prédiction, utilisez le
+[Simulateur de boucle](SIMULATEUR_DE_BOUCLE.md) et le projet `examples\loop101.mbproj` : il a un
+régulateur de niveau avec un temps mort, du bruit et un réservoir non linéaire.
 
 ## Projets
 
@@ -1389,10 +1638,10 @@ Dans le fichier, chaque étiquette a une clé `axis` (`"left"` ou `"right"`) et 
 `quickA` et `quickB` (les préréglages d'écriture rapide) et `writeMin` et `writeMax` (les limites
 d'écriture ; une clé n'est écrite que lorsque la limite est définie). Les paramètres d'Analysis sont
 dans un objet `analysis` : `pvTag` et `setpointTags` (la PV et les étiquettes dont les repères sont
-affichés), `deltaCoTag` et `deltaCo`, `method` (`"0-63.2"`, `"smith"`, `"sundaresan"` ou `"custom"`),
+affichés), `deltaCoTag` et `deltaCo`, `method` (`"0-63.2"`, `"smith"`, `"sundaresan"`, `"tangent"` ou `"custom"`),
 `modelPercents`, `percents`, `reference` (`"cursor"` ou `"mean"`), `referenceWindowS`, `smoothingS`,
 `pvRange`, `coRange`, `showModel`, `modelColor` (`"#RRGGBB"`, `"#202020"` par défaut), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`,
-`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Un projet enregistré avec une `method` la conserve. Un ancien projet dont l'objet `analysis` n'a pas de `method` garde `"0-63.2"` (ou `"custom"` si ses `modelPercents` ne sont pas 0 et 63.2) ; un nouveau projet commence avec `"smith"`. Un objet
+`"cohen-coon"`, `"imc"` ou `"simc"`), `lambdaS` et `timeUnit` (`"s"` ou `"min"`). Les clés de la zone Closed loop et du groupe Controller sont aussi dans l'objet `analysis`, toutes facultatives : `mode` (`"open"` ou `"closed"`, la zone affichée), `spTag` (l'étiquette de la SP ; 0 signifie une consigne saisie), `tangentT632` (vrai ou faux, la variante « T from the 63.2 % point »), `compareMethods` (un tableau de `"0-63.2"`, `"smith"`, `"sundaresan"` et `"tangent"`), `controller` (`form` : `"ideal"`, `"series"` ou `"parallel"` ; `gain` : `"kp"` ou `"pb"` ; `integral` : `"time"` ou `"repeats"`) et `closedLoop` : `test` (`"setpoint"` ou `"disturbance"`), `spBefore` et `spAfter` (les consignes saisies), `band` (la bande de stabilisation en %, plus grande que 0 et jusqu'à 50), `prediction` (`show`, `kp`, `ti` et `td`, en forme idéale, en s), `model` (`set`, `k`, `l` en s, `t` en s et `source`, un texte) et `loadStep`. Une clé absente garde la valeur par défaut (la zone Open loop, une consigne saisie, la forme idéale). Un projet enregistré avec une `method` la conserve. Un ancien projet dont l'objet `analysis` n'a pas de `method` garde `"0-63.2"` (ou `"custom"` si ses `modelPercents` ne sont pas 0 et 63.2) ; un nouveau projet commence avec `"smith"`. Un objet
 `yAxes` de premier niveau contient les plages fixées des axes Y de la tendance : `left` et `right` valent chacun `"auto"` ou une paire `[min, max]` avec min inférieur à max (par exemple `"left": [0, 100]`). Une clé absente vaut `"auto"`. Un tableau
 `hiddenColumns` de premier niveau énumère les colonnes du tableau des étiquettes masquées dans ce
 projet (par exemple `"raw"`, `"gain"`, `"quickA"`). Toutes ces clés sont facultatives : un fichier

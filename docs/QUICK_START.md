@@ -137,6 +137,7 @@ curve.
 Hover over any value to see how it was calculated.
 
 **Going further:** the **Analysis** tab also fits a first-order model (gain K, dead time L, time
-constant T) and suggests PID settings. See [Analysis (step response)](USER_GUIDE.md#analysis-step-response)
+constant T) and suggests PID settings (its **Open loop** area). Its **Closed loop** area measures
+the overshoot and the settling time of a loop in Auto, and predicts them from the model. See [Analysis (step response)](USER_GUIDE.md#analysis-step-response)
 in the User Guide. To keep your work, use **File > Save** (the project) or **File > Save session...**
 (the project plus the recording and the cursors).
