@@ -178,6 +178,10 @@
         <translation>Personnalisé</translation>
     </message>
     <message>
+        <source>Tangent (steepest slope)</source>
+        <translation>Tangente (pente maximale)</translation>
+    </message>
+    <message>
         <source>Ziegler-Nichols (open loop)</source>
         <translation>Ziegler-Nichols (boucle ouverte)</translation>
     </message>
@@ -204,6 +208,10 @@
     <message>
         <source>Change of the controller output (0 = unknown, no gain K).</source>
         <translation>Variation de la sortie du régulateur (0 = inconnue, pas de gain K).</translation>
+    </message>
+    <message>
+        <source>The setpoint (SP) of the control loop, used by the closed-loop analysis. Choose &quot;Typed&quot; to enter it by hand there.</source>
+        <translation>La consigne (SP) de la boucle de régulation, utilisée par l&apos;analyse en boucle fermée. Choisissez «&#xa0;Saisie&#xa0;» pour la saisir manuellement à cet endroit.</translation>
     </message>
     <message>
         <source>PV min</source>
@@ -238,6 +246,10 @@
         <translation>CO (saisi)</translation>
     </message>
     <message>
+        <source>Setpoint (SP)</source>
+        <translation>Consigne (SP)</translation>
+    </message>
+    <message>
         <source>Ranges for %/% gains</source>
         <translation>Plages pour les gains en %/%</translation>
     </message>
@@ -266,6 +278,14 @@
         <translation>Comment L (temps mort) et T (constante de temps) sont déterminés à partir de deux points de la réponse.</translation>
     </message>
     <message>
+        <source>T from the 63.2 % point</source>
+        <translation>T à partir du point à 63.2 %</translation>
+    </message>
+    <message>
+        <source>T = t63.2 - step time - L, instead of the time the tangent needs to go from y0 to y100.</source>
+        <translation>T = t63.2 - temps de l&apos;échelon - L, au lieu du temps dont la tangente a besoin pour passer de y0 à y100.</translation>
+    </message>
+    <message>
         <source>Quantity</source>
         <translation>Grandeur</translation>
     </message>
@@ -288,6 +308,30 @@
     <message>
         <source>To %</source>
         <translation>À %</translation>
+    </message>
+    <message>
+        <source>Compare with:</source>
+        <translation>Comparer avec :</translation>
+    </message>
+    <message>
+        <source>0 % / 63.2 %</source>
+        <translation>0 % / 63.2 %</translation>
+    </message>
+    <message>
+        <source>Smith</source>
+        <translation>Smith</translation>
+    </message>
+    <message>
+        <source>Sundaresan</source>
+        <translation>Sundaresan</translation>
+    </message>
+    <message>
+        <source>Tangent</source>
+        <translation>Tangente</translation>
+    </message>
+    <message>
+        <source>Also show the L, T and model curve of %1.</source>
+        <translation>Afficher aussi L, T et la courbe du modèle de %1.</translation>
     </message>
     <message>
         <source>Colour of the model curve</source>
@@ -316,6 +360,34 @@
     <message>
         <source>Rule</source>
         <translation>Règle</translation>
+    </message>
+    <message>
+        <source>Choose the form your controller uses; the app computes in the ideal form and converts.</source>
+        <translation>Choisissez la forme qu&apos;utilise votre régulateur; l&apos;application calcule en forme idéale et convertit.</translation>
+    </message>
+    <message>
+        <source>PB = 100 / Kp in %/%: needs the PV and CO ranges.</source>
+        <translation>PB = 100 / Kp en %/%&#xa0;: nécessite les étendues de la PV et de la CO.</translation>
+    </message>
+    <message>
+        <source>Repeats per minute = 60 / Ti (Ti in s).</source>
+        <translation>Répétitions par minute = 60 / Ti (Ti en s).</translation>
+    </message>
+    <message>
+        <source>Open loop</source>
+        <translation>Boucle ouverte</translation>
+    </message>
+    <message>
+        <source>Open loop: identify a model from a step of the controller output and tune the controller.</source>
+        <translation>Boucle ouverte&#xa0;: identifier un modèle à partir d&apos;un échelon de la sortie du régulateur et régler le régulateur.</translation>
+    </message>
+    <message>
+        <source>Closed loop</source>
+        <translation>Boucle fermée</translation>
+    </message>
+    <message>
+        <source>Closed loop: performance of a recorded response of the control loop.</source>
+        <translation>Boucle fermée&#xa0;: performance d&apos;une réponse enregistrée de la boucle de régulation.</translation>
     </message>
     <message>
         <source>Value at cursor</source>
@@ -406,8 +478,16 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>ΔCO saisi</translation>
     </message>
     <message>
+        <source>Typed</source>
+        <translation>Saisie</translation>
+    </message>
+    <message>
         <source>No step found in the controller output in the visible range.</source>
         <translation>Aucun échelon trouvé dans la sortie du régulateur dans la plage visible.</translation>
+    </message>
+    <message>
+        <source>The CSV export covers the open-loop results. Use Copy results for the closed-loop numbers.</source>
+        <translation>L&apos;export CSV couvre les résultats en boucle ouverte. Utilisez Copier les résultats pour les valeurs en boucle fermée.</translation>
     </message>
     <message>
         <source>Choose the process value (PV) in step 1.</source>
@@ -432,6 +512,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>Fit error</source>
         <translation>Erreur d&apos;ajustement</translation>
+    </message>
+    <message>
+        <source>%1 (used for tuning)</source>
+        <translation>%1 (utilisé pour le réglage)</translation>
     </message>
     <message>
         <source>The controller output (CO) does not change between the cursors: K can&apos;t be computed. Move the cursors around the step.</source>
@@ -466,8 +550,16 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>L est pris au premier mouvement de la PV&#xa0;: les retards comme l&apos;amortissement du transmetteur sont alors comptés dans T, et L est trop court. Ziegler-Nichols et Cohen-Coon donnent alors un Kp trop élevé&#xa0;: choisissez la méthode de Smith, ou IMC / lambda ou SIMC.</translation>
     </message>
     <message>
+        <source>The tangent is taken on noisy data, so its slope is uncertain. Set a smoothing S, or choose the Smith method.</source>
+        <translation>La tangente est prise sur des données bruitées, sa pente est donc incertaine. Réglez un lissage S ou choisissez la méthode de Smith.</translation>
+    </message>
+    <message>
         <source>The model does not fit the response well (fit error &gt; 8 %).</source>
         <translation>Le modèle ne reproduit pas bien la réponse (erreur d&apos;ajustement &gt; 8 %).</translation>
+    </message>
+    <message>
+        <source>The controller output changes after the step: the loop looks closed. Put the controller in manual for an open-loop test, or use the Closed loop area.</source>
+        <translation>La sortie du régulateur change après l&apos;échelon&#xa0;: la boucle semble fermée. Mettez le régulateur en manuel pour un essai en boucle ouverte, ou utilisez la zone Boucle fermée.</translation>
     </message>
     <message>
         <source>not defined</source>
@@ -488,6 +580,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>s</source>
         <translation>s</translation>
+    </message>
+    <message>
+        <source>Converted from the ideal form.</source>
+        <translation>Converti à partir de la forme idéale.</translation>
     </message>
     <message>
         <source>K is negative: the controller must be direct acting (Kp is shown negative).</source>
@@ -512,6 +608,14 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>not found</source>
         <translation>introuvable</translation>
+    </message>
+    <message>
+        <source>%1 model (%2)</source>
+        <translation>Modèle %1 (%2)</translation>
+    </message>
+    <message>
+        <source>%1 tangent</source>
+        <translation>Tangente %1</translation>
     </message>
     <message>
         <source>y0, level before the step</source>
@@ -614,12 +718,24 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>délai entre l&apos;échelon et le début de la réponse de la PV.</translation>
     </message>
     <message>
+        <source>L = time the tangent reaches y0 - step time</source>
+        <translation>L = temps où la tangente atteint y0 - temps de l&apos;échelon</translation>
+    </message>
+    <message>
+        <source>The tangent touches the response at t = %1 s, where the PV is %2, with slope %3 per s.</source>
+        <translation>La tangente touche la réponse à t = %1 s, où la PV vaut %2, avec une pente de %3 par s.</translation>
+    </message>
+    <message>
         <source>T, time constant</source>
         <translation>T, constante de temps</translation>
     </message>
     <message>
         <source>time the PV needs to cover 63.2 % of its change after the dead time.</source>
         <translation>temps dont la PV a besoin pour parcourir 63.2 % de sa variation après le temps mort.</translation>
+    </message>
+    <message>
+        <source>T = t63.2 - step time - L</source>
+        <translation>T = t63.2 - temps de l&apos;échelon - L</translation>
     </message>
     <message>
         <source>Times are measured from the step time (t = %1 s).</source>
@@ -963,6 +1079,464 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>Could not open %1.</source>
         <translation>Impossible d&apos;ouvrir %1.</translation>
+    </message>
+</context>
+<context>
+    <name>mb::ClosedLoopAnalysis</name>
+    <message>
+        <source>Place both cursors</source>
+        <translation>Placez les deux curseurs</translation>
+    </message>
+    <message>
+        <source>No data between the cursors</source>
+        <translation>Aucune donnée entre les curseurs</translation>
+    </message>
+    <message>
+        <source>The setpoint does not change between the cursors</source>
+        <translation>La consigne ne change pas entre les curseurs</translation>
+    </message>
+</context>
+<context>
+    <name>mb::ClosedLoopPage</name>
+    <message>
+        <source>3. Test</source>
+        <translation>3. Essai</translation>
+    </message>
+    <message>
+        <source>Setpoint step</source>
+        <translation>Échelon de consigne</translation>
+    </message>
+    <message>
+        <source>Disturbance</source>
+        <translation>Perturbation</translation>
+    </message>
+    <message>
+        <source>Setpoint step: the setpoint changed and the PV follows it. Disturbance: the setpoint stays constant and the PV comes back after a load change.</source>
+        <translation>Échelon de consigne&#xa0;: la consigne a changé et la PV la suit. Perturbation&#xa0;: la consigne reste constante et la PV revient après un changement de charge.</translation>
+    </message>
+    <message>
+        <source>Setpoint before the step (the step is at C1).</source>
+        <translation>Consigne avant l&apos;échelon (l&apos;échelon est à C1).</translation>
+    </message>
+    <message>
+        <source>SP before</source>
+        <translation>SP avant</translation>
+    </message>
+    <message>
+        <source>SP after</source>
+        <translation>SP après</translation>
+    </message>
+    <message>
+        <source>The PV is settled once it stays within this band around the final setpoint (a percentage of the setpoint step, or of the maximum deviation for a disturbance).</source>
+        <translation>La PV est stabilisée lorsqu&apos;elle reste dans cette bande autour de la consigne finale (un pourcentage de l&apos;échelon de consigne, ou de l&apos;écart maximal pour une perturbation).</translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation>Essai</translation>
+    </message>
+    <message>
+        <source>Settling band</source>
+        <translation>Bande de stabilisation</translation>
+    </message>
+    <message>
+        <source>4. Performance</source>
+        <translation>4. Performance</translation>
+    </message>
+    <message>
+        <source>5. Prediction</source>
+        <translation>5. Prédiction</translation>
+    </message>
+    <message>
+        <source>Predict from the open-loop model</source>
+        <translation>Prédire à partir du modèle en boucle ouverte</translation>
+    </message>
+    <message>
+        <source>Simulates the open-loop model (K, L, T) with the controller settings below and shows the predicted response on the plot and beside the measured numbers.</source>
+        <translation>Simule le modèle en boucle ouverte (K, L, T) avec les paramètres du régulateur ci-dessous et affiche la réponse prédite sur le graphique et à côté des valeurs mesurées.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Désactivé</translation>
+    </message>
+    <message>
+        <source>Choose a row of the tuning table (the rule chosen in the Open loop area).</source>
+        <translation>Choisissez une ligne du tableau de réglage (la règle choisie dans la zone Boucle ouverte).</translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation>Utiliser</translation>
+    </message>
+    <message>
+        <source>Copy this tuning into the controller settings above.</source>
+        <translation>Copier ce réglage dans les paramètres du régulateur ci-dessus.</translation>
+    </message>
+    <message>
+        <source>Load step (CO units)</source>
+        <translation>Échelon de charge (unités de CO)</translation>
+    </message>
+    <message>
+        <source>Size of the load change at the process input, in controller-output units.</source>
+        <translation>Amplitude du changement de charge à l&apos;entrée du procédé, en unités de sortie du régulateur.</translation>
+    </message>
+    <message>
+        <source>K</source>
+        <translation>K</translation>
+    </message>
+    <message>
+        <source>L (s)</source>
+        <translation>L (s)</translation>
+    </message>
+    <message>
+        <source>T (s)</source>
+        <translation>T (s)</translation>
+    </message>
+    <message>
+        <source>Process gain K: change of the PV per unit of controller output. Type a model from another tool, or use the open-loop model.</source>
+        <translation>Gain du procédé K&#xa0;: variation de la PV par unité de sortie du régulateur. Saisissez un modèle provenant d&apos;un autre outil, ou utilisez le modèle en boucle ouverte.</translation>
+    </message>
+    <message>
+        <source>Dead time L in seconds (0 or more).</source>
+        <translation>Temps mort L en secondes (0 ou plus).</translation>
+    </message>
+    <message>
+        <source>Time constant T in seconds (more than 0).</source>
+        <translation>Constante de temps T en secondes (plus que 0).</translation>
+    </message>
+    <message>
+        <source>Use the open-loop model</source>
+        <translation>Utiliser le modèle en boucle ouverte</translation>
+    </message>
+    <message>
+        <source>Copy K, L and T from the open-loop result of the current cursors into the model used for the prediction.</source>
+        <translation>Copie K, L et T du résultat en boucle ouverte des curseurs actuels dans le modèle utilisé pour la prédiction.</translation>
+    </message>
+    <message>
+        <source>Take tuning</source>
+        <translation>Prendre le réglage</translation>
+    </message>
+    <message>
+        <source>Setpoint</source>
+        <translation>Consigne</translation>
+    </message>
+    <message>
+        <source>Setpoint after the step.</source>
+        <translation>Consigne après l&apos;échelon.</translation>
+    </message>
+    <message>
+        <source>The constant setpoint during the disturbance test.</source>
+        <translation>La consigne constante pendant l&apos;essai de perturbation.</translation>
+    </message>
+    <message>
+        <source>controller gain of the predicted response.</source>
+        <translation>gain du régulateur de la réponse prédite.</translation>
+    </message>
+    <message>
+        <source>integral action of the predicted response (Off = none).</source>
+        <translation>action intégrale de la réponse prédite (Désactivé = aucune).</translation>
+    </message>
+    <message>
+        <source>derivative action of the predicted response (Off = none).</source>
+        <translation>action dérivée de la réponse prédite (Désactivé = aucune).</translation>
+    </message>
+    <message>
+        <source>typed</source>
+        <translation>saisi</translation>
+    </message>
+    <message>
+        <source>%1, C1 = %2 s</source>
+        <translation>%1, C1 = %2 s</translation>
+    </message>
+    <message>
+        <source>not defined</source>
+        <translation>non défini</translation>
+    </message>
+    <message>
+        <source>Model: K = %1, L = %2 s, T = %3 s (%4)</source>
+        <translation>Modèle&#xa0;: K = %1, L = %2 s, T = %3 s (%4)</translation>
+    </message>
+    <message>
+        <source>No model yet: do the open-loop step test first (Open loop area), or type one.</source>
+        <translation>Aucun modèle pour l&apos;instant&#xa0;: faites d&apos;abord l&apos;essai à l&apos;échelon en boucle ouverte (zone Boucle ouverte), ou saisissez-en un.</translation>
+    </message>
+    <message>
+        <source>Overshoot</source>
+        <translation>Dépassement</translation>
+    </message>
+    <message>
+        <source>Peak time</source>
+        <translation>Temps du pic</translation>
+    </message>
+    <message>
+        <source>Rise time (10-90 %)</source>
+        <translation>Temps de montée (10-90 %)</translation>
+    </message>
+    <message>
+        <source>Settling time (%1 % band)</source>
+        <translation>Temps de stabilisation (bande de %1 %)</translation>
+    </message>
+    <message>
+        <source>Max deviation</source>
+        <translation>Écart maximal</translation>
+    </message>
+    <message>
+        <source>Time of max deviation</source>
+        <translation>Temps de l&apos;écart maximal</translation>
+    </message>
+    <message>
+        <source>Decay ratio</source>
+        <translation>Rapport d&apos;amortissement</translation>
+    </message>
+    <message>
+        <source>Period</source>
+        <translation>Période</translation>
+    </message>
+    <message>
+        <source>Steady-state error</source>
+        <translation>Erreur statique</translation>
+    </message>
+    <message>
+        <source>Output min</source>
+        <translation>Sortie min</translation>
+    </message>
+    <message>
+        <source>Output max</source>
+        <translation>Sortie max</translation>
+    </message>
+    <message>
+        <source>Output travel</source>
+        <translation>Course totale de la sortie</translation>
+    </message>
+    <message>
+        <source>Quantity</source>
+        <translation>Grandeur</translation>
+    </message>
+    <message>
+        <source>Measured</source>
+        <translation>Mesuré</translation>
+    </message>
+    <message>
+        <source>Predicted</source>
+        <translation>Prédit</translation>
+    </message>
+    <message>
+        <source>%1 (%2 % of the step)</source>
+        <translation>%1 (%2 % de l&apos;échelon)</translation>
+    </message>
+    <message>
+        <source>The setpoint does not change between the cursors: choose Disturbance, or move the cursors around the setpoint change.</source>
+        <translation>La consigne ne change pas entre les curseurs&#xa0;: choisissez Perturbation, ou déplacez les curseurs autour du changement de consigne.</translation>
+    </message>
+    <message>
+        <source>The setpoint changes between the cursors: choose Setpoint step.</source>
+        <translation>La consigne change entre les curseurs&#xa0;: choisissez Échelon de consigne.</translation>
+    </message>
+    <message>
+        <source>The PV is still outside the settling band at C2: move C2 later.</source>
+        <translation>La PV est encore hors de la bande de stabilisation à C2&#xa0;: déplacez C2 plus tard.</translation>
+    </message>
+    <message>
+        <source>The output reached its limit: the response shows the limits of the valve, not only the tuning.</source>
+        <translation>La sortie a atteint sa limite&#xa0;: la réponse montre les limites de la vanne, pas seulement le réglage.</translation>
+    </message>
+    <message>
+        <source>Choose the controller output (CO) in step 1 to see the output rows.</source>
+        <translation>Choisissez la sortie du régulateur (CO) à l&apos;étape 1 pour voir les lignes de la sortie.</translation>
+    </message>
+    <message>
+        <source>Choose the process value (PV) in step 1.</source>
+        <translation>Choisissez la variable mesurée (PV) à l&apos;étape 1.</translation>
+    </message>
+    <message>
+        <source>Place C1 at the setpoint change (or just before the disturbance) and C2 after the PV has settled.</source>
+        <translation>Placez C1 au changement de consigne (ou juste avant la perturbation) et C2 après la stabilisation de la PV.</translation>
+    </message>
+    <message>
+        <source>Overshoot %1</source>
+        <translation>Dépassement %1</translation>
+    </message>
+    <message>
+        <source>Max deviation %1</source>
+        <translation>Écart maximal %1</translation>
+    </message>
+    <message>
+        <source>not settled</source>
+        <translation>non stabilisé</translation>
+    </message>
+    <message>
+        <source>overshoot %1 (%2 % of the step), settling %3 (%4 % band), IAE %5</source>
+        <translation>dépassement %1 (%2 % de l&apos;échelon), stabilisation %3 (bande de %4 %), IAE %5</translation>
+    </message>
+    <message>
+        <source>max deviation %1, settling %2 (%3 % band), IAE %4</source>
+        <translation>écart maximal %1, stabilisation %2 (bande de %3 %), IAE %4</translation>
+    </message>
+    <message>
+        <source>SP step %1 → %2: </source>
+        <translation>Échelon de SP %1 → %2&#xa0;: </translation>
+    </message>
+    <message>
+        <source>Disturbance at SP %1: </source>
+        <translation>Perturbation à SP %1&#xa0;: </translation>
+    </message>
+    <message>
+        <source>Predicted: </source>
+        <translation>Prédit&#xa0;: </translation>
+    </message>
+    <message>
+        <source>SP before, setpoint before the step</source>
+        <translation>SP avant, consigne avant l&apos;échelon</translation>
+    </message>
+    <message>
+        <source>the setpoint just before the change (at C1).</source>
+        <translation>la consigne juste avant le changement (à C1).</translation>
+    </message>
+    <message>
+        <source>SP before = SP at C1 (or the value typed in step 3)</source>
+        <translation>SP avant = SP à C1 (ou la valeur saisie à l&apos;étape 3)</translation>
+    </message>
+    <message>
+        <source>SP after, setpoint after the step</source>
+        <translation>SP après, consigne après l&apos;échelon</translation>
+    </message>
+    <message>
+        <source>the setpoint the PV has to reach (at C2).</source>
+        <translation>la consigne que la PV doit atteindre (à C2).</translation>
+    </message>
+    <message>
+        <source>SP after = SP at C2 (or the value typed in step 3)</source>
+        <translation>SP après = SP à C2 (ou la valeur saisie à l&apos;étape 3)</translation>
+    </message>
+    <message>
+        <source>the constant setpoint during the disturbance test.</source>
+        <translation>la consigne constante pendant l&apos;essai de perturbation.</translation>
+    </message>
+    <message>
+        <source>Setpoint = SP at C1 (or the value typed in step 3)</source>
+        <translation>Consigne = SP à C1 (ou la valeur saisie à l&apos;étape 3)</translation>
+    </message>
+    <message>
+        <source>how far the PV goes past the new setpoint, in PV units and as a percentage of the step.</source>
+        <translation>de combien la PV dépasse la nouvelle consigne, en unités de la PV et en pourcentage de l&apos;échelon.</translation>
+    </message>
+    <message>
+        <source>overshoot = max(PV) - SP after</source>
+        <translation>dépassement = max(PV) - SP après</translation>
+    </message>
+    <message>
+        <source>overshoot = SP after - min(PV)</source>
+        <translation>dépassement = SP après - min(PV)</translation>
+    </message>
+    <message>
+        <source>% of the step = overshoot / |SP after - SP before| %1 100</source>
+        <translation>% de l&apos;échelon = dépassement / |SP après - SP avant| %1 100</translation>
+    </message>
+    <message>
+        <source>time from the setpoint change to the overshoot peak.</source>
+        <translation>temps écoulé entre le changement de consigne et le pic du dépassement.</translation>
+    </message>
+    <message>
+        <source>There is no overshoot, so there is no peak.</source>
+        <translation>Il n&apos;y a pas de dépassement, donc pas de pic.</translation>
+    </message>
+    <message>
+        <source>time the PV needs to go from 10 % to 90 % of the step: how fast the response is.</source>
+        <translation>temps que met la PV pour passer de 10 % à 90 % de l&apos;échelon&#xa0;: rapidité de la réponse.</translation>
+    </message>
+    <message>
+        <source>the largest distance between the setpoint and the PV after the disturbance (negative: the PV fell below the setpoint).</source>
+        <translation>plus grande distance entre la consigne et la PV après la perturbation (négatif&#xa0;: la PV est descendue sous la consigne).</translation>
+    </message>
+    <message>
+        <source>time from the disturbance (C1) to the largest deviation.</source>
+        <translation>temps écoulé entre la perturbation (C1) et l&apos;écart maximal.</translation>
+    </message>
+    <message>
+        <source>time after which the PV stays inside the band around the final setpoint.</source>
+        <translation>temps après lequel la PV reste dans la bande autour de la consigne finale.</translation>
+    </message>
+    <message>
+        <source>band = %1 % of |SP after - SP before|; settled when |SP - PV| &lt;= band</source>
+        <translation>bande = %1 % de |SP après - SP avant|; stabilisé quand |SP - PV| &lt;= bande</translation>
+    </message>
+    <message>
+        <source>band = %1 % of |max deviation|; settled when |SP - PV| &lt;= band</source>
+        <translation>bande = %1 % de |écart maximal|; stabilisé quand |SP - PV| &lt;= bande</translation>
+    </message>
+    <message>
+        <source>settling time = time the PV enters the band for good, measured from the start = %1 s</source>
+        <translation>temps de stabilisation = moment où la PV entre dans la bande pour de bon, mesuré depuis le début = %1 s</translation>
+    </message>
+    <message>
+        <source>The PV is still outside the band at C2: not settled.</source>
+        <translation>La PV est encore hors de la bande à C2&#xa0;: non stabilisé.</translation>
+    </message>
+    <message>
+        <source>size of the second peak of the error divided by the first: how fast the oscillation dies out.</source>
+        <translation>taille du deuxième pic de l&apos;erreur divisée par celle du premier&#xa0;: vitesse d&apos;extinction de l&apos;oscillation.</translation>
+    </message>
+    <message>
+        <source>A quarter-amplitude decay is 0.25; the smaller, the better damped.</source>
+        <translation>Un amortissement au quart d&apos;amplitude vaut 0.25; plus il est petit, mieux la réponse est amortie.</translation>
+    </message>
+    <message>
+        <source>Fewer than two peaks above the band: the response does not oscillate.</source>
+        <translation>Moins de deux pics au-dessus de la bande&#xa0;: la réponse n&apos;oscille pas.</translation>
+    </message>
+    <message>
+        <source>time between the first and the second peak: the period of the oscillation.</source>
+        <translation>temps entre le premier et le deuxième pic&#xa0;: la période de l&apos;oscillation.</translation>
+    </message>
+    <message>
+        <source>what is left between the setpoint and the PV at the end; an integral action should bring it to zero.</source>
+        <translation>ce qui reste entre la consigne et la PV à la fin; une action intégrale devrait la ramener à zéro.</translation>
+    </message>
+    <message>
+        <source>error = SP after - mean(PV over the last 10 % of the test)</source>
+        <translation>erreur = SP après - moyenne(PV sur les derniers 10 % de l&apos;essai)</translation>
+    </message>
+    <message>
+        <source>IAE, integral of the absolute error</source>
+        <translation>IAE, intégrale de l&apos;erreur absolue</translation>
+    </message>
+    <message>
+        <source>area between SP and PV; smaller is better; compare tunings on the same test.</source>
+        <translation>aire entre SP et PV; plus elle est petite, mieux c&apos;est; comparez les réglages sur le même essai.</translation>
+    </message>
+    <message>
+        <source>ISE, integral of the squared error</source>
+        <translation>ISE, intégrale de l&apos;erreur au carré</translation>
+    </message>
+    <message>
+        <source>like IAE but large errors count much more, so it punishes big overshoots; compare tunings on the same test.</source>
+        <translation>comme l&apos;IAE, mais les grandes erreurs comptent beaucoup plus, donc elle pénalise les gros dépassements; comparez les réglages sur le même essai.</translation>
+    </message>
+    <message>
+        <source>ITAE, time-weighted absolute error</source>
+        <translation>ITAE, erreur absolue pondérée par le temps</translation>
+    </message>
+    <message>
+        <source>like IAE but an error counts more the later it happens, so it favours a fast settling; compare tunings on the same test.</source>
+        <translation>comme l&apos;IAE, mais une erreur compte davantage plus elle survient tard, donc elle favorise une stabilisation rapide; comparez les réglages sur le même essai.</translation>
+    </message>
+    <message>
+        <source>the lowest controller output between the start and C2.</source>
+        <translation>la plus basse sortie du régulateur entre le début et C2.</translation>
+    </message>
+    <message>
+        <source>the highest controller output between the start and C2.</source>
+        <translation>la plus haute sortie du régulateur entre le début et C2.</translation>
+    </message>
+    <message>
+        <source>Output range: %1 to %2.</source>
+        <translation>Plage de la sortie&#xa0;: %1 à %2.</translation>
+    </message>
+    <message>
+        <source>total distance the controller output moved: less travel means less wear on the valve.</source>
+        <translation>distance totale parcourue par la sortie du régulateur&#xa0;: une course plus courte signifie moins d&apos;usure de la vanne.</translation>
+    </message>
+    <message>
+        <source>Predicted: simulation of the open-loop model with the controller settings of step 5.</source>
+        <translation>Prédit&#xa0;: simulation du modèle en boucle ouverte avec les réglages du régulateur de l&apos;étape 5.</translation>
     </message>
 </context>
 <context>
@@ -1825,6 +2399,41 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     </message>
 </context>
 <context>
+    <name>mb::PidForm</name>
+    <message>
+        <source>Ideal (ISA)</source>
+        <translation>Idéale (ISA)</translation>
+    </message>
+    <message>
+        <source>Series (interacting)</source>
+        <translation>Série (interactive)</translation>
+    </message>
+    <message>
+        <source>Parallel</source>
+        <translation>Parallèle</translation>
+    </message>
+    <message>
+        <source>PB (%)</source>
+        <translation>PB (%)</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation>Temps</translation>
+    </message>
+    <message>
+        <source>Repeats/min</source>
+        <translation>Répétitions/min</translation>
+    </message>
+    <message>
+        <source>No series equivalent: Ti is less than 4 Td.</source>
+        <translation>Aucun équivalent série&#xa0;: Ti est inférieur à 4 Td.</translation>
+    </message>
+    <message>
+        <source>The proportional band needs the PV and CO ranges.</source>
+        <translation>La bande proportionnelle nécessite les plages de la PV et de la CO.</translation>
+    </message>
+</context>
+<context>
     <name>mb::PollWorker</name>
     <message>
         <source>Not connected</source>
@@ -1944,6 +2553,62 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>«&#xa0;%1address&#xa0;» vaut %2, trop élevé pour une étiquette «&#xa0;%3&#xa0;»&#xa0;: elle utilise %4 registres, donc le dernier dépasserait 65535</translation>
     </message>
     <message>
+        <source>&quot;analysis.mode&quot; has unknown value &quot;%1&quot; (expected &quot;open&quot; or &quot;closed&quot;)</source>
+        <translation>&quot;analysis.mode&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;open&quot; ou &quot;closed&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.test&quot; has unknown value &quot;%1&quot; (expected &quot;setpoint&quot; or &quot;disturbance&quot;)</source>
+        <translation>&quot;analysis.closedLoop.test&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;setpoint&quot; ou &quot;disturbance&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.band&quot; must be a number between 0 and 50</source>
+        <translation>&quot;analysis.closedLoop.band&quot; doit être un nombre entre 0 et 50</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.prediction.ti&quot; must be a finite number, 0 or more</source>
+        <translation>&quot;analysis.closedLoop.prediction.ti&quot; doit être un nombre fini, 0 ou plus</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.prediction.td&quot; must be a finite number, 0 or more</source>
+        <translation>&quot;analysis.closedLoop.prediction.td&quot; doit être un nombre fini, 0 ou plus</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.model.k&quot; must be a finite number other than 0</source>
+        <translation>&quot;analysis.closedLoop.model.k&quot; doit être un nombre fini différent de 0</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.model.l&quot; must be a finite number, 0 or more</source>
+        <translation>&quot;analysis.closedLoop.model.l&quot; doit être un nombre fini, 0 ou plus</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.closedLoop.model.t&quot; must be a finite number above 0</source>
+        <translation>&quot;analysis.closedLoop.model.t&quot; doit être un nombre fini supérieur à 0</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.controller.form&quot; has unknown value &quot;%1&quot; (expected &quot;ideal&quot;, &quot;series&quot; or &quot;parallel&quot;)</source>
+        <translation>&quot;analysis.controller.form&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;ideal&quot;, &quot;series&quot; ou &quot;parallel&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.controller.gain&quot; has unknown value &quot;%1&quot; (expected &quot;kp&quot; or &quot;pb&quot;)</source>
+        <translation>&quot;analysis.controller.gain&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;kp&quot; ou &quot;pb&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.controller.integral&quot; has unknown value &quot;%1&quot; (expected &quot;time&quot; or &quot;repeats&quot;)</source>
+        <translation>&quot;analysis.controller.integral&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;time&quot; ou &quot;repeats&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.compareMethods&quot; must be an array of method names</source>
+        <translation>&quot;analysis.compareMethods&quot; doit être un tableau de noms de méthodes</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.compareMethods&quot; has unknown value &quot;%1&quot; (expected &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot; or &quot;tangent&quot;)</source>
+        <translation>&quot;analysis.compareMethods&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot; ou &quot;tangent&quot;)</translation>
+    </message>
+    <message>
+        <source>&quot;analysis.compareMethods&quot; has the duplicate entry &quot;%1&quot;</source>
+        <translation>&quot;analysis.compareMethods&quot; contient l&apos;entrée en double &quot;%1&quot;</translation>
+    </message>
+    <message>
         <source>&quot;analysis&quot; must be an object</source>
         <translation>«&#xa0;analysis&#xa0;» doit être un objet</translation>
     </message>
@@ -1988,8 +2653,8 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>«&#xa0;analysis.method&#xa0;» doit être une chaîne de caractères</translation>
     </message>
     <message>
-        <source>&quot;analysis.method&quot; has unknown value &quot;%1&quot; (expected &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot; or &quot;custom&quot;)</source>
-        <translation>«&#xa0;analysis.method&#xa0;» a une valeur inconnue «&#xa0;%1&#xa0;» (attendu&#xa0;: «&#xa0;0-63.2&#xa0;», «&#xa0;smith&#xa0;», «&#xa0;sundaresan&#xa0;» ou «&#xa0;custom&#xa0;»)</translation>
+        <source>&quot;analysis.method&quot; has unknown value &quot;%1&quot; (expected &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot;, &quot;tangent&quot; or &quot;custom&quot;)</source>
+        <translation>&quot;analysis.method&quot; a une valeur inconnue &quot;%1&quot; (attendu &quot;0-63.2&quot;, &quot;smith&quot;, &quot;sundaresan&quot;, &quot;tangent&quot; ou &quot;custom&quot;)</translation>
     </message>
     <message>
         <source>&quot;analysis.setpointTags&quot; must be an array of tag ids</source>
@@ -2268,6 +2933,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>Custom</source>
         <translation>Personnalisée</translation>
+    </message>
+    <message>
+        <source>Tangent (steepest slope)</source>
+        <translation>Tangente (pente maximale)</translation>
     </message>
 </context>
 <context>

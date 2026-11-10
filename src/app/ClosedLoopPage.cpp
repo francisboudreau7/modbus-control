@@ -188,7 +188,7 @@ void ClosedLoopPage::buildUi()
     m_derivativeSpin->setSpecialValueText(tr("Off"));
     m_takeCombo = new QComboBox(predGroup);
     m_takeCombo->setObjectName(QStringLiteral("takeTuningCombo"));
-    m_takeCombo->setToolTip(tr("A controller of the tuning rule chosen in the Open loop area."));
+    m_takeCombo->setToolTip(tr("Choose a row of the tuning table (the rule chosen in the Open loop area)."));
     m_takeButton = new QPushButton(tr("Use"), predGroup);
     m_takeButton->setObjectName(QStringLiteral("takeTuningButton"));
     m_takeButton->setToolTip(tr("Copy this tuning into the controller settings above."));
@@ -1131,8 +1131,8 @@ QString ClosedLoopPage::explain(Quantity q, const ClosedLoopResult *r, bool pred
             lines << QStringLiteral("band = %1 %2 %3 / 100 = %4")
                          .arg(bandPct, kTimes, g4(base), pvv(bnd));
             if (r->settlingTime) {
-                lines << tr("settling time = time of the first sample after the last one outside "
-                            "the band - start = %1 s")
+                lines << tr("settling time = time the PV enters the band for good, measured from "
+                            "the start = %1 s")
                              .arg(g4(*r->settlingTime));
             } else {
                 lines << tr("The PV is still outside the band at C2: not settled.");
