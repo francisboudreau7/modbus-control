@@ -1372,6 +1372,12 @@ void AnalysisPanel::rebuildChecks()
                 text = tr("L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be "
                           "aggressive; prefer IMC / lambda or SIMC.");
                 break;
+            case StepCheck::DeadTimeFromFirstMove:
+                text = tr("L is taken at the first movement of the PV, so lags such as transmitter "
+                          "damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon "
+                          "then give a Kp that is too high: choose the Smith method, or IMC / "
+                          "lambda or SIMC.");
+                break;
             case StepCheck::FitPoor:
                 text = tr("The model does not fit the response well (fit error > 8 %).");
                 break;

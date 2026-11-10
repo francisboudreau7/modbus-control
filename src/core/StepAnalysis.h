@@ -38,7 +38,8 @@ std::optional<std::pair<double, double>> methodPercents(ModelMethod method);
 struct AnalysisSettings {
     /// Requested setpoints in percent, each in [0, 100], at most 20 entries. The UI keeps
     /// them sorted ascending without duplicates; the analysis keeps the given order.
-    QList<double> percents{0.0, 63.2};
+    /// v1.3.5 default: 0 % and the two points of the default (Smith) method.
+    QList<double> percents{0.0, 28.3, 63.2};
     ReferenceMode reference = ReferenceMode::CursorValue;
     double referenceWindowS = 1.0; ///< W for WindowMean, in (0, 3600]
     /// S: centred moving-average width in [0, 3600]; 0 = off. A centred average starts
@@ -46,8 +47,12 @@ struct AnalysisSettings {
     /// up to S/2 and L is biased low; with smoothing, prefer a model "From %" above 0 (e.g. 10)
     /// or keep S small compared with L.
     double smoothingS = 0.0;
-    /// Method for the model's two points; Custom uses modelPercentA/B.
-    ModelMethod method = ModelMethod::ZeroTo632;
+    /// Method for the model's two points; Custom uses modelPercentA/B. v1.3.5: the default is
+    /// Smith (was ZeroTo632). A method whose lower point is 0 % takes L at the first movement
+    /// of the PV, so small lags (transmitter damping, valve stroke) are counted in T and L comes
+    /// out short; rules that divide by L (Ziegler-Nichols, Cohen-Coon) then give a Kp close to
+    /// the stability limit. Project files keep their saved method (see ProjectIO.h).
+    ModelMethod method = ModelMethod::Smith;
     /// Setpoints a < b used for the model when method == Custom, both in [0, 100).
     double modelPercentA = 0.0;
     double modelPercentB = 63.2;
@@ -228,6 +233,10 @@ enum class StepCheck : quint8 {
                       ///< [t1 - 0.1 (t2 - t1), t1] (at least 3 samples)
     NegativeDeadTime, ///< deadTime < 0 (C1 after the response started, or wrong step time)
     DeadTimeDominant, ///< deadTime / timeConstant > 1
+    /// v1.3.5, only from the checkStep overload that takes the settings: the model's lower point
+    /// is 0 % (method ZeroTo632, or Custom with modelPercentA == 0), the tuning rule is
+    /// ZieglerNichols or CohenCoon, and the result has a deadTime > 0 and a timeConstant > 0.
+    DeadTimeFromFirstMove,
     FitPoor,          ///< fitQuality() == Poor
 };
 
@@ -238,5 +247,9 @@ FitQuality fitQuality(double fitRmsPercent);
 /// Checks that apply to `result` (the PV's analyzeStep result), in enum order. An invalid result
 /// gives an empty list (its error text is shown instead).
 QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result);
+/// v1.3.5: the same list plus DeadTimeFromFirstMove (in enum order) when it applies to
+/// `settings` (see StepCheck). The panel uses this overload.
+QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result,
+                           const AnalysisSettings &settings);
 
 } // namespace mb

@@ -609,4 +609,11 @@ QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result)
     return out;
 }
 
+// Stub until the check task: no DeadTimeFromFirstMove yet.
+QList<StepCheck> checkStep(const Recorder &recorder, const StepResult &result,
+                           const AnalysisSettings &)
+{
+    return checkStep(recorder, result);
+}
+
 } // namespace mb

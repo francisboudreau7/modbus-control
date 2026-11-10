@@ -76,10 +76,11 @@
     "pvTag": 1,
     "setpointTags": [1],
     "deltaCoTag": 3,
-    "percents": [0, 63.2],
+    "percents": [0, 28.3, 63.2],
     "reference": "cursor",
     "referenceWindowS": 1,
     "smoothingS": 0,
+    "method": "smith",
     "modelPercents": [0, 63.2],
     "showModel": true,
     "guideLines": true
