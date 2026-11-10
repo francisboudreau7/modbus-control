@@ -560,6 +560,7 @@ private slots:
 
         AnalysisSettings settings;
         settings.percents = {0.0, 63.2};
+        settings.method = ModelMethod::ZeroTo632;
         settings.reference = ReferenceMode::CursorValue;
         settings.modelPercentA = 0.0;
         settings.modelPercentB = 63.2;
@@ -604,6 +605,7 @@ private slots:
 
         AnalysisSettings settings;
         settings.percents = {0.0, 63.2};
+        settings.method = ModelMethod::ZeroTo632;
         settings.reference = ReferenceMode::CursorValue;
         settings.modelPercentA = 0.0;
         settings.modelPercentB = 63.2;

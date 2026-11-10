@@ -1191,7 +1191,7 @@ Setpoints).
   0 % time comes out early by up to S/2, and L comes out too small. With smoothing on, use a model
   **From %** above 0 (for example 10), or keep S small compared with L.
 - **Setpoints (%)**: the percentages of the step whose times are found. The default is 0 %, 28.3 % and
-  63.2 %. Type a value from 0 to 100 (two decimals; the box starts at 28.3, the value Smith's method needs)
+  63.2 %. Type a value from 0 to 100 (two decimals; the box starts at 50)
   and click **Add**. Select an entry and click **Remove**. The list stays sorted, has no duplicates and
   holds at most 20 values.
 - **Show time and value on plot labels**: adds two lines to each setpoint label on the plot: the time
@@ -1312,7 +1312,7 @@ only when the limit is set). The Analysis settings are in an `analysis` object: 
 (`"0-63.2"`, `"smith"`, `"sundaresan"` or `"custom"`), `modelPercents`, `percents`, `reference`
 (`"cursor"` or `"mean"`), `referenceWindowS`, `smoothingS`, `pvRange`, `coRange`, `showModel`,
 `modelColor` (`"#RRGGBB"`, default `"#202020"`), `guideLines`, `detailedLabels`, `tuningRule` (`"zn"`, `"cohen-coon"`, `"imc"` or `"simc"`), `lambdaS`
-and `timeUnit` (`"s"` or `"min"`). A project saved with a `method` keeps it. An older project whose `analysis` object has no `method` keeps `"0-63.2"`; a new project starts with `"smith"`. A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
+and `timeUnit` (`"s"` or `"min"`). A project saved with a `method` keeps it. An older project whose `analysis` object has no `method` keeps `"0-63.2"` (or `"custom"` when its `modelPercents` are not 0 and 63.2); a new project starts with `"smith"`. A top-level `yAxes` object holds the fixed Y-axis ranges of the Trend: `left` and `right` are each `"auto"` or a pair `[min, max]` with min less than max (for example `"left": [0, 100]`). A missing key means `"auto"`. A top-level `hiddenColumns` array lists the tag-table columns hidden in this project (for example `"raw"`, `"gain"`, `"quickA"`). All of these are optional: a file without them loads with the defaults (the compact view for `hiddenColumns`).
 
 | Menu item | Shortcut | Action |
 |---|---|---|

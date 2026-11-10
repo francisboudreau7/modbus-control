@@ -609,7 +609,7 @@ void AnalysisPanel::buildUi()
     m_percentList = new QListWidget(spContent);
     m_percentList->setObjectName(QStringLiteral("percentList"));
     m_percentList->setMaximumHeight(110);
-    m_percentSpin = makeSpin("percentSpin", 0.0, 100.0, 2, 28.3, spContent);
+    m_percentSpin = makeSpin("percentSpin", 0.0, 100.0, 2, 50.0, spContent); // not in the default list
     m_percentSpin->setSuffix(QStringLiteral(" %"));
     m_addPercentButton = new QPushButton(tr("Add"), spContent);
     m_addPercentButton->setObjectName(QStringLiteral("addPercentButton"));

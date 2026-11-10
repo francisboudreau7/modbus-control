@@ -355,10 +355,10 @@ dans le Guide de l'utilisateur.
 - **T** : environ 32 à 33 s avec Smith. La théorie donne 2 × A × h / Qhv = 28 s à 50 % et 34 s à 72 %,
   et l'échelon couvre les deux. Un modèle ajusté sur le point à 63.2 % donne une valeur entre les deux.
 
-**Essayez l'autre méthode.** Dans le groupe **Model**, choisissez **0 % / 63.2 % (deux points)**. L devient
+**Essayez l'autre méthode.** Dans le groupe **Model**, choisissez **0 % / 63.2 % (two points)**. L devient
 beaucoup plus court (entre environ 0.3 et 1.2 s) et il change quand vous déplacez C1 : 1.2 s avec C1 10 s
 avant l'échelon, 0.25 s avec C1 0.5 s avant. T vaut environ 35 s. Avec la règle Ziegler-Nichols, une
-vérification s'affiche dans la liste. Avec un point inférieur à 0 %, L est le moment où la PV quitte sa
+vérification s'affiche dans la liste. Quand le point inférieur du modèle est à 0 %, L est le moment où la PV quitte sa
 valeur de départ pour la première fois. Les petits retards après le temps mort (l'amortissement de
 LT-101, la course de la vanne) courbent le début de la courbe sans retarder ce premier mouvement : ils
 passent dans T, et L sort trop court. Smith utilise deux points sur la partie montante de la courbe et
