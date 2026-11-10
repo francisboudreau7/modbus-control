@@ -36,6 +36,20 @@ struct ClosedLoopSettings {
     double predictionKp = 1.0;
     double predictionTiS = 0.0; ///< 0 = no integral action
     double predictionTdS = 0.0; ///< 0 = no derivative action
+    /// The process model the prediction uses (saved with the project, so it survives moving the
+    /// cursors from the open-loop step to the closed-loop test). modelSet false = no model yet.
+    /// The panel fills it from the open-loop result ("Use the open-loop model", and automatically
+    /// while modelSet is false and the open-loop PV result has K, L >= 0 and T > 0); the student
+    /// can also type it (a model from another tool or a lab handout). K in PV units per CO unit,
+    /// L >= 0 and T > 0 in s. modelSource is a short display text, e.g. "Smith (28.3 % / 63.2 %),
+    /// C1 = 60.0 s" or "typed"; it is not interpreted.
+    bool modelSet = false;
+    double modelK = 1.0;
+    double modelLS = 0.0;
+    double modelTS = 1.0;
+    QString modelSource;
+    /// Disturbance prediction: size of the load change at the process input, in CO units.
+    double loadStep = 5.0;
     friend bool operator==(const ClosedLoopSettings &, const ClosedLoopSettings &) = default;
 };
 
