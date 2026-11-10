@@ -1,0 +1,1008 @@
+#include "OpenLoopPage.h"
+
+#include "PlotCursors.h"
+#include "Recorder.h"
+#include "TrendPlot.h"
+
+#include <qwt_plot.h>
+#include <qwt_plot_curve.h>
+#include <qwt_plot_item.h>
+#include <qwt_text.h>
+
+#include <QAbstractItemView>
+#include <QCheckBox>
+#include <QColorDialog>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QGridLayout>
+#include <QGroupBox>
+#include <QHeaderView>
+#include <QLabel>
+#include <QListWidget>
+#include <QPen>
+#include <QPushButton>
+#include <QResizeEvent>
+#include <QSignalBlocker>
+#include <QStyle>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
+
+#include "ClipboardCopy.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace mb {
+
+using namespace analysis;
+
+namespace {
+
+constexpr int kModelPoints = 400;
+
+/// Format string of a tuning cell: %1 = K, %2 = L, %3 = T, %4 = lambda, %5 = L/T. column 0 = Kp,
+/// 1 = Ti, 2 = Td. Empty when the rule has no such cell.
+QString tuningFormula(TuningRule rule, ControllerKind kind, int column)
+{
+    using K = ControllerKind;
+    switch (rule) {
+    case TuningRule::ZieglerNichols:
+        if (column == 0) {
+            return kind == K::P    ? QStringLiteral("%3 / (%1 × %2)")
+                   : kind == K::PI ? QStringLiteral("0.9 × %3 / (%1 × %2)")
+                                   : QStringLiteral("1.2 × %3 / (%1 × %2)");
+        }
+        if (column == 1 && kind == K::PI)
+            return QStringLiteral("%2 / 0.3");
+        if (column == 1 && kind == K::PID)
+            return QStringLiteral("2 × %2");
+        if (column == 2 && kind == K::PID)
+            return QStringLiteral("0.5 × %2");
+        return {};
+    case TuningRule::CohenCoon:
+        if (column == 0) {
+            return kind == K::P    ? QStringLiteral("(%3 / (%1 × %2)) × (1 + %5 / 3)")
+                   : kind == K::PI ? QStringLiteral("(%3 / (%1 × %2)) × (0.9 + %5 / 12)")
+                                   : QStringLiteral("(%3 / (%1 × %2)) × (4/3 + %5 / 4)");
+        }
+        if (column == 1 && kind == K::PI)
+            return QStringLiteral("%2 × (30 + 3 × %5) / (9 + 20 × %5)");
+        if (column == 1 && kind == K::PID)
+            return QStringLiteral("%2 × (32 + 6 × %5) / (13 + 8 × %5)");
+        if (column == 2 && kind == K::PID)
+            return QStringLiteral("4 × %2 / (11 + 2 × %5)");
+        return {};
+    case TuningRule::ImcLambda:
+        if (kind == K::PI) {
+            return column == 0   ? QStringLiteral("%3 / (%1 × (%4 + %2))")
+                   : column == 1 ? QStringLiteral("%3")
+                                 : QString();
+        }
+        if (kind == K::PID) {
+            return column == 0   ? QStringLiteral("(%3 + %2 / 2) / (%1 × (%4 + %2 / 2))")
+                   : column == 1 ? QStringLiteral("%3 + %2 / 2")
+                                 : QStringLiteral("%3 × %2 / (2 × %3 + %2)");
+        }
+        return {};
+    case TuningRule::Simc:
+        if (kind == K::P || kind == K::PI) {
+            if (column == 0)
+                return QStringLiteral("%3 / (%1 × (%4 + %2))");
+            if (column == 1 && kind == K::PI)
+                return QStringLiteral("min(%3, 4 × (%4 + %2))");
+        }
+        return {};
+    }
+    return {};
+}
+
+} // namespace
+
+OpenLoopPage::OpenLoopPage(Context *context, std::function<void()> userEdited, QWidget *parent)
+    : QWidget(parent), m_ctx(context), m_userEdited(std::move(userEdited))
+{
+    setObjectName(QStringLiteral("openLoopPage"));
+    buildUi();
+}
+
+OpenLoopPage::~OpenLoopPage()
+{
+    clearOverlays();
+}
+
+// ---------------------------------------------------------------------------------------------
+// UI
+
+void OpenLoopPage::buildUi()
+{
+    auto *col = new QVBoxLayout(this);
+    col->setContentsMargins(0, 0, 0, 0);
+
+    // 3. Model
+    auto *modelGroup = new QGroupBox(tr("3. Model"), this);
+    modelGroup->setObjectName(QStringLiteral("modelGroup"));
+    auto *mg = new QGridLayout(modelGroup);
+    m_methodCombo = new QComboBox(modelGroup);
+    m_methodCombo->setObjectName(QStringLiteral("methodCombo"));
+    for (ModelMethod m : {ModelMethod::ZeroTo632, ModelMethod::Smith, ModelMethod::Sundaresan,
+                          ModelMethod::Custom})
+        m_methodCombo->addItem(methodName(m), static_cast<int>(m));
+    m_methodCombo->setToolTip(
+        tr("How L (dead time) and T (time constant) are found from two points of the response."));
+    m_fromSpin = makeSpin("fromSpin", 0.0, 99.99, 2, 0.0, modelGroup);
+    m_fromSpin->setSuffix(QStringLiteral(" %"));
+    m_toSpin = makeSpin("toSpin", 0.0, 99.99, 2, 63.2, modelGroup);
+    m_toSpin->setSuffix(QStringLiteral(" %"));
+    m_resultsTable = new QTableWidget(0, 2, modelGroup);
+    m_resultsTable->setObjectName(QStringLiteral("resultsTable"));
+    m_resultsTable->setHorizontalHeaderLabels({tr("Quantity"), tr("Value")});
+    m_resultsTable->verticalHeader()->setVisible(false);
+    m_resultsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_resultsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_resultsTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setupTable(m_resultsTable);
+    m_showModelCheck = new QCheckBox(tr("Show model curve"), modelGroup);
+    m_showModelCheck->setObjectName(QStringLiteral("showModelCheck"));
+    m_checksList = new QListWidget(modelGroup);
+    m_checksList->setObjectName(QStringLiteral("checksList"));
+    m_checksList->setSelectionMode(QAbstractItemView::NoSelection);
+    m_checksList->setFocusPolicy(Qt::NoFocus);
+    m_checksList->setWordWrap(true);
+    m_checksList->setTextElideMode(Qt::ElideNone);
+    m_checksList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_checksList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    mg->addWidget(new QLabel(tr("Method"), modelGroup), 0, 0);
+    mg->addWidget(m_methodCombo, 0, 1, 1, 3);
+    mg->addWidget(new QLabel(tr("From %"), modelGroup), 1, 0);
+    mg->addWidget(m_fromSpin, 1, 1);
+    mg->addWidget(new QLabel(tr("To %"), modelGroup), 1, 2);
+    mg->addWidget(m_toSpin, 1, 3);
+    mg->addWidget(m_resultsTable, 2, 0, 1, 4);
+    m_modelColorButton = new QPushButton(modelGroup);
+    m_modelColorButton->setObjectName(QStringLiteral("modelColorButton"));
+    m_modelColorButton->setToolTip(tr("Colour of the model curve"));
+    m_modelColorButton->setFixedSize(28, 20);
+    m_pickColor = [](const QColor &initial, QWidget *parent) {
+        return QColorDialog::getColor(initial, parent, tr("Colour of the model curve"));
+    };
+    mg->addWidget(m_showModelCheck, 3, 0, 1, 3);
+    mg->addWidget(m_modelColorButton, 3, 3, Qt::AlignRight);
+    mg->addWidget(m_checksList, 4, 0, 1, 4);
+    col->addWidget(modelGroup);
+    connect(m_methodCombo, &QComboBox::currentIndexChanged, this, [this] { onMethodChanged(); });
+    connect(m_fromSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
+    connect(m_toSpin, &QDoubleSpinBox::valueChanged, this, [this] { onModelPercentChanged(); });
+    connect(m_modelColorButton, &QPushButton::clicked, this, [this] { onPickModelColor(); });
+    connect(m_showModelCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_ctx->settings.showModel = on;
+        m_userEdited();
+    });
+
+    // 4. Tuning
+    auto *tuningGroup = new QGroupBox(tr("4. Tuning"), this);
+    tuningGroup->setObjectName(QStringLiteral("tuningGroup"));
+    auto *tg = new QGridLayout(tuningGroup);
+    m_ruleCombo = new QComboBox(tuningGroup);
+    m_ruleCombo->setObjectName(QStringLiteral("ruleCombo"));
+    for (TuningRule r : {TuningRule::ZieglerNichols, TuningRule::CohenCoon, TuningRule::ImcLambda,
+                         TuningRule::Simc})
+        m_ruleCombo->addItem(ruleName(r), static_cast<int>(r));
+    m_lambdaSpin = makeSpin("lambdaSpin", 0.0, 1e6, 2, 0.0, tuningGroup);
+    m_lambdaSpin->setSuffix(tr(" s"));
+    m_lambdaSpin->setSpecialValueText(tr("Auto (= L)"));
+    m_lambdaSpin->setToolTip(
+        tr("λ, the closed-loop time constant of IMC / lambda and SIMC (Auto = L)."));
+    m_minutesCheck = new QCheckBox(tr("Ti, Td in minutes"), tuningGroup);
+    m_minutesCheck->setObjectName(QStringLiteral("minutesCheck"));
+    m_tuningTable = new QTableWidget(0, 4, tuningGroup);
+    m_tuningTable->setObjectName(QStringLiteral("tuningTable"));
+    m_tuningTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_tuningTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setupTable(m_tuningTable);
+    m_tuningNote = new QLabel(tuningGroup);
+    m_tuningNote->setObjectName(QStringLiteral("tuningNote"));
+    m_tuningNote->setWordWrap(true);
+    tg->addWidget(new QLabel(tr("Rule"), tuningGroup), 0, 0);
+    tg->addWidget(m_ruleCombo, 0, 1, 1, 2);
+    tg->addWidget(new QLabel(QStringLiteral("λ"), tuningGroup), 1, 0);
+    tg->addWidget(m_lambdaSpin, 1, 1, 1, 2);
+    tg->addWidget(m_minutesCheck, 2, 0, 1, 3);
+    tg->addWidget(m_tuningTable, 3, 0, 1, 3);
+    tg->addWidget(m_tuningNote, 4, 0, 1, 3);
+    col->addWidget(tuningGroup);
+    connect(m_ruleCombo, &QComboBox::currentIndexChanged, this, [this] {
+        if (m_updating)
+            return;
+        m_ctx->settings.tuningRule = static_cast<TuningRule>(m_ruleCombo->currentData().toInt());
+        updateEnabled();
+        m_userEdited();
+    });
+    connect(m_lambdaSpin, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        if (m_updating)
+            return;
+        m_ctx->settings.lambdaS = v;
+        m_userEdited();
+    });
+    connect(m_minutesCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating)
+            return;
+        m_ctx->settings.timeInMinutes = on;
+        m_userEdited();
+    });
+}
+
+void OpenLoopPage::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    rebuildChecks();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Controls <-> settings
+
+void OpenLoopPage::syncModelSpins()
+{
+    const AnalysisSettings &s = m_ctx->settings;
+    const QSignalBlocker b1(m_fromSpin);
+    const QSignalBlocker b2(m_toSpin);
+    if (s.method == ModelMethod::Custom) {
+        m_fromSpin->setValue(s.modelPercentA);
+        m_toSpin->setValue(s.modelPercentB);
+    } else {
+        const auto ab = modelPercents(s);
+        m_fromSpin->setValue(ab.first);
+        m_toSpin->setValue(ab.second);
+    }
+    m_prevFrom = m_fromSpin->value();
+    m_prevTo = m_toSpin->value();
+}
+
+void OpenLoopPage::updateEnabled()
+{
+    const AnalysisSettings &s = m_ctx->settings;
+    const bool custom = s.method == ModelMethod::Custom;
+    m_fromSpin->setEnabled(custom);
+    m_toSpin->setEnabled(custom);
+    const bool lam = s.tuningRule == TuningRule::ImcLambda || s.tuningRule == TuningRule::Simc;
+    m_lambdaSpin->setEnabled(lam);
+}
+
+void OpenLoopPage::syncFromSettings()
+{
+    const AnalysisSettings &s = m_ctx->settings;
+    const bool was = m_updating;
+    m_updating = true;
+    {
+        const QSignalBlocker b4(m_methodCombo);
+        const QSignalBlocker b8(m_showModelCheck);
+        const QSignalBlocker b13(m_ruleCombo);
+        const QSignalBlocker b14(m_lambdaSpin);
+        const QSignalBlocker b15(m_minutesCheck);
+        m_showModelCheck->setChecked(s.showModel);
+        updateModelColorButton();
+        m_methodCombo->setCurrentIndex(std::max(0, m_methodCombo->findData(static_cast<int>(s.method))));
+        m_ruleCombo->setCurrentIndex(std::max(0, m_ruleCombo->findData(static_cast<int>(s.tuningRule))));
+        m_lambdaSpin->setValue(s.lambdaS);
+        m_minutesCheck->setChecked(s.timeInMinutes);
+    }
+    syncModelSpins();
+    updateEnabled();
+    m_updating = was;
+}
+
+void OpenLoopPage::onMethodChanged()
+{
+    if (m_updating)
+        return;
+    m_ctx->settings.method = static_cast<ModelMethod>(m_methodCombo->currentData().toInt());
+    syncModelSpins();
+    updateEnabled();
+    m_userEdited();
+}
+
+void OpenLoopPage::onModelPercentChanged()
+{
+    if (m_updating || m_ctx->settings.method != ModelMethod::Custom)
+        return;
+    const double a = m_fromSpin->value();
+    const double b = m_toSpin->value();
+    if (!(a < b)) {
+        const QSignalBlocker b1(m_fromSpin);
+        const QSignalBlocker b2(m_toSpin);
+        m_fromSpin->setValue(m_prevFrom);
+        m_toSpin->setValue(m_prevTo);
+        return;
+    }
+    m_prevFrom = a;
+    m_prevTo = b;
+    m_ctx->settings.modelPercentA = a;
+    m_ctx->settings.modelPercentB = b;
+    m_userEdited();
+}
+
+void OpenLoopPage::updateModelColorButton()
+{
+    QColor c(m_ctx->settings.modelColor);
+    if (!c.isValid())
+        c = QColor(0x20, 0x20, 0x20);
+    m_modelColorButton->setStyleSheet(
+        QStringLiteral("QPushButton { background-color: %1; border: 1px solid #808080; }")
+            .arg(c.name()));
+}
+
+void OpenLoopPage::onPickModelColor()
+{
+    QColor initial(m_ctx->settings.modelColor);
+    if (!initial.isValid())
+        initial = QColor(0x20, 0x20, 0x20);
+    const QColor chosen = m_pickColor ? m_pickColor(initial, this) : QColor();
+    if (!chosen.isValid())
+        return;
+    m_ctx->settings.modelColor = chosen.name();
+    updateModelColorButton();
+    m_userEdited();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Recompute
+
+void OpenLoopPage::recompute()
+{
+    rebuildResultsTable();
+    rebuildChecks();
+    rebuildTuningTable();
+}
+
+void OpenLoopPage::rebuildResultsTable()
+{
+    m_resultsTable->setRowCount(0);
+    const QList<StepResult> &results = m_ctx->results;
+    const StepResult *r = results.isEmpty() ? nullptr : &results.first();
+    const bool ok = r && r->valid;
+
+    struct Row {
+        Quantity q;
+        QString label;
+    };
+    QList<Row> rows = {
+        {Quantity::Y0, QStringLiteral("y0")},
+        {Quantity::Y100, QStringLiteral("y100")},
+        {Quantity::DeltaPv, kDelta + QStringLiteral("PV")},
+        {Quantity::DeltaCo, kDelta + QStringLiteral("CO")},
+        {Quantity::K, QStringLiteral("K")},
+    };
+    if (m_ctx->percentGainsShown())
+        rows.append({Quantity::KPct, QStringLiteral("K (%/%)")});
+    rows.append({{Quantity::L, QStringLiteral("L")},
+                 {Quantity::T, QStringLiteral("T")},
+                 {Quantity::LOverT, QStringLiteral("L/T")},
+                 {Quantity::Fit, tr("Fit error")}});
+
+    const QString pu = m_ctx->pvUnit();
+    for (const Row &row : std::as_const(rows)) {
+        QString value = kDash;
+        if (ok) {
+            switch (row.q) {
+            case Quantity::Y0:
+                value = withUnit(g4(r->y0), pu);
+                break;
+            case Quantity::Y100:
+                value = withUnit(g4(r->y100), pu);
+                break;
+            case Quantity::DeltaPv:
+                value = withUnit(g4(r->deltaPv), pu);
+                break;
+            case Quantity::DeltaCo:
+                value = r->deltaCo ? withUnit(g4(*r->deltaCo), m_ctx->coUnit()) : kDash;
+                break;
+            case Quantity::K:
+                value = r->gain ? withUnit(g4(*r->gain), m_ctx->kUnit()) : kDash;
+                break;
+            case Quantity::KPct:
+                if (r->gain)
+                    value = g4(*r->gain * *m_ctx->coSpan() / *m_ctx->pvSpan()) + QStringLiteral(" %/%");
+                break;
+            case Quantity::L:
+                value = r->deadTime ? g4(*r->deadTime) + QStringLiteral(" s") : kDash;
+                break;
+            case Quantity::T:
+                value = r->timeConstant ? g4(*r->timeConstant) + QStringLiteral(" s") : kDash;
+                break;
+            case Quantity::LOverT:
+                if (r->deadTime && r->timeConstant)
+                    value = g4(*r->deadTime / *r->timeConstant);
+                break;
+            case Quantity::Fit:
+                if (r->fitRms) {
+                    value = withUnit(g4(*r->fitRms), pu);
+                    if (r->fitRmsPercent) {
+                        value += QStringLiteral(" (") + QString::number(*r->fitRmsPercent, 'g', 3)
+                                 + QStringLiteral(" %) ") + kDash.at(0) + u' '
+                                 + fitWord(*r->fitRmsPercent);
+                    }
+                }
+                break;
+            }
+        }
+        const QString toolTip = explainResult(row.q, ok ? r : nullptr);
+        const int n = m_resultsTable->rowCount();
+        m_resultsTable->insertRow(n);
+        m_resultsTable->setItem(n, 0, makeItem(row.label, false, toolTip));
+        m_resultsTable->setItem(n, 1, makeItem(value, true, toolTip));
+    }
+    fitTableHeight(m_resultsTable);
+}
+
+void OpenLoopPage::rebuildChecks()
+{
+    m_checksList->clear();
+    const QList<StepResult> &results = m_ctx->results;
+    const AnalysisSettings &settings = m_ctx->settings;
+    if (m_ctx->recorder && !results.isEmpty() && results.first().valid) {
+        const auto ab = modelPercents(settings);
+        const QIcon icon = style()->standardIcon(QStyle::SP_MessageBoxWarning);
+        QList<StepCheck> checks = checkStep(*m_ctx->recorder, results.first(), settings);
+        // Find step reported that the PV never settled before the end of the range: say so even
+        // when the slope test at C2 does not fire (noisy or flat end).
+        if (m_ctx->findNotSettled && !checks.contains(StepCheck::NotSettled)) {
+            qsizetype pos = 0;
+            while (pos < checks.size() && checks.at(pos) < StepCheck::NotSettled)
+                ++pos;
+            checks.insert(pos, StepCheck::NotSettled); // keep enum order
+        }
+        const int textWidth = std::max(120, m_checksList->viewport()->width() - 40);
+        int total = 4;
+        for (StepCheck c : checks) {
+            QString text;
+            switch (c) {
+            case StepCheck::NoDeltaCo:
+                if (settings.deltaCoTagId != 0) {
+                    text = tr("The controller output (CO) does not change between the cursors: K "
+                              "can't be computed. Move the cursors around the step.");
+                } else {
+                    text = tr("K can't be computed: choose the controller output (CO) or type ΔCO "
+                              "in step 1.");
+                }
+                break;
+            case StepCheck::NoModel:
+                text = tr("L and T can't be computed: the PV does not reach both model points "
+                          "(%1 % and %2 %) between the cursors.")
+                           .arg(fmtPlain(ab.first), fmtPlain(ab.second));
+                break;
+            case StepCheck::NotSettled:
+                text = tr("The PV is still moving at C2: move C2 later.");
+                break;
+            case StepCheck::SmallStep:
+                text = tr("The step is small compared with the noise: the results are uncertain.");
+                break;
+            case StepCheck::NegativeDeadTime:
+                text = tr("L is negative: C1 is after the start of the response. Move C1 before "
+                          "the step.");
+                break;
+            case StepCheck::DeadTimeDominant:
+                text = tr("L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be "
+                          "aggressive; prefer IMC / lambda or SIMC.");
+                break;
+            case StepCheck::DeadTimeFromFirstMove:
+                text = tr("L is taken at the first movement of the PV, so lags such as transmitter "
+                          "damping are counted in T and L is short. Ziegler-Nichols and Cohen-Coon "
+                          "then give a Kp that is too high: choose the Smith method, or IMC / "
+                          "lambda or SIMC.");
+                break;
+            case StepCheck::TangentNoisy:
+                text = tr("The tangent is taken on noisy data, so its slope is uncertain. Set a "
+                          "smoothing S, or choose the Smith method.");
+                break;
+            case StepCheck::FitPoor:
+                text = tr("The model does not fit the response well (fit error > 8 %).");
+                break;
+            }
+            auto *item = new QListWidgetItem(icon, text, m_checksList);
+            item->setFlags(Qt::ItemIsEnabled);
+            item->setToolTip(text);
+            const int h = m_checksList->fontMetrics()
+                              .boundingRect(0, 0, textWidth, 2000, Qt::TextWordWrap, text)
+                              .height()
+                          + 8;
+            item->setSizeHint(QSize(0, std::max(h, 24)));
+            total += std::max(h, 24);
+        }
+        m_checksList->setFixedHeight(total);
+    }
+    m_checksList->setVisible(m_checksList->count() > 0);
+}
+
+void OpenLoopPage::rebuildTuningTable()
+{
+    const AnalysisSettings &settings = m_ctx->settings;
+    const QList<StepResult> &results = m_ctx->results;
+    m_tuningTable->clearSpans();
+    m_tuningTable->setRowCount(0);
+    const bool pct = m_ctx->percentGainsShown();
+    const bool minutes = settings.timeInMinutes;
+    const QString tUnit = minutes ? QStringLiteral("min") : QStringLiteral("s");
+    QStringList headers{QStringLiteral("Kp")};
+    if (pct)
+        headers << QStringLiteral("Kp (%/%)");
+    headers << QStringLiteral("Ti (%1)").arg(tUnit) << QStringLiteral("Td (%1)").arg(tUnit);
+    m_tuningTable->setColumnCount(int(headers.size()));
+    m_tuningTable->setHorizontalHeaderLabels(headers);
+
+    const StepResult *r = (!results.isEmpty() && results.first().valid) ? &results.first() : nullptr;
+    QList<TuningRow> rows;
+    if (r && r->gain && r->deadTime && r->timeConstant) {
+        rows = tune(*r->gain, *r->deadTime, *r->timeConstant, settings.tuningRule,
+                    settings.lambdaS);
+    }
+    QStringList rowLabels;
+    const double div = minutes ? 60.0 : 1.0;
+    for (int i = 0; i < rows.size(); ++i) {
+        const TuningRow &tr_ = rows.at(i);
+        rowLabels << toString(tr_.kind);
+        m_tuningTable->insertRow(i);
+        if (!tr_.available) {
+            const QString text = tr("not defined");
+            const QString toolTip =
+                tip(toString(tr_.kind),
+                    tr("%1 gives no %2 setting for this model.")
+                        .arg(ruleName(settings.tuningRule), toString(tr_.kind)),
+                    {});
+            m_tuningTable->setItem(i, 0, makeItem(text, false, toolTip));
+            m_tuningTable->setSpan(i, 0, 1, m_tuningTable->columnCount());
+            continue;
+        }
+        int c = 0;
+        auto put = [&](const QString &text, int column) {
+            const QString toolTip = explainTuning(column, tr_.kind, tr_, *r);
+            m_tuningTable->setItem(i, c++, makeItem(text, true, toolTip));
+        };
+        put(g4(tr_.kp), 0);
+        if (pct)
+            put(tr_.kp ? g4(*tr_.kp * *m_ctx->pvSpan() / *m_ctx->coSpan()) : kDash, 3);
+        put(tr_.ti ? g4(*tr_.ti / div) : kDash, 1);
+        put(tr_.td ? g4(*tr_.td / div) : kDash, 2);
+    }
+    m_tuningTable->setVerticalHeaderLabels(rowLabels);
+    fitTableHeight(m_tuningTable);
+
+    QString note = tr("Ideal (ISA) form: u = Kp (e + 1/Ti ∫e dt + Td de/dt). Ti and Td in %1.")
+                       .arg(minutes ? tr("min") : tr("s"));
+    if (r && r->gain && *r->gain < 0.0)
+        note += u' ' + tr("K is negative: the controller must be direct acting (Kp is shown negative).");
+    m_tuningNote->setText(note);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Plot overlays
+
+void OpenLoopPage::setOverlaysShown(bool shown)
+{
+    if (shown == m_overlaysShown)
+        return;
+    m_overlaysShown = shown;
+    rebuildOverlays();
+}
+
+void OpenLoopPage::clearOverlays()
+{
+    for (QwtPlotCurve *c : std::as_const(m_modelCurves)) {
+        c->detach();
+        delete c;
+    }
+    m_modelCurves.clear();
+}
+
+void OpenLoopPage::forgetOverlays()
+{
+    m_modelCurves.clear();
+}
+
+void OpenLoopPage::rebuildOverlays()
+{
+    clearOverlays();
+    if (!m_ctx->plot || !m_overlaysShown)
+        return;
+    const AnalysisSettings &settings = m_ctx->settings;
+    const QList<StepResult> &results = m_ctx->results;
+    if (results.isEmpty())
+        return;
+    QwtPlot *plot = m_ctx->plot->plot();
+    const StepResult &r = results.first();
+    const Tag *tag = m_ctx->tagById(r.tagId);
+    if (!r.valid || !tag)
+        return;
+    const int axis = tag->axis == YAxis::Right ? QwtPlot::yRight : QwtPlot::yLeft;
+
+    if (tag->plotted && settings.showModel && r.deadTime && r.timeConstant && r.t2 > r.t1) {
+        QVector<QPointF> pts;
+        pts.reserve(kModelPoints + 2);
+        for (int k = 0; k < kModelPoints; ++k) {
+            const double t = r.t1 + (r.t2 - r.t1) * k / (kModelPoints - 1);
+            pts.append(QPointF(t, fopdtModelValue(r, t)));
+        }
+        const double tb = r.stepTime + *r.deadTime;
+        if (tb > r.t1 && tb < r.t2) {
+            const auto it = std::lower_bound(pts.begin(), pts.end(), tb,
+                                             [](const QPointF &p, double t) { return p.x() < t; });
+            pts.insert(it, QPointF(tb, fopdtModelValue(r, tb)));
+        }
+        auto *curve = new QwtPlotCurve(tr("%1 model").arg(tag->name));
+        curve->setSamples(pts);
+        // Width: the PV curve's pen width + 1 (the PV curve has the tag's legend title).
+        double penWidth = 1.5;
+        const QString pvTitle = tag->unit.isEmpty()
+                                    ? tag->name
+                                    : QStringLiteral("%1 [%2]").arg(tag->name, tag->unit);
+        const QwtPlotItemList curves = plot->itemList(QwtPlotItem::Rtti_PlotCurve);
+        for (QwtPlotItem *item : curves) {
+            if (item->title().text() == pvTitle) {
+                penWidth = static_cast<QwtPlotCurve *>(item)->pen().widthF();
+                break;
+            }
+        }
+        QColor modelColor(settings.modelColor);
+        if (!modelColor.isValid())
+            modelColor = QColor(0x20, 0x20, 0x20);
+        curve->setPen(QPen(modelColor, penWidth + 1.0, Qt::DashLine));
+        curve->setItemAttribute(QwtPlotItem::Legend, false);
+        curve->setYAxis(axis);
+        curve->setZ(12.0);
+        curve->attach(plot);
+        m_modelCurves.append(curve);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Copy / readout
+
+QString OpenLoopPage::copyText() const
+{
+    // The tuning table's controller names are row headers, which tableToTsv() does not include.
+    QString tuning = tableToTsv(m_tuningTable->model(), {});
+    QStringList lines = tuning.split(QStringLiteral("\r\n"));
+    QString tuningWithKinds;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).isEmpty() && i == lines.size() - 1)
+            break;
+        const QString kind =
+            i == 0 ? tr("Controller")
+                   : (m_tuningTable->verticalHeaderItem(i - 1) ? m_tuningTable->verticalHeaderItem(i - 1)->text()
+                                                               : QString());
+        tuningWithKinds += kind + u'\t' + lines.at(i) + QStringLiteral("\r\n");
+    }
+    return tableToTsv(m_resultsTable->model(), {}) + QStringLiteral("\r\n") + tuningWithKinds;
+}
+
+QString OpenLoopPage::readoutText() const
+{
+    const QList<StepResult> &results = m_ctx->results;
+    if (results.isEmpty() || !results.first().valid)
+        return {};
+    const StepResult &pv = results.first();
+    const Tag *pvTag = m_ctx->tagById(pv.tagId);
+    const auto ab = modelPercents(m_ctx->settings);
+    QStringList model;
+    if (pv.gain)
+        model << QStringLiteral("K = ") + withUnit(g4(*pv.gain), m_ctx->kUnit());
+    if (pv.deadTime)
+        model << QStringLiteral("L = ") + g4(*pv.deadTime) + QStringLiteral(" s");
+    if (pv.timeConstant)
+        model << QStringLiteral("T = ") + g4(*pv.timeConstant) + QStringLiteral(" s");
+    if (pv.fitRmsPercent) {
+        model << tr("fit %1 % (%2)")
+                     .arg(QString::number(*pv.fitRmsPercent, 'g', 3), fitWord(*pv.fitRmsPercent));
+    }
+    QString line = (pvTag ? tagLabel(*pvTag) : QString::number(pv.tagId)) + QStringLiteral(" (")
+                   + fmtPercent(ab.first) + QStringLiteral(" / ") + fmtPercent(ab.second)
+                   + QStringLiteral(")");
+    if (!model.isEmpty())
+        line += QStringLiteral(": ") + model.join(QStringLiteral(", "));
+    return line;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tooltips
+
+QString OpenLoopPage::explainResult(Quantity quantity, const StepResult *r) const
+{
+    const AnalysisSettings &settings = m_ctx->settings;
+    const QString pu = m_ctx->pvUnit();
+    const QString cu = m_ctx->coUnit();
+    const bool mean = settings.reference == ReferenceMode::WindowMean;
+    const QString w = g4(settings.referenceWindowS);
+    QString name;
+    QString meaning;
+    QStringList lines;
+
+    switch (quantity) {
+    case Quantity::Y0:
+    case Quantity::Y100: {
+        const bool first = quantity == Quantity::Y0;
+        const QString c = first ? QStringLiteral("C1") : QStringLiteral("C2");
+        const QString y = first ? QStringLiteral("y0") : QStringLiteral("y100");
+        name = first ? tr("y0, level before the step") : tr("y100, level after the step");
+        if (mean) {
+            meaning = tr("mean of the PV over the %1 s before %2 (%3 % of the step).")
+                          .arg(w, c, first ? QStringLiteral("0") : QStringLiteral("100"));
+            lines << tr("%1 = mean of PV over [%2 - W, %2]").arg(y, c);
+        } else {
+            meaning = tr("value of the PV at cursor %1 (%2 % of the step).")
+                          .arg(c, first ? QStringLiteral("0") : QStringLiteral("100"));
+            lines << y + QStringLiteral(" = PV(%1)").arg(c);
+        }
+        if (r) {
+            const double t = first ? r->t1 : r->t2;
+            const double v = first ? r->y0 : r->y100;
+            if (mean) {
+                lines << tr("%1 = mean of PV over [%2 - %3, %2] = %4")
+                                 .arg(y, fmtSeconds(t), w, withUnit(g4(v), pu));
+            } else {
+                lines << y + QStringLiteral(" = PV(%1) = %2").arg(fmtSeconds(t), withUnit(g4(v), pu));
+            }
+        }
+        break;
+    }
+    case Quantity::DeltaPv:
+        name = kDelta + tr("PV, change of the PV");
+        meaning = tr("how much the PV moved between the cursors.");
+        lines << kDelta + QStringLiteral("PV = y100 - y0");
+        if (r) {
+            lines << kDelta + QStringLiteral("PV = %1 - %2 = %3")
+                                  .arg(g4p(r->y100), g4p(r->y0), withUnit(g4(r->deltaPv), pu));
+        }
+        break;
+    case Quantity::DeltaCo: {
+        name = kDelta + tr("CO, change of the controller output");
+        const Tag *co = m_ctx->tagById(settings.deltaCoTagId);
+        if (co) {
+            meaning = tr("how much the controller output %1 changed between the cursors.").arg(co->name);
+            lines << kDelta + QStringLiteral("CO = CO(C2) - CO(C1)");
+            if (r && r->deltaCo) {
+                std::optional<double> a;
+                std::optional<double> b;
+                if (m_ctx->recorder) {
+                    a = referenceLevel(*m_ctx->recorder, co->id, r->t1, settings.reference,
+                                       settings.referenceWindowS);
+                    b = referenceLevel(*m_ctx->recorder, co->id, r->t2, settings.reference,
+                                       settings.referenceWindowS);
+                }
+                if (a && b) {
+                    lines << kDelta + QStringLiteral("CO = %1 - %2 = %3")
+                                          .arg(g4p(*b), g4p(*a), withUnit(g4(*r->deltaCo), cu));
+                } else {
+                    lines << kDelta + QStringLiteral("CO = %1").arg(withUnit(g4(*r->deltaCo), cu));
+                }
+            }
+        } else {
+            meaning = tr("change of the controller output, typed in step 1.");
+            lines << kDelta + tr("CO = typed in step 1");
+            if (r && r->deltaCo)
+                lines << kDelta + QStringLiteral("CO = %1").arg(g4(*r->deltaCo));
+        }
+        break;
+    }
+    case Quantity::K:
+        name = tr("K, process gain");
+        meaning = tr("change of the PV per unit of controller output, once settled.");
+        lines << QStringLiteral("K = ") + kDelta + QStringLiteral("PV / ") + kDelta + QStringLiteral("CO");
+        if (r && r->gain && r->deltaCo) {
+            lines << QStringLiteral("K = %1 / %2 = %3")
+                         .arg(g4p(r->deltaPv), g4p(*r->deltaCo), withUnit(g4(*r->gain), m_ctx->kUnit()));
+        }
+        break;
+    case Quantity::KPct: {
+        const std::optional<double> pvSpan = m_ctx->pvSpan();
+        const std::optional<double> coSpan = m_ctx->coSpan();
+        name = tr("K (%/%), process gain in percent of range");
+        meaning = tr("K for signals expressed in percent of their ranges.");
+        lines << tr("K (%/%) = K %1 CO span / PV span").arg(kTimes);
+        if (r && r->gain && pvSpan && coSpan) {
+            lines << QStringLiteral("K (%/%) = %1 %2 %3 / %4 = %5 %/%")
+                         .arg(g4p(*r->gain), kTimes, g4p(*coSpan), g4p(*pvSpan),
+                              g4(*r->gain * *coSpan / *pvSpan));
+        }
+        break;
+    }
+    case Quantity::L:
+        return explainModelTime(true, r);
+    case Quantity::T:
+        return explainModelTime(false, r);
+    case Quantity::LOverT:
+        name = tr("L/T, controllability ratio");
+        meaning = tr("controllability ratio: below 0.3 easy, above 1 dead-time dominated.");
+        lines << QStringLiteral("L/T = L / T");
+        if (r && r->deadTime && r->timeConstant) {
+            lines << QStringLiteral("L/T = %1 / %2 = %3")
+                         .arg(g4p(*r->deadTime), g4p(*r->timeConstant),
+                              g4(*r->deadTime / *r->timeConstant));
+        }
+        break;
+    case Quantity::Fit:
+        name = tr("Fit error");
+        meaning = tr("how far the model curve is from the recorded PV between the cursors: RMS of "
+                     "(PV - model), and as % of |%1PV|.").arg(kDelta);
+        lines << tr("fit % = 100 %1 RMS(PV - model) / |%2PV|").arg(kTimes, kDelta);
+        if (r && r->fitRms && r->fitRmsPercent) {
+            lines << QStringLiteral("fit % = 100 %1 %2 / |%3| = %4 %")
+                         .arg(kTimes, g4(*r->fitRms), g4(r->deltaPv), g4(*r->fitRmsPercent));
+            lines << tr("Under 3 % is Good, under 8 % Acceptable, otherwise Poor (here: %1).")
+                         .arg(fitWord(*r->fitRmsPercent));
+        } else {
+            lines << tr("Under 3 % is Good, under 8 % Acceptable, otherwise Poor.");
+        }
+        break;
+    }
+    return tip(name, meaning, lines);
+}
+
+QString OpenLoopPage::explainModelTime(bool forL, const StepResult *r) const
+{
+    const auto ab = modelPercents(m_ctx->settings);
+    const double fa = ab.first / 100.0;
+    const double fb = ab.second / 100.0;
+    const QString sa = QStringLiteral("t") + QString::number(ab.first, 'g', 4);
+    const QString sb = QStringLiteral("t") + QString::number(ab.second, 'g', 4);
+    const QString faS = g4(fa);
+    const QString fbS = g4(fb);
+    const bool ok = r && r->deadTime && r->timeConstant;
+    double L = 0.0;
+    double T = 0.0;
+    double ta = 0.0;
+    double tb = 0.0;
+    if (ok) {
+        L = *r->deadTime;
+        T = *r->timeConstant;
+        ta = L - T * std::log(1.0 - fa);                       // from the step time
+        tb = ta + T * (std::log(1.0 - fa) - std::log(1.0 - fb));
+    }
+    const QString A = ok ? g4(ta) : QString();
+    const QString B = ok ? g4(tb) : QString();
+    QStringList lines;
+    const ModelMethod m = m_ctx->settings.method;
+    // Smith and Sundaresan use rounded textbook constants (1.5, 0.67, ...): the computed value is
+    // from the exact two-point formula, so a hand calculation can differ in the 4th digit.
+    const QString approx = (m == ModelMethod::Sundaresan || m == ModelMethod::Smith)
+                               ? QStringLiteral("≈")
+                               : QStringLiteral("=");
+
+    QString name;
+    QString meaning;
+    if (forL) {
+        name = tr("L, dead time");
+        meaning = tr("delay between the step and the start of the PV response.");
+        switch (m) {
+        case ModelMethod::ZeroTo632:
+            lines << QStringLiteral("L = t0");
+            if (ok)
+                lines << QStringLiteral("L = %1 s").arg(A);
+            break;
+        case ModelMethod::Smith:
+            lines << QStringLiteral("L = %1 - T").arg(sb);
+            if (ok)
+                lines << QStringLiteral("L = %1 - %2 %3 %4 s").arg(B, g4p(T), approx, g4(L));
+            break;
+        case ModelMethod::Sundaresan:
+            lines << QStringLiteral("L = 1.3 %1 - 0.29 %2").arg(sa, sb);
+            if (ok) {
+                lines << QStringLiteral("L = 1.3 %1 %2 - 0.29 %1 %3 %4 %5 s")
+                             .arg(kTimes, A, B, approx, g4(L));
+            }
+            break;
+        case ModelMethod::Custom:
+            lines << QStringLiteral("L = %1 + T ln(1 - a)").arg(sa);
+            if (ok) {
+                lines << QStringLiteral("L = %1 + %2 %3 ln(1 - %4) = %5 s")
+                             .arg(A, g4p(T), kTimes, faS, g4(L));
+            }
+            break;
+        case ModelMethod::Tangent:
+            break; // tooltip text: open-loop page task
+        }
+    } else {
+        name = tr("T, time constant");
+        meaning = tr("time the PV needs to cover 63.2 % of its change after the dead time.");
+        switch (m) {
+        case ModelMethod::ZeroTo632:
+            lines << QStringLiteral("T = %1 - %2").arg(sb, sa);
+            if (ok)
+                lines << QStringLiteral("T = %1 - %2 = %3 s").arg(B, g4p(ta), g4(T));
+            break;
+        case ModelMethod::Smith:
+            lines << QStringLiteral("T = 1.5 (%1 - %2)").arg(sb, sa);
+            if (ok)
+                lines << QStringLiteral("T = 1.5 (%1 - %2) %3 %4 s").arg(B, g4p(ta), approx, g4(T));
+            break;
+        case ModelMethod::Sundaresan:
+            lines << QStringLiteral("T = 0.67 (%1 - %2)").arg(sb, sa);
+            if (ok)
+                lines << QStringLiteral("T = 0.67 (%1 - %2) %3 %4 s").arg(B, g4p(ta), approx, g4(T));
+            break;
+        case ModelMethod::Custom:
+            lines << QStringLiteral("T = (%1 - %2) / (ln(1 - a) - ln(1 - b))").arg(sb, sa);
+            if (ok) {
+                lines << QStringLiteral("T = (%1 - %2) / (ln(1 - %3) - ln(1 - %4)) = %5 s")
+                             .arg(B, g4p(ta), faS, fbS, g4(T));
+            }
+            break;
+        case ModelMethod::Tangent:
+            break; // tooltip text: open-loop page task
+        }
+    }
+    if (ok) {
+        lines << tr("Times are measured from the step time (t = %1 s).").arg(g4(r->stepTime));
+    }
+    return tip(name, meaning, lines);
+}
+
+QString OpenLoopPage::explainTuning(int column, ControllerKind kind, const TuningRow &row,
+                                    const StepResult &r) const
+{
+    // column: 0 = Kp, 1 = Ti, 2 = Td, 3 = Kp (%/%)
+    const AnalysisSettings &settings = m_ctx->settings;
+    const TuningRule rule = settings.tuningRule;
+    const bool minutes = settings.timeInMinutes;
+    const double K = r.gain.value_or(kNaN);
+    const double L = r.deadTime.value_or(kNaN);
+    const double T = r.timeConstant.value_or(kNaN);
+    const double lam = effectiveLambda(L, settings.lambdaS);
+    const QString ruleText = ruleName(rule);
+    const QString kindName = toString(kind);
+    QString name;
+    QString meaning;
+    QStringList lines;
+    const QString pu = m_ctx->pvUnit();
+    const QString cu = m_ctx->coUnit();
+    const QString kpUnit = (!pu.isEmpty() && !cu.isEmpty()) ? cu + u'/' + pu : QString();
+
+    if (column == 3) {
+        const std::optional<double> pvSpan = m_ctx->pvSpan();
+        const std::optional<double> coSpan = m_ctx->coSpan();
+        name = QStringLiteral("Kp (%/%), ") + kindName;
+        meaning = tr("controller gain for signals expressed in percent of their ranges.");
+        lines << tr("Kp (%/%) = Kp %1 PV span / CO span").arg(kTimes);
+        if (row.kp && pvSpan && coSpan) {
+            lines << QStringLiteral("Kp (%/%) = %1 %2 %3 / %4 = %5 %/%")
+                         .arg(g4p(*row.kp), kTimes, g4p(*pvSpan), g4p(*coSpan),
+                              g4(*row.kp * *pvSpan / *coSpan));
+        }
+        return tip(name, meaning, lines);
+    }
+
+    const QString format = tuningFormula(rule, kind, column);
+    const QString symbol = column == 0 ? QStringLiteral("Kp") : column == 1 ? QStringLiteral("Ti")
+                                                                              : QStringLiteral("Td");
+    name = symbol + QStringLiteral(", ") + kindName + QStringLiteral(" (") + ruleText + u')';
+    meaning = column == 0   ? tr("proportional gain: controller output change per unit of PV error.")
+              : column == 1 ? tr("integral time: how long the integral action takes to repeat the "
+                                 "proportional action.")
+                            : tr("derivative time: how far ahead the derivative action looks.");
+    if (!format.isEmpty()) {
+        lines << symbol + QStringLiteral(" = ")
+                     + substitute(format, {QStringLiteral("K"), QStringLiteral("L"),
+                                           QStringLiteral("T"), QStringLiteral(u"λ"),
+                                           QStringLiteral("r")});
+        const std::optional<double> value = column == 0 ? row.kp : column == 1 ? row.ti : row.td;
+        if (value && std::isfinite(K)) {
+            const QString numeric =
+                substitute(format, {g4p(K), g4p(L), g4p(T), g4p(lam), g4p(L / T)});
+            QString result = column == 0 ? withUnit(g4(*value), kpUnit)
+                                         : g4(*value) + QStringLiteral(" s");
+            if (column != 0 && minutes)
+                result += QStringLiteral(" = ") + g4(*value / 60.0) + QStringLiteral(" min");
+            lines << symbol + QStringLiteral(" = ") + numeric + QStringLiteral(" = ") + result;
+        }
+        if (format.contains(QStringLiteral("%5")))
+            lines << QStringLiteral("r = L / T = %1 / %2 = %3").arg(g4p(L), g4p(T), g4(L / T));
+        if (format.contains(QStringLiteral("%4"))) {
+            lines << (settings.lambdaS > 0.0
+                          ? QStringLiteral("λ = %1 s").arg(g4(lam))
+                          : tr("λ = L = %1 s (Auto)").arg(g4(lam)));
+        }
+    }
+    return tip(name, meaning, lines);
+}
+
+} // namespace mb

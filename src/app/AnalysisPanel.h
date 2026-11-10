@@ -10,6 +10,7 @@
 #include <QWidget>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 class QCheckBox;
@@ -21,17 +22,23 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 class QTableWidget;
-class QwtPlotCurve;
 class QwtPlotItem;
 class QwtPlotMarker;
 class QListWidgetItem;
-class QResizeEvent;
+class QStackedWidget;
+class QToolButton;
 class TstAnalysisPanel;
 
 namespace mb {
 
+class ClosedLoopPage;
+class OpenLoopPage;
 class Recorder;
 class TrendPlot;
+
+namespace analysis {
+struct Context;
+}
 
 /// Contents of the "Analysis" dock: a step-response analysis of the main Trend plot, laid out as
 /// guided steps for students (see docs/USER_GUIDE.md). v1.3.3: every number field is a
@@ -47,6 +54,10 @@ class TrendPlot;
 ///     AnalysisSettings::pvTagId and adds it to setpointTagIds (the "Show setpoints on" list).
 ///   * "coCombo": "Typed ΔCO" (data 0) + every tag except the PV; "deltaCoSpin" (enabled for
 ///     "Typed ΔCO"; decimals 4, range -1e9..1e9).
+///   * v1.4.0: "spCombo" "Setpoint (SP)", on its own row after the ΔCO row: "Typed" (data 0) +
+///     every tag except the PV ("name [unit]", data TagId) = AnalysisSettings::spTagId. Same rules
+///     as coCombo: kept while its tag exists, bit tags never offered, an unknown / bit / PV tag
+///     (setSettings, setTags, choosing it as PV) means "Typed". Used by the closed-loop area.
 ///   * Ranges row "Ranges for %/% gains": "pvMinEdit", "pvMaxEdit" (QLineEdit, empty = not set,
 ///     numbers only), "coMinSpin", "coMaxSpin" (default 0 and 100).
 /// - Group "2. Cursors" ("cursorsGroup"): "cursorLabel" "C1 = 10.000 s, C2 = 30.000 s" ("—" for a
@@ -60,7 +71,16 @@ class TrendPlot;
 ///   output in the visible range." A step found with settled == false also shows the NotSettled
 ///   check, even when checkStep() does not report it: a private flag set by Find step is cleared by
 ///   the next cursor change that Find step did not make, and by a PV / CO / settings change.
-/// - Group "3. Model" ("modelGroup"):
+/// - v1.4.0: mode switch "modeSwitch": two checkable, exclusive QToolButtons "openLoopButton"
+///   "Open loop" and "closedLoopButton" "Closed loop" = AnalysisSettings::mode (default Open
+///   loop). A click by the user emits settingsChanged() once (setSettings() does not); switching
+///   keeps every setting and result (no recompute, no resultsChanged()) and only changes the shown
+///   page and the overlays on the plot.
+/// - QStackedWidget "modeStack", as tall as the shown page (the hidden page's height is ignored):
+///   page 0 "openLoopPage" (OpenLoopPage.h) holds groups 3 and 4 below; page 1 "closedLoopPage"
+///   (ClosedLoopPage.h) is filled by a later task; for now it shows the label
+///   "closedLoopPlaceholder" "The closed-loop analysis is not available yet.".
+/// - Group "3. Model" ("modelGroup", on the open-loop page):
 ///   * "methodCombo": the four ModelMethod values (toString), "fromSpin"/"toSpin" (0..99.99,
 ///     enabled for Custom only; an edit that breaks a < b is reverted). A fresh panel (and
 ///     File > New) shows the AnalysisSettings defaults (v1.3.5): Smith, 28.3 % / 63.2 % in the
@@ -91,7 +111,7 @@ class TrendPlot;
 ///     DeadTimeDominant "L/T > 1: dead time dominates. Ziegler-Nichols and Cohen-Coon will be
 ///       aggressive; prefer IMC / lambda or SIMC.";
 ///     FitPoor "The model does not fit the response well (fit error > 8 %)."
-/// - Group "4. Tuning" ("tuningGroup"):
+/// - Group "4. Tuning" ("tuningGroup", on the open-loop page):
 ///   * "ruleCombo" (TuningRule, toString); "lambdaSpin" ("λ", s, 0..1e6, special value "Auto (= L)"
 ///     at 0; enabled for IMC / lambda and SIMC); "minutesCheck" "Ti, Td in minutes".
 ///   * "tuningTable": rows P, PI, PID; columns Kp, Kp (%/%) (only when both ranges are set), Ti,
@@ -109,7 +129,8 @@ class TrendPlot;
 ///   duplicates, at most 20); "detailedLabelsCheck", "guideLinesCheck"; "setpointTable" (Tag,
 ///   %, Target, Measured, Time (s), t − C1 (s)) with one row per (checked tag, percent).
 ///   All tables get installCopyShortcut() (Ctrl+C) and extended selection. "Copy results" copies
-///   resultsTable, tuningTable and setpointTable as tableToTsv(), separated by empty lines.
+///   resultsTable, tuningTable and setpointTable as tableToTsv(), separated by empty lines (in
+///   Closed loop mode the closed-loop page's part, when not empty, comes before setpointTable).
 ///
 /// Didactic tooltips: every value cell of resultsTable, tuningTable and setpointTable has a
 /// rich-text tooltip (built by explainValue-style private helpers in one place) with (1) the name
@@ -138,7 +159,9 @@ class TrendPlot;
 ///   v1.3.3: the 0 % setpoint is always placed at C1's time with Y = y0 (its "Time (s)" is t1
 ///   and "t − C1 (s)" is 0), even when the PV crosses y0 later (periodic signals, "Mean before
 ///   cursor" reference); other percents are unchanged.
-/// - showModel (v1.3.3: off by default): the PV's model curve, only when the PV is plotted (dashed,
+/// - Setpoint markers and guide lines belong to the setpoints page: shown in both modes.
+/// - showModel (v1.3.3: off by default), Open loop mode only (v1.4.0: switching to Closed loop
+///   removes it from the plot, switching back restores it): the PV's model curve, only when the PV is plotted (dashed,
 ///   colour AnalysisSettings::modelColor (default #202020), width = the PV curve's pen width + 1;
 ///   v1.3.3, it was the tag colour), ~400 points, from t1 to t2, title
 ///   "<name> model", not in the legend). Overlays use each tag's Y axis.
@@ -183,6 +206,8 @@ public:
     /// "Lag [degC] (0 % / 63.2 %): K = 2 degC/%, L = 2.35 s, T = 2.01 s, fit 0.6 % (Good)" plus one
     /// line per other shown setpoint tag with its setpoint times. It has no "C1 = ..., C2 = ..."
     /// line: AppController composes CursorPanel::readoutText() followed by this text.
+    /// v1.4.0: the same in both modes; in Closed loop mode the closed-loop page's line (none yet)
+    /// follows the PV line.
     QString readoutText() const;
 
 public slots:
@@ -200,26 +225,21 @@ signals:
 private:
     friend class ::TstAnalysisPanel;
 
-    enum class Quantity { Y0, Y100, DeltaPv, DeltaCo, K, KPct, L, T, LOverT, Fit };
-
     void buildUi();
     void syncControlsFromSettings();
     void normalizeSettings();
     void rebuildPvCombo();
     void rebuildCoCombo();
+    void rebuildSpCombo();
     void rebuildSetpointList();
     void rebuildPercentList();
-    void syncModelSpins();
     void updateEnabled();
-    void updateModelColorButton();
-    void onPickModelColor();
+    void updateModeSwitch();
+    void onModeClicked(AnalysisMode mode);
     void recompute();
-    void rebuildResultsTable();
-    void rebuildChecks();
-    void rebuildTuningTable();
     void rebuildSetpointTable();
     void rebuildOverlays();
-    void clearOverlays(bool detach);
+    void clearOverlays();
     void updateCursorLabel();
     void updateHint();
     void updateFindButton();
@@ -229,36 +249,18 @@ private:
     void onFindStep();
     void onPvChanged();
     void onCoChanged();
-    void onMethodChanged();
-    void onModelPercentChanged();
+    void onSpChanged();
     void onRangesChanged();
     void onAddPercent();
     void onRemovePercent();
     void onSetpointItemChanged(QListWidgetItem *item);
-    void resizeEvent(QResizeEvent *event) override;
 
-    const Tag *tagById(TagId id) const;
-    bool shownTag(const Tag *tag) const; ///< setpoint rows / markers of this tag
-    QString pvUnit() const;
-    QString coUnit() const;
-    QString kUnit() const;
-    std::optional<double> pvSpan() const;
-    std::optional<double> coSpan() const;
-    bool percentGainsShown() const;
-
-    // Tooltips (all text built in these functions).
-    QString explainResult(Quantity quantity, const StepResult *result) const;
-    QString explainModelTime(bool forL, const StepResult *result) const;
+    // Tooltips of the setpoint table (the pages build their own).
     QString explainSetpoint(int column, const StepResult &result, const SetpointResult &sp,
                             const QString &tagName) const;
-    QString explainTuning(int column, ControllerKind kind, const TuningRow &row,
-                          const StepResult &result) const;
 
-    const Recorder *m_recorder = nullptr;
-    TrendPlot *m_plot = nullptr;
-    QList<Tag> m_tags;
-    AnalysisSettings m_settings;
-    QList<StepResult> m_results;
+    /// Settings, tags, recorder, plot and step results, shared with the pages.
+    std::unique_ptr<analysis::Context> m_ctx;
 
     QMetaObject::Connection m_cursorsConnection;
     QMetaObject::Connection m_plotDestroyedConnection;
@@ -268,6 +270,7 @@ private:
     QComboBox *m_pvCombo = nullptr;
     QComboBox *m_coCombo = nullptr;
     QDoubleSpinBox *m_deltaCoSpin = nullptr;
+    QComboBox *m_spCombo = nullptr;
     QLineEdit *m_pvMinEdit = nullptr;
     QLineEdit *m_pvMaxEdit = nullptr;
     QDoubleSpinBox *m_coMinSpin = nullptr;
@@ -275,21 +278,11 @@ private:
     QLabel *m_cursorLabel = nullptr;
     QPushButton *m_findStepButton = nullptr;
     QLabel *m_hintLabel = nullptr;
-    QComboBox *m_methodCombo = nullptr;
-    QDoubleSpinBox *m_fromSpin = nullptr;
-    QDoubleSpinBox *m_toSpin = nullptr;
-    QTableWidget *m_resultsTable = nullptr;
-    QCheckBox *m_showModelCheck = nullptr;
-    QPushButton *m_modelColorButton = nullptr;
-    /// Seam for the colour dialog: (current colour, parent) -> chosen colour, invalid when
-    /// cancelled. Tests replace it.
-    std::function<QColor(const QColor &, QWidget *)> m_pickColor;
-    QListWidget *m_checksList = nullptr;
-    QComboBox *m_ruleCombo = nullptr;
-    QDoubleSpinBox *m_lambdaSpin = nullptr;
-    QCheckBox *m_minutesCheck = nullptr;
-    QTableWidget *m_tuningTable = nullptr;
-    QLabel *m_tuningNote = nullptr;
+    QToolButton *m_openLoopButton = nullptr;
+    QToolButton *m_closedLoopButton = nullptr;
+    QStackedWidget *m_modeStack = nullptr;
+    OpenLoopPage *m_openLoopPage = nullptr;
+    ClosedLoopPage *m_closedLoopPage = nullptr;
     QPointer<QWidget> m_setpointsPage;
     QListWidget *m_setpointTagList = nullptr;
     QComboBox *m_referenceCombo = nullptr;
@@ -305,14 +298,10 @@ private:
 
     QList<QwtPlotMarker *> m_markers;
     QList<QwtPlotItem *> m_guideItems;
-    QList<QwtPlotCurve *> m_modelCurves;
 
     bool m_updating = false;        ///< programmatic control changes: no user handling
     bool m_settingCursors = false;  ///< Find step in progress: recompute once at the end
-    bool m_findNotSettled = false;  ///< Find step found settled == false; cleared by other changes
     QString m_hintOverride;         ///< e.g. "No step found...", cleared by the next recompute
-    double m_prevFrom = 0.0;
-    double m_prevTo = 63.2;
     qsizetype m_lastSize = 0;
     double m_lastTime = 0.0;
     quint64 m_lastEvicted = 0;
