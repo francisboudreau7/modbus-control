@@ -494,8 +494,16 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>Choisissez la variable mesurée (PV) à l&apos;étape 1.</translation>
     </message>
     <message>
+        <source>Place C1 at the setpoint change (or just before the disturbance) and C2 after the PV has settled.</source>
+        <translation>Placez C1 au changement de consigne (ou juste avant la perturbation) et C2 après la stabilisation de la PV.</translation>
+    </message>
+    <message>
         <source>Place C1 just before the step and C2 after the PV has settled, or click Find step.</source>
         <translation>Placez C1 juste avant l&apos;échelon et C2 après la stabilisation de la PV, ou cliquez sur Trouver l&apos;échelon.</translation>
+    </message>
+    <message>
+        <source>Find step looks for an open-loop step of the output; place the cursors by hand for a closed-loop test.</source>
+        <translation>Trouver l&apos;échelon cherche un échelon de la sortie en boucle ouverte&#xa0;; placez les curseurs à la main pour un essai en boucle fermée.</translation>
     </message>
     <message>
         <source>Choose the controller output (CO) in step 1: Find step looks for its step.</source>
@@ -524,6 +532,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>K can&apos;t be computed: choose the controller output (CO) or type ΔCO in step 1.</source>
         <translation>K ne peut pas être calculé&#xa0;: choisissez la sortie du régulateur (CO) ou saisissez ΔCO à l&apos;étape 1.</translation>
+    </message>
+    <message>
+        <source>L and T can&apos;t be computed with the tangent: the response has no clear rising slope between the cursors.</source>
+        <translation>L et T ne peuvent pas être calculés avec la tangente&#xa0;: la réponse n&apos;a pas de pente nette entre les curseurs.</translation>
     </message>
     <message>
         <source>L and T can&apos;t be computed: the PV does not reach both model points (%1 % and %2 %) between the cursors.</source>
@@ -1343,12 +1355,8 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>Choisissez la sortie du régulateur (CO) à l&apos;étape 1 pour voir les lignes de la sortie.</translation>
     </message>
     <message>
-        <source>Choose the process value (PV) in step 1.</source>
-        <translation>Choisissez la variable mesurée (PV) à l&apos;étape 1.</translation>
-    </message>
-    <message>
-        <source>Place C1 at the setpoint change (or just before the disturbance) and C2 after the PV has settled.</source>
-        <translation>Placez C1 au changement de consigne (ou juste avant la perturbation) et C2 après la stabilisation de la PV.</translation>
+        <source>The noise on the PV is larger than the settling band: the settling time, the peaks and the decay ratio are unreliable. Choose the 5 % band, or reduce the noise (transmitter damping).</source>
+        <translation>Le bruit sur la PV dépasse la bande de stabilisation&#xa0;: le temps de stabilisation, les pics et le rapport d&apos;amortissement ne sont pas fiables. Choisissez la bande de 5 %, ou réduisez le bruit (amortissement du transmetteur).</translation>
     </message>
     <message>
         <source>Overshoot %1</source>
@@ -1395,6 +1403,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>SP avant = SP à C1 (ou la valeur saisie à l&apos;étape 3)</translation>
     </message>
     <message>
+        <source>SP before = %1</source>
+        <translation>SP avant = %1</translation>
+    </message>
+    <message>
         <source>SP after, setpoint after the step</source>
         <translation>SP après, consigne après l&apos;échelon</translation>
     </message>
@@ -1407,12 +1419,20 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>SP après = SP à C2 (ou la valeur saisie à l&apos;étape 3)</translation>
     </message>
     <message>
+        <source>SP after = %1</source>
+        <translation>SP après = %1</translation>
+    </message>
+    <message>
         <source>the constant setpoint during the disturbance test.</source>
         <translation>la consigne constante pendant l&apos;essai de perturbation.</translation>
     </message>
     <message>
         <source>Setpoint = SP at C1 (or the value typed in step 3)</source>
         <translation>Consigne = SP à C1 (ou la valeur saisie à l&apos;étape 3)</translation>
+    </message>
+    <message>
+        <source>Setpoint = %1</source>
+        <translation>Consigne = %1</translation>
     </message>
     <message>
         <source>how far the PV goes past the new setpoint, in PV units and as a percentage of the step.</source>
@@ -1431,8 +1451,24 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>% de l&apos;échelon = dépassement / |SP après - SP avant| %1 100</translation>
     </message>
     <message>
+        <source>overshoot = max(PV) - SP after = %1 - %2 = %3</source>
+        <translation>dépassement = max(PV) - SP après = %1 - %2 = %3</translation>
+    </message>
+    <message>
+        <source>overshoot = SP after - min(PV) = %1 - %2 = %3</source>
+        <translation>dépassement = SP après - min(PV) = %1 - %2 = %3</translation>
+    </message>
+    <message>
         <source>time from the setpoint change to the overshoot peak.</source>
         <translation>temps écoulé entre le changement de consigne et le pic du dépassement.</translation>
+    </message>
+    <message>
+        <source>peak time = t(peak) - t(SP change)</source>
+        <translation>temps du pic = t(pic) - t(changement de SP)</translation>
+    </message>
+    <message>
+        <source>peak time = %1 - %2 = %3 s</source>
+        <translation>temps du pic = %1 - %2 = %3 s</translation>
     </message>
     <message>
         <source>There is no overshoot, so there is no peak.</source>
@@ -1443,12 +1479,36 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>temps que met la PV pour passer de 10 % à 90 % de l&apos;échelon&#xa0;: rapidité de la réponse.</translation>
     </message>
     <message>
+        <source>rise time = t(90 %) - t(10 %)</source>
+        <translation>temps de montée = t(90 %) - t(10 %)</translation>
+    </message>
+    <message>
+        <source>10 % level = %1 + 0.1 %2 %3 = %4; 90 % level = %1 + 0.9 %2 %3 = %5</source>
+        <translation>niveau 10 % = %1 + 0.1 %2 %3 = %4&#xa0;; niveau 90 % = %1 + 0.9 %2 %3 = %5</translation>
+    </message>
+    <message>
+        <source>rise time = %1 s</source>
+        <translation>temps de montée = %1 s</translation>
+    </message>
+    <message>
         <source>the largest distance between the setpoint and the PV after the disturbance (negative: the PV fell below the setpoint).</source>
         <translation>plus grande distance entre la consigne et la PV après la perturbation (négatif&#xa0;: la PV est descendue sous la consigne).</translation>
     </message>
     <message>
+        <source>max deviation = SP - PV at the largest |SP - PV|</source>
+        <translation>écart maximal = SP - PV au plus grand |SP - PV|</translation>
+    </message>
+    <message>
+        <source>max deviation = %1 - %2 = %3</source>
+        <translation>écart maximal = %1 - %2 = %3</translation>
+    </message>
+    <message>
         <source>time from the disturbance (C1) to the largest deviation.</source>
         <translation>temps écoulé entre la perturbation (C1) et l&apos;écart maximal.</translation>
+    </message>
+    <message>
+        <source>t = t(max deviation) - t(C1)</source>
+        <translation>t = t(écart maximal) - t(C1)</translation>
     </message>
     <message>
         <source>time after which the PV stays inside the band around the final setpoint.</source>
@@ -1463,6 +1523,10 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>bande = %1 % de |écart maximal|; stabilisé quand |SP - PV| &lt;= bande</translation>
     </message>
     <message>
+        <source>band = %1 %2 %3 / 100 = %4</source>
+        <translation>bande = %1 %2 %3 / 100 = %4</translation>
+    </message>
+    <message>
         <source>settling time = time the PV enters the band for good, measured from the start = %1 s</source>
         <translation>temps de stabilisation = moment où la PV entre dans la bande pour de bon, mesuré depuis le début = %1 s</translation>
     </message>
@@ -1475,8 +1539,20 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>taille du deuxième pic de l&apos;erreur divisée par celle du premier&#xa0;: vitesse d&apos;extinction de l&apos;oscillation.</translation>
     </message>
     <message>
+        <source>decay ratio = second peak / first peak</source>
+        <translation>rapport d&apos;amortissement = deuxième pic / premier pic</translation>
+    </message>
+    <message>
         <source>A quarter-amplitude decay is 0.25; the smaller, the better damped.</source>
         <translation>Un amortissement au quart d&apos;amplitude vaut 0.25; plus il est petit, mieux la réponse est amortie.</translation>
+    </message>
+    <message>
+        <source>decay ratio = %1 / %2 = %3</source>
+        <translation>rapport d&apos;amortissement = %1 / %2 = %3</translation>
+    </message>
+    <message>
+        <source>decay ratio = %1</source>
+        <translation>rapport d&apos;amortissement = %1</translation>
     </message>
     <message>
         <source>Fewer than two peaks above the band: the response does not oscillate.</source>
@@ -1487,12 +1563,24 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
         <translation>temps entre le premier et le deuxième pic&#xa0;: la période de l&apos;oscillation.</translation>
     </message>
     <message>
+        <source>period = t(second peak) - t(first peak)</source>
+        <translation>période = t(deuxième pic) - t(premier pic)</translation>
+    </message>
+    <message>
+        <source>period = %1 s</source>
+        <translation>période = %1 s</translation>
+    </message>
+    <message>
         <source>what is left between the setpoint and the PV at the end; an integral action should bring it to zero.</source>
         <translation>ce qui reste entre la consigne et la PV à la fin; une action intégrale devrait la ramener à zéro.</translation>
     </message>
     <message>
         <source>error = SP after - mean(PV over the last 10 % of the test)</source>
         <translation>erreur = SP après - moyenne(PV sur les derniers 10 % de l&apos;essai)</translation>
+    </message>
+    <message>
+        <source>error = %1 - %2 = %3</source>
+        <translation>erreur = %1 - %2 = %3</translation>
     </message>
     <message>
         <source>IAE, integral of the absolute error</source>
@@ -1533,6 +1621,14 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>total distance the controller output moved: less travel means less wear on the valve.</source>
         <translation>distance totale parcourue par la sortie du régulateur&#xa0;: une course plus courte signifie moins d&apos;usure de la vanne.</translation>
+    </message>
+    <message>
+        <source>travel = Σ |CO[i] - CO[i-1]|</source>
+        <translation>course = Σ |CO[i] - CO[i-1]|</translation>
+    </message>
+    <message>
+        <source>travel = %1</source>
+        <translation>course = %1</translation>
     </message>
     <message>
         <source>Predicted: simulation of the open-loop model with the controller settings of step 5.</source>
@@ -2571,10 +2667,6 @@ Le lissage avance le point 0 % d&apos;au plus S/2 (et sous-estime L)&#xa0;; quan
     <message>
         <source>&quot;analysis.closedLoop.prediction.td&quot; must be a finite number, 0 or more</source>
         <translation>&quot;analysis.closedLoop.prediction.td&quot; doit être un nombre fini, 0 ou plus</translation>
-    </message>
-    <message>
-        <source>&quot;analysis.closedLoop.model.k&quot; must be a finite number other than 0</source>
-        <translation>&quot;analysis.closedLoop.model.k&quot; doit être un nombre fini différent de 0</translation>
     </message>
     <message>
         <source>&quot;analysis.closedLoop.model.l&quot; must be a finite number, 0 or more</source>
