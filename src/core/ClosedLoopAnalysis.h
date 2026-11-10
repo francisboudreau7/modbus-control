@@ -38,11 +38,15 @@ struct ClosedLoopSettings {
     double predictionTdS = 0.0; ///< 0 = no derivative action
     /// The process model the prediction uses (saved with the project, so it survives moving the
     /// cursors from the open-loop step to the closed-loop test). modelSet false = no model yet.
-    /// The panel fills it from the open-loop result ("Use the open-loop model", and automatically
-    /// while modelSet is false and the open-loop PV result has K, L >= 0 and T > 0); the student
-    /// can also type it (a model from another tool or a lab handout). K in PV units per CO unit,
-    /// L >= 0 and T > 0 in s. modelSource is a short display text, e.g. "Smith (28.3 % / 63.2 %),
-    /// C1 = 60.0 s" or "typed"; it is not interpreted.
+    /// The panel fills it from the open-loop result in two ways only: the "Use the open-loop
+    /// model" button, and automatically when the user switches from the Open loop to the Closed
+    /// loop area while modelSet is false and the open-loop PV result has K != 0, L >= 0 and T > 0
+    /// (the moment the step test is finished). Never on a recompute, a cursor move, a data refresh,
+    /// setSettings() or a project/session load. The student can also type it (a model from another
+    /// tool or a lab handout). K in PV units per CO unit, L >= 0 and T > 0 in s. K == 0 (or a
+    /// non-finite value) means "no model" whatever modelSet says; files accept any finite K.
+    /// modelSource is a short display text, e.g. "Smith (28.3 % / 63.2 %), C1 = 60.0 s" or
+    /// "typed"; it is not interpreted.
     bool modelSet = false;
     double modelK = 1.0;
     double modelLS = 0.0;
@@ -68,6 +72,9 @@ enum class ClosedLoopCheck : quint8 {
     NotSettled,          ///< no settling time (PV outside the band at C2)
     OutputSaturated,     ///< the output touched its range limits (numbers show the limits)
     NoOutput,            ///< no output tag: the output rows are empty
+    /// The measurement noise (3 sigma, see analyzeClosedLoopSeries()) is larger than the settling
+    /// band: settling, peaks and the decay ratio are unreliable.
+    NoiseAboveBand,
 };
 
 struct ClosedLoopResult {
@@ -103,6 +110,8 @@ struct ClosedLoopResult {
     std::optional<double> outMax;
     std::optional<double> outTravel;        ///< sum of |CO[i] - CO[i-1]| (total valve travel)
     QList<ClosedLoopCheck> checks;          ///< in enum order
+    double band = std::numeric_limits<double>::quiet_NaN();  ///< the settling band b used
+    double noiseSigma = 0.0;                                 ///< sigma of the noise estimate
 };
 
 /// Analysis of a series between t1 and t2 (any order; e = SP - PV everywhere). Samples with a NaN
@@ -120,18 +129,27 @@ struct ClosedLoopResult {
 ///   (Disturbance). settlingTime = time of the first sample after the last sample with |e| > b,
 ///   minus startTime; 0 when no sample after startTime is outside the band; nullopt (check
 ///   NotSettled) when the last sample is outside the band.
+/// - Noise: sigma = standard deviation of PV - (its least-squares line) over the last 10 % of
+///   [startTime, t2] (at least 5 samples; else sigma = 0). NoiseAboveBand when 3 sigma > b.
 /// - Peaks of the error with the sign of the first excursion (SetpointStep: e < 0 is overshoot,
-///   so peaks of -e sign(d); Disturbance: peaks with the sign of maxDeviation): local extrema
-///   (strict on one side) above b. decayRatio = second / first, period = their time difference;
-///   nullopt with fewer than two.
+///   so peaks of -e sign(d); Disturbance: peaks with the sign of maxDeviation), found with a
+///   hysteresis and threshold h = max(b, 3 sigma): a maximum counts once the signal has fallen by
+///   h below it, and only when it is above h. The first peak must be the overshoot peak
+///   (SetpointStep: at peakTime) or the max-deviation peak (Disturbance), else there are no
+///   peaks. decayRatio = second / first, period = their time difference; nullopt with fewer than
+///   two.
 /// - steadyStateError = spAfter - mean PV over the last 10 % of [startTime, t2] (at least one
 ///   sample).
 /// - Output (co not empty): outMin/outMax over [startTime, t2], outTravel = sum |delta CO| over
 ///   consecutive non-NaN samples in [startTime, t2]; OutputSaturated when a sample is within
 ///   0.1 % of the range span of coRangeMin or coRangeMax. co empty: check NoOutput.
+///
+/// bandOverride (v1.4.0): when finite and > 0, the absolute settling band b to use instead of the
+/// percentage (the prediction uses the measured result's band, so both columns use the same b).
 ClosedLoopResult analyzeClosedLoopSeries(const ClosedLoopSeries &series, double t1, double t2,
                                          const ClosedLoopSettings &settings, double coRangeMin,
-                                         double coRangeMax);
+                                         double coRangeMax,
+                                         double bandOverride = std::numeric_limits<double>::quiet_NaN());
 
 /// Builds the series from the Recorder rows with time in [min(t1, t2), max(t1, t2)] and runs
 /// analyzeClosedLoopSeries(). spTag 0 = typed setpoint: SetpointStep puts typedSpBefore on the

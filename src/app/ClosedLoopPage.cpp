@@ -813,6 +813,11 @@ void ClosedLoopPage::rebuildChecks()
             case ClosedLoopCheck::NoOutput:
                 text = tr("Choose the controller output (CO) in step 1 to see the output rows.");
                 break;
+            case ClosedLoopCheck::NoiseAboveBand:
+                text = tr("The noise on the PV is larger than the settling band: the settling time, "
+                          "the peaks and the decay ratio are unreliable. Choose the 5 % band, or "
+                          "reduce the noise (transmitter damping).");
+                break;
             }
             auto *item = new QListWidgetItem(icon, text, m_checksList);
             item->setFlags(Qt::ItemIsEnabled);

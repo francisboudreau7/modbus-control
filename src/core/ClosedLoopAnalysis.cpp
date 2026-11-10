@@ -357,7 +357,7 @@ ClosedLoopResult run(const ClosedLoopSeries &series, double t1, double t2,
 
 ClosedLoopResult analyzeClosedLoopSeries(const ClosedLoopSeries &series, double t1, double t2,
                                          const ClosedLoopSettings &settings, double coRangeMin,
-                                         double coRangeMax)
+                                         double coRangeMax, double /*bandOverride: fix task*/)
 {
     return run(series, t1, t2, settings, coRangeMin, coRangeMax, false);
 }
